@@ -168,7 +168,7 @@ impl MainLayout {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
             InputMode::Settings => SettingsOverlay::render(frame, state, theme),
             InputMode::Help => HelpOverlay::render(frame, state, theme),
-            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, theme),
+            InputMode::ConnectionSetup => ConnectionSetup::render(frame, state, services, theme),
             InputMode::ConnectionError => ConnectionError::render(frame, state, now, theme),
             _ => {}
         }

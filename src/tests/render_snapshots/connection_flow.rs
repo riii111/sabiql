@@ -22,6 +22,46 @@ fn connection_setup_form() {
 }
 
 #[test]
+fn connection_setup_empty_host_focused() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.connection_setup.focused_field = ConnectionField::Host;
+    state.connection_setup.host = TextInputState::default();
+    state
+        .connection_setup
+        .database
+        .set_content("mydb".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn connection_setup_preview_omits_empty_optional_fields() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.connection_setup.host = TextInputState::default();
+    state
+        .connection_setup
+        .database
+        .set_content("mydb".to_string());
+    state.connection_setup.user = TextInputState::default();
+    state
+        .connection_setup
+        .password
+        .set_content("secret".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

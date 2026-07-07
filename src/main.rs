@@ -139,6 +139,7 @@ async fn main() -> Result<()> {
     let services = AppServices {
         ddl_generator,
         sql_dialect,
+        dsn_builder: adapter.clone(),
         db_capabilities,
     };
 

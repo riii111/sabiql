@@ -60,8 +60,7 @@ impl ConnectionField {
 
     pub fn placeholder(self) -> &'static str {
         match self {
-            Self::Host => "default host/socket",
-            Self::User => "psql default user",
+            Self::Host | Self::User => "empty = psql default",
             _ => "",
         }
     }
@@ -125,10 +124,10 @@ impl Default for ConnectionSetupState {
 
 impl ConnectionSetupState {
     pub fn default_name(&self) -> String {
-        if self.database.content().is_empty() {
-            self.host.content().to_string()
-        } else {
-            format!("{}@{}", self.database.content(), self.host.content())
+        match (self.database.content(), self.host.content()) {
+            ("", host) => host.to_string(),
+            (database, "") => database.to_string(),
+            (database, host) => format!("{database}@{host}"),
         }
     }
 
@@ -302,6 +301,14 @@ mod tests {
             let mut state = ConnectionSetupState::default();
             state.database.set_content("mydb".to_string());
             assert_eq!(state.default_name(), "mydb@localhost");
+        }
+
+        #[test]
+        fn default_name_with_database_and_empty_host() {
+            let mut state = ConnectionSetupState::default();
+            state.host.clear();
+            state.database.set_content("mydb".to_string());
+            assert_eq!(state.default_name(), "mydb");
         }
 
         #[test]

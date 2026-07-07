@@ -1,13 +1,16 @@
 use ratatui::prelude::*;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, CONNECTION_INPUT_WIDTH, ConnectionField, ConnectionSetupState,
 };
+use crate::app::policy::mask_password;
+use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
-use crate::domain::connection::SslMode;
+use crate::domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
@@ -32,7 +35,12 @@ fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> 
 pub struct ConnectionSetup;
 
 impl ConnectionSetup {
-    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
+    pub fn render(
+        frame: &mut Frame,
+        state: &AppState,
+        services: &AppServices,
+        theme: &ThemePalette,
+    ) {
         let form_state = &state.connection_setup;
 
         let (title, submit_desc) = if form_state.is_edit_mode() {
@@ -47,7 +55,7 @@ impl ConnectionSetup {
         let footer = FooterHintBar::new(footer_hints);
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = 13;
+        let modal_height = 15;
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
@@ -67,6 +75,7 @@ impl ConnectionSetup {
             Constraint::Length(FIELD_HEIGHT), // Password
             Constraint::Length(FIELD_HEIGHT), // SslMode
             Constraint::Length(1),            // spacer
+            Constraint::Length(2),            // DSN preview
             Constraint::Length(1),            // notice
         ])
         .split(inner);
@@ -126,11 +135,12 @@ impl ConnectionSetup {
             form_state.focused_field == ConnectionField::SslMode,
             theme,
         );
+        Self::render_dsn_preview(frame, chunks[8], form_state, services, theme);
 
         let notice = "Note: Connection info is stored locally in plain text";
         let notice_para =
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
-        frame.render_widget(notice_para, chunks[8]);
+        frame.render_widget(notice_para, chunks[9]);
 
         if form_state.ssl_dropdown.is_open {
             Self::render_dropdown(
@@ -198,7 +208,7 @@ impl ConnectionSetup {
         let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
         let placeholder = field.placeholder();
-        let show_placeholder = !is_focused && value.is_empty() && !placeholder.is_empty();
+        let show_placeholder = value.is_empty() && !placeholder.is_empty();
 
         let input_line = if is_focused {
             let input = state.focused_input().unwrap();
@@ -206,17 +216,18 @@ impl ConnectionSetup {
             let cursor = input.cursor();
             let char_count = display_value.chars().count();
 
-            // same reservation logic as TextInputState::update_viewport
             let effective_width = if cursor >= char_count {
                 content_width.saturating_sub(1)
             } else {
                 content_width
             };
 
-            let cursor_spans =
-                text_cursor_spans(&display_value, cursor, viewport, effective_width, theme);
+            let cursor_spans = if show_placeholder && !mask {
+                focused_placeholder_spans(placeholder, effective_width, theme)
+            } else {
+                text_cursor_spans(&display_value, cursor, viewport, effective_width, theme)
+            };
 
-            // Calculate total display width of cursor spans (including block cursor)
             let used_width: usize = cursor_spans.iter().map(|s| s.content.chars().count()).sum();
             let padding = content_width.saturating_sub(used_width);
 
@@ -301,6 +312,27 @@ impl ConnectionSetup {
         frame.render_widget(input_para, chunks[1]);
     }
 
+    fn render_dsn_preview(
+        frame: &mut Frame,
+        area: Rect,
+        form_state: &ConnectionSetupState,
+        services: &AppServices,
+        theme: &ThemePalette,
+    ) {
+        let profile = preview_profile(form_state);
+        let preview = mask_password(&services.dsn_builder.build_dsn(&profile));
+        let lines = preview_lines(&preview, area.width as usize)
+            .into_iter()
+            .map(|line| {
+                Line::from(Span::styled(
+                    line,
+                    Style::default().fg(theme.semantic.text.secondary),
+                ))
+            })
+            .collect::<Vec<_>>();
+        frame.render_widget(Paragraph::new(lines), area);
+    }
+
     fn render_dropdown(
         frame: &mut Frame,
         ssl_field_area: Rect,
@@ -356,6 +388,121 @@ impl ConnectionSetup {
     }
 }
 
+fn focused_placeholder_spans(
+    placeholder: &str,
+    effective_width: usize,
+    theme: &ThemePalette,
+) -> Vec<Span<'static>> {
+    if effective_width == 0 {
+        return vec![];
+    }
+
+    let placeholder_width = effective_width.saturating_sub(1);
+    let placeholder_text = placeholder
+        .chars()
+        .take(placeholder_width)
+        .collect::<String>();
+    vec![
+        Span::styled(" ", theme.block_cursor_style()),
+        Span::styled(
+            placeholder_text,
+            Style::default().fg(theme.semantic.text.placeholder),
+        ),
+    ]
+}
+
+fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
+    let port = state.port.content().trim().parse().unwrap_or(5432);
+    ConnectionProfile::with_id(
+        ConnectionId::from_string("preview"),
+        "preview",
+        state.host.content().trim(),
+        port,
+        state.database.content(),
+        state.user.content().trim(),
+        state.password.content(),
+        state.ssl_mode,
+    )
+    .expect("static preview connection name is valid")
+}
+
+fn preview_lines(dsn: &str, width: usize) -> Vec<String> {
+    const FIRST_PREFIX: &str = "→ ";
+    const CONTINUATION_PREFIX: &str = "  ";
+
+    if width == 0 {
+        return vec![String::new(), String::new()];
+    }
+
+    let mut chars = dsn.chars().peekable();
+    let mut lines = [FIRST_PREFIX, CONTINUATION_PREFIX]
+        .into_iter()
+        .map(|prefix| {
+            let prefix = if UnicodeWidthStr::width(prefix) >= width {
+                ""
+            } else {
+                prefix
+            };
+            let available = width.saturating_sub(UnicodeWidthStr::width(prefix));
+            let content = take_preview_segment(&mut chars, available);
+            format!("{prefix}{content}")
+        })
+        .collect::<Vec<_>>();
+
+    if chars.peek().is_some()
+        && let Some(last) = lines.last_mut()
+    {
+        *last = with_preview_ellipsis(last, width);
+    }
+
+    lines
+}
+
+fn take_preview_segment<I>(chars: &mut std::iter::Peekable<I>, width: usize) -> String
+where
+    I: Iterator<Item = char>,
+{
+    let mut segment = String::new();
+    let mut used = 0;
+    while let Some(ch) = chars.peek().copied() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + ch_width > width {
+            break;
+        }
+        segment.push(ch);
+        used += ch_width;
+        chars.next();
+    }
+    segment
+}
+
+fn with_preview_ellipsis(line: &str, width: usize) -> String {
+    const ELLIPSIS: &str = "…";
+
+    let ellipsis_width = UnicodeWidthStr::width(ELLIPSIS);
+    if width < ellipsis_width {
+        return take_within_width(ELLIPSIS, width);
+    }
+
+    let mut truncated = take_within_width(line, width - ellipsis_width);
+    truncated.push_str(ELLIPSIS);
+    truncated
+}
+
+fn take_within_width(text: &str, width: usize) -> String {
+    let mut segment = String::new();
+    let mut used = 0;
+    for ch in text.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + ch_width > width {
+            break;
+        }
+        segment.push(ch);
+        used += ch_width;
+    }
+    segment
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +542,43 @@ mod tests {
         assert_eq!(
             ConnectionSetup::submit_hints(&state, &form_state, "Connect"),
             vec![("^S", "Connect")]
+        );
+    }
+
+    #[test]
+    fn preview_profile_trims_host_and_user() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state.host.set_content("  localhost  ".to_string());
+        form_state.user.set_content("  postgres  ".to_string());
+        form_state.password.set_content("  pass  ".to_string());
+
+        let profile = preview_profile(&form_state);
+
+        assert_eq!(profile.host, "localhost");
+        assert_eq!(profile.username, "postgres");
+        assert_eq!(profile.password, "  pass  ");
+    }
+
+    #[test]
+    fn preview_lines_use_two_rows_with_ellipsis() {
+        assert_eq!(
+            preview_lines("host='localhost' port='5432'", 12),
+            vec!["→ host='loca".to_string(), "  lhost' po…".to_string()]
+        );
+    }
+
+    #[test]
+    fn preview_lines_respect_display_width() {
+        let lines = preview_lines("dbname='日本語db' sslmode='prefer'", 12);
+
+        assert_eq!(
+            lines,
+            vec!["→ dbname='日".to_string(), "  本語db' s…".to_string()]
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|line| UnicodeWidthStr::width(line.as_str()) <= 12)
         );
     }
 }
