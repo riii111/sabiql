@@ -62,6 +62,30 @@ fn connection_setup_preview_omits_empty_optional_fields() {
 }
 
 #[test]
+fn connection_setup_preview_uses_postgres_conninfo_escaping() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .host
+        .set_content("/var/run/postgresql".to_string());
+    state
+        .connection_setup
+        .database
+        .set_content("my'db".to_string());
+    state
+        .connection_setup
+        .user
+        .set_content("user'org".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

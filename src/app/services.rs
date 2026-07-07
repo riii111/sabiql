@@ -74,21 +74,8 @@ impl AppServices {
 
         struct StubDsnBuilder;
         impl DsnBuilder for StubDsnBuilder {
-            fn build_dsn(&self, profile: &ConnectionProfile) -> String {
-                fn push_part(parts: &mut Vec<String>, key: &str, value: &str) {
-                    if !value.is_empty() {
-                        parts.push(format!("{key}='{value}'"));
-                    }
-                }
-
-                let mut parts = Vec::new();
-                push_part(&mut parts, "host", profile.host.trim());
-                push_part(&mut parts, "port", &profile.port.to_string());
-                push_part(&mut parts, "dbname", profile.database.trim());
-                push_part(&mut parts, "user", profile.username.trim());
-                push_part(&mut parts, "password", profile.password.as_str());
-                push_part(&mut parts, "sslmode", &profile.ssl_mode.to_string());
-                parts.join(" ")
+            fn build_dsn(&self, _profile: &ConnectionProfile) -> String {
+                "stub-dsn".to_string()
             }
         }
 
