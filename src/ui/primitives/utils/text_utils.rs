@@ -34,7 +34,7 @@ pub fn truncate_to_width(s: &str, max_width: usize) -> String {
     truncate_to_width_with(s, max_width, "...")
 }
 
-fn take_within_width(s: &str, budget: usize) -> String {
+pub fn take_within_width(s: &str, budget: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let mut taken = String::new();

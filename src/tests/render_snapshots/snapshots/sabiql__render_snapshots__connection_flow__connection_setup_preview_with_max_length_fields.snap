@@ -13,35 +13,35 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
-│                                       ││          │  Port:       [ 5432                       ]                │                                                  │
-│                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [                            ]                │                                                  │
+│                                       ││          │  Name:       [ nnnnnnnnnnnnnnnnnnnnnnnnn  ]                │                                                  │
+│                                       ││          │  Host:       [ hhhhhhhhhhhhhhhhhhhhhhhhhh ]                │                                                  │
+│                                       ││          │  Port:       [ 65535                      ]                │                                                  │
+│                                       ││          │  Database:   [ dddddddddddddddddddddddddd ]                │                                                  │
+│                                       ││          │  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │                                                  │
+│                                       ││          │  Password:   [ ************************** ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → port='5432' sslmode='prefer'                            │                                                  │
+│                                       ││          │  → host='hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
+│                                       │└──────────│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh' port='6  │──────────────────────────────────────────────────┐
+│                                       ││(select a │    5535' dbname='dddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
+│                                       ││          │    ddddddddddddddddddddddddddddddddddddddddddddddddddddd'  │                                                  │
+│                                       ││          │     user='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
+│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu' passwo  │                                                  │
+│                                       ││          │    rd='****' sslmode='prefer'                              │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

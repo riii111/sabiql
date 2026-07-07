@@ -27,14 +27,14 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
 │                                       │└──────────│  Database:   [                            ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ psql default user          ]                │──────────────────────────────────────────────────┐
+│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  Password:   [                            ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
+│                                       ││          │  → host='db.example.com' port='5432' sslmode='prefer'      │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -20,18 +20,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
-│                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
+│                                       ││          │  Host:       [ /var/run/postgresql        ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
-│                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [                            ]                │                                                  │
-│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │  Database:   [ my'db                      ]                │                                                  │
+│                                       │└──────────│  User:       [ user'org                   ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Password:   [                            ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → port='5432' sslmode='prefer'                            │                                                  │
+│                                       ││          │  → host='/var/run/postgresql' port='5432' dbname='my\'db'  │                                                  │
+│                                       ││          │     user='user\'org' sslmode='prefer'                      │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │

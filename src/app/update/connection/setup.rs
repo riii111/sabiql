@@ -49,7 +49,7 @@ pub(super) fn reduce_connection_setup(
             match setup.focused_field {
                 ConnectionField::Port => {
                     let current_len = setup.port.char_count();
-                    let remaining = 5usize.saturating_sub(current_len);
+                    let remaining = remaining_input_capacity(ConnectionField::Port, current_len);
                     let digits: String = clean
                         .chars()
                         .filter(char::is_ascii_digit)
@@ -62,9 +62,14 @@ pub(super) fn reduce_connection_setup(
                 }
                 ConnectionField::SslMode => {}
                 _ => {
+                    let field = setup.focused_field;
                     if let Some(input) = setup.focused_input_mut() {
-                        input.insert_str(&clean);
-                        input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                        let remaining = remaining_input_capacity(field, input.char_count());
+                        let allowed = take_chars(&clean, remaining);
+                        if !allowed.is_empty() {
+                            input.insert_str(&allowed);
+                            input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                        }
                     }
                 }
             }
@@ -79,14 +84,20 @@ pub(super) fn reduce_connection_setup(
             let setup = &mut state.connection_setup;
             match setup.focused_field {
                 ConnectionField::Port => {
-                    if c.is_ascii_digit() && setup.port.char_count() < 5 {
+                    if c.is_ascii_digit()
+                        && remaining_input_capacity(ConnectionField::Port, setup.port.char_count())
+                            > 0
+                    {
                         setup.port.insert_char(*c);
                         setup.port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
                 ConnectionField::SslMode => {}
                 _ => {
-                    if let Some(input) = setup.focused_input_mut() {
+                    let field = setup.focused_field;
+                    if let Some(input) = setup.focused_input_mut()
+                        && remaining_input_capacity(field, input.char_count()) > 0
+                    {
                         input.insert_char(*c);
                         input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
@@ -180,11 +191,11 @@ pub(super) fn reduce_connection_setup(
                 state.session.mark_connecting();
                 DispatchResult::handled_with(vec![Effect::SaveAndConnect {
                     id: setup.editing_id.clone(),
-                    name: setup.name.content().to_string(),
-                    host: setup.host.content().to_string(),
+                    name: setup.name.content().trim().to_string(),
+                    host: setup.host.content().trim().to_string(),
                     port,
-                    database: setup.database.content().to_string(),
-                    user: setup.user.content().to_string(),
+                    database: setup.database.content().trim().to_string(),
+                    user: setup.user.content().trim().to_string(),
                     password: setup.password.content().to_string(),
                     ssl_mode: setup.ssl_mode,
                 }])
@@ -230,6 +241,16 @@ pub(super) fn reduce_connection_setup(
 
         _ => DispatchResult::pass(),
     }
+}
+
+fn remaining_input_capacity(field: ConnectionField, current_len: usize) -> usize {
+    field
+        .max_chars()
+        .map_or(usize::MAX, |max| max.saturating_sub(current_len))
+}
+
+fn take_chars(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
 }
 
 fn confirm_ssl_dropdown_selection(setup: &mut ConnectionSetupState) {
@@ -367,6 +388,15 @@ mod tests {
 
             assert_eq!(state.connection_setup.host.cursor(), 14);
         }
+
+        #[test]
+        fn host_paste_respects_limit() {
+            let mut state = setup_state_with_field(ConnectionField::Host);
+
+            reduce_connection_setup(&mut state, &Action::Paste("a".repeat(300)), Instant::now());
+
+            assert_eq!(state.connection_setup.host.char_count(), 255);
+        }
     }
 
     mod connection_save {
@@ -434,6 +464,52 @@ mod tests {
         }
 
         #[test]
+        fn save_trims_connection_identifiers_and_name_but_preserves_password() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state
+                .connection_setup
+                .name
+                .set_content("  test-db  ".to_string());
+            state
+                .connection_setup
+                .host
+                .set_content("  localhost  ".to_string());
+            state
+                .connection_setup
+                .database
+                .set_content("  mydb  ".to_string());
+            state
+                .connection_setup
+                .user
+                .set_content("  postgres  ".to_string());
+            state
+                .connection_setup
+                .password
+                .set_content("  pass  ".to_string());
+
+            let effects =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                    .unwrap();
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect {
+                    name,
+                    host,
+                    database,
+                    user,
+                    password,
+                    ..
+                }] if name == "test-db"
+                    && host == "localhost"
+                    && database == "mydb"
+                    && user == "postgres"
+                    && password == "  pass  "
+            ));
+        }
+
+        #[test]
         fn save_completed_resets_read_only() {
             let mut state = AppState::new("test".to_string());
             state.session.read_only = true;
@@ -446,6 +522,25 @@ mod tests {
             reduce_connection_setup(&mut state, &action, Instant::now());
 
             assert!(!state.session.read_only);
+        }
+
+        #[test]
+        fn save_rejects_host_over_limit() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            state.connection_setup.host.set_content("a".repeat(256));
+
+            let result =
+                reduce_connection_setup(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert!(result.is_handled());
+            assert_eq!(
+                state
+                    .connection_setup
+                    .validation_errors
+                    .get(&ConnectionField::Host),
+                Some(&"Must be 255 characters or less".to_string())
+            );
         }
     }
 

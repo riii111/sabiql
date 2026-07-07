@@ -11,6 +11,7 @@ use ratatui::layout::Position;
 
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::services::AppServices;
+use sabiql_infra::adapters::PostgresAdapter;
 use sabiql_ui::shell::layout::MainLayout;
 use sabiql_ui::theme::{ThemePalette, palette_for};
 
@@ -57,13 +58,14 @@ pub fn render_and_get_buffer_at_with_theme(
     now: Instant,
     theme: &ThemePalette,
 ) -> Buffer {
+    let services = render_services();
     terminal
         .draw(|frame| {
             let output = MainLayout::render_with_theme(
                 frame,
                 state,
                 Some(FIXED_TIME_MS),
-                &AppServices::stub(),
+                &services,
                 now,
                 theme,
             );
@@ -93,6 +95,13 @@ pub fn render_and_get_buffer_at_with_theme(
         .unwrap();
 
     terminal.backend().buffer().clone()
+}
+
+fn render_services() -> AppServices {
+    AppServices {
+        dsn_builder: Arc::new(PostgresAdapter::new()),
+        ..AppServices::stub()
+    }
 }
 
 pub fn render_to_string(terminal: &mut Terminal<TestBackend>, state: &mut AppState) -> String {

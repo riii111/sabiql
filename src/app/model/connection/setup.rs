@@ -58,10 +58,18 @@ impl ConnectionField {
         matches!(self, Self::Name | Self::Port | Self::Database)
     }
 
+    pub fn max_chars(self) -> Option<usize> {
+        match self {
+            Self::Name => Some(50),
+            Self::Host | Self::Database | Self::User | Self::Password => Some(255),
+            Self::Port => Some(5),
+            Self::SslMode => None,
+        }
+    }
+
     pub fn placeholder(self) -> &'static str {
         match self {
-            Self::Host => "default host/socket",
-            Self::User => "psql default user",
+            Self::Host | Self::User => "empty = psql default",
             _ => "",
         }
     }
@@ -124,14 +132,6 @@ impl Default for ConnectionSetupState {
 }
 
 impl ConnectionSetupState {
-    pub fn default_name(&self) -> String {
-        if self.database.content().is_empty() {
-            self.host.content().to_string()
-        } else {
-            format!("{}@{}", self.database.content(), self.host.content())
-        }
-    }
-
     pub fn field_value(&self, field: ConnectionField) -> &str {
         match field {
             ConnectionField::Name => self.name.content(),
@@ -271,6 +271,17 @@ mod tests {
             assert_eq!(all[0], ConnectionField::Name);
             assert_eq!(all[6], ConnectionField::SslMode);
         }
+
+        #[test]
+        fn max_chars_limits_match_field_policy() {
+            assert_eq!(ConnectionField::Name.max_chars(), Some(50));
+            assert_eq!(ConnectionField::Host.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Port.max_chars(), Some(5));
+            assert_eq!(ConnectionField::Database.max_chars(), Some(255));
+            assert_eq!(ConnectionField::User.max_chars(), Some(255));
+            assert_eq!(ConnectionField::Password.max_chars(), Some(255));
+            assert_eq!(ConnectionField::SslMode.max_chars(), None);
+        }
     }
 
     mod connection_setup_state {
@@ -289,19 +300,6 @@ mod tests {
             assert_eq!(state.focused_field, ConnectionField::Name);
             assert!(state.is_first_run);
             assert!(state.editing_id.is_none());
-        }
-
-        #[test]
-        fn default_name_without_database() {
-            let state = ConnectionSetupState::default();
-            assert_eq!(state.default_name(), "localhost");
-        }
-
-        #[test]
-        fn default_name_with_database() {
-            let mut state = ConnectionSetupState::default();
-            state.database.set_content("mydb".to_string());
-            assert_eq!(state.default_name(), "mydb@localhost");
         }
 
         #[test]

@@ -20,18 +20,18 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
-│                                       │└──────────│  Database:   [                            ] Required       │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [                            ]                │                                                  │
-│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       ││          │  Database:   [ mydb                       ]                │                                                  │
+│                                       │└──────────│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Password:   [ ******                     ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → port='5432' sslmode='prefer'                            │                                                  │
+│                                       ││          │  → port='5432' dbname='mydb' password='****' sslmode='pre  │                                                  │
+│                                       ││          │    fer'                                                    │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
