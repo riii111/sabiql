@@ -86,6 +86,28 @@ fn connection_setup_preview_uses_postgres_conninfo_escaping() {
 }
 
 #[test]
+fn connection_setup_preview_wraps_across_multiple_rows_for_long_conninfo() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state.connection_setup.host.set_content(
+        "analytics-primary-read-replica.cluster.internal.example.company.service".to_string(),
+    );
+    state
+        .connection_setup
+        .database
+        .set_content("warehouse_reporting_environment_for_customer_success_dashboards".to_string());
+    state.connection_setup.user.set_content(
+        "customer_success_preview_validation_operator_with_extended_scope".to_string(),
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

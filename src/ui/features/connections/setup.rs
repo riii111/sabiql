@@ -21,6 +21,10 @@ const INPUT_WIDTH: u16 = CONNECTION_INPUT_WIDTH;
 const ERROR_WIDTH: u16 = 12;
 const FIELD_HEIGHT: u16 = 1;
 const DROPDOWN_ITEM_COUNT: usize = 6;
+const MODAL_HORIZONTAL_CHROME: u16 = 6;
+const MODAL_VERTICAL_CHROME: u16 = 4;
+const NON_PREVIEW_CONTENT_HEIGHT: u16 = 9;
+const MIN_PREVIEW_LINES: usize = 2;
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -56,7 +60,16 @@ impl ConnectionSetup {
         let footer = FooterHintBar::new(footer_hints);
 
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
-        let modal_height = 15;
+        let preview = preview_text(form_state, services);
+        let preview_width = modal_width.saturating_sub(MODAL_HORIZONTAL_CHROME) as usize;
+        let max_preview_lines = frame
+            .area()
+            .height
+            .saturating_sub(MODAL_VERTICAL_CHROME + NON_PREVIEW_CONTENT_HEIGHT)
+            .max(MIN_PREVIEW_LINES as u16) as usize;
+        let preview_lines = preview_lines(&preview, preview_width, max_preview_lines);
+        let modal_height =
+            MODAL_VERTICAL_CHROME + NON_PREVIEW_CONTENT_HEIGHT + preview_lines.len() as u16;
         let (_, modal_inner) = render_modal(
             frame,
             Constraint::Length(modal_width),
@@ -68,16 +81,16 @@ impl ConnectionSetup {
 
         let inner = modal_inner.inner(Margin::new(2, 1));
         let chunks = Layout::vertical([
-            Constraint::Length(FIELD_HEIGHT), // Name
-            Constraint::Length(FIELD_HEIGHT), // Host
-            Constraint::Length(FIELD_HEIGHT), // Port
-            Constraint::Length(FIELD_HEIGHT), // Database
-            Constraint::Length(FIELD_HEIGHT), // User
-            Constraint::Length(FIELD_HEIGHT), // Password
-            Constraint::Length(FIELD_HEIGHT), // SslMode
-            Constraint::Length(1),            // spacer
-            Constraint::Length(2),            // DSN preview
-            Constraint::Length(1),            // notice
+            Constraint::Length(FIELD_HEIGHT),               // Name
+            Constraint::Length(FIELD_HEIGHT),               // Host
+            Constraint::Length(FIELD_HEIGHT),               // Port
+            Constraint::Length(FIELD_HEIGHT),               // Database
+            Constraint::Length(FIELD_HEIGHT),               // User
+            Constraint::Length(FIELD_HEIGHT),               // Password
+            Constraint::Length(FIELD_HEIGHT),               // SslMode
+            Constraint::Length(1),                          // spacer
+            Constraint::Length(preview_lines.len() as u16), // DSN preview
+            Constraint::Length(1),                          // notice
         ])
         .split(inner);
 
@@ -136,7 +149,7 @@ impl ConnectionSetup {
             form_state.focused_field == ConnectionField::SslMode,
             theme,
         );
-        Self::render_dsn_preview(frame, chunks[8], form_state, services, theme);
+        Self::render_dsn_preview(frame, chunks[8], &preview_lines, theme);
 
         let notice = "Note: Connection info is stored locally in plain text";
         let notice_para =
@@ -316,17 +329,14 @@ impl ConnectionSetup {
     fn render_dsn_preview(
         frame: &mut Frame,
         area: Rect,
-        form_state: &ConnectionSetupState,
-        services: &AppServices,
+        preview_lines: &[String],
         theme: &ThemePalette,
     ) {
-        let profile = preview_profile(form_state);
-        let preview = mask_password(&services.dsn_builder.build_dsn(&profile));
-        let lines = preview_lines(&preview, area.width as usize)
-            .into_iter()
+        let lines = preview_lines
+            .iter()
             .map(|line| {
                 Line::from(Span::styled(
-                    line,
+                    line.as_str(),
                     Style::default().fg(theme.semantic.text.secondary),
                 ))
             })
@@ -423,27 +433,46 @@ fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
     .expect("static preview connection name is valid")
 }
 
-fn preview_lines(dsn: &str, width: usize) -> Vec<String> {
+fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> String {
+    let profile = preview_profile(form_state);
+    mask_password(&services.dsn_builder.build_dsn(&profile))
+}
+
+fn preview_lines(dsn: &str, width: usize, max_lines: usize) -> Vec<String> {
     const FIRST_PREFIX: &str = "→ ";
     const CONTINUATION_PREFIX: &str = "  ";
 
-    if width == 0 {
-        return vec![String::new(), String::new()];
+    if width == 0 || max_lines == 0 {
+        return vec![];
     }
 
-    let first_prefix = preview_prefix(FIRST_PREFIX, width);
-    let first_available = width.saturating_sub(UnicodeWidthStr::width(first_prefix));
-    let first_segment = take_within_width(dsn, first_available);
-    let rest = &dsn[first_segment.len()..];
+    let mut remaining = dsn;
+    let mut lines = Vec::new();
 
-    let continuation_prefix = preview_prefix(CONTINUATION_PREFIX, width);
-    let continuation_available = width.saturating_sub(UnicodeWidthStr::width(continuation_prefix));
-    let continuation_segment = truncate_to_width_with(rest, continuation_available, "…");
+    for index in 0..max_lines {
+        let prefix = if index == 0 {
+            preview_prefix(FIRST_PREFIX, width)
+        } else {
+            preview_prefix(CONTINUATION_PREFIX, width)
+        };
+        let available = width.saturating_sub(UnicodeWidthStr::width(prefix));
 
-    vec![
-        format!("{first_prefix}{first_segment}"),
-        format!("{continuation_prefix}{continuation_segment}"),
-    ]
+        if index + 1 == max_lines {
+            let last_segment = truncate_to_width_with(remaining, available, "…");
+            lines.push(format!("{prefix}{last_segment}"));
+            break;
+        }
+
+        let segment = take_within_width(remaining, available);
+        remaining = &remaining[segment.len()..];
+        lines.push(format!("{prefix}{segment}"));
+
+        if remaining.is_empty() {
+            break;
+        }
+    }
+
+    lines
 }
 
 fn preview_prefix(prefix: &'static str, width: usize) -> &'static str {
@@ -513,14 +542,14 @@ mod tests {
     #[test]
     fn preview_lines_use_two_rows_with_ellipsis() {
         assert_eq!(
-            preview_lines("host='localhost' port='5432'", 12),
+            preview_lines("host='localhost' port='5432'", 12, 2),
             vec!["→ host='loca".to_string(), "  lhost' po…".to_string()]
         );
     }
 
     #[test]
     fn preview_lines_respect_display_width() {
-        let lines = preview_lines("dbname='日本語db' sslmode='prefer'", 12);
+        let lines = preview_lines("dbname='日本語db' sslmode='prefer'", 12, 2);
 
         assert_eq!(
             lines,
@@ -530,6 +559,32 @@ mod tests {
             lines
                 .iter()
                 .all(|line| UnicodeWidthStr::width(line.as_str()) <= 12)
+        );
+    }
+
+    #[test]
+    fn preview_lines_expand_beyond_two_rows_before_truncating() {
+        assert_eq!(
+            preview_lines("abcdefghijklmnopqrstuvwx", 8, 4),
+            vec![
+                "→ abcdef".to_string(),
+                "  ghijkl".to_string(),
+                "  mnopqr".to_string(),
+                "  stuvwx".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn preview_lines_truncate_on_last_available_row() {
+        assert_eq!(
+            preview_lines("abcdefghijklmnopqrstuvwxyz", 8, 4),
+            vec![
+                "→ abcdef".to_string(),
+                "  ghijkl".to_string(),
+                "  mnopqr".to_string(),
+                "  stuvw…".to_string(),
+            ]
         );
     }
 }
