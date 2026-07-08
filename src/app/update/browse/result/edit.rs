@@ -20,7 +20,7 @@ fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(td) = state.session.table_detail() else {
         return false;
     };
-    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
+    if !state.query.pagination.matches_table(td) {
         return false;
     }
     let Some(column) = td.columns.get(col_idx) else {
@@ -281,6 +281,25 @@ mod tests {
             assert_eq!(
                 state.messages.last_error(),
                 Some("Table metadata does not match current preview target")
+            );
+        }
+
+        #[test]
+        fn view_detail_blocks_cell_edit_entry() {
+            let mut state = preview_state_with_selection();
+            let mut table = minimal_users_table();
+            table.kind_info = sabiql_test_support::table::view_kind_info();
+            state.session.set_table_detail_raw(Some(table));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Preview target is read-only: view")
             );
         }
 

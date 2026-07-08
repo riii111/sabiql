@@ -1,4 +1,4 @@
-use sabiql_domain::{Table, TableKindInfo};
+use sabiql_domain::{Table, TableKind, TableKindInfo};
 
 #[must_use]
 pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
@@ -16,5 +16,13 @@ pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
         comment: None,
         source_ddl: None,
         kind_info: TableKindInfo::default(),
+    }
+}
+
+#[must_use]
+pub fn view_kind_info() -> TableKindInfo {
+    TableKindInfo {
+        kind: TableKind::View,
+        ..TableKindInfo::default()
     }
 }

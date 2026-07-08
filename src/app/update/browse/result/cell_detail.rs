@@ -162,7 +162,7 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
     let td = state.session.table_detail()?;
-    if td.schema != state.query.pagination.schema() || td.name != state.query.pagination.table() {
+    if !state.query.pagination.matches_table(td) {
         return None;
     }
     td.columns

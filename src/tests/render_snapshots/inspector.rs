@@ -3,14 +3,6 @@ use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
 use sabiql_domain::{ConnectionId, DatabaseType, TableKind, TableKindInfo};
 
-fn trim_line_endings(output: &str) -> String {
-    output
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
     let mut state = harness::explorer_selected_state();
@@ -425,6 +417,33 @@ fn inspector_info_tab_for_sqlite_shows_table_kind_fields() {
         without_rowid: false,
         virtual_module: Some("fts5".to_string()),
     };
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "app.db",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_sqlite_shows_view_kind() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.schema = "main".to_string();
+    table.name = "active_users".to_string();
+    table.owner = None;
+    table.comment = None;
+    table.row_count_estimate = Some(2);
+    table.kind_info = sabiql_test_support::table::view_kind_info();
     let _ = state.session.set_table_detail(table, 0);
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("sqlite-test"),

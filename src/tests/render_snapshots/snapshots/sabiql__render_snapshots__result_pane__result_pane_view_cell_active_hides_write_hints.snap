@@ -1,15 +1,15 @@
 ---
-source: src/tests/render_snapshots/table_explorer.rs
+source: src/tests/render_snapshots/result_pane.rs
 expression: output
 ---
-test_project | app.db | - | connected | app.db                                                                                                                       
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │
-│  main.notes_fts [virtual/fts5]        ││                                                                                                                          │
-│  main.active_users [view]             ││                                                                                                                          │
-│  main.typed_users [table+strict]      ││                                                                                                                          │
-│                                       ││                                                                                                                          │
+test_project | test_db | - | no dsn | localhost:5432/test
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││Owner:   postgres                                                                                                         │
+│  public.comments                      ││Comment: User accounts                                                                                                    │
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   users                                                                                                            │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -27,10 +27,10 @@ test_project | app.db | - | connected | app.db
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-│                                       │┌ [3] Result ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││(select a table to preview)                                                                                               │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
+│                                       │┌ [3] Result (2 rows, 15ms) ───────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││id   name    email                                                                                                        │
+│                                       ││1    Alice   alice@example.com                                                                                            │
+│                                       ││2    Bob     bob@example.com                                                                                              │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | app.db | - | connected | app.db
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  ^⇧D:Diagnostics  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
+Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  ?:Help  Esc:Back  q:Quit
