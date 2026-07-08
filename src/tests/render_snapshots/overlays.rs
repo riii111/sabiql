@@ -832,6 +832,18 @@ fn sqlite_connected_state() -> AppState {
 }
 
 #[test]
+fn sqlite_sql_modal_omits_compare_tab() {
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
