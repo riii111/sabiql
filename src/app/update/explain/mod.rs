@@ -146,7 +146,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_non_select_sets_query_plan_error_on_plan_tab() {
+        fn sqlite_dml_emits_execute_explain_query_plan_effect_without_confirmation() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -162,12 +162,48 @@ mod tests {
             )
             .unwrap();
 
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    is_analyze: false,
+                    read_only: true,
+                    ..
+                } if query == "EXPLAIN QUERY PLAN DELETE FROM users"
+            ));
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert!(!matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                    | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+            ));
+        }
+
+        #[test]
+        fn sqlite_ddl_sets_query_plan_error_on_plan_tab() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("CREATE TABLE users(id INTEGER)".to_string());
+            activate_sqlite_connection(&mut state);
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
             assert!(effects.is_empty());
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("EXPLAIN QUERY PLAN supports SELECT statements only")
+                Some(
+                    "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
+                )
             );
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
 
         #[test]
@@ -190,7 +226,9 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("EXPLAIN QUERY PLAN is added automatically; enter a SELECT query only")
+                Some(
+                    "EXPLAIN QUERY PLAN is added automatically; enter a supported query without EXPLAIN"
+                )
             );
         }
 

@@ -844,6 +844,25 @@ fn sqlite_sql_modal_omits_compare_tab() {
 }
 
 #[test]
+fn sqlite_sql_modal_plan_tab_labels_query_plan() {
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+    state.explain.set_plan(
+        "SEARCH users USING INDEX idx_users_name\n  - SCAN orders".to_string(),
+        false,
+        42,
+        "DELETE FROM users WHERE name = 'alice'",
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();

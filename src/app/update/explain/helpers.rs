@@ -8,7 +8,9 @@ use crate::policy::write::sql_risk::split_statements_for_database;
 
 pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> &'static str {
     match database_type {
-        DatabaseType::SQLite => "EXPLAIN QUERY PLAN supports SELECT statements only",
+        DatabaseType::SQLite => {
+            "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
+        }
         DatabaseType::PostgreSQL => "EXPLAIN is unavailable for this statement",
     }
 }
@@ -17,7 +19,7 @@ pub(super) fn explain_unsupported_sqlite_query_message(content: &str) -> &'stati
     if statement_classifier::first_keyword(content.trim())
         .is_some_and(|keyword| keyword.eq_ignore_ascii_case("EXPLAIN"))
     {
-        "EXPLAIN QUERY PLAN is added automatically; enter a SELECT query only"
+        "EXPLAIN QUERY PLAN is added automatically; enter a supported query without EXPLAIN"
     } else {
         explain_unsupported_query_message(DatabaseType::SQLite)
     }

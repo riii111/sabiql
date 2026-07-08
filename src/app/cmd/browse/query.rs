@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -7,6 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::domain::ConnectionId;
+use crate::domain::QueryResult;
 use crate::domain::QuerySource;
 use crate::domain::QueryValue;
 use crate::domain::command_tag::CommandTag;
@@ -129,6 +131,85 @@ fn write_cached_result_csv(
     Ok(values.len())
 }
 
+#[derive(Debug, Clone)]
+struct SqliteExplainPlanRow {
+    id: i64,
+    parent: i64,
+    detail: String,
+}
+
+fn column_index(columns: &[String], name: &str) -> Option<usize> {
+    columns
+        .iter()
+        .position(|column| column.eq_ignore_ascii_case(name))
+}
+
+fn sqlite_explain_plan_rows(result: &QueryResult) -> Option<Vec<SqliteExplainPlanRow>> {
+    let id_index = column_index(&result.columns, "id")?;
+    let parent_index = column_index(&result.columns, "parent")?;
+    let detail_index = column_index(&result.columns, "detail")?;
+
+    result
+        .rows()
+        .iter()
+        .map(|row| {
+            Some(SqliteExplainPlanRow {
+                id: row.get(id_index)?.parse().ok()?,
+                parent: row.get(parent_index)?.parse().ok()?,
+                detail: row.get(detail_index)?.clone(),
+            })
+        })
+        .collect()
+}
+
+fn sqlite_explain_plan_depth(
+    row: &SqliteExplainPlanRow,
+    parents_by_id: &HashMap<i64, i64>,
+    max_depth: usize,
+) -> usize {
+    let mut depth = 0usize;
+    let mut parent = row.parent;
+    while parents_by_id.contains_key(&parent) && depth < max_depth {
+        depth += 1;
+        parent = parents_by_id[&parent];
+    }
+    depth
+}
+
+fn sqlite_explain_plan_text(result: &QueryResult) -> Option<String> {
+    let rows = sqlite_explain_plan_rows(result)?;
+    let parents_by_id = rows
+        .iter()
+        .map(|row| (row.id, row.parent))
+        .collect::<HashMap<_, _>>();
+    let max_depth = rows.len();
+    Some(
+        rows.iter()
+            .map(|row| {
+                let depth = sqlite_explain_plan_depth(row, &parents_by_id, max_depth);
+                if depth == 0 {
+                    row.detail.clone()
+                } else {
+                    format!("{}- {}", "  ".repeat(depth), row.detail)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+fn explain_plan_text_from_result(result: &QueryResult) -> String {
+    sqlite_explain_plan_text(result).unwrap_or_else(|| {
+        result
+            .rows()
+            .iter()
+            .filter_map(|row| row.first())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
 #[allow(
     clippy::unused_async,
     reason = "consistent async interface for effect runner dispatch"
@@ -201,13 +282,7 @@ pub async fn run(
             tokio::spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
-                        let plan_text = result
-                            .rows()
-                            .iter()
-                            .filter_map(|row| row.first())
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                        let plan_text = explain_plan_text_from_result(&result);
                         tx.send(Action::ExplainCompleted {
                             dsn,
                             run_id,
@@ -477,7 +552,7 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{epoch_days_to_ymd, resolve_export_path};
+    use super::{epoch_days_to_ymd, explain_plan_text_from_result, resolve_export_path};
 
     mod export_path {
         use std::path::Path;
@@ -552,6 +627,59 @@ mod tests {
                 cached_csv_cell(&QueryValue::Null),
                 QueryValue::Null.display_value()
             );
+        }
+    }
+
+    mod explain_plan_text {
+        use crate::domain::{QueryResult, QuerySource};
+
+        use super::*;
+
+        #[test]
+        fn sqlite_query_plan_uses_detail_column() {
+            let result = QueryResult::success(
+                "EXPLAIN QUERY PLAN SELECT * FROM users".to_string(),
+                vec![
+                    "id".to_string(),
+                    "parent".to_string(),
+                    "notused".to_string(),
+                    "detail".to_string(),
+                ],
+                vec![
+                    vec![
+                        "2".to_string(),
+                        "0".to_string(),
+                        "56".to_string(),
+                        "SEARCH users USING INDEX idx_users_name".to_string(),
+                    ],
+                    vec![
+                        "5".to_string(),
+                        "2".to_string(),
+                        "0".to_string(),
+                        "SCAN orders".to_string(),
+                    ],
+                ],
+                1,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(
+                explain_plan_text_from_result(&result),
+                "SEARCH users USING INDEX idx_users_name\n  - SCAN orders"
+            );
+        }
+
+        #[test]
+        fn non_sqlite_plan_keeps_first_column_fallback() {
+            let result = QueryResult::success(
+                "EXPLAIN SELECT * FROM users".to_string(),
+                vec!["QUERY PLAN".to_string()],
+                vec![vec!["Seq Scan on users".to_string()]],
+                1,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(explain_plan_text_from_result(&result), "Seq Scan on users");
         }
     }
 
