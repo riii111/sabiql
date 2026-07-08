@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 
@@ -10,8 +10,8 @@ use super::DbOperationError;
 pub trait CachedResultExporter: Send + Sync {
     async fn export_cached_result_to_csv(
         &self,
-        path: &Path,
-        columns: &[String],
-        values: &[Vec<QueryValue>],
+        path: PathBuf,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
     ) -> Result<usize, DbOperationError>;
 }

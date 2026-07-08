@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
@@ -11,13 +11,10 @@ pub struct CsvCachedResultExporter;
 impl CachedResultExporter for CsvCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
-        path: &Path,
-        columns: &[String],
-        values: &[Vec<QueryValue>],
+        path: PathBuf,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
     ) -> Result<usize, DbOperationError> {
-        let path = path.to_path_buf();
-        let columns = columns.to_vec();
-        let values = values.to_vec();
         tokio::task::spawn_blocking(move || write_cached_result_csv(path, columns, values))
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
@@ -100,9 +97,9 @@ mod tests {
 
             let row_count = CsvCachedResultExporter
                 .export_cached_result_to_csv(
-                    &path,
-                    &["id".to_string(), "payload".to_string()],
-                    &[vec![
+                    path.clone(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![
                         QueryValue::SqlLiteral("1".to_string()),
                         QueryValue::Blob(vec![0xAB, 0xCD]),
                     ]],
@@ -123,7 +120,7 @@ mod tests {
             let path = dir.path().join("missing").join("export.csv");
 
             let error = CsvCachedResultExporter
-                .export_cached_result_to_csv(&path, &["id".to_string()], &[])
+                .export_cached_result_to_csv(path, vec!["id".to_string()], vec![])
                 .await
                 .unwrap_err();
 

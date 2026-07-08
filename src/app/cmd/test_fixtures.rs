@@ -74,35 +74,10 @@ pub struct TestCachedResultExporter;
 impl CachedResultExporter for TestCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
-        path: &Path,
-        columns: &[String],
-        values: &[Vec<QueryValue>],
+        _path: PathBuf,
+        _columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
     ) -> Result<usize, DbOperationError> {
-        let file = std::fs::File::create(path)
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let mut writer = csv::WriterBuilder::new().from_writer(file);
-        writer.write_record(columns)?;
-        for row in values {
-            let record = row
-                .iter()
-                .map(|value| match value {
-                    QueryValue::Null => String::new(),
-                    QueryValue::Text(text) | QueryValue::SqlLiteral(text) => text.clone(),
-                    QueryValue::Blob(bytes) => {
-                        let mut hex = String::with_capacity(bytes.len() * 2);
-                        for byte in bytes {
-                            let _ =
-                                std::fmt::Write::write_fmt(&mut hex, format_args!("{byte:02X}"));
-                        }
-                        hex
-                    }
-                })
-                .collect::<Vec<_>>();
-            writer.write_record(&record)?;
-        }
-        writer
-            .flush()
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         Ok(values.len())
     }
 }
@@ -231,6 +206,25 @@ pub fn make_runner(
     )
 }
 
+pub fn make_runner_with_cached_result_exporter(
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    connection_store: Arc<dyn ConnectionStore>,
+    cache: TtlCache<String, Arc<DatabaseMetadata>>,
+    action_tx: mpsc::Sender<Action>,
+    cached_result_exporter: Arc<dyn CachedResultExporter>,
+) -> EffectRunner {
+    make_runner_with_dsn_and_cached_result_exporter(
+        metadata_provider,
+        query_executor,
+        connection_store,
+        cache,
+        action_tx,
+        Arc::new(NoopDsnBuilder),
+        cached_result_exporter,
+    )
+}
+
 pub fn make_runner_with_dsn(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -238,6 +232,26 @@ pub fn make_runner_with_dsn(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
+) -> EffectRunner {
+    make_runner_with_dsn_and_cached_result_exporter(
+        metadata_provider,
+        query_executor,
+        connection_store,
+        cache,
+        action_tx,
+        dsn_builder,
+        Arc::new(TestCachedResultExporter),
+    )
+}
+
+fn make_runner_with_dsn_and_cached_result_exporter(
+    metadata_provider: Arc<dyn MetadataProvider>,
+    query_executor: Arc<dyn QueryExecutor>,
+    connection_store: Arc<dyn ConnectionStore>,
+    cache: TtlCache<String, Arc<DatabaseMetadata>>,
+    action_tx: mpsc::Sender<Action>,
+    dsn_builder: Arc<dyn DsnBuilder>,
+    cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
@@ -251,7 +265,7 @@ pub fn make_runner_with_dsn(
             query_executor,
             query_history_store: Arc::new(NoopQueryHistoryStore),
             sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
-            cached_result_exporter: Arc::new(TestCachedResultExporter),
+            cached_result_exporter,
         },
         ErDeps {
             er_exporter: Arc::new(NoopErExporter),

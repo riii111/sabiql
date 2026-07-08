@@ -398,10 +398,11 @@ pub async fn run(
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
             let path = resolve_export_path(&file_name);
+            let exported_path = path.display().to_string();
 
             tokio::spawn(async move {
                 let result = exporter
-                    .export_cached_result_to_csv(&path, &columns, &values)
+                    .export_cached_result_to_csv(path, columns, values)
                     .await;
 
                 match result {
@@ -409,7 +410,7 @@ pub async fn run(
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
                             run_id,
-                            path: path.display().to_string(),
+                            path: exported_path,
                             row_count,
                         })
                         .await
@@ -536,6 +537,7 @@ mod tests {
     }
     mod cached_csv_export_effect {
         use std::cell::RefCell;
+        use std::path::PathBuf;
         use std::sync::Arc;
         use std::time::Duration;
 
@@ -550,7 +552,9 @@ mod tests {
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
-        use crate::ports::outbound::{RenderOutput, RenderResult, Renderer};
+        use crate::ports::outbound::{
+            CachedResultExporter, DbOperationError, RenderOutput, RenderResult, Renderer,
+        };
         use crate::services::AppServices;
         use crate::update::action::Action;
 
@@ -570,8 +574,22 @@ mod tests {
             format!("cached_{label}_{}", std::process::id())
         }
 
+        struct FailingCachedResultExporter;
+
+        #[async_trait::async_trait]
+        impl CachedResultExporter for FailingCachedResultExporter {
+            async fn export_cached_result_to_csv(
+                &self,
+                _path: PathBuf,
+                _columns: Vec<String>,
+                _values: Vec<Vec<QueryValue>>,
+            ) -> Result<usize, DbOperationError> {
+                Err(DbOperationError::QueryFailed("export failed".to_string()))
+            }
+        }
+
         #[tokio::test]
-        async fn writes_file_and_dispatches_success() {
+        async fn dispatches_success() {
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
@@ -616,23 +634,22 @@ mod tests {
             else {
                 panic!("expected CSV export success action");
             };
-            let csv = std::fs::read_to_string(&path).unwrap();
-            let _ = std::fs::remove_file(&path);
 
             assert_eq!(row_count, Some(1));
-            assert_eq!(csv, "id,payload\n1,ABCD\n");
+            assert!(path.contains("cached_success"));
         }
 
         #[tokio::test]
-        async fn dispatches_failure_when_file_cannot_be_created() {
+        async fn dispatches_failure_when_exporter_fails() {
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
+            let runner = test_fixtures::make_runner_with_cached_result_exporter(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
                 cache,
                 tx,
+                Arc::new(FailingCachedResultExporter),
             );
             let mut state = AppState::new("test".to_string());
             let ce = RefCell::new(CompletionEngine::new());
@@ -643,7 +660,7 @@ mod tests {
                     vec![Effect::ExportCsvFromCache {
                         dsn: "sqlite:///tmp/test.db".to_string(),
                         run_id: 8,
-                        file_name: format!("{}/child", test_file_name("missing_parent")),
+                        file_name: test_file_name("failure"),
                         columns: vec!["id".to_string()],
                         values: vec![vec![QueryValue::SqlLiteral("1".to_string())]],
                         row_count: Some(1),
