@@ -12,7 +12,7 @@ pub fn format_for_cell_detail(
 ) -> CellDetailDisplay {
     let should_pretty_print = matches!(
         handling,
-        PreviewCellTextDisplayHandling::SqliteJsonLikeText
+        PreviewCellTextDisplayHandling::SqliteText
             | PreviewCellTextDisplayHandling::PostgreSqlJson
             | PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
     );

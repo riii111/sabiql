@@ -9,7 +9,7 @@ pub enum PreviewCellTextDiffHandling {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewCellTextDisplayHandling {
     RawText,
-    SqliteJsonLikeText,
+    SqliteText,
     PostgreSqlJsonLikeText,
     PostgreSqlJson,
     PostgreSqlJsonb,
@@ -31,10 +31,8 @@ pub fn preview_cell_text_display_handling(
     value: &str,
 ) -> PreviewCellTextDisplayHandling {
     match database_type {
-        DatabaseType::SQLite
-            if has_sqlite_text_affinity(column_data_type) && parses_as_json(value) =>
-        {
-            PreviewCellTextDisplayHandling::SqliteJsonLikeText
+        DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
+            PreviewCellTextDisplayHandling::SqliteText
         }
         DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
         DatabaseType::PostgreSQL => match column_data_type {
@@ -55,10 +53,6 @@ pub fn uses_jsonb_detail_modal(diff_handling: PreviewCellTextDiffHandling) -> bo
 fn looks_like_json_container(value: &str) -> bool {
     let trimmed = value.trim_start();
     trimmed.starts_with('{') || trimmed.starts_with('[')
-}
-
-fn parses_as_json(value: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(value).is_ok()
 }
 
 fn has_sqlite_text_affinity(column_data_type: &str) -> bool {
@@ -119,25 +113,25 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_text_json_value_uses_json_like_display_handling() {
+    fn sqlite_text_affinity_uses_text_display_handling() {
         assert_eq!(
             preview_cell_text_display_handling(
                 DatabaseType::SQLite,
                 "TEXT",
                 r#"{"items":["admin"]}"#
             ),
-            PreviewCellTextDisplayHandling::SqliteJsonLikeText
+            PreviewCellTextDisplayHandling::SqliteText
         );
         assert_eq!(
             preview_cell_text_display_handling(DatabaseType::SQLite, "varchar(255)", "42"),
-            PreviewCellTextDisplayHandling::SqliteJsonLikeText
+            PreviewCellTextDisplayHandling::SqliteText
         );
     }
 
     #[test]
-    fn sqlite_non_json_text_uses_raw_display_handling() {
+    fn sqlite_non_text_affinity_uses_raw_display_handling() {
         assert_eq!(
-            preview_cell_text_display_handling(DatabaseType::SQLite, "TEXT", "hello"),
+            preview_cell_text_display_handling(DatabaseType::SQLite, "INTEGER", "42"),
             PreviewCellTextDisplayHandling::RawText
         );
         assert_eq!(

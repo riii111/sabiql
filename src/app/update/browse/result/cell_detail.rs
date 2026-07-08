@@ -57,7 +57,7 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             DispatchResult::handled()
         }
         Action::CellDetailYankAll => DispatchResult::handled_with(vec![Effect::CopyToClipboard {
-            content: state.cell_detail.original_content().to_string(),
+            content: state.cell_detail.content().to_string(),
             on_success: Some(Box::new(Action::CellDetailYankSuccess)),
             on_failure: Some(Box::new(Action::CopyFailed(ClipboardError::Unavailable(
                 "Clipboard unavailable".into(),
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn yank_all_copies_original_cell_value() {
+    fn yank_all_copies_displayed_cell_value() {
         let mut state = state_with_cell("json", r#"{"b":2,"a":1}"#);
         reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
 
@@ -400,7 +400,7 @@ mod tests {
 
         assert!(matches!(
             result.expect("yank should copy").as_slice(),
-            [Effect::CopyToClipboard { content, .. }] if content == r#"{"b":2,"a":1}"#
+            [Effect::CopyToClipboard { content, .. }] if content == "{\n  \"a\": 1,\n  \"b\": 2\n}"
         ));
     }
 

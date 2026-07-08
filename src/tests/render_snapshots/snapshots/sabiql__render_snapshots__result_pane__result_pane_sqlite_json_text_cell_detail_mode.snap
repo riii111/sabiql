@@ -4,10 +4,10 @@ expression: output
 ---
 test_project | test_db | - | connected | sqlite                                                                                                                      
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
-│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│  public.posts                         ││Rows:    ~100                                                                                                             │
-│  public.comments                      ││Schema:  public                                                                                                           │
-│                                       ││Table:   users                                                                                                            │
+│> public.notes                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││Rows:    ~100                                                                                                             │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   notes                                                                                                            │
 │                                       ││Kind:    Table                                                                                                            │
 │                                       ││Flags:   (none)                                                                                                           │
 │                ╭ Cell Detail ── body──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
