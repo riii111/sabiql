@@ -331,11 +331,12 @@ impl AppState {
         if !self.query.pagination.matches_table(table_detail) {
             return None;
         }
+        let database_type = self.session.active_database_type();
         let has_stable_identity = table_detail
             .primary_key
             .as_ref()
             .is_some_and(|pk| !pk.is_empty())
-            || (self.session.active_database_type() == Some(DatabaseType::SQLite)
+            || (database_type == Some(DatabaseType::SQLite)
                 && table_detail.sqlite_rowid_alias().is_some());
         if table_detail.kind_info.kind == TableKind::View {
             Some("view")
@@ -343,8 +344,10 @@ impl AppState {
             Some("virtual table")
         } else if table_detail.kind_info.without_rowid {
             Some("WITHOUT ROWID table")
-        } else if !has_stable_identity {
+        } else if !has_stable_identity && database_type == Some(DatabaseType::SQLite) {
             Some("table without PRIMARY KEY or rowid")
+        } else if !has_stable_identity {
+            Some("table without PRIMARY KEY")
         } else {
             None
         }
@@ -775,6 +778,24 @@ mod tests {
             state
         }
 
+        fn postgres_preview_state_with_table(mut table: Table) -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/app",
+            );
+            table.schema = "public".to_string();
+            table.name = "logs".to_string();
+            state.session.set_table_detail_raw(Some(table));
+            state
+                .query
+                .set_current_result(make_query_result(QuerySource::Preview));
+            state.query.pagination.reset_for_table("public", "logs");
+            state
+        }
+
         #[test]
         fn toggle_focus_enters_focus_mode() {
             let mut state = make_state();
@@ -876,6 +897,18 @@ mod tests {
             assert_eq!(
                 state.visible_preview_target_read_only_reason(),
                 Some("table without PRIMARY KEY or rowid")
+            );
+        }
+
+        #[test]
+        fn postgres_table_without_primary_key_does_not_mention_rowid() {
+            let state =
+                postgres_preview_state_with_table(sabiql_test_support::table::minimal("", ""));
+
+            assert!(!state.can_write_visible_preview());
+            assert_eq!(
+                state.visible_preview_target_read_only_reason(),
+                Some("table without PRIMARY KEY")
             );
         }
     }

@@ -543,6 +543,154 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn rowid_update_predicate_updates_matching_current_row() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                r"
+            CREATE TABLE logs(message TEXT);
+            INSERT INTO logs(message) VALUES ('old');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+            let predicate = vec![
+                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
+                ("message".to_string(), QueryValue::text("old")),
+            ];
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::SQLite,
+                "main",
+                "logs",
+                "message",
+                &QueryValue::text("new"),
+                &predicate,
+            );
+            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let preview = adapter
+                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(write.affected_rows, 1);
+            assert_eq!(preview.rows(), vec![vec!["new".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn rowid_update_predicate_rejects_reused_rowid_with_changed_values() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                r"
+            CREATE TABLE logs(message TEXT, note TEXT);
+            INSERT INTO logs(message, note) VALUES ('old', NULL);
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+            let stale_pairs = vec![
+                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
+                ("message".to_string(), QueryValue::text("old")),
+                ("note".to_string(), QueryValue::Null),
+            ];
+
+            adapter
+                .execute_write(&dsn, "DELETE FROM logs WHERE rowid = 1", false)
+                .await
+                .unwrap();
+            adapter.execute_adhoc(&dsn, "VACUUM", false).await.unwrap();
+            adapter
+                .execute_write(
+                    &dsn,
+                    "INSERT INTO logs(message, note) VALUES ('replacement', NULL)",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::SQLite,
+                "main",
+                "logs",
+                "message",
+                &QueryValue::text("new"),
+                &stale_pairs,
+            );
+            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let remaining = adapter
+                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(write.affected_rows, 0);
+            assert_eq!(
+                remaining.rows(),
+                vec![vec!["replacement".to_string(), "NULL".to_string()]]
+            );
+        }
+
+        #[tokio::test]
+        async fn rowid_delete_predicate_deletes_matching_current_row() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                r"
+            CREATE TABLE logs(message TEXT);
+            INSERT INTO logs(message) VALUES ('old');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+            let rows = vec![vec![
+                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
+                ("message".to_string(), QueryValue::text("old")),
+            ]];
+
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &rows);
+            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let preview = adapter
+                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(write.affected_rows, 1);
+            assert_eq!(preview.row_count(), 0);
+        }
+
+        #[tokio::test]
+        async fn rowid_delete_predicate_rejects_reused_rowid_with_changed_values() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                r"
+            CREATE TABLE logs(message TEXT);
+            INSERT INTO logs(message) VALUES ('old');
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+            let stale_rows = vec![vec![
+                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
+                ("message".to_string(), QueryValue::text("old")),
+            ]];
+
+            adapter
+                .execute_write(&dsn, "DELETE FROM logs WHERE rowid = 1", false)
+                .await
+                .unwrap();
+            adapter.execute_adhoc(&dsn, "VACUUM", false).await.unwrap();
+            adapter
+                .execute_write(
+                    &dsn,
+                    "INSERT INTO logs(message) VALUES ('replacement')",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            let sql =
+                adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &stale_rows);
+            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let remaining = adapter
+                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .await
+                .unwrap();
+
+            assert_eq!(write.affected_rows, 0);
+            assert_eq!(remaining.row_count(), 1);
+            assert_eq!(remaining.rows(), vec![vec!["replacement".to_string()]]);
+        }
+
+        #[tokio::test]
         async fn rejects_non_main_schema() {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY);",

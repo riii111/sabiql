@@ -153,6 +153,43 @@ fn confirm_dialog_delete_preview_low_risk() {
 }
 
 #[test]
+fn confirm_dialog_update_preview_sqlite_rowid() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    let sql =
+        "UPDATE \"logs\"\nSET \"message\" = 'new'\nWHERE \"rowid\" = 7 AND \"message\" = 'old';"
+            .to_string();
+    state.result_interaction.set_write_preview(WritePreview {
+        operation: WriteOperation::Update,
+        sql: sql.clone(),
+        target_summary: TargetSummary {
+            schema: "main".to_string(),
+            table: "logs".to_string(),
+            key_values: vec![("rowid".to_string(), QueryValue::SqlLiteral("7".to_string()))],
+            uses_sqlite_rowid: true,
+        },
+        diff: vec![ColumnDiff {
+            column: "message".to_string(),
+            before: "old".to_string(),
+            after: "new".to_string(),
+            json_diff: None,
+        }],
+        guardrail: GuardrailDecision {
+            risk_level: RiskLevel::Low,
+            blocked: false,
+            reason: None,
+            target_summary: None,
+        },
+    });
+    open_write_confirm(&mut state, "Confirm UPDATE: logs", &sql);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn confirm_dialog_update_preview_long_jsonb() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();

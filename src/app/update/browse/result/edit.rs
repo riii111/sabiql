@@ -55,7 +55,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     if row_idx >= result.values().len() {
         return Err(EditGuardrailError::RowIndexOutOfBounds);
     }
-    if identity.key_pairs_for_row(result, row_idx).is_none() {
+    if identity.identity_pairs_for_row(result, row_idx).is_none() {
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 

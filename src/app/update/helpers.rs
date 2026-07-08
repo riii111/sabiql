@@ -26,8 +26,12 @@ pub enum EditGuardrailError {
     StaleTableMetadata,
     #[error("Preview target is read-only: {0}")]
     ReadOnlyPreviewTarget(&'static str),
+    #[error("Editing requires a PRIMARY KEY.")]
+    EditingRequiresPrimaryKey,
     #[error("Editing requires a PRIMARY KEY or SQLite rowid.")]
     EditingRequiresStableRowIdentity,
+    #[error("Deletion requires a PRIMARY KEY.")]
+    DeletionRequiresPrimaryKey,
     #[error("Deletion requires a PRIMARY KEY or SQLite rowid.")]
     DeletionRequiresStableRowIdentity,
     #[error("No rows staged for deletion")]
@@ -81,7 +85,7 @@ pub enum StableRowIdentity {
 }
 
 impl StableRowIdentity {
-    pub fn key_pairs_for_row(
+    pub fn identity_pairs_for_row(
         &self,
         result: &QueryResult,
         row_idx: usize,
@@ -95,6 +99,24 @@ impl StableRowIdentity {
                 .hidden_value_at(row_idx, alias)
                 .cloned()
                 .map(|value| vec![(alias.clone(), value)]),
+        }
+    }
+
+    pub fn predicate_pairs_for_row(
+        &self,
+        result: &QueryResult,
+        row_idx: usize,
+    ) -> Option<Vec<(String, QueryValue)>> {
+        match self {
+            Self::PrimaryKey(_) => self.identity_pairs_for_row(result, row_idx),
+            Self::SqliteRowid { alias } => {
+                let rowid = result.hidden_value_at(row_idx, alias)?.clone();
+                let row = result.values().get(row_idx)?;
+                let mut pairs = Vec::with_capacity(row.len() + 1);
+                pairs.push((alias.clone(), rowid));
+                pairs.extend(result.columns.iter().cloned().zip(row.iter().cloned()));
+                Some(pairs)
+            }
         }
     }
 
@@ -179,11 +201,14 @@ pub fn editable_preview_base(
         ));
     }
 
-    let identity = stable_row_identity_for_table(
-        state.session.active_database_type_or_default(),
-        table_detail,
-    )
-    .ok_or(EditGuardrailError::EditingRequiresStableRowIdentity)?;
+    let database_type = state.session.active_database_type_or_default();
+    let identity = stable_row_identity_for_table(database_type, table_detail).ok_or_else(|| {
+        if database_type == DatabaseType::SQLite {
+            EditGuardrailError::EditingRequiresStableRowIdentity
+        } else {
+            EditGuardrailError::EditingRequiresPrimaryKey
+        }
+    })?;
 
     Ok((result, identity))
 }
@@ -227,30 +252,43 @@ pub fn build_bulk_delete_preview(
         return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
-    let (result, pk_cols) = editable_preview_base(state).map_err(|err| match err {
+    let (result, identity) = editable_preview_base(state).map_err(|err| match err {
+        EditGuardrailError::EditingRequiresPrimaryKey => {
+            EditGuardrailError::DeletionRequiresPrimaryKey
+        }
         EditGuardrailError::EditingRequiresStableRowIdentity => {
             EditGuardrailError::DeletionRequiresStableRowIdentity
         }
         other => other,
     })?;
 
-    let mut pk_pairs_per_row: Vec<Vec<(String, QueryValue)>> = Vec::new();
+    let mut predicate_pairs_per_row: Vec<Vec<(String, QueryValue)>> = Vec::new();
+    let mut target_pairs = Vec::new();
     for &row_idx in state.result_interaction.staged_delete_rows() {
         if row_idx >= result.values().len() {
             return Err(EditGuardrailError::StagedRowIndexOutOfBounds(row_idx));
         }
-        let pairs = pk_cols
-            .key_pairs_for_row(result, row_idx)
+        let identity_pairs = identity
+            .identity_pairs_for_row(result, row_idx)
             .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
-        reject_sqlite_null_pk(state.session.active_database_type_or_default(), &pairs)?;
-        pk_pairs_per_row.push(pairs);
+        reject_sqlite_null_pk(
+            state.session.active_database_type_or_default(),
+            &identity_pairs,
+        )?;
+        if target_pairs.is_empty() {
+            target_pairs = identity_pairs;
+        }
+        let predicate_pairs = identity
+            .predicate_pairs_for_row(result, row_idx)
+            .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
+        predicate_pairs_per_row.push(predicate_pairs);
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(
         state.session.active_database_type_or_default(),
         state.query.pagination.schema(),
         state.query.pagination.table(),
-        &pk_pairs_per_row,
+        &predicate_pairs_per_row,
     );
 
     let staged_count = state.result_interaction.staged_delete_rows().len();
@@ -270,8 +308,8 @@ pub fn build_bulk_delete_preview(
     let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
-        key_values: pk_pairs_per_row.first().cloned().unwrap_or_default(),
-        uses_sqlite_rowid: pk_cols.uses_sqlite_rowid(),
+        key_values: target_pairs,
+        uses_sqlite_rowid: identity.uses_sqlite_rowid(),
     };
     let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
 
@@ -875,7 +913,7 @@ mod tests {
 
             assert_eq!(
                 result.preview.sql,
-                "DELETE FROM \"logs\" WHERE \"rowid\" = 7"
+                "DELETE FROM \"logs\" WHERE \"rowid\" = 7 AND \"message\" = 'hello'"
             );
             assert!(result.preview.target_summary.uses_sqlite_rowid);
         }

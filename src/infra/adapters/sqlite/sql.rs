@@ -56,9 +56,7 @@ fn sql_literal(value: &QueryValue) -> String {
 fn equality_predicate(column: &str, value: &QueryValue) -> String {
     let column = quote_ident(column);
     match value {
-        // App-layer write flows reject SQLite NULL primary keys before SQL generation.
-        // Reaching this branch means a caller bypassed that guardrail.
-        QueryValue::Null => panic!("SQLite write predicates require non-NULL primary key values"),
+        QueryValue::Null => format!("{column} IS NULL"),
         _ => format!("{column} = {}", sql_literal(value)),
     }
 }
@@ -755,11 +753,10 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn update_null_pk_value_panics_before_unsafe_predicate() {
+        fn update_null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
 
-            let _ = adapter.build_update_sql(
+            let sql = adapter.build_update_sql(
                 DatabaseType::SQLite,
                 "main",
                 "users",
@@ -767,27 +764,37 @@ mod tests {
                 &QueryValue::text("new"),
                 &[("id".into(), QueryValue::Null)],
             );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"users\"\nSET \"name\" = 'new'\nWHERE \"id\" IS NULL;"
+            );
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn null_pk_value_panics_before_unsafe_predicate() {
+        fn null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![("id".to_string(), QueryValue::Null)]];
 
-            let _ = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" IS NULL;");
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn composite_pk_null_value_panics_before_unsafe_predicate() {
+        fn composite_null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![
                 ("id".to_string(), QueryValue::Null),
                 ("tenant_id".to_string(), QueryValue::text("10")),
             ]];
 
-            let _ = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"users\"\nWHERE \"id\" IS NULL AND \"tenant_id\" = '10';"
+            );
         }
 
         #[test]

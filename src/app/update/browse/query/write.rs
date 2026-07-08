@@ -65,18 +65,21 @@ fn build_update_preview(
         }
     };
 
-    let pk_pairs = identity.key_pairs_for_row(result, row_idx);
-    if let Some(pairs) = pk_pairs.as_deref() {
+    let identity_pairs = identity.identity_pairs_for_row(result, row_idx);
+    if let Some(pairs) = identity_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
     }
+    let predicate_pairs = identity.predicate_pairs_for_row(result, row_idx);
     let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
-        key_values: pk_pairs.clone().unwrap_or_default(),
+        key_values: identity_pairs.clone().unwrap_or_default(),
         uses_sqlite_rowid: identity.uses_sqlite_rowid(),
     };
-    let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
-    let has_stable_row_identity = pk_pairs.is_some();
+    let has_where = predicate_pairs
+        .as_ref()
+        .is_some_and(|pairs| !pairs.is_empty());
+    let has_stable_row_identity = identity_pairs.is_some();
     let guardrail = evaluate_guardrails(has_where, has_stable_row_identity, Some(target.clone()));
     if guardrail.blocked {
         let reason = guardrail
@@ -91,7 +94,7 @@ fn build_update_preview(
         &target.table,
         &column_name,
         &new_value,
-        &target.key_values,
+        &predicate_pairs.unwrap_or_default(),
     );
     let preview = WritePreview {
         operation: WriteOperation::Update,
@@ -724,7 +727,7 @@ mod tests {
                 Action::OpenWritePreviewConfirm(preview) => {
                     assert_eq!(
                         preview.sql,
-                        "UPDATE \"logs\" SET \"message\" = 'new' WHERE \"rowid\" = 7"
+                        "UPDATE \"logs\" SET \"message\" = 'new' WHERE \"rowid\" = 7 AND \"message\" = 'old'"
                     );
                     assert!(preview.target_summary.uses_sqlite_rowid);
                     assert_eq!(preview.target_summary.identity_label(), "SQLite rowid");
