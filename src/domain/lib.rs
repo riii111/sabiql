@@ -23,6 +23,7 @@ pub use command_tag::CommandTag;
 #[cfg(test)]
 pub use er::ErFkInfo;
 pub use er::ErTableInfo;
+pub use explain_plan::sqlite_explain_query_plan_text_from_result;
 pub use foreign_key::{FkAction, ForeignKey, UNRESOLVED_FK_COLUMN};
 pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};

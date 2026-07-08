@@ -10,6 +10,7 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::policy::sql::sqlite_explain::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
 use crate::domain::DatabaseType;
@@ -72,7 +73,7 @@ pub fn render(
             )
         } else if state.session.active_database_type_or_default() == DatabaseType::SQLite {
             (
-                "EXPLAIN QUERY PLAN",
+                SQLITE_EXPLAIN_QUERY_PLAN_PREFIX,
                 Style::default()
                     .fg(theme.semantic.text.accent)
                     .add_modifier(Modifier::BOLD),

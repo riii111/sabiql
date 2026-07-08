@@ -204,6 +204,7 @@ mod tests {
                     "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
                 )
             );
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
         }
 
         #[test]

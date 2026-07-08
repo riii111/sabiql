@@ -130,6 +130,7 @@ impl SqliteCli {
         source_sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
+        // Detect against source_sql because execution_sql may include probe statements.
         if is_sqlite_explain_query_plan_sql(source_sql) {
             self.execute_quote_with_explain_off(path, execution_sql, read_only)
                 .await
@@ -480,7 +481,10 @@ impl QueryExecutor for SqliteAdapter {
 #[cfg(test)]
 mod tests {
     use crate::app::ports::outbound::{QueryExecutor, SqlDialect};
-    use crate::domain::{CommandTag, DatabaseType, QuerySource, QueryValue};
+    use crate::domain::{
+        CommandTag, DatabaseType, QuerySource, QueryValue,
+        sqlite_explain_query_plan_text_from_result,
+    };
 
     use super::*;
 
@@ -704,7 +708,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let plan_text = explain_plan_text_from_result(&result);
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
 
             assert!(!plan_text.trim().is_empty(), "plan text must not be empty");
             assert!(
@@ -734,7 +738,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let plan_text = explain_plan_text_from_result(&result);
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
             let operation_lines = explain_plan_operation_lines(&plan_text);
 
             assert!(
@@ -773,31 +777,13 @@ mod tests {
                 .await
                 .unwrap();
 
-            let plan_text = explain_plan_text_from_result(&result);
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
 
             assert!(
                 plan_text.to_ascii_lowercase().contains("users"),
                 "expected users table in plan, got: {plan_text}"
             );
             assert_eq!(rows.rows(), vec![vec!["2".to_string()]]);
-        }
-
-        fn explain_plan_text_from_result(result: &QueryResult) -> String {
-            let detail_index = result
-                .columns
-                .iter()
-                .position(|column| column.eq_ignore_ascii_case("detail"));
-            result
-                .rows()
-                .iter()
-                .filter_map(|row| {
-                    detail_index
-                        .and_then(|index| row.get(index))
-                        .or_else(|| row.first())
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("\n")
         }
 
         fn explain_plan_operation_lines(plan_text: &str) -> Vec<&str> {
