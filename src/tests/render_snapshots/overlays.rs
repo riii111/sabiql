@@ -857,6 +857,9 @@ fn sqlite_diagnostics_overlay_loaded() {
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
             sqlite_version: DiagnosticField::ok("3.45.0"),
+            feature_summary: DiagnosticField::ok(
+                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
+            ),
             foreign_keys: DiagnosticField::ok("on"),
             journal_mode: DiagnosticField::ok("wal"),
             query_only: DiagnosticField::ok("off"),
@@ -885,6 +888,7 @@ fn sqlite_diagnostics_overlay_partial_failure() {
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
             sqlite_version: DiagnosticField::ok("3.45.0"),
+            feature_summary: DiagnosticField::Unavailable,
             foreign_keys: DiagnosticField::err("timeout"),
             journal_mode: DiagnosticField::ok("delete"),
             query_only: DiagnosticField::ok("on"),
@@ -913,6 +917,9 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
             sqlite_version: DiagnosticField::ok("3.45.0"),
+            feature_summary: DiagnosticField::ok(
+                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
+            ),
             foreign_keys: DiagnosticField::ok("on"),
             journal_mode: DiagnosticField::ok("wal"),
             query_only: DiagnosticField::ok("off"),
@@ -943,6 +950,9 @@ fn sqlite_diagnostics_overlay_wrapped_scroll() {
                 "/tmp/very/long/database/path/that/will/wrap/in/a/narrow/viewport/app.db",
             ),
             sqlite_version: DiagnosticField::ok("3.45.0"),
+            feature_summary: DiagnosticField::ok(
+                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
+            ),
             foreign_keys: DiagnosticField::ok("on"),
             journal_mode: DiagnosticField::ok("wal"),
             query_only: DiagnosticField::ok("off"),

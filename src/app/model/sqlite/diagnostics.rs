@@ -19,6 +19,7 @@ enum LoadState {
 pub enum DiagnosticFieldKind {
     DbFile,
     SqliteVersion,
+    FeatureSummary,
     ForeignKeys,
     JournalMode,
     QueryOnly,
@@ -32,6 +33,7 @@ impl DiagnosticFieldKind {
         match self {
             Self::DbFile => "Database file",
             Self::SqliteVersion => "SQLite version",
+            Self::FeatureSummary => "SQLite features",
             Self::ForeignKeys => "Effective foreign keys",
             Self::JournalMode => "Journal mode",
             Self::QueryOnly => "Effective query only",
@@ -214,6 +216,10 @@ pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDispl
         (
             DiagnosticFieldKind::SqliteVersion,
             snapshot.sqlite_version.display(),
+        ),
+        (
+            DiagnosticFieldKind::FeatureSummary,
+            snapshot.feature_summary.display(),
         ),
         (
             DiagnosticFieldKind::ForeignKeys,

@@ -18,22 +18,22 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │SQLite version: 3.45.0                                                                                           │                        │
 │                        │                                                                                                                 │                        │
+│                        │SQLite features: FTS5: available                                                                                 │                        │
+│                        │  FTS4: not available                                                                                            │                        │
+│                        │  RTree: available                                                                                               │                        │
+│                        │  JSON: available                                                                                                │                        │
+│                        │                                                                                                                 │                        │
 │                        │Effective foreign keys: on                                                                                       │                        │
 │                        │                                                                                                                 │                        │
 │                        │Journal mode: wal                                                                                                │                        │
-│                        │                                                                                                                 │                        │
-│                        │Effective query only: off                                                                                        │                        │
+│                        │                                                                                                                 │────────────────────────┘
+│                        │Effective query only: off                                                                                        │────────────────────────┐
 │                        │                                                                                                                 │                        │
 │                        │Effective busy timeout (ms): 5000                                                                                │                        │
 │                        │                                                                                                                 │                        │
-│                        │Attached databases: 0: main @ /tmp/app.db                                                                        │────────────────────────┘
-│                        │                                                                                                                 │────────────────────────┐
+│                        │Attached databases: 0: main @ /tmp/app.db                                                                        │                        │
+│                        │                                                                                                                 │                        │
 │                        │Quick check: ok                                                                                                  │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

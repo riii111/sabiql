@@ -25,17 +25,16 @@ pub(super) fn reduce_sqlite_diagnostics(
             };
             let run_id = state.sqlite_diagnostics.begin_fetch();
             state.modal.set_mode(InputMode::SqliteDiagnostics);
-            let read_only = state.session.is_read_only();
             DispatchResult::handled_with(vec![
                 Effect::FetchSqliteDiagnosticsCore {
                     dsn: dsn.clone(),
                     run_id,
-                    read_only,
+                    read_only: true,
                 },
                 Effect::FetchSqliteDiagnosticsQuickCheck {
                     dsn,
                     run_id,
-                    read_only,
+                    read_only: true,
                 },
             ])
         }
@@ -115,11 +114,17 @@ mod tests {
         assert_eq!(effects.len(), 2);
         assert!(matches!(
             effects[0],
-            Effect::FetchSqliteDiagnosticsCore { .. }
+            Effect::FetchSqliteDiagnosticsCore {
+                read_only: true,
+                ..
+            }
         ));
         assert!(matches!(
             effects[1],
-            Effect::FetchSqliteDiagnosticsQuickCheck { .. }
+            Effect::FetchSqliteDiagnosticsQuickCheck {
+                read_only: true,
+                ..
+            }
         ));
     }
 
