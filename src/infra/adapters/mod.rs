@@ -1,5 +1,6 @@
 mod app_config_file;
 
+pub mod cached_result_exporter;
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
@@ -12,6 +13,7 @@ pub mod query_history;
 pub mod registry;
 pub mod settings_store;
 pub mod sqlite;
+pub use cached_result_exporter::CsvCachedResultExporter;
 pub use clipboard::ArboardClipboard;
 pub use config_writer::FileConfigWriter;
 pub use connection_store::TomlConnectionStore;

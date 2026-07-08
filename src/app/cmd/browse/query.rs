@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -8,12 +8,11 @@ use tokio::sync::mpsc;
 use crate::cmd::effect::Effect;
 use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
-use crate::domain::QueryValue;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::domain::sqlite_explain_query_plan_text_from_result;
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{DbOperationError, QueryExecutor, QueryHistoryStore};
+use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -92,44 +91,6 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
     dir.join(file_stem)
 }
 
-fn cached_csv_cell(value: &QueryValue) -> String {
-    match value {
-        QueryValue::Null => String::new(),
-        QueryValue::Text(text) | QueryValue::SqlLiteral(text) => text.clone(),
-        QueryValue::Blob(bytes) => {
-            let mut hex = String::with_capacity(bytes.len() * 2);
-            for byte in bytes {
-                use std::fmt::Write as _;
-                let _ = write!(hex, "{byte:02X}");
-            }
-            hex
-        }
-    }
-}
-
-fn write_cached_result_csv(
-    path: &Path,
-    columns: &[String],
-    values: &[Vec<QueryValue>],
-) -> Result<usize, DbOperationError> {
-    let file = std::fs::File::create(path)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut writer = csv::WriterBuilder::new().from_writer(file);
-    writer
-        .write_record(columns)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    for row in values {
-        let record: Vec<String> = row.iter().map(cached_csv_cell).collect();
-        writer
-            .write_record(&record)
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    }
-    writer
-        .flush()
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    Ok(values.len())
-}
-
 #[allow(
     clippy::unused_async,
     reason = "consistent async interface for effect runner dispatch"
@@ -139,6 +100,7 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
+    cached_result_exporter: &Arc<dyn CachedResultExporter>,
     state: &AppState,
 ) -> Result<()> {
     match effect {
@@ -434,16 +396,13 @@ pub async fn run(
             row_count,
         } => {
             let tx = action_tx.clone();
+            let exporter = Arc::clone(cached_result_exporter);
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
-                let export_path = path.clone();
-                let result = tokio::task::spawn_blocking(move || {
-                    write_cached_result_csv(&export_path, &columns, &values)
-                })
-                .await
-                .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
-                .and_then(|inner| inner);
+                let result = exporter
+                    .export_cached_result_to_csv(&path, &columns, &values)
+                    .await;
 
                 match result {
                     Ok(_) => {
@@ -522,34 +481,6 @@ mod tests {
         }
     }
 
-    mod cached_csv_cell_tests {
-        use super::super::cached_csv_cell;
-        use crate::domain::QueryValue;
-
-        #[test]
-        fn null_is_empty_field() {
-            assert_eq!(cached_csv_cell(&QueryValue::Null), "");
-        }
-
-        #[test]
-        fn blob_is_uppercase_hex() {
-            assert_eq!(cached_csv_cell(&QueryValue::Blob(vec![0xAB, 0xCD])), "ABCD");
-        }
-
-        #[test]
-        fn text_preserves_embedded_nul_byte() {
-            assert_eq!(cached_csv_cell(&QueryValue::text("a\0bc")), "a\0bc");
-        }
-
-        #[test]
-        fn text_is_not_display_form() {
-            assert_ne!(
-                cached_csv_cell(&QueryValue::Null),
-                QueryValue::Null.display_value()
-            );
-        }
-    }
-
     mod explain_plan_text {
         use crate::domain::{QueryResult, QuerySource, sqlite_explain_query_plan_text_from_result};
 
@@ -603,7 +534,6 @@ mod tests {
             );
         }
     }
-
     mod cached_csv_export_effect {
         use std::cell::RefCell;
         use std::sync::Arc;

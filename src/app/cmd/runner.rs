@@ -22,9 +22,10 @@ use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder, ErDiagramExporter, ErLogWriter,
-    FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryStore,
-    Renderer, SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
+    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
+    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, PgServiceEntryReader,
+    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
+    SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -40,6 +41,7 @@ pub struct QueryDeps {
     pub query_executor: Arc<dyn QueryExecutor>,
     pub query_history_store: Arc<dyn QueryHistoryStore>,
     pub sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider>,
+    pub cached_result_exporter: Arc<dyn CachedResultExporter>,
 }
 
 pub struct ErDeps {
@@ -211,6 +213,7 @@ impl EffectRunner {
                     &self.action_tx,
                     &self.query.query_executor,
                     &self.query.query_history_store,
+                    &self.query.cached_result_exporter,
                     state,
                 )
                 .await?;

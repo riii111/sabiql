@@ -40,9 +40,9 @@ use sabiql_app::update::action::Action;
 use sabiql_app::update::input::handle_event;
 use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
-    ArboardClipboard, DbAdapterRegistry, FileConfigWriter, FileQueryHistoryStore, FsErLogWriter,
-    FsSqlitePathValidator, NativeFolderOpener, PgServiceFileReader, PostgresAdapter,
-    TomlConnectionStore, TomlSettingsStore,
+    ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
+    FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
+    PgServiceFileReader, PostgresAdapter, TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -131,6 +131,7 @@ async fn main() -> Result<()> {
             query_executor: Arc::clone(&adapter_registry) as _,
             query_history_store: Arc::new(FileQueryHistoryStore::new()),
             sqlite_diagnostics: Arc::clone(&adapter_registry) as _,
+            cached_result_exporter: Arc::new(CsvCachedResultExporter),
         },
         ErDeps {
             er_exporter: Arc::new(DotExporter::new()),
@@ -205,7 +206,7 @@ async fn main() -> Result<()> {
     }
 
     if let Some(target) = cli_sqlite.as_ref() {
-        activate_cli_sqlite_connection(&mut state, target)
+        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)
             .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
     }
 
