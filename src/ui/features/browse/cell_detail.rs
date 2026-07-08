@@ -6,6 +6,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::detail_view::DetailDisplayMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::features::browse::detail_view::{render_detail_search, search_match_status};
 use crate::primitives::atoms::apply_yank_flash;
@@ -94,6 +95,11 @@ impl CellDetail {
         let search = state.cell_detail.search();
         let status = if search.is_active() {
             search_match_status(search)
+        } else if state.cell_detail.display_mode() == DetailDisplayMode::FormattedJson {
+            format!(
+                "Formatted JSON | {} chars raw",
+                state.cell_detail.original_content().chars().count()
+            )
         } else {
             format!("{} chars", state.cell_detail.content().chars().count())
         };
