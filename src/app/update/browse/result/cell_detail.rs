@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
+use crate::model::shared::detail_view::DetailDisplayMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::preview_cell_text::{
@@ -33,9 +34,20 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
             let column_data_type = data_type.as_deref().unwrap_or("");
             let display_handling =
                 preview_cell_text_display_handling(database_type, column_data_type, &cell_value);
-            let display_value = format_for_cell_detail(&cell_value, display_handling);
-            state.cell_detail =
-                CellDetailState::open(row_idx, col_idx, column_name, cell_value, display_value);
+            let display = format_for_cell_detail(&cell_value, display_handling);
+            let display_mode = if display.formatted_json {
+                DetailDisplayMode::FormattedJson
+            } else {
+                DetailDisplayMode::RawText
+            };
+            state.cell_detail = CellDetailState::open_with_display_mode(
+                row_idx,
+                col_idx,
+                column_name,
+                cell_value,
+                display.content,
+                display_mode,
+            );
             state.modal.push_mode(InputMode::CellDetail);
             DispatchResult::handled()
         }
@@ -248,6 +260,10 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1,\n  \"b\": 2\n}");
+        assert_eq!(
+            state.cell_detail.display_mode(),
+            DetailDisplayMode::FormattedJson
+        );
         assert_eq!(state.cell_detail.original_content(), r#"{"b":2,"a":1}"#);
     }
 
@@ -265,10 +281,11 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(state.cell_detail.content(), r#"{"b":2,"a":1}"#);
+        assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
     }
 
     #[test]
-    fn sqlite_text_json_container_shows_raw_detail() {
+    fn sqlite_text_json_container_opens_pretty_detail() {
         let mut state = state_with_cell("TEXT", r#"{"items":["admin","writer"]}"#);
         state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
@@ -282,12 +299,75 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert_eq!(
             state.cell_detail.content(),
-            r#"{"items":["admin","writer"]}"#
+            "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
+        );
+        assert_eq!(
+            state.cell_detail.display_mode(),
+            DetailDisplayMode::FormattedJson
         );
         assert_eq!(
             state.cell_detail.original_content(),
             r#"{"items":["admin","writer"]}"#
         );
+    }
+
+    #[test]
+    fn sqlite_text_non_json_stays_raw_detail() {
+        let mut state = state_with_cell("TEXT", "hello");
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "hello");
+        assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
+    }
+
+    #[test]
+    fn sqlite_text_json_scalar_marks_formatted_detail() {
+        let mut state = state_with_cell("TEXT", "42");
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "42");
+        assert_eq!(
+            state.cell_detail.display_mode(),
+            DetailDisplayMode::FormattedJson
+        );
+        assert_eq!(state.cell_detail.original_content(), "42");
+    }
+
+    #[test]
+    fn sqlite_text_affinity_declared_type_opens_pretty_detail() {
+        let mut state = state_with_cell("varchar(255)", r#"{"a":1}"#);
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("sqlite-test"),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+
+        reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert_eq!(state.cell_detail.content(), "{\n  \"a\": 1\n}");
+        assert_eq!(
+            state.cell_detail.display_mode(),
+            DetailDisplayMode::FormattedJson
+        );
+        assert_eq!(state.cell_detail.original_content(), r#"{"a":1}"#);
     }
 
     #[test]
@@ -300,6 +380,10 @@ mod tests {
         assert_eq!(
             state.cell_detail.content(),
             "{\n  \"items\": [\n    \"admin\",\n    \"writer\"\n  ]\n}"
+        );
+        assert_eq!(
+            state.cell_detail.display_mode(),
+            DetailDisplayMode::FormattedJson
         );
         assert_eq!(
             state.cell_detail.original_content(),
@@ -335,6 +419,7 @@ mod tests {
         assert_eq!(state.input_mode(), InputMode::CellDetail);
         assert!(state.cell_detail.is_active());
         assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
+        assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
         assert!(!state.jsonb_detail.is_active());
     }
 

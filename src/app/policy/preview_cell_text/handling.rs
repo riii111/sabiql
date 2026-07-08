@@ -9,6 +9,7 @@ pub enum PreviewCellTextDiffHandling {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewCellTextDisplayHandling {
     RawText,
+    SqliteText,
     PostgreSqlJsonLikeText,
     PostgreSqlJson,
     PostgreSqlJsonb,
@@ -30,6 +31,9 @@ pub fn preview_cell_text_display_handling(
     value: &str,
 ) -> PreviewCellTextDisplayHandling {
     match database_type {
+        DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
+            PreviewCellTextDisplayHandling::SqliteText
+        }
         DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
         DatabaseType::PostgreSQL => match column_data_type {
             "jsonb" => PreviewCellTextDisplayHandling::PostgreSqlJsonb,
@@ -49,6 +53,11 @@ pub fn uses_jsonb_detail_modal(diff_handling: PreviewCellTextDiffHandling) -> bo
 fn looks_like_json_container(value: &str) -> bool {
     let trimmed = value.trim_start();
     trimmed.starts_with('{') || trimmed.starts_with('[')
+}
+
+fn has_sqlite_text_affinity(column_data_type: &str) -> bool {
+    let upper = column_data_type.to_ascii_uppercase();
+    upper.contains("CHAR") || upper.contains("CLOB") || upper.contains("TEXT")
 }
 
 #[cfg(test)]
@@ -100,6 +109,34 @@ mod tests {
         assert_eq!(
             preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "text"),
             PreviewCellTextDiffHandling::RawText
+        );
+    }
+
+    #[test]
+    fn sqlite_text_affinity_uses_text_display_handling() {
+        assert_eq!(
+            preview_cell_text_display_handling(
+                DatabaseType::SQLite,
+                "TEXT",
+                r#"{"items":["admin"]}"#
+            ),
+            PreviewCellTextDisplayHandling::SqliteText
+        );
+        assert_eq!(
+            preview_cell_text_display_handling(DatabaseType::SQLite, "varchar(255)", "42"),
+            PreviewCellTextDisplayHandling::SqliteText
+        );
+    }
+
+    #[test]
+    fn sqlite_non_text_affinity_uses_raw_display_handling() {
+        assert_eq!(
+            preview_cell_text_display_handling(DatabaseType::SQLite, "INTEGER", "42"),
+            PreviewCellTextDisplayHandling::RawText
+        );
+        assert_eq!(
+            preview_cell_text_display_handling(DatabaseType::SQLite, "json", r#"{"a":1}"#),
+            PreviewCellTextDisplayHandling::RawText
         );
     }
 
