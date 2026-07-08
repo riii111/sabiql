@@ -164,7 +164,7 @@ impl SqliteAdapter {
         table_kind_info_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
     }
 
-    async fn table_kind_info(
+    pub(in crate::adapters::sqlite) async fn table_kind_info(
         &self,
         path: &str,
         table: &str,

@@ -323,15 +323,38 @@ impl AppState {
         is_rerunnable_select(&result.query)
     }
 
-    pub fn is_visible_preview_target_read_only(&self) -> bool {
+    pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
         if !self.query.can_edit_visible_result() {
-            return false;
+            return None;
         }
-        let Some(table_detail) = self.session.table_detail() else {
-            return false;
-        };
-        self.query.pagination.matches_table(table_detail)
-            && table_detail.kind_info.kind == TableKind::View
+        let table_detail = self.session.table_detail()?;
+        if !self.query.pagination.matches_table(table_detail) {
+            return None;
+        }
+        let database_type = self.session.active_database_type();
+        let has_stable_identity = table_detail
+            .primary_key
+            .as_ref()
+            .is_some_and(|pk| !pk.is_empty())
+            || (database_type == Some(DatabaseType::SQLite)
+                && table_detail.sqlite_rowid_alias().is_some());
+        if table_detail.kind_info.kind == TableKind::View {
+            Some("view")
+        } else if table_detail.kind_info.kind == TableKind::Virtual {
+            Some("virtual table")
+        } else if table_detail.kind_info.without_rowid {
+            Some("WITHOUT ROWID table")
+        } else if !has_stable_identity && database_type == Some(DatabaseType::SQLite) {
+            Some("table without PRIMARY KEY or rowid")
+        } else if !has_stable_identity {
+            Some("table without PRIMARY KEY")
+        } else {
+            None
+        }
+    }
+
+    pub fn is_visible_preview_target_read_only(&self) -> bool {
+        self.visible_preview_target_read_only_reason().is_some()
     }
 
     pub fn can_write_visible_preview(&self) -> bool {
@@ -353,6 +376,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table,
+        TableKindInfo,
     };
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
@@ -736,6 +760,42 @@ mod tests {
     mod ui_facade {
         use super::*;
 
+        fn sqlite_preview_state_with_table(mut table: Table) -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            table.schema = "main".to_string();
+            table.name = "logs".to_string();
+            state.session.set_table_detail_raw(Some(table));
+            state
+                .query
+                .set_current_result(make_query_result(QuerySource::Preview));
+            state.query.pagination.reset_for_table("main", "logs");
+            state
+        }
+
+        fn postgres_preview_state_with_table(mut table: Table) -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/app",
+            );
+            table.schema = "public".to_string();
+            table.name = "logs".to_string();
+            state.session.set_table_detail_raw(Some(table));
+            state
+                .query
+                .set_current_result(make_query_result(QuerySource::Preview));
+            state.query.pagination.reset_for_table("public", "logs");
+            state
+        }
+
         #[test]
         fn toggle_focus_enters_focus_mode() {
             let mut state = make_state();
@@ -788,6 +848,68 @@ mod tests {
             state.query.set_current_result(Arc::new(result));
 
             assert!(!state.can_request_csv_export());
+        }
+
+        #[test]
+        fn sqlite_rowid_table_can_write_preview_without_primary_key() {
+            let state =
+                sqlite_preview_state_with_table(sabiql_test_support::table::minimal("", ""));
+
+            assert!(state.can_write_visible_preview());
+            assert_eq!(state.visible_preview_target_read_only_reason(), None);
+        }
+
+        #[rstest]
+        #[case(TableKind::View, false, "view")]
+        #[case(TableKind::Virtual, false, "virtual table")]
+        #[case(TableKind::Table, true, "WITHOUT ROWID table")]
+        fn sqlite_non_rowid_targets_are_read_only(
+            #[case] kind: TableKind,
+            #[case] without_rowid: bool,
+            #[case] reason: &str,
+        ) {
+            let mut table = sabiql_test_support::table::minimal("", "");
+            table.kind_info = TableKindInfo {
+                kind,
+                without_rowid,
+                ..TableKindInfo::default()
+            };
+            let state = sqlite_preview_state_with_table(table);
+
+            assert!(!state.can_write_visible_preview());
+            assert_eq!(
+                state.visible_preview_target_read_only_reason(),
+                Some(reason)
+            );
+        }
+
+        #[test]
+        fn sqlite_table_with_all_rowid_aliases_shadowed_is_read_only() {
+            let mut table = sabiql_test_support::table::minimal("", "");
+            table.columns = vec![
+                sabiql_test_support::column::test_nullable_column("rowid", "TEXT", 1),
+                sabiql_test_support::column::test_nullable_column("_rowid_", "TEXT", 2),
+                sabiql_test_support::column::test_nullable_column("oid", "TEXT", 3),
+            ];
+            let state = sqlite_preview_state_with_table(table);
+
+            assert!(!state.can_write_visible_preview());
+            assert_eq!(
+                state.visible_preview_target_read_only_reason(),
+                Some("table without PRIMARY KEY or rowid")
+            );
+        }
+
+        #[test]
+        fn postgres_table_without_primary_key_does_not_mention_rowid() {
+            let state =
+                postgres_preview_state_with_table(sabiql_test_support::table::minimal("", ""));
+
+            assert!(!state.can_write_visible_preview());
+            assert_eq!(
+                state.visible_preview_target_read_only_reason(),
+                Some("table without PRIMARY KEY")
+            );
         }
     }
 

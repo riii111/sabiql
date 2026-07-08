@@ -30,9 +30,18 @@ pub struct TargetSummary {
     pub schema: String,
     pub table: String,
     pub key_values: Vec<(String, QueryValue)>,
+    pub uses_sqlite_rowid: bool,
 }
 
 impl TargetSummary {
+    pub fn identity_label(&self) -> &'static str {
+        if self.uses_sqlite_rowid {
+            "SQLite rowid"
+        } else {
+            "Primary key"
+        }
+    }
+
     pub fn format_compact(&self) -> String {
         let key_str = self
             .key_values
@@ -155,6 +164,7 @@ mod tests {
                 schema: "public".to_string(),
                 table: "users".to_string(),
                 key_values: vec![("id".to_string(), QueryValue::text("42"))],
+                uses_sqlite_rowid: false,
             };
             let decision = evaluate_guardrails(true, true, Some(target));
             assert_eq!(decision.risk_level, RiskLevel::Low);
@@ -167,6 +177,7 @@ mod tests {
                 schema: "public".to_string(),
                 table: "users".to_string(),
                 key_values: vec![("id".to_string(), QueryValue::text("42"))],
+                uses_sqlite_rowid: false,
             };
             assert_eq!(target.format_compact(), "public.users (id=42)");
         }

@@ -67,6 +67,19 @@ pub enum QuerySource {
     Adhoc,
 }
 
+#[derive(Debug, Clone, Default)]
+struct HiddenQueryColumns {
+    columns: Vec<String>,
+    values: Vec<Vec<QueryValue>>,
+}
+
+impl HiddenQueryColumns {
+    fn value_at(&self, row: usize, column: &str) -> Option<&QueryValue> {
+        let col = self.columns.iter().position(|name| name == column)?;
+        self.values.get(row)?.get(col)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     pub query: String,
@@ -77,6 +90,7 @@ pub struct QueryResult {
     pub command_tag: Option<CommandTag>,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
+    hidden: HiddenQueryColumns,
     row_count: usize,
 }
 
@@ -99,6 +113,7 @@ impl QueryResult {
             columns,
             rows,
             values,
+            hidden: HiddenQueryColumns::default(),
             row_count,
             execution_time_ms,
             source,
@@ -125,6 +140,7 @@ impl QueryResult {
             columns,
             rows,
             values,
+            hidden: HiddenQueryColumns::default(),
             row_count,
             execution_time_ms,
             source,
@@ -145,6 +161,7 @@ impl QueryResult {
             columns: Vec::new(),
             rows: Vec::new(),
             values: Vec::new(),
+            hidden: HiddenQueryColumns::default(),
             row_count: 0,
             execution_time_ms,
             source,
@@ -166,6 +183,34 @@ impl QueryResult {
     }
 
     #[must_use]
+    pub fn with_first_column_hidden(mut self, hidden_column: String) -> Self {
+        if self.columns.is_empty() {
+            return self;
+        }
+
+        self.columns.remove(0);
+        for row in &mut self.rows {
+            if !row.is_empty() {
+                row.remove(0);
+            }
+        }
+
+        let mut hidden_values = Vec::with_capacity(self.values.len());
+        for row in &mut self.values {
+            if row.is_empty() {
+                hidden_values.push(Vec::new());
+            } else {
+                hidden_values.push(vec![row.remove(0)]);
+            }
+        }
+        self.hidden = HiddenQueryColumns {
+            columns: vec![hidden_column],
+            values: hidden_values,
+        };
+        self
+    }
+
+    #[must_use]
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
@@ -178,6 +223,11 @@ impl QueryResult {
     #[must_use]
     pub fn values(&self) -> &[Vec<QueryValue>] {
         &self.values
+    }
+
+    #[must_use]
+    pub fn hidden_value_at(&self, row: usize, column: &str) -> Option<&QueryValue> {
+        self.hidden.value_at(row, column)
     }
 
     #[must_use]

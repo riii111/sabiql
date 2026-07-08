@@ -293,8 +293,8 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 }
 
 fn ensure_jsonb_column_writable(state: &AppState) -> Result<(), EditGuardrailError> {
-    let (_, pk_cols) = editable_preview_base(state)?;
-    ensure_column_writable(state, state.jsonb_detail.column_name(), pk_cols)
+    let (_, identity) = editable_preview_base(state)?;
+    ensure_column_writable(state, state.jsonb_detail.column_name(), &identity)
 }
 
 fn update_search_matches(state: &mut AppState) {

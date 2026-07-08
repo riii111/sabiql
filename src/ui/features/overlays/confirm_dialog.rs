@@ -7,6 +7,7 @@ use crate::app::model::shared::confirm_dialog::ConfirmIntent;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
+use crate::domain::QueryValue;
 use crate::primitives::atoms::highlight_sql;
 use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_with_border_color};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -138,6 +139,30 @@ impl ConfirmDialog {
         )));
         content_lines.push(Line::from(""));
 
+        if preview.target_summary.uses_sqlite_rowid
+            && matches!(preview.operation, WriteOperation::Update)
+        {
+            content_lines.push(Line::from(vec![Span::styled(
+                "Target",
+                Style::default().fg(theme.semantic.text.secondary),
+            )]));
+            content_lines.push(Line::from(vec![
+                Span::styled(
+                    "  Method: ",
+                    Style::default().fg(theme.semantic.text.secondary),
+                ),
+                Span::styled(
+                    preview.target_summary.identity_label(),
+                    Style::default().fg(theme.semantic.text.primary),
+                ),
+            ]));
+            content_lines.extend(Self::render_key_value_lines(
+                &preview.target_summary.key_values,
+                theme,
+            ));
+            content_lines.push(Line::from(""));
+        }
+
         match preview.operation {
             WriteOperation::Update => {
                 content_lines.push(Line::from(vec![Span::styled(
@@ -173,18 +198,22 @@ impl ConfirmDialog {
                     "Target",
                     Style::default().fg(theme.semantic.text.secondary),
                 )]));
-                for (key, value) in &preview.target_summary.key_values {
+                if preview.target_summary.uses_sqlite_rowid {
                     content_lines.push(Line::from(vec![
                         Span::styled(
-                            format!("  {key}: "),
+                            "  Method: ",
                             Style::default().fg(theme.semantic.text.secondary),
                         ),
                         Span::styled(
-                            format!("\"{}\"", escape_preview_value(&value.display_value())),
+                            preview.target_summary.identity_label(),
                             Style::default().fg(theme.semantic.text.primary),
                         ),
                     ]));
                 }
+                content_lines.extend(Self::render_key_value_lines(
+                    &preview.target_summary.key_values,
+                    theme,
+                ));
             }
         }
 
@@ -270,6 +299,27 @@ impl ConfirmDialog {
             content_height: Some(wrapped_height),
             scroll,
         }
+    }
+
+    fn render_key_value_lines(
+        key_values: &[(String, QueryValue)],
+        theme: &ThemePalette,
+    ) -> Vec<Line<'static>> {
+        key_values
+            .iter()
+            .map(|(key, value)| {
+                Line::from(vec![
+                    Span::styled(
+                        format!("  {key}: "),
+                        Style::default().fg(theme.semantic.text.secondary),
+                    ),
+                    Span::styled(
+                        format!("\"{}\"", escape_preview_value(&value.display_value())),
+                        Style::default().fg(theme.semantic.text.primary),
+                    ),
+                ])
+            })
+            .collect()
     }
 
     fn render_json_diff_lines(

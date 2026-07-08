@@ -6,7 +6,6 @@ use crate::domain::ColumnAttributes;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -45,19 +44,18 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         .cell()
         .ok_or(EditGuardrailError::NoActiveCell)?;
 
-    let (result, pk_cols) = editable_preview_base(state)?;
+    let (result, identity) = editable_preview_base(state)?;
 
     let column_name = result
         .columns
         .get(col_idx)
         .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?;
-    ensure_column_writable(state, column_name, pk_cols)?;
+    ensure_column_writable(state, column_name, &identity)?;
 
-    let row = result
-        .values()
-        .get(row_idx)
-        .ok_or(EditGuardrailError::RowIndexOutOfBounds)?;
-    if build_pk_pairs(&result.columns, row, pk_cols).is_none() {
+    if row_idx >= result.values().len() {
+        return Err(EditGuardrailError::RowIndexOutOfBounds);
+    }
+    if identity.identity_pairs_for_row(result, row_idx).is_none() {
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 

@@ -56,9 +56,7 @@ fn sql_literal(value: &QueryValue) -> String {
 fn equality_predicate(column: &str, value: &QueryValue) -> String {
     let column = quote_ident(column);
     match value {
-        // App-layer write flows reject SQLite NULL primary keys before SQL generation.
-        // Reaching this branch means a caller bypassed that guardrail.
-        QueryValue::Null => panic!("SQLite write predicates require non-NULL primary key values"),
+        QueryValue::Null => format!("{column} IS NULL"),
         _ => format!("{column} = {}", sql_literal(value)),
     }
 }
@@ -150,6 +148,7 @@ pub(super) fn row_count_query(table: &str) -> String {
 }
 
 pub(super) const PREVIEW_TRANSPORT_UNISTR_PREFIX: &str = "\\u0001SABIQL_HEX:";
+pub(super) const PREVIEW_ROWID_ALIAS: &str = "__sabiql_rowid";
 
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
@@ -164,10 +163,11 @@ pub(super) fn build_preview_query(
     table: &str,
     columns: &[String],
     order_columns: &[String],
+    rowid_alias: Option<&str>,
     limit: usize,
     offset: usize,
 ) -> String {
-    let select_list = if columns.is_empty() {
+    let visible_select_list = if columns.is_empty() {
         "*".to_string()
     } else {
         columns
@@ -176,8 +176,20 @@ pub(super) fn build_preview_query(
             .collect::<Vec<_>>()
             .join(", ")
     };
+    let select_list = rowid_alias.map_or_else(
+        || visible_select_list.clone(),
+        |alias| {
+            format!(
+                "{} AS {}, {visible_select_list}",
+                quote_ident(alias),
+                quote_ident(PREVIEW_ROWID_ALIAS)
+            )
+        },
+    );
     let order_clause = if order_columns.is_empty() {
-        String::new()
+        rowid_alias.map_or_else(String::new, |alias| {
+            format!(" ORDER BY {}", quote_ident(alias))
+        })
     } else {
         let cols = order_columns
             .iter()
@@ -568,6 +580,7 @@ mod tests {
                 "users",
                 &["id".to_string(), "name".to_string()],
                 &["id".to_string()],
+                None,
                 10,
                 20
             ),
@@ -584,8 +597,28 @@ mod tests {
     #[test]
     fn build_preview_query_falls_back_to_star_without_columns() {
         assert_eq!(
-            build_preview_query("users", &[], &["id".to_string()], 10, 20),
+            build_preview_query("users", &[], &["id".to_string()], None, 10, 20),
             r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
+        );
+    }
+
+    #[test]
+    fn build_preview_query_selects_hidden_rowid_when_available() {
+        assert_eq!(
+            build_preview_query(
+                "logs",
+                &["message".to_string()],
+                &[],
+                Some("_rowid_"),
+                10,
+                0
+            ),
+            concat!(
+                r#"SELECT "_rowid_" AS "__sabiql_rowid", "#,
+                r#"CASE WHEN typeof("message") = 'text' "#,
+                r#"THEN char(1) || 'SABIQL_HEX:' || hex("message") ELSE "message" END AS "message" "#,
+                r#"FROM "logs" ORDER BY "_rowid_" LIMIT 10 OFFSET 0"#
+            )
         );
     }
 
@@ -750,11 +783,10 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn update_null_pk_value_panics_before_unsafe_predicate() {
+        fn update_null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
 
-            let _ = adapter.build_update_sql(
+            let sql = adapter.build_update_sql(
                 DatabaseType::SQLite,
                 "main",
                 "users",
@@ -762,27 +794,37 @@ mod tests {
                 &QueryValue::text("new"),
                 &[("id".into(), QueryValue::Null)],
             );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"users\"\nSET \"name\" = 'new'\nWHERE \"id\" IS NULL;"
+            );
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn null_pk_value_panics_before_unsafe_predicate() {
+        fn null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![("id".to_string(), QueryValue::Null)]];
 
-            let _ = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(sql, "DELETE FROM \"users\"\nWHERE \"id\" IS NULL;");
         }
 
         #[test]
-        #[should_panic(expected = "SQLite write predicates require non-NULL primary key values")]
-        fn composite_pk_null_value_panics_before_unsafe_predicate() {
+        fn composite_null_predicate_uses_is_null() {
             let adapter = SqliteAdapter::new();
             let rows = vec![vec![
                 ("id".to_string(), QueryValue::Null),
                 ("tenant_id".to_string(), QueryValue::text("10")),
             ]];
 
-            let _ = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "users", &rows);
+
+            assert_eq!(
+                sql,
+                "DELETE FROM \"users\"\nWHERE \"id\" IS NULL AND \"tenant_id\" = '10';"
+            );
         }
 
         #[test]
