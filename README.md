@@ -88,6 +88,7 @@ For SQLite, you can also pass a database file path or `sqlite://` DSN directly:
 
 ```bash
 sabiql /path/to/app.db
+sabiql /path/to/History
 sabiql sqlite:///path/to/app.db
 ```
 
@@ -123,7 +124,7 @@ Android/Termux support is build-only, not full platform support. `cargo install 
 
 SQLite support covers browsing, editing, and ad-hoc SQL on regular database files. Compared with PostgreSQL:
 
-- **File paths only** — Use a regular database file path or a `sqlite://` DSN to that file. In-memory databases (`:memory:`) and SQLite URI filenames (`file:...`) are not supported.
+- **File paths only** — Use a regular SQLite database file path or a `sqlite://` DSN to that file. The `sqlite://` form treats everything after the prefix as a raw path; it does not percent-decode URI escapes. In-memory databases (`:memory:`) and SQLite URI filenames (`file:...`) are not supported because sabiql starts `sqlite3` per operation; use a temporary database file instead.
 - **No new database files** — Opening a path that does not exist does not create a database.
 - **Main database only** — Attached and temporary databases are not browsed as separate namespaces.
 - **Query plans** — SQLite shows `EXPLAIN QUERY PLAN` in the Plan tab. Plan comparison and `EXPLAIN ANALYZE` are PostgreSQL-only.
