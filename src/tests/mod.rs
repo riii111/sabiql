@@ -39,13 +39,37 @@ mod cli_sqlite_startup {
     fn resolves_existing_sqlite_file() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("app.db");
-        fs::write(&path, b"").unwrap();
+        fs::write(&path, b"SQLite format 3\0rest").unwrap();
 
         let target =
             resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
 
         assert_eq!(target.path(), path.to_str().unwrap());
         assert_eq!(target.dsn(), format!("sqlite://{}", path.display()));
+    }
+
+    #[test]
+    fn resolves_extensionless_sqlite_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("History");
+        fs::write(&path, b"SQLite format 3\0rest").unwrap();
+
+        let target =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
+
+        assert_eq!(target.path(), path.to_str().unwrap());
+    }
+
+    #[test]
+    fn rejects_non_sqlite_file_before_startup() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        fs::write(&path, b"not a sqlite database").unwrap();
+
+        let error =
+            resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap_err();
+
+        assert!(error.to_string().contains("not a SQLite database"));
     }
 
     #[test]

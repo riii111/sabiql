@@ -6,6 +6,8 @@ pub enum SqlitePathError {
     IsDirectory(String),
     #[error("SQLite path is not a regular file: {0}")]
     NotRegularFile(String),
+    #[error("File is readable but not a SQLite database: {0}")]
+    NotDatabaseFile(String),
     #[error("Cannot read SQLite database file: {0}")]
     ReadAccessDenied(String),
     #[error("Cannot access SQLite database file: {0}")]
@@ -19,6 +21,7 @@ impl SqlitePathError {
         const NOT_FOUND: &str = "SQLite database file not found: ";
         const IS_DIRECTORY: &str = "SQLite path is a directory, not a file: ";
         const NOT_REGULAR_FILE: &str = "SQLite path is not a regular file: ";
+        const NOT_DATABASE_FILE: &str = "File is readable but not a SQLite database: ";
         const READ_ACCESS_DENIED: &str = "Cannot read SQLite database file: ";
         const PATH_ACCESS_DENIED: &str = "Cannot access SQLite database file: ";
         const IO: &str = "Cannot read SQLite database file metadata: ";
@@ -29,6 +32,8 @@ impl SqlitePathError {
             Some(Self::IsDirectory(path.to_string()))
         } else if let Some(path) = message.strip_prefix(NOT_REGULAR_FILE) {
             Some(Self::NotRegularFile(path.to_string()))
+        } else if let Some(path) = message.strip_prefix(NOT_DATABASE_FILE) {
+            Some(Self::NotDatabaseFile(path.to_string()))
         } else if let Some(details) = message.strip_prefix(READ_ACCESS_DENIED) {
             Some(Self::ReadAccessDenied(details.to_string()))
         } else if let Some(details) = message.strip_prefix(PATH_ACCESS_DENIED) {

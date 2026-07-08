@@ -378,8 +378,11 @@ impl ConnectionSetupState {
         let message = match error {
             SqliteConnectionConfigError::EmptyPath => "Required",
             SqliteConnectionConfigError::UnsupportedPath => "Unsupported characters",
-            SqliteConnectionConfigError::UnsupportedConnectionFormat => {
-                "Use a regular file path (in-memory and URI filenames unsupported)"
+            SqliteConnectionConfigError::UnsupportedInMemoryDatabase => {
+                "In-memory SQLite databases cannot retain contents because sabiql starts sqlite3 per operation; use a temporary file"
+            }
+            SqliteConnectionConfigError::UnsupportedUriFilename => {
+                "SQLite URI filenames are not supported; use a regular file path"
             }
         };
         self.validation_errors
@@ -391,6 +394,7 @@ impl ConnectionSetupState {
             SqlitePathError::FileNotFound(_) => "File not found",
             SqlitePathError::IsDirectory(_) => "Path is a directory",
             SqlitePathError::NotRegularFile(_) => "Not a regular file",
+            SqlitePathError::NotDatabaseFile(_) => "Not a SQLite database",
             SqlitePathError::ReadAccessDenied(_) => "Read permission denied",
             SqlitePathError::PathAccessDenied(_) => "Access denied",
             SqlitePathError::Io(_) => "Cannot access file",

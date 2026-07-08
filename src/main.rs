@@ -52,7 +52,7 @@ use sabiql_ui::tui::TuiRunner;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// SQLite database file (.db, .sqlite, .sqlite3) or sqlite:// DSN
+    /// SQLite database file path or sqlite:// DSN
     database: Option<String>,
 
     #[command(subcommand)]

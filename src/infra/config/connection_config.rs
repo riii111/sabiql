@@ -287,7 +287,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+            Err(ConnectionProfileError::UnsupportedSqliteInMemoryDatabase)
         ));
     }
 
@@ -299,7 +299,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+            Err(ConnectionProfileError::UnsupportedSqliteUriFilename)
         ));
     }
 }

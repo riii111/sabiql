@@ -44,9 +44,11 @@ pub enum SqliteConnectionConfigError {
     #[error("SQLite database path contains unsupported characters")]
     UnsupportedPath,
     #[error(
-        "SQLite in-memory databases and URI filenames are not supported; use a regular file path"
+        "SQLite in-memory databases are not supported because sabiql starts sqlite3 per operation and cannot retain their contents; use a temporary database file"
     )]
-    UnsupportedConnectionFormat,
+    UnsupportedInMemoryDatabase,
+    #[error("SQLite URI filenames are not supported; use a regular file path")]
+    UnsupportedUriFilename,
 }
 
 impl SqliteConnectionConfig {
@@ -83,17 +85,16 @@ fn validate_sqlite_path(path: &str) -> Result<(), SqliteConnectionConfigError> {
     if path.chars().any(|c| c == '\0' || c.is_control()) {
         return Err(SqliteConnectionConfigError::UnsupportedPath);
     }
-    if is_unsupported_sqlite_connection_format(path) {
-        return Err(SqliteConnectionConfigError::UnsupportedConnectionFormat);
+    if path.trim() == ":memory:" {
+        return Err(SqliteConnectionConfigError::UnsupportedInMemoryDatabase);
+    }
+    if is_sqlite_uri_filename(path) {
+        return Err(SqliteConnectionConfigError::UnsupportedUriFilename);
     }
     Ok(())
 }
 
-fn is_unsupported_sqlite_connection_format(path: &str) -> bool {
-    if path.trim() == ":memory:" {
-        return true;
-    }
-
+fn is_sqlite_uri_filename(path: &str) -> bool {
     path.as_bytes()
         .get(..5)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"file:"))
@@ -203,7 +204,7 @@ mod tests {
         fn rejects_memory_database() {
             assert!(matches!(
                 validate_sqlite_path(":memory:"),
-                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+                Err(SqliteConnectionConfigError::UnsupportedInMemoryDatabase)
             ));
         }
 
@@ -211,7 +212,7 @@ mod tests {
         fn rejects_file_uri() {
             assert!(matches!(
                 validate_sqlite_path("file:memdb?mode=memory"),
-                Err(SqliteConnectionConfigError::UnsupportedConnectionFormat)
+                Err(SqliteConnectionConfigError::UnsupportedUriFilename)
             ));
         }
     }
