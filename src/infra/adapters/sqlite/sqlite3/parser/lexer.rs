@@ -92,7 +92,7 @@ fn contains_keyword(sql: &str, expected: &str) -> bool {
     false
 }
 
-fn is_create_trigger_prefix(sql: &str) -> bool {
+fn is_create_keyword_prefix(sql: &str, keyword: &str) -> bool {
     let Some((first, pos)) = next_keyword_from(sql, 0) else {
         return false;
     };
@@ -106,9 +106,13 @@ fn is_create_trigger_prefix(sql: &str) -> bool {
         let Some((third, _)) = next_keyword_from(sql, pos) else {
             return false;
         };
-        return third.eq_ignore_ascii_case("TRIGGER");
+        return third.eq_ignore_ascii_case(keyword);
     }
-    second.eq_ignore_ascii_case("TRIGGER")
+    second.eq_ignore_ascii_case(keyword)
+}
+
+fn is_create_trigger_prefix(sql: &str) -> bool {
+    is_create_keyword_prefix(sql, "TRIGGER")
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: &str) -> bool {
@@ -131,22 +135,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: 
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn is_create_view_prefix(sql: &str) -> bool {
-    let Some((first, pos)) = next_keyword_from(sql, 0) else {
-        return false;
-    };
-    if !first.eq_ignore_ascii_case("CREATE") {
-        return false;
-    }
-    let Some((second, pos)) = next_keyword_from(sql, pos) else {
-        return false;
-    };
-    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
-        let Some((third, _)) = next_keyword_from(sql, pos) else {
-            return false;
-        };
-        return third.eq_ignore_ascii_case("VIEW");
-    }
-    second.eq_ignore_ascii_case("VIEW")
+    is_create_keyword_prefix(sql, "VIEW")
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn virtual_table_module_name(sql: &str) -> Option<String> {

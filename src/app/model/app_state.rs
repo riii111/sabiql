@@ -330,8 +330,7 @@ impl AppState {
         let Some(table_detail) = self.session.table_detail() else {
             return false;
         };
-        table_detail.schema == self.query.pagination.schema()
-            && table_detail.name == self.query.pagination.table()
+        self.query.pagination.matches_table(table_detail)
             && table_detail.kind_info.kind == TableKind::View
     }
 

@@ -111,9 +111,7 @@ pub fn editable_preview_base(
         .table_detail()
         .ok_or(EditGuardrailError::TableMetadataNotLoaded)?;
 
-    if table_detail.schema != state.query.pagination.schema()
-        || table_detail.name != state.query.pagination.table()
-    {
+    if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
     if table_detail.kind_info.kind == TableKind::View {

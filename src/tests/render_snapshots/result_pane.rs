@@ -4,15 +4,7 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, ColumnAttributes, QueryResult, TableKind, TableKindInfo};
-
-fn trim_line_endings(output: &str) -> String {
-    output
-        .lines()
-        .map(str::trim_end)
-        .collect::<Vec<_>>()
-        .join("\n")
-}
+use sabiql_domain::{Column, ColumnAttributes, QueryResult};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
@@ -270,10 +262,7 @@ fn result_pane_view_cell_active_hides_write_hints() {
     with_current_result(&mut state);
     state.query.pagination.reset_for_table("public", "users");
     let mut table = state.session.table_detail().unwrap().clone();
-    table.kind_info = TableKindInfo {
-        kind: TableKind::View,
-        ..TableKindInfo::default()
-    };
+    table.kind_info = sabiql_test_support::table::view_kind_info();
     let generation = state.session.selection_generation();
     let _ = state.session.set_table_detail(table, generation);
     state.ui.set_focused_pane(FocusedPane::Result);
