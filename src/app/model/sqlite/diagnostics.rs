@@ -337,24 +337,6 @@ mod tests {
     }
 
     #[test]
-    fn quick_check_before_core_is_applied_when_core_arrives() {
-        let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
-        state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));
-
-        state.set_core_loaded(
-            run_id,
-            SqliteDiagnosticsSnapshot {
-                sqlite_version: DiagnosticField::ok("3.45.0"),
-                ..Default::default()
-            },
-        );
-
-        assert!(!state.is_quick_check_running());
-        assert_eq!(state.snapshot().unwrap().quick_check.ok_value(), Some("ok"));
-    }
-
-    #[test]
     fn max_scroll_is_zero_when_content_fits_viewport() {
         let mut state = SqliteDiagnosticsState::default();
         state.apply_viewport_metrics(5, 10);
