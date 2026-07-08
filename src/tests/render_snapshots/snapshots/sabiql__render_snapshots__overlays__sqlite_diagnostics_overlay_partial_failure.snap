@@ -18,19 +18,19 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │SQLite version: 3.45.0                                                                                           │                        │
 │                        │                                                                                                                 │                        │
+│                        │SQLite features: (unavailable)                                                                                   │                        │
+│                        │                                                                                                                 │                        │
 │                        │Effective foreign keys: (failed: timeout)                                                                        │                        │
 │                        │                                                                                                                 │                        │
 │                        │Journal mode: delete                                                                                             │                        │
 │                        │                                                                                                                 │                        │
 │                        │Effective query only: on                                                                                         │                        │
 │                        │                                                                                                                 │                        │
-│                        │Effective busy timeout (ms): 5000                                                                                │                        │
-│                        │                                                                                                                 │                        │
-│                        │Database list: 0: main @ /tmp/app.db                                                                             │────────────────────────┘
+│                        │Effective busy timeout (ms): 5000                                                                                │────────────────────────┘
 │                        │                                                                                                                 │────────────────────────┐
+│                        │Database list: 0: main @ /tmp/app.db                                                                             │                        │
+│                        │                                                                                                                 │                        │
 │                        │Quick check: row 1 missing from index idx_users                                                                  │                        │
-│                        │                                                                                                                 │                        │
-│                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │

@@ -188,6 +188,7 @@ fn field_style(
     let field = match kind {
         DiagnosticFieldKind::DbFile => &snapshot.db_file,
         DiagnosticFieldKind::SqliteVersion => &snapshot.sqlite_version,
+        DiagnosticFieldKind::FeatureSummary => &snapshot.feature_summary,
         DiagnosticFieldKind::ForeignKeys => &snapshot.foreign_keys,
         DiagnosticFieldKind::JournalMode => &snapshot.journal_mode,
         DiagnosticFieldKind::QueryOnly => &snapshot.query_only,

@@ -56,6 +56,7 @@ impl DiagnosticField {
 pub struct SqliteDiagnosticsSnapshot {
     pub db_file: DiagnosticField,
     pub sqlite_version: DiagnosticField,
+    pub feature_summary: DiagnosticField,
     pub foreign_keys: DiagnosticField,
     pub journal_mode: DiagnosticField,
     pub query_only: DiagnosticField,
@@ -70,6 +71,7 @@ impl SqliteDiagnosticsSnapshot {
         Self {
             db_file,
             sqlite_version: DiagnosticField::Unavailable,
+            feature_summary: DiagnosticField::Unavailable,
             foreign_keys: DiagnosticField::Unavailable,
             journal_mode: DiagnosticField::Unavailable,
             query_only: DiagnosticField::Unavailable,
@@ -146,6 +148,7 @@ mod tests {
         assert_eq!(snapshot.db_file, db_file);
         for field in [
             &snapshot.sqlite_version,
+            &snapshot.feature_summary,
             &snapshot.foreign_keys,
             &snapshot.journal_mode,
             &snapshot.query_only,

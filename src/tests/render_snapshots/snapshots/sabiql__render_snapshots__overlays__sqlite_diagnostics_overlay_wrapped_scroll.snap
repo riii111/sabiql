@@ -8,18 +8,18 @@ test_project | test_db | - | connected | local
 │  public.p ││(select a table)                   │
 │  public.c ││                                   │
 │       ╭ SQLite Diagnostics ─────────────╮      │
+│       │SQLite features: FTS5: available │      │
+│       │  FTS4: not available            │      │
+│       │  RTree: available               │      │
+│       │  JSON: available                │      │
 │       │                                 │      │
-│       │Effective foreign keys: on       │      │
-│       │                                 │      │
+│       │Effective foreign keys: on       │──────┘
+│       │                                 │──────┐
 │       │Journal mode: wal                │      │
 │       │                                 │      │
-│       │Effective query only: off        │──────┘
-│       │                                 │──────┐
+│       │Effective query only: off        │      │
+│       │                                 │      │
 │       │Effective busy timeout (ms): 5000│      │
-│       │                                 │      │
-│       │Database list: 0: main @         │      │
-│       │/tmp/app.db                      │      │
-│       │                                 │      │
 │       ╰ Esc: Close │ ↑↓: Scroll │ r: Run╯      │
 │           ││                                   │
 │           ││                                   │
