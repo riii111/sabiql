@@ -5,6 +5,8 @@ use super::rls::RlsInfo;
 use super::table_kind::TableKindInfo;
 use super::trigger::Trigger;
 
+const SQLITE_ROWID_ALIASES: [&str; 3] = ["rowid", "_rowid_", "oid"];
+
 fn make_qualified_name(schema: &str, name: &str) -> String {
     format!("{schema}.{name}")
 }
@@ -46,6 +48,25 @@ impl Table {
     pub fn source_ddl(&self) -> Option<&str> {
         self.source_ddl.as_deref()
     }
+
+    pub fn sqlite_rowid_alias(&self) -> Option<&'static str> {
+        if self.primary_key.as_ref().is_some_and(|pk| !pk.is_empty())
+            || self.kind_info.kind != super::table_kind::TableKind::Table
+            || self.kind_info.without_rowid
+        {
+            return None;
+        }
+        available_sqlite_rowid_alias(self.columns.iter().map(|column| column.name.as_str()))
+    }
+}
+
+pub fn available_sqlite_rowid_alias<'a>(
+    column_names: impl IntoIterator<Item = &'a str>,
+) -> Option<&'static str> {
+    let names = column_names.into_iter().collect::<Vec<_>>();
+    SQLITE_ROWID_ALIASES
+        .into_iter()
+        .find(|alias| !names.iter().any(|name| name.eq_ignore_ascii_case(alias)))
 }
 
 #[derive(Debug, Clone)]
