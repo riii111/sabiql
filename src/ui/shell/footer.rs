@@ -295,6 +295,7 @@ impl Footer {
             }
             InputMode::SqliteDiagnostics => vec![
                 sqlite_diagnostics::SCROLL.as_hint(),
+                sqlite_diagnostics::RUN_QUICK_CHECK.as_hint(),
                 sqlite_diagnostics::HELP.as_hint(),
                 sqlite_diagnostics::ESC_CLOSE.as_hint(),
             ],

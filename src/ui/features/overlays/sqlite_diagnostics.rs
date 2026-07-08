@@ -29,7 +29,7 @@ impl SqliteDiagnosticsOverlay {
             Constraint::Percentage(70),
             Constraint::Percentage(60),
             " SQLite Diagnostics ",
-            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll")]),
+            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll"), ("r", "Run check")]),
             theme,
         );
         let viewport_height = inner.height as usize;
@@ -56,9 +56,18 @@ impl SqliteDiagnosticsOverlay {
 
         let quick_check_override = state
             .sqlite_diagnostics
-            .is_quick_check_pending()
+            .is_quick_check_running()
             .then_some("Running...");
-        let lines = build_render_lines(snapshot, theme, quick_check_override);
+        let lines = build_render_lines(
+            snapshot,
+            theme,
+            quick_check_override.or_else(|| {
+                snapshot
+                    .quick_check
+                    .is_pending()
+                    .then_some("Not run. Press r to run quick check.")
+            }),
+        );
         render_lines(frame, inner, state, lines, viewport_width, viewport_height)
     }
 }

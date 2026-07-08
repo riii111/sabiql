@@ -26,7 +26,7 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │Effective busy timeout (ms): 5000                                                                                │                        │
 │                        │                                                                                                                 │                        │
-│                        │Attached databases: 0: main @ /tmp/app.db                                                                        │────────────────────────┘
+│                        │Database list: 0: main @ /tmp/app.db                                                                             │────────────────────────┘
 │                        │                                                                                                                 │────────────────────────┐
 │                        │Quick check: Running...                                                                                          │                        │
 │                        │                                                                                                                 │                        │
@@ -42,7 +42,7 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
-│                        ╰ Esc: Close │ ↑↓: Scroll ────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Close │ ↑↓: Scroll │ r: Run check ─────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | connected | local
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-↑↓:Scroll  ?:Help  Esc:Close
+↑↓:Scroll  r:Run check  ?:Help  Esc:Close
