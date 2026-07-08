@@ -24,12 +24,17 @@ impl SqliteDiagnosticsOverlay {
         state: &AppState,
         theme: &ThemePalette,
     ) -> SqliteDiagnosticsRenderMetrics {
+        let hint_bar = if state.sqlite_diagnostics.can_run_quick_check() {
+            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll"), ("r", "Run check")])
+        } else {
+            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll")])
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(70),
             Constraint::Percentage(60),
             " SQLite Diagnostics ",
-            FooterHintBar::new([("Esc", "Close"), ("↑↓", "Scroll"), ("r", "Run check")]),
+            hint_bar,
             theme,
         );
         let viewport_height = inner.height as usize;

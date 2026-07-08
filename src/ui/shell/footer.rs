@@ -293,12 +293,17 @@ impl Footer {
                     connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::SqliteDiagnostics => vec![
-                sqlite_diagnostics::SCROLL.as_hint(),
-                sqlite_diagnostics::RUN_QUICK_CHECK.as_hint(),
-                sqlite_diagnostics::HELP.as_hint(),
-                sqlite_diagnostics::ESC_CLOSE.as_hint(),
-            ],
+            InputMode::SqliteDiagnostics => {
+                let mut hints = vec![sqlite_diagnostics::SCROLL.as_hint()];
+                if state.sqlite_diagnostics.can_run_quick_check() {
+                    hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
+                }
+                hints.extend([
+                    sqlite_diagnostics::HELP.as_hint(),
+                    sqlite_diagnostics::ESC_CLOSE.as_hint(),
+                ]);
+                hints
+            }
             InputMode::ErTablePicker => vec![
                 er_picker::ENTER_GENERATE.as_hint(),
                 er_picker::SELECT.as_hint(),

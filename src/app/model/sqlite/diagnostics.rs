@@ -6,7 +6,6 @@ enum LoadState {
     Idle,
     LoadingCore {
         run_id: u64,
-        pending_quick_check: Option<DiagnosticField>,
     },
     Loaded {
         run_id: u64,
@@ -61,10 +60,7 @@ impl SqliteDiagnosticsState {
     pub fn begin_fetch(&mut self) -> u64 {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
-        self.load_state = LoadState::LoadingCore {
-            run_id,
-            pending_quick_check: None,
-        };
+        self.load_state = LoadState::LoadingCore { run_id };
         self.scroll_offset = 0;
         self.content_line_count = None;
         self.visible_rows = None;
@@ -80,6 +76,16 @@ impl SqliteDiagnosticsState {
             self.load_state,
             LoadState::Loaded {
                 quick_check_running: true,
+                ..
+            }
+        )
+    }
+
+    pub fn can_run_quick_check(&self) -> bool {
+        matches!(
+            self.load_state,
+            LoadState::Loaded {
+                quick_check_running: false,
                 ..
             }
         )
@@ -103,44 +109,25 @@ impl SqliteDiagnosticsState {
     pub fn is_current_run(&self, run_id: u64) -> bool {
         match &self.load_state {
             LoadState::Idle => false,
-            LoadState::LoadingCore {
-                run_id: current, ..
-            }
+            LoadState::LoadingCore { run_id: current }
             | LoadState::Loaded {
                 run_id: current, ..
             } => *current == run_id,
         }
     }
 
-    pub fn set_core_loaded(&mut self, run_id: u64, mut snapshot: SqliteDiagnosticsSnapshot) {
+    pub fn set_core_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
         if !matches!(
             self.load_state,
-            LoadState::LoadingCore {
-                run_id: current, ..
-            } if current == run_id
+            LoadState::LoadingCore { run_id: current } if current == run_id
         ) {
             return;
-        }
-
-        let pending_quick_check = if let LoadState::LoadingCore {
-            pending_quick_check,
-            ..
-        } = &mut self.load_state
-        {
-            pending_quick_check.take()
-        } else {
-            None
-        };
-
-        let quick_check_running = false;
-        if let Some(quick_check) = pending_quick_check {
-            snapshot.quick_check = quick_check;
         }
 
         self.load_state = LoadState::Loaded {
             run_id,
             snapshot: Box::new(snapshot),
-            quick_check_running,
+            quick_check_running: false,
         };
     }
 
@@ -149,12 +136,6 @@ impl SqliteDiagnosticsState {
             return;
         }
         match &mut self.load_state {
-            LoadState::LoadingCore {
-                pending_quick_check,
-                ..
-            } => {
-                *pending_quick_check = Some(quick_check);
-            }
             LoadState::Loaded {
                 snapshot,
                 quick_check_running,
@@ -163,7 +144,7 @@ impl SqliteDiagnosticsState {
                 snapshot.quick_check = quick_check;
                 *quick_check_running = false;
             }
-            LoadState::Idle => {}
+            LoadState::Idle | LoadState::LoadingCore { .. } => {}
         }
     }
 
@@ -331,6 +312,17 @@ mod tests {
 
         assert_eq!(quick_check_run_id, Some(run_id));
         assert!(state.is_quick_check_running());
+    }
+
+    #[test]
+    fn loading_core_cannot_run_quick_check() {
+        let mut state = SqliteDiagnosticsState::default();
+        state.begin_fetch();
+
+        let quick_check_run_id = state.begin_quick_check();
+
+        assert_eq!(quick_check_run_id, None);
+        assert!(!state.can_run_quick_check());
     }
 
     #[test]
