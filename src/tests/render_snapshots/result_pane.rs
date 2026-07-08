@@ -6,6 +6,14 @@ use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
 use sabiql_domain::{Column, ColumnAttributes, QueryResult, TableKind, TableKindInfo};
 
+fn trim_line_endings(output: &str) -> String {
+    output
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
     let mut state = create_test_state();
@@ -271,7 +279,7 @@ fn result_pane_view_cell_active_hides_write_hints() {
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
 
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }

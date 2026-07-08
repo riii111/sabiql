@@ -227,6 +227,7 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
             staged_delete_in_progress: true,
             result_active: false,
             keymap_preset,
+            ..
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
             &result_active::UNSTAGE_DELETE,
@@ -238,15 +239,21 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
             focused_pane: FocusedPane::Result,
             result_active: true,
             staged_delete_in_progress: false,
+            can_write_preview,
             ..
-        } => rows_from_binding_refs(&[
-            &result_active::YANK,
-            &result_active::ROW_YANK,
-            &result_active::ROW_DETAIL,
-            &result_active::STAGE_DELETE,
-            &result_active::EDIT,
-            &result_active::ESC_BACK,
-        ]),
+        } => {
+            let mut rows = vec![
+                &result_active::YANK,
+                &result_active::ROW_YANK,
+                &result_active::ROW_DETAIL,
+            ];
+            if can_write_preview {
+                rows.push(&result_active::STAGE_DELETE);
+                rows.push(&result_active::EDIT);
+            }
+            rows.push(&result_active::ESC_BACK);
+            rows_from_binding_refs(&rows)
+        }
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
             keymap_preset,
@@ -645,6 +652,7 @@ mod tests {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -666,6 +674,7 @@ mod tests {
                 focused_pane: FocusedPane::Result,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -686,6 +695,7 @@ mod tests {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -700,12 +710,41 @@ mod tests {
     }
 
     #[test]
+    fn read_only_result_active_help_omits_write_actions() {
+        let document = HelpDocument::new(
+            HelpOrigin::Normal {
+                focused_pane: FocusedPane::Result,
+                result_active: true,
+                staged_delete_in_progress: false,
+                can_write_preview: false,
+                keymap_preset: KeymapPreset::default(),
+            },
+            "",
+        );
+        let current_rows = document.sections()[0].rows();
+
+        assert!(!current_rows.iter().any(|row| row.description()
+            == "Stage the active row for deletion (red highlight; :w to commit)"));
+        assert!(
+            !current_rows
+                .iter()
+                .any(|row| row.description() == "Edit active cell")
+        );
+        assert!(
+            current_rows
+                .iter()
+                .any(|row| row.description() == "Open Row Detail")
+        );
+    }
+
+    #[test]
     fn staged_delete_result_help_omits_disabled_result_actions() {
         let document = HelpDocument::new(
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
                 staged_delete_in_progress: true,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -736,6 +775,7 @@ mod tests {
                 focused_pane: FocusedPane::Result,
                 result_active: false,
                 staged_delete_in_progress: true,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
@@ -761,6 +801,7 @@ mod tests {
                 focused_pane: FocusedPane::Result,
                 result_active: true,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "copy",
@@ -784,6 +825,7 @@ mod tests {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "navigation",
@@ -804,6 +846,7 @@ mod tests {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "zz-no-match",
@@ -823,6 +866,7 @@ mod tests {
                 focused_pane: FocusedPane::Explorer,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: true,
                 keymap_preset: KeymapPreset::default(),
             },
             "",
