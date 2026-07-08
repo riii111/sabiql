@@ -13,6 +13,7 @@ pub enum ConnectionErrorKind {
     SqliteFileNotFound,
     SqlitePathIsDirectory,
     SqlitePathNotRegularFile,
+    SqliteNotDatabaseFile,
     SqliteReadAccessDenied,
     SqlitePathAccessDenied,
     SqlitePathIo,
@@ -79,6 +80,7 @@ impl ConnectionErrorKind {
             Self::SqliteFileNotFound => "SQLite database file not found",
             Self::SqlitePathIsDirectory => "SQLite path is a directory",
             Self::SqlitePathNotRegularFile => "SQLite path is not a regular file",
+            Self::SqliteNotDatabaseFile => "File is not a SQLite database",
             Self::SqliteReadAccessDenied => "Cannot read SQLite database file",
             Self::SqlitePathAccessDenied => "Cannot access SQLite database file",
             Self::SqlitePathIo => "Cannot open SQLite database file",
@@ -103,6 +105,9 @@ impl ConnectionErrorKind {
             Self::SqlitePathIsDirectory => "Enter a path to a database file, not a folder",
             Self::SqlitePathNotRegularFile => {
                 "Enter a path to a regular database file, not a pipe or special file"
+            }
+            Self::SqliteNotDatabaseFile => {
+                "Choose a readable SQLite database file, or create one with sqlite3"
             }
             Self::SqliteReadAccessDenied => "Check read permissions for the database file",
             Self::SqlitePathAccessDenied => "Check file permissions for the database file",
@@ -282,6 +287,7 @@ mod tests {
         #[case(ConnectionErrorKind::SqliteFileNotFound)]
         #[case(ConnectionErrorKind::SqlitePathIsDirectory)]
         #[case(ConnectionErrorKind::SqlitePathNotRegularFile)]
+        #[case(ConnectionErrorKind::SqliteNotDatabaseFile)]
         #[case(ConnectionErrorKind::SqliteReadAccessDenied)]
         #[case(ConnectionErrorKind::SqlitePathAccessDenied)]
         #[case(ConnectionErrorKind::SqlitePathIo)]
@@ -349,6 +355,10 @@ mod tests {
         #[case(
             "SQLite path is not a regular file: /tmp/pipe.db",
             ConnectionErrorKind::SqlitePathNotRegularFile
+        )]
+        #[case(
+            "File is readable but not a SQLite database: /tmp/not-db",
+            ConnectionErrorKind::SqliteNotDatabaseFile
         )]
         #[case(
             "Cannot read SQLite database file: /tmp/app.db: permission denied",

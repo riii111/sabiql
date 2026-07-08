@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use crate::app::ports::outbound::SqlitePathValidator;
 use crate::domain::{SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error};
 
+const SQLITE_HEADER_MAGIC: &[u8; 16] = b"SQLite format 3\0";
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FsSqlitePathValidator;
 
@@ -42,7 +44,33 @@ fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError> {
     }
 
     match std::fs::File::open(path) {
-        Ok(_) => Ok(()),
+        Ok(mut file) => validate_sqlite_header(&mut file, metadata.len(), display),
+        Err(error) => Err(classify_sqlite_read_error(
+            &display,
+            error.kind(),
+            &error.to_string(),
+        )),
+    }
+}
+
+fn validate_sqlite_header(
+    file: &mut std::fs::File,
+    file_len: u64,
+    display: String,
+) -> Result<(), SqlitePathError> {
+    use std::io::Read;
+
+    if file_len == 0 {
+        return Ok(());
+    }
+
+    let mut header = [0; 16];
+    match file.read_exact(&mut header) {
+        Ok(()) if &header == SQLITE_HEADER_MAGIC => Ok(()),
+        Ok(()) => Err(SqlitePathError::NotDatabaseFile(display)),
+        Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
+            Err(SqlitePathError::NotDatabaseFile(display))
+        }
         Err(error) => Err(classify_sqlite_read_error(
             &display,
             error.kind(),
@@ -58,7 +86,7 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn accepts_existing_file() {
+    fn accepts_empty_existing_file() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("app.db");
         fs::write(&path, b"").unwrap();
@@ -68,6 +96,43 @@ mod tests {
                 .validate_database_path(path.to_str().unwrap())
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn accepts_sqlite_file_by_header() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("History");
+        fs::write(&path, b"SQLite format 3\0rest").unwrap();
+
+        assert!(
+            FsSqlitePathValidator
+                .validate_database_path(path.to_str().unwrap())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_readable_non_sqlite_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("notes.txt");
+        fs::write(&path, b"not a sqlite db at all").unwrap();
+
+        assert!(matches!(
+            FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
+            Err(SqlitePathError::NotDatabaseFile(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_short_non_empty_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("partial.db");
+        fs::write(&path, b"SQLite").unwrap();
+
+        assert!(matches!(
+            FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
+            Err(SqlitePathError::NotDatabaseFile(_))
+        ));
     }
 
     #[test]

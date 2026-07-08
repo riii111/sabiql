@@ -18,9 +18,11 @@ pub enum ConnectionProfileError {
     #[error("SQLite database path contains unsupported characters")]
     InvalidSqlitePath,
     #[error(
-        "SQLite in-memory databases and URI filenames are not supported; use a regular file path"
+        "SQLite in-memory databases are not supported because sabiql starts sqlite3 per operation and cannot retain their contents; use a temporary database file"
     )]
-    UnsupportedSqliteConnectionFormat,
+    UnsupportedSqliteInMemoryDatabase,
+    #[error("SQLite URI filenames are not supported; use a regular file path")]
+    UnsupportedSqliteUriFilename,
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
     #[error("{0}")]
@@ -32,8 +34,11 @@ impl From<SqliteConnectionConfigError> for ConnectionProfileError {
         match error {
             SqliteConnectionConfigError::EmptyPath => Self::EmptySqlitePath,
             SqliteConnectionConfigError::UnsupportedPath => Self::InvalidSqlitePath,
-            SqliteConnectionConfigError::UnsupportedConnectionFormat => {
-                Self::UnsupportedSqliteConnectionFormat
+            SqliteConnectionConfigError::UnsupportedInMemoryDatabase => {
+                Self::UnsupportedSqliteInMemoryDatabase
+            }
+            SqliteConnectionConfigError::UnsupportedUriFilename => {
+                Self::UnsupportedSqliteUriFilename
             }
         }
     }
@@ -231,7 +236,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+                Err(ConnectionProfileError::UnsupportedSqliteInMemoryDatabase)
             ));
         }
 
@@ -241,7 +246,7 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::UnsupportedSqliteConnectionFormat)
+                Err(ConnectionProfileError::UnsupportedSqliteUriFilename)
             ));
         }
     }

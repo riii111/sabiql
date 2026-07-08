@@ -680,7 +680,9 @@ mod tests {
 
             assert_eq!(
                 state.validation_error(ConnectionField::SqlitePath),
-                Some("Use a regular file path (in-memory and URI filenames unsupported)")
+                Some(
+                    "In-memory SQLite databases cannot retain contents because sabiql starts sqlite3 per operation; use a temporary file"
+                )
             );
         }
 
@@ -697,7 +699,7 @@ mod tests {
 
             assert_eq!(
                 state.validation_error(ConnectionField::SqlitePath),
-                Some("Use a regular file path (in-memory and URI filenames unsupported)")
+                Some("SQLite URI filenames are not supported; use a regular file path")
             );
         }
 
