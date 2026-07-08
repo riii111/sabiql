@@ -104,6 +104,15 @@ pub mod global {
         combos: &[KeyCombo::plain(Key::Char('f'))],
     };
 
+    pub const LOW_SCROLL: KeyBinding = KeyBinding {
+        key_short: "⌥L",
+        key: "Alt+L",
+        desc_short: "LowScroll",
+        description: "Toggle Low Scroll Mode",
+        action: Action::ToggleLowScroll,
+        combos: &[KeyCombo::alt(Key::Char('L'))],
+    };
+
     pub const PANE_SWITCH: KeyBinding = KeyBinding {
         key_short: "1/2/3",
         key: "1/2/3",
@@ -243,6 +252,7 @@ pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE,
     global::FOCUS,
     global::EXIT_FOCUS,
+    global::LOW_SCROLL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,
@@ -264,6 +274,7 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE_IDE,
     global::FOCUS,
     global::EXIT_FOCUS,
+    global::LOW_SCROLL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,

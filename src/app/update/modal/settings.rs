@@ -42,6 +42,10 @@ pub(super) fn reduce_settings(
             state.settings.stop_custom_browser_edit();
             DispatchResult::handled()
         }
+        Action::SettingsToggleLowScrollScroll => {
+            state.settings.toggle_low_scroll_horizontal();
+            DispatchResult::handled()
+        }
         Action::TextInput {
             target: InputTarget::SettingsErBrowser,
             ch,
@@ -74,6 +78,7 @@ pub(super) fn reduce_settings(
                 theme_id,
                 keymap_preset: state.settings.selected_keymap_preset(),
                 er_browser: state.settings.selected_er_browser(),
+                low_scroll: state.settings.selected_low_scroll(),
             };
             DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
         }
@@ -88,7 +93,10 @@ pub(super) fn reduce_settings(
                 settings.theme_id,
                 settings.keymap_preset,
                 settings.er_browser.clone(),
+                settings.low_scroll,
             );
+            // Reflect the saved Low Scroll settings into the live UI state.
+            state.ui.low_scroll = settings.low_scroll;
             state
                 .messages
                 .set_success_at("Settings saved".to_string(), now);

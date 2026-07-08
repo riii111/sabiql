@@ -28,6 +28,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::model::shared::low_scroll::LowScrollSettings;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::theme_id::ThemeId;
     use crate::ports::outbound::{AppSettings, SettingsStoreError};
@@ -74,6 +75,7 @@ mod tests {
                     theme_id: ThemeId::Light,
                     keymap_preset: KeymapPreset::Ide,
                     er_browser: Some("Firefox".to_string()),
+                    low_scroll: LowScrollSettings::default(),
                 },
             },
             &tx,
@@ -110,6 +112,7 @@ mod tests {
                     theme_id: ThemeId::Light,
                     keymap_preset: KeymapPreset::default(),
                     er_browser: None,
+                    low_scroll: LowScrollSettings::default(),
                 },
             },
             &tx,

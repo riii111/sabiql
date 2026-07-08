@@ -64,6 +64,48 @@ pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
     })
 }
 
+/// Wrap `text` into display-width-bounded lines, preserving explicit
+/// newlines.
+///
+/// Wrapping is greedy by display cells (not words) so columnar data and JSON
+/// fill the cell predictably. Each returned line is at most `width` display
+/// cells wide.
+///
+/// Returns at least one line per input so the cell always occupies a row even
+/// when empty.
+#[must_use]
+pub fn wrap_text_lines(text: &str, width: u16) -> Vec<String> {
+    use unicode_width::UnicodeWidthChar;
+
+    if width == 0 {
+        return vec![String::new()];
+    }
+    let width = width as usize;
+
+    let mut out = Vec::new();
+    for line in text.split('\n') {
+        let mut current = String::new();
+        let mut used = 0usize;
+
+        for ch in line.chars() {
+            let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used + w > width && !current.is_empty() {
+                out.push(std::mem::take(&mut current));
+                used = 0;
+            }
+            current.push(ch);
+            used += w;
+        }
+
+        out.push(current);
+    }
+
+    if out.is_empty() {
+        out.push(String::new());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +205,78 @@ mod tests {
         #[case("あいう", 4, 2)]
         fn counts_wrapped_lines(#[case] text: &str, #[case] width: u16, #[case] expected: u16) {
             assert_eq!(wrapped_line_count(text, width), expected);
+        }
+    }
+
+    mod wrap_text_lines_tests {
+        use super::super::wrap_text_lines;
+        use rstest::rstest;
+        use unicode_width::UnicodeWidthStr;
+
+        #[test]
+        fn short_text_single_line() {
+            let lines = wrap_text_lines("hello", 10);
+
+            assert_eq!(lines, vec!["hello".to_string()]);
+        }
+
+        #[test]
+        fn wraps_greedily_by_display_width() {
+            let lines = wrap_text_lines("hello world", 5);
+
+            assert_eq!(
+                lines,
+                vec!["hello".to_string(), " worl".to_string(), "d".to_string()]
+            );
+        }
+
+        #[test]
+        fn preserves_explicit_newlines() {
+            let lines = wrap_text_lines("a\nb\nc", 10);
+
+            assert_eq!(
+                lines,
+                vec!["a".to_string(), "b".to_string(), "c".to_string()]
+            );
+        }
+
+        #[test]
+        fn empty_returns_single_empty_line() {
+            let lines = wrap_text_lines("", 10);
+
+            assert_eq!(lines, vec![String::new()]);
+        }
+
+        #[test]
+        fn zero_width_returns_single_empty_line() {
+            let lines = wrap_text_lines("hello", 0);
+
+            assert_eq!(lines, vec![String::new()]);
+        }
+
+        #[rstest]
+        #[case("hello world foo", 5)]
+        #[case("a\nb\nc", 10)]
+        #[case("こんにちは世界", 4)]
+        fn every_line_within_width(#[case] text: &str, #[case] width: u16) {
+            let lines = wrap_text_lines(text, width);
+
+            for line in &lines {
+                assert!(
+                    UnicodeWidthStr::width(line.as_str()) <= width as usize,
+                    "line {:?} exceeds width {}",
+                    line,
+                    width
+                );
+            }
+        }
+
+        #[test]
+        fn cjk_wraps_by_display_cells() {
+            let lines = wrap_text_lines("あいう", 4);
+
+            // each CJK char is 2 cells: "あい" (4) | "う" (2)
+            assert_eq!(lines, vec!["あい".to_string(), "う".to_string()]);
         }
     }
 }

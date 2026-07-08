@@ -117,6 +117,7 @@ impl AppState {
         }
         self.ui.result_viewport_plan = output.result_viewport_plan;
         self.ui.result_widths_cache = output.result_widths_cache;
+        self.result_interaction.cell_vertical_offset = output.result_cell_vertical_offset;
         self.ui.explorer_pane_height = output.explorer_pane_height;
         self.ui.explorer_content_width = output.explorer_content_width;
         let max_name_width = self
@@ -129,6 +130,7 @@ impl AppState {
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = output.inspector_pane_height;
         self.ui.result_pane_height = output.result_pane_height;
+        self.ui.result_low_scroll_layout = output.result_low_scroll_layout;
         if let Some(width) = output.command_line_visible_width {
             self.command_line_visible_width = width;
         }

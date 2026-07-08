@@ -768,6 +768,17 @@ pub mod settings {
         }],
     };
 
+    pub const TOGGLE: ModeRow = ModeRow {
+        key_short: "Space",
+        key: "Space",
+        desc_short: "Toggle",
+        description: "Toggle on/off (Low Scroll)",
+        bindings: &[ExecBinding {
+            action: Action::SettingsToggleLowScrollScroll,
+            combos: &[KeyCombo::plain(Key::Char(' '))],
+        }],
+    };
+
     pub const SECTION: ModeRow = ModeRow {
         key_short: "Tab/⇧Tab",
         key: "Tab / Shift+Tab",
@@ -801,6 +812,7 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
     settings::APPLY,
     settings::SELECT,
     settings::EDIT,
+    settings::TOGGLE,
     settings::SECTION,
     settings::CANCEL,
 ];

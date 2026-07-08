@@ -45,6 +45,7 @@ impl SettingsOverlay {
         match state.settings.section() {
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
             SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
+            SettingsSection::LowScroll => Self::render_low_scroll(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
         }
     }
@@ -143,6 +144,71 @@ impl SettingsOverlay {
                 style,
             )));
         }
+
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
+    }
+
+    fn render_low_scroll(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let low_scroll = state.settings.selected_low_scroll();
+
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Low Scroll Mode",
+                Style::default()
+                    .fg(theme.semantic.text.primary)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Fit results without a horizontal scrollbar.",
+                Style::default().fg(theme.semantic.text.secondary),
+            )),
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Allow horizontal scroll",
+                Style::default().fg(theme.semantic.text.primary),
+            )),
+            Line::raw(""),
+        ];
+
+        let scroll_label = if low_scroll.allow_horizontal_scroll {
+            "on (default widths)"
+        } else {
+            "off (columns shrink to fit)"
+        };
+        let scroll_style = if low_scroll.allow_horizontal_scroll {
+            Style::default().fg(theme.semantic.text.secondary)
+        } else {
+            theme.picker_selected_style()
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(format!("[Space] {scroll_label}"), scroll_style),
+        ]));
+
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "Max lines per row",
+            Style::default().fg(theme.semantic.text.primary),
+        )));
+        lines.push(Line::raw(""));
+        let lines_label = match low_scroll.max_lines_per_row {
+            None => "no limit".to_string(),
+            Some(n) => format!("{n} lines"),
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("[j/k] {lines_label}"),
+                theme.picker_selected_style(),
+            ),
+        ]));
+
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "Toggle Low Scroll Mode at any time with L.",
+            Style::default().fg(theme.semantic.text.muted),
+        )));
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }

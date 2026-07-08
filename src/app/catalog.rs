@@ -302,6 +302,7 @@ fn reference_sections(keymap_preset: KeymapPreset) -> Vec<HelpSection> {
                 command_palette(keymap_preset),
                 &global::COMMAND_LINE,
                 &global::FOCUS,
+                &global::LOW_SCROLL,
                 read_only(keymap_preset),
             ]),
         ),

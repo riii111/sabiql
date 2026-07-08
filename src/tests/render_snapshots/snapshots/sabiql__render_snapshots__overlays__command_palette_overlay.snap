@@ -21,15 +21,15 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││  Ctrl+P             Open Table Picker                                           │                                        │
 │                                       ││  ,                  Open Settings                                               │                                        │
 │                                       ││  f                  Toggle Focus mode                                           │                                        │
+│                                       ││  Alt+L              Toggle Low Scroll Mode                                      │                                        │
 │                                       ││  r                  Reload metadata                                             │                                        │
 │                                       ││  s                  Open SQL Editor                                             │                                        │
 │                                       ││  e                  Open ER Diagram                                             │                                        │
 │                                       ││  c                  Open Connection Selector                                    │                                        │
-│                                       ││  Ctrl+E             Export result to CSV                                        │                                        │
-│                                       ││  Ctrl+R             Enable Read-Only mode                                       │────────────────────────────────────────┘
-│                                       ││  Ctrl+R             Disable Read-Only mode                                      │────────────────────────────────────────┐
+│                                       ││  Ctrl+E             Export result to CSV                                        │────────────────────────────────────────┘
+│                                       ││  Ctrl+R             Enable Read-Only mode                                       │────────────────────────────────────────┐
+│                                       ││  Ctrl+R             Disable Read-Only mode                                      │                                        │
 │                                       ││  Ctrl+O             Open Query History                                          │                                        │
-│                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │
 │                                       ││                                                                                 │                                        │

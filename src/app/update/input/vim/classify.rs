@@ -69,6 +69,9 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
             Key::Char('u') => Some(VimNavigation::HalfPageUp),
             Key::Char('f') => Some(VimNavigation::FullPageDown),
             Key::Char('b') => Some(VimNavigation::FullPageUp),
+            // Scroll within a truncated cell instead of moving row/viewport.
+            Key::Char('j') | Key::Down => Some(VimNavigation::ScrollCellDown),
+            Key::Char('k') | Key::Up => Some(VimNavigation::ScrollCellUp),
             _ => None,
         };
     }
@@ -194,6 +197,18 @@ mod tests {
     fn word_navigation_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
         assert_eq!(
             classify_command(&combo(key)),
+            Some(VimCommand::Navigation(expected))
+        );
+    }
+
+    #[rstest]
+    #[case(Key::Char('j'), VimNavigation::ScrollCellDown)]
+    #[case(Key::Down, VimNavigation::ScrollCellDown)]
+    #[case(Key::Char('k'), VimNavigation::ScrollCellUp)]
+    #[case(Key::Up, VimNavigation::ScrollCellUp)]
+    fn ctrl_cell_scroll_aliases(#[case] key: Key, #[case] expected: VimNavigation) {
+        assert_eq!(
+            classify_command(&combo_ctrl(key)),
             Some(VimCommand::Navigation(expected))
         );
     }

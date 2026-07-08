@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 485
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -20,8 +19,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │ER Diagram                                                                    │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │  > ER Diagram    │Browser                                                                       │                                │
-│                                │                  │                                                                              │                                │
+│                                │    Low Scroll    │Browser                                                                       │                                │
+│                                │  > ER Diagram    │                                                                              │                                │
 │                                │                  │  > System default     saved                                                  │                                │
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │

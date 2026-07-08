@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::model::shared::low_scroll::LowScrollSettings;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::shared::theme_id::ThemeId;
 
@@ -8,6 +9,7 @@ pub struct AppSettings {
     pub theme_id: ThemeId,
     pub keymap_preset: KeymapPreset,
     pub er_browser: Option<String>,
+    pub low_scroll: LowScrollSettings,
 }
 
 impl Default for AppSettings {
@@ -16,6 +18,7 @@ impl Default for AppSettings {
             theme_id: ThemeId::Default,
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
+            low_scroll: LowScrollSettings::default(),
         }
     }
 }

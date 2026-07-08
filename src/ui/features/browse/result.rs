@@ -11,6 +11,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::low_scroll::{self as low_scroll_layout, LowScrollSettings};
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -23,6 +24,18 @@ use crate::primitives::utils::text_utils::{
 use crate::theme::ThemePalette;
 
 pub struct ResultPane;
+
+/// Geometry the result pane measures during a draw and writes back to the
+/// model. Replaces a growing tuple return from `ResultPane::render`.
+pub struct RenderedResultGeometry {
+    pub plan: ViewportPlan,
+    pub widths_cache: ColumnWidthsCache,
+    /// Corrected/clamped `cell_vertical_offset` for the active cell.
+    pub cell_vertical_offset: usize,
+    /// Low Scroll Mode layout (per-row line heights), or `None` when the mode
+    /// is off. Drives line-based scroll math in the reducer.
+    pub low_scroll_layout: Option<low_scroll_layout::MeasuredLowScrollLayout>,
+}
 
 struct EditingCellView<'a> {
     row: usize,
@@ -42,7 +55,10 @@ struct ResultTableParams<'a> {
     editing_cell: Option<EditingCellView<'a>>,
     staged_delete_rows: &'a BTreeSet<usize>,
     yank_flash: Option<YankFlash>,
+    cell_vertical_offset: usize,
     now: Instant,
+    low_scroll: LowScrollSettings,
+    low_scroll_enabled: bool,
 }
 
 impl ResultPane {
@@ -52,7 +68,7 @@ impl ResultPane {
         state: &AppState,
         now: Instant,
         theme: &ThemePalette,
-    ) -> (ViewportPlan, ColumnWidthsCache) {
+    ) -> RenderedResultGeometry {
         let is_focused = state.ui.focused_pane == FocusedPane::Result;
         let should_highlight = state
             .query
@@ -64,7 +80,12 @@ impl ResultPane {
 
         let block = panel_block_highlight(&title, is_focused, should_highlight, theme);
 
-        let default_result = || (ViewportPlan::default(), ColumnWidthsCache::default());
+        let default_result = || RenderedResultGeometry {
+            plan: ViewportPlan::default(),
+            widths_cache: ColumnWidthsCache::default(),
+            cell_vertical_offset: 0,
+            low_scroll_layout: None,
+        };
 
         if let Some(result) = result {
             if result.is_error() {
@@ -98,7 +119,10 @@ impl ResultPane {
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
                         yank_flash: state.result_interaction.yank_flash,
+                        cell_vertical_offset: state.result_interaction.cell_vertical_offset,
                         now,
+                        low_scroll: state.ui.low_scroll,
+                        low_scroll_enabled: state.ui.low_scroll_enabled,
                     },
                     theme,
                 )
@@ -172,7 +196,7 @@ impl ResultPane {
         block: Block,
         params: ResultTableParams,
         theme: &ThemePalette,
-    ) -> (ViewportPlan, ColumnWidthsCache) {
+    ) -> RenderedResultGeometry {
         let ResultTableParams {
             scroll_offset,
             horizontal_offset,
@@ -183,13 +207,21 @@ impl ResultPane {
             editing_cell,
             staged_delete_rows,
             yank_flash,
+            cell_vertical_offset,
             now,
+            low_scroll,
+            low_scroll_enabled,
         } = params;
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
         if result.columns.is_empty() {
-            return (ViewportPlan::default(), ColumnWidthsCache::default());
+            return RenderedResultGeometry {
+                plan: ViewportPlan::default(),
+                widths_cache: ColumnWidthsCache::default(),
+                cell_vertical_offset: 0,
+                low_scroll_layout: None,
+            };
         }
 
         let cached = stored_cache.is_valid(result_generation);
@@ -223,6 +255,74 @@ impl ResultPane {
             )
         };
 
+        // Low Scroll Mode: when enabled and the result would overflow
+        // horizontally, shrink columns to fit and wrap cell text vertically
+        // instead of scrolling.
+        //
+        // `ideal_widths` above is deliberately based on each cell's first line
+        // only (the normal view truncates to one line anyway). Low Scroll Mode
+        // wraps the *whole* cell, so a column's width must be judged by its
+        // widest line overall — otherwise multi-line content whose first line
+        // is short (e.g. `jsonb_pretty()` output starting with `{`) gets
+        // squeezed into a near-zero-width column instead of one sized to fit
+        // its actual content.
+        let low_scroll_ideal_widths = low_scroll_enabled
+            .then(|| calculate_low_scroll_ideal_widths(&result.columns, &result.rows));
+        let low_scroll_widths = low_scroll_ideal_widths.as_deref().unwrap_or(ideal_widths);
+
+        // Low Scroll Mode, once toggled on (`L`), always wraps multi-line cell
+        // content vertically instead of clipping it to a single line — that's
+        // true whether or not horizontal scrolling is also allowed. The
+        // "Allow horizontal scroll" setting only decides how column *width* is
+        // handled: shrink every column to fit the pane (no horizontal
+        // scrolling), or keep natural widths and let the user scroll
+        // horizontally like the normal table.
+        let effective = effective_low_scroll(low_scroll, low_scroll_enabled);
+        if low_scroll_enabled {
+            let (plan, cell_vertical_offset, measured_layout) = if effective.allow_horizontal_scroll
+            {
+                Self::render_low_scroll_table_scrollable(
+                    frame,
+                    inner,
+                    result,
+                    low_scroll_widths,
+                    min_widths,
+                    horizontal_offset,
+                    effective,
+                    scroll_offset,
+                    selection,
+                    editing_cell.as_ref(),
+                    staged_delete_rows,
+                    yank_flash,
+                    cell_vertical_offset,
+                    now,
+                    theme,
+                )
+            } else {
+                Self::render_low_scroll_table(
+                    frame,
+                    inner,
+                    result,
+                    low_scroll_widths,
+                    effective,
+                    scroll_offset,
+                    selection,
+                    editing_cell.as_ref(),
+                    staged_delete_rows,
+                    yank_flash,
+                    cell_vertical_offset,
+                    now,
+                    theme,
+                )
+            };
+            return RenderedResultGeometry {
+                plan,
+                widths_cache,
+                cell_vertical_offset,
+                low_scroll_layout: Some(measured_layout),
+            };
+        }
+
         let clamped_offset = horizontal_offset.min(plan.max_offset);
 
         let config = ColumnWidthConfig {
@@ -238,7 +338,12 @@ impl ResultPane {
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
-            return (plan, widths_cache);
+            return RenderedResultGeometry {
+                plan,
+                widths_cache,
+                cell_vertical_offset: 0,
+                low_scroll_layout: None,
+            };
         }
 
         let widths: Vec<Constraint> = viewport_widths
@@ -395,33 +500,465 @@ impl ResultPane {
             theme,
         );
 
-        (plan, widths_cache)
+        RenderedResultGeometry {
+            plan,
+            widths_cache,
+            cell_vertical_offset: 0,
+            low_scroll_layout: None,
+        }
     }
-}
 
-pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
-    use unicode_width::UnicodeWidthStr;
+    /// Render the result table in Low Scroll Mode: all columns fit within
+    /// `inner.width`, cell text wraps, and rows expand vertically.
+    ///
+    /// Returns the (unused) viewport plan so the caller can keep a consistent
+    /// return shape; low-scroll never produces a horizontal scrollbar.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "mirrors the normal render_table signature"
+    )]
+    fn render_low_scroll_table(
+        frame: &mut Frame,
+        inner: Rect,
+        result: &QueryResult,
+        ideal_widths: &[u16],
+        settings: LowScrollSettings,
+        scroll_offset: usize,
+        selection: &ResultSelection,
+        editing_cell: Option<&EditingCellView<'_>>,
+        staged_delete_rows: &BTreeSet<usize>,
+        yank_flash: Option<YankFlash>,
+        cell_vertical_offset: usize,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> (
+        ViewportPlan,
+        usize,
+        low_scroll_layout::MeasuredLowScrollLayout,
+    ) {
+        let layout = low_scroll_layout::compute_layout(
+            &result.columns,
+            &result.rows,
+            ideal_widths,
+            inner.width,
+            &settings,
+            PADDING,
+        );
 
-    const SAMPLE_ROWS: usize = 50;
+        // Per-row line heights for every row, handed back to the scroll reducer
+        // so it can keep the selected row on screen with line-based math.
+        let measured_layout = low_scroll_layout::MeasuredLowScrollLayout {
+            row_heights: layout.rows.iter().map(|r| r.height).collect(),
+        };
 
-    headers
-        .iter()
-        .enumerate()
-        .map(|(col_idx, header)| {
-            let mut max_width = UnicodeWidthStr::width(header.as_str());
+        let widths: Vec<Constraint> = layout
+            .columns
+            .iter()
+            .map(|c| Constraint::Length(c.width))
+            .collect();
 
-            let sample_size = rows.len().min(SAMPLE_ROWS);
-            for row in rows.iter().take(sample_size) {
-                if let Some(cell) = row.get(col_idx) {
-                    let first_line = cell.lines().next().unwrap_or(cell);
-                    max_width = max_width.max(UnicodeWidthStr::width(first_line));
-                }
+        let header = Row::new(result.columns.iter().map(|c| Cell::from(c.clone())))
+            .style(
+                Style::default()
+                    .add_modifier(Modifier::UNDERLINED)
+                    .add_modifier(Modifier::BOLD)
+                    .fg(theme.semantic.text.primary),
+            )
+            .height(1);
+
+        let active_row = selection.row();
+        let active_cell = selection.cell();
+        let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
+        let mut corrected_cell_vertical_offset = 0usize;
+
+        // Visible row budget in terminal lines. Because rows have variable
+        // heights, we walk rows from the scroll offset accumulating height
+        // until the pane is full.
+        let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
+        let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
+        let mut used = 0usize;
+        for (abs_idx, row_layout) in layout.rows.iter().enumerate() {
+            if abs_idx < scroll_offset {
+                continue;
             }
+            let h = row_layout.height as usize;
+            if used + h > line_budget && used > 0 {
+                break;
+            }
+            visible.push((abs_idx, h));
+            used += h;
+        }
 
-            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
-            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
-        })
-        .collect()
+        let rows: Vec<Row> = visible
+            .iter()
+            .map(|&(abs_row_idx, height)| {
+                let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
+                let is_active_row = active_row == Some(abs_row_idx);
+                let flash_scope = yank_flash
+                    .filter(|f| yank_flash_active && f.row == abs_row_idx)
+                    .map(|f| f.col);
+                let is_row_flash = flash_scope == Some(None);
+                let row_bg = if is_row_flash {
+                    Some(theme.component.feedback.yank_flash_bg)
+                } else if is_staged_for_delete {
+                    Some(theme.component.table.staged_delete_bg)
+                } else if is_active_row {
+                    Some(theme.component.table.result_row_active_bg)
+                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
+                    Some(theme.component.table.striped_row_bg)
+                } else {
+                    None
+                };
+
+                let row_data = &result.rows[abs_row_idx];
+                let cells: Vec<Cell> = layout
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .map(|(col_idx, col)| {
+                        let val = row_data.get(col_idx).map_or("", String::as_str);
+                        let is_editing =
+                            editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == col_idx);
+                        let mut cell = if is_editing {
+                            // Editing falls back to a single-line view to keep
+                            // the cursor math consistent with the normal path.
+                            let e = editing_cell.expect("checked above");
+                            let display = truncate_cell(e.draft, col.width as usize);
+                            Cell::from(display).style(
+                                Style::default()
+                                    .bg(theme.component.table.result_cell_active_bg)
+                                    .fg(theme.component.table.cell_edit_fg),
+                            )
+                        } else {
+                            let skip = if is_active_row && active_cell == Some(col_idx) {
+                                let clamped = clamp_cell_vertical_offset(
+                                    val,
+                                    col.width,
+                                    settings.max_lines_per_row,
+                                    cell_vertical_offset,
+                                );
+                                corrected_cell_vertical_offset = clamped;
+                                clamped
+                            } else {
+                                0
+                            };
+                            let lines = wrapped_cell_lines(
+                                val,
+                                col.width,
+                                settings.max_lines_per_row,
+                                skip,
+                            );
+                            Cell::from(lines)
+                        };
+
+                        if !is_editing {
+                            if is_row_flash || flash_scope == Some(Some(col_idx)) {
+                                cell = cell.style(
+                                    Style::default()
+                                        .fg(theme.component.feedback.yank_flash_fg)
+                                        .bg(theme.component.feedback.yank_flash_bg),
+                                );
+                            } else if is_staged_for_delete {
+                                cell = cell.style(
+                                    Style::default().fg(theme.component.table.staged_delete_fg),
+                                );
+                            } else if is_active_row && active_cell == Some(col_idx) {
+                                cell = cell.style(
+                                    Style::default()
+                                        .bg(theme.component.table.result_cell_active_bg),
+                                );
+                            }
+                        }
+                        cell
+                    })
+                    .collect();
+
+                let mut r = Row::new(cells).height(height.max(1) as u16);
+                if let Some(bg) = row_bg {
+                    r = r.style(Style::default().bg(bg));
+                }
+                r
+            })
+            .collect();
+
+        let table = Table::new(rows, widths)
+            .header(header)
+            .style(Style::default().fg(theme.semantic.text.primary));
+        frame.render_widget(table, inner);
+
+        // Vertical scroll only; no horizontal scrollbar in low-scroll mode.
+        use crate::primitives::atoms::scroll_indicator::{
+            VerticalScrollParams, render_vertical_scroll_indicator_bar,
+        };
+        render_vertical_scroll_indicator_bar(
+            frame,
+            inner,
+            VerticalScrollParams {
+                position: scroll_offset,
+                viewport_size: visible.len(),
+                total_items: result.rows.len(),
+                has_horizontal_scrollbar: false,
+            },
+            theme,
+        );
+
+        (
+            ViewportPlan::default(),
+            corrected_cell_vertical_offset,
+            measured_layout,
+        )
+    }
+
+    /// Render the result table in Low Scroll Mode with horizontal scrolling
+    /// allowed: columns keep their natural (unshrunk) widths and the user can
+    /// scroll horizontally like the normal table, but cell text still wraps
+    /// vertically and rows expand to fit whatever is currently visible.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "mirrors the normal render_table signature"
+    )]
+    fn render_low_scroll_table_scrollable(
+        frame: &mut Frame,
+        inner: Rect,
+        result: &QueryResult,
+        ideal_widths: &[u16],
+        min_widths: &[u16],
+        horizontal_offset: usize,
+        settings: LowScrollSettings,
+        scroll_offset: usize,
+        selection: &ResultSelection,
+        editing_cell: Option<&EditingCellView<'_>>,
+        staged_delete_rows: &BTreeSet<usize>,
+        yank_flash: Option<YankFlash>,
+        cell_vertical_offset: usize,
+        now: Instant,
+        theme: &ThemePalette,
+    ) -> (
+        ViewportPlan,
+        usize,
+        low_scroll_layout::MeasuredLowScrollLayout,
+    ) {
+        let plan = ViewportPlan::calculate(ideal_widths, min_widths, inner.width);
+        let clamped_offset = horizontal_offset.min(plan.max_offset);
+
+        // Per-row line heights for every row (computed against the natural
+        // widths every column keeps in this path), handed back to the scroll
+        // reducer for line-based visibility math.
+        let row_heights: Vec<u16> = result
+            .rows
+            .iter()
+            .map(|row| {
+                low_scroll_layout::row_layout(
+                    row,
+                    ideal_widths,
+                    PADDING,
+                    settings.max_lines_per_row,
+                )
+                .height
+            })
+            .collect();
+        let measured_layout = low_scroll_layout::MeasuredLowScrollLayout {
+            row_heights: row_heights.clone(),
+        };
+
+        let config = ColumnWidthConfig {
+            ideal_widths,
+            min_widths,
+        };
+        let ctx = SelectionContext {
+            horizontal_offset: clamped_offset,
+            available_width: inner.width,
+            fixed_count: Some(plan.column_count),
+            max_offset: plan.max_offset,
+        };
+        let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
+
+        if viewport_indices.is_empty() {
+            return (plan, 0, measured_layout);
+        }
+
+        let widths: Vec<Constraint> = viewport_widths
+            .iter()
+            .map(|&w| Constraint::Length(w))
+            .collect();
+
+        let header = Row::new(viewport_indices.iter().map(|&idx| {
+            let col_name = result.columns.get(idx).map_or("", String::as_str);
+            Cell::from(col_name.to_string())
+        }))
+        .style(
+            Style::default()
+                .add_modifier(Modifier::UNDERLINED)
+                .add_modifier(Modifier::BOLD)
+                .fg(theme.semantic.text.primary),
+        )
+        .height(1);
+
+        let active_row = selection.row();
+        let active_cell = selection.cell();
+        let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
+        let mut corrected_cell_vertical_offset = 0usize;
+
+        // Row height is computed from every column in the row (via
+        // `ideal_widths`, which every column keeps in this render path since
+        // nothing is shrunk to fit) so it stays stable as the user scrolls
+        // horizontally past a taller off-screen cell.
+        let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
+        let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
+        let mut used = 0usize;
+        for (abs_idx, &h16) in row_heights.iter().enumerate() {
+            if abs_idx < scroll_offset {
+                continue;
+            }
+            let h = h16 as usize;
+            if used + h > line_budget && used > 0 {
+                break;
+            }
+            visible.push((abs_idx, h));
+            used += h;
+        }
+
+        let rows: Vec<Row> = visible
+            .iter()
+            .map(|&(abs_row_idx, height)| {
+                let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
+                let is_active_row = active_row == Some(abs_row_idx);
+                let flash_scope = yank_flash
+                    .filter(|f| yank_flash_active && f.row == abs_row_idx)
+                    .map(|f| f.col);
+                let is_row_flash = flash_scope == Some(None);
+                let row_bg = if is_row_flash {
+                    Some(theme.component.feedback.yank_flash_bg)
+                } else if is_staged_for_delete {
+                    Some(theme.component.table.staged_delete_bg)
+                } else if is_active_row {
+                    Some(theme.component.table.result_row_active_bg)
+                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
+                    Some(theme.component.table.striped_row_bg)
+                } else {
+                    None
+                };
+
+                let row_data = &result.rows[abs_row_idx];
+                let cells: Vec<Cell> = viewport_indices
+                    .iter()
+                    .zip(viewport_widths.iter())
+                    .map(|(&orig_idx, &col_width)| {
+                        let val = row_data.get(orig_idx).map_or("", String::as_str);
+                        let is_editing_cell =
+                            editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
+                        let mut cell = if is_editing_cell {
+                            let e = editing_cell.expect("checked above");
+                            if e.actively_editing {
+                                let line = cell_edit_line_with_cursor(
+                                    e.draft,
+                                    e.cursor,
+                                    col_width as usize,
+                                    theme,
+                                );
+                                Cell::from(line).style(
+                                    Style::default()
+                                        .bg(theme.component.table.result_cell_active_bg)
+                                        .fg(theme.component.table.cell_edit_fg),
+                                )
+                            } else {
+                                let display = truncate_cell(e.draft, col_width as usize);
+                                Cell::from(display).style(
+                                    Style::default()
+                                        .bg(theme.component.table.result_cell_active_bg)
+                                        .fg(theme.semantic.status.pending),
+                                )
+                            }
+                        } else {
+                            let skip = if is_active_row && active_cell == Some(orig_idx) {
+                                let clamped = clamp_cell_vertical_offset(
+                                    val,
+                                    col_width,
+                                    settings.max_lines_per_row,
+                                    cell_vertical_offset,
+                                );
+                                corrected_cell_vertical_offset = clamped;
+                                clamped
+                            } else {
+                                0
+                            };
+                            let lines = wrapped_cell_lines(
+                                val,
+                                col_width,
+                                settings.max_lines_per_row,
+                                skip,
+                            );
+                            Cell::from(lines)
+                        };
+
+                        if !is_editing_cell {
+                            if is_row_flash || flash_scope == Some(Some(orig_idx)) {
+                                cell = cell.style(
+                                    Style::default()
+                                        .fg(theme.component.feedback.yank_flash_fg)
+                                        .bg(theme.component.feedback.yank_flash_bg),
+                                );
+                            } else if is_staged_for_delete {
+                                cell = cell.style(
+                                    Style::default().fg(theme.component.table.staged_delete_fg),
+                                );
+                            } else if is_active_row && active_cell == Some(orig_idx) {
+                                cell = cell.style(
+                                    Style::default()
+                                        .bg(theme.component.table.result_cell_active_bg),
+                                );
+                            }
+                        }
+                        cell
+                    })
+                    .collect();
+
+                let mut r = Row::new(cells).height(height.max(1) as u16);
+                if let Some(bg) = row_bg {
+                    r = r.style(Style::default().bg(bg));
+                }
+                r
+            })
+            .collect();
+
+        let table = Table::new(rows, widths)
+            .header(header)
+            .style(Style::default().fg(theme.semantic.text.primary));
+        frame.render_widget(table, inner);
+
+        let total_rows = result.rows.len();
+        let total_cols = result.columns.len();
+
+        use crate::primitives::atoms::scroll_indicator::{
+            HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
+            render_vertical_scroll_indicator_bar,
+        };
+        let has_h_scroll = plan.has_horizontal_scroll();
+        render_vertical_scroll_indicator_bar(
+            frame,
+            inner,
+            VerticalScrollParams {
+                position: scroll_offset,
+                viewport_size: visible.len(),
+                total_items: total_rows,
+                has_horizontal_scrollbar: has_h_scroll,
+            },
+            theme,
+        );
+        render_horizontal_scroll_indicator(
+            frame,
+            inner,
+            HorizontalScrollParams {
+                position: clamped_offset,
+                viewport_size: plan.indicator_viewport_size(),
+                total_items: total_cols,
+                label: "col",
+            },
+            theme,
+        );
+
+        (plan, corrected_cell_vertical_offset, measured_layout)
+    }
 }
 
 // TODO: cursor windowing is char-based; editing a CJK cell can render wider
@@ -458,6 +995,142 @@ fn cell_edit_line_with_cursor(
 fn truncate_cell(s: &str, max_width: usize) -> String {
     let first_line = s.lines().next().unwrap_or(s);
     truncate_to_width(first_line, max_width)
+}
+
+pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
+    const SAMPLE_ROWS: usize = 50;
+
+    headers
+        .iter()
+        .enumerate()
+        .map(|(col_idx, header)| {
+            let mut max_width = UnicodeWidthStr::width(header.as_str());
+
+            let sample_size = rows.len().min(SAMPLE_ROWS);
+            for row in rows.iter().take(sample_size) {
+                if let Some(cell) = row.get(col_idx) {
+                    let first_line = cell.lines().next().unwrap_or(cell);
+                    max_width = max_width.max(UnicodeWidthStr::width(first_line));
+                }
+            }
+
+            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
+            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+        })
+        .collect()
+}
+
+/// Like `calculate_ideal_widths`, but sizes each column by the widest *line*
+/// across the whole cell rather than just the first line. Low Scroll Mode
+/// wraps and displays every line, so its width budgeting needs to reflect the
+/// full multi-line content (e.g. `jsonb_pretty()` output, which often starts
+/// with a lone `{` far shorter than the lines that follow).
+pub(crate) fn calculate_low_scroll_ideal_widths(
+    headers: &[String],
+    rows: &[Vec<String>],
+) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
+    const SAMPLE_ROWS: usize = 50;
+
+    headers
+        .iter()
+        .enumerate()
+        .map(|(col_idx, header)| {
+            let mut max_width = UnicodeWidthStr::width(header.as_str());
+
+            let sample_size = rows.len().min(SAMPLE_ROWS);
+            for row in rows.iter().take(sample_size) {
+                if let Some(cell) = row.get(col_idx) {
+                    for line in cell.lines() {
+                        max_width = max_width.max(UnicodeWidthStr::width(line));
+                    }
+                }
+            }
+
+            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
+            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
+        })
+        .collect()
+}
+
+/// The runtime-effective Low Scroll settings for the result pane: the
+/// persisted config only applies when the runtime toggle (`L`) is on; when off,
+/// horizontal scrolling is always allowed so the normal viewport path runs.
+fn effective_low_scroll(settings: LowScrollSettings, enabled: bool) -> LowScrollSettings {
+    if enabled {
+        settings
+    } else {
+        LowScrollSettings {
+            allow_horizontal_scroll: true,
+            max_lines_per_row: settings.max_lines_per_row,
+        }
+    }
+}
+
+/// The number of additional wrapped lines available below `cell_vertical_offset`
+/// for the active cell, clamped to what the cell's content actually has (0 when
+/// the cap doesn't truncate it, since there is nothing to scroll into).
+fn clamp_cell_vertical_offset(
+    text: &str,
+    col_width: u16,
+    max_lines_per_row: Option<u16>,
+    offset: usize,
+) -> usize {
+    let Some(cap) = max_lines_per_row else {
+        return 0;
+    };
+    let total = LowScrollSettings::wrapped_cell_lines(text, col_width, PADDING) as usize;
+    offset.min(total.saturating_sub(cap as usize))
+}
+
+/// Wrap a cell's text into ratatui lines for Low Scroll Mode, applying the
+/// optional row cap with a trailing "..." on the last line when truncated.
+/// `skip` drops that many wrapped lines from the top first (scrolling into a
+/// truncated cell).
+fn wrapped_cell_lines(
+    text: &str,
+    col_width: u16,
+    max_lines: Option<u16>,
+    skip: usize,
+) -> Vec<Line<'static>> {
+    let wrap_width = LowScrollSettings::effective_wrap_width(col_width, PADDING);
+    let mut lines = crate::primitives::utils::text_utils::wrap_text_lines(text, wrap_width);
+
+    if skip > 0 {
+        lines.drain(..skip.min(lines.len()));
+    }
+
+    if let Some(cap) = max_lines {
+        let cap = cap as usize;
+        if lines.len() > cap {
+            lines.truncate(cap);
+            if let Some(last) = lines.last_mut() {
+                append_ellipsis(last, wrap_width);
+            }
+        }
+    }
+
+    lines.into_iter().map(Line::from).collect()
+}
+
+/// Append "..." to `line`, trimming it first if needed so the result never
+/// exceeds `width` display cells.
+fn append_ellipsis(line: &mut String, width: u16) {
+    let ellipsis = "...";
+    let max = width as usize;
+    let current = unicode_width::UnicodeWidthStr::width(line.as_str());
+    let ellipsis_width = unicode_width::UnicodeWidthStr::width(ellipsis);
+    if current + ellipsis_width <= max {
+        line.push_str(ellipsis);
+        return;
+    }
+    let budget = max.saturating_sub(ellipsis_width);
+    let trimmed = crate::primitives::utils::text_utils::take_within_width(line, budget);
+    *line = trimmed;
+    line.push_str(ellipsis);
 }
 
 #[cfg(test)]
@@ -571,6 +1244,28 @@ mod tests {
             assert_eq!(result[1], 15);
             // email: max(5, 17) + 2 = 19
             assert_eq!(result[2], 19);
+        }
+    }
+
+    mod calculate_low_scroll_ideal_widths_tests {
+        use super::*;
+
+        #[test]
+        fn considers_widest_line_not_just_first() {
+            // Mirrors jsonb_pretty() output: first line is a lone "{" but a
+            // later line is much wider. The normal ideal-width calc would
+            // size this column at 3-4 cells; low-scroll must not.
+            let headers = vec!["data".to_string()];
+            let rows = vec![vec![
+                "{\n    \"name\": \"a very long value here\"\n}".to_string(),
+            ]];
+
+            let ideal = calculate_ideal_widths(&headers, &rows);
+            let low_scroll = calculate_low_scroll_ideal_widths(&headers, &rows);
+
+            assert!(low_scroll[0] > ideal[0]);
+            // widest line is `    "name": "a very long value here"` = 36 chars + 2 padding
+            assert_eq!(low_scroll[0], 38);
         }
     }
 
@@ -711,5 +1406,59 @@ mod tests {
             cached.as_micros() as f64 / iterations as f64,
             baseline.as_secs_f64() / cached.as_secs_f64(),
         );
+    }
+
+    mod cell_vertical_scroll {
+        use super::*;
+
+        #[test]
+        fn wrapped_cell_lines_skip_drops_leading_lines() {
+            let lines = wrapped_cell_lines("a\nb\nc\nd", 10, None, 2);
+
+            assert_eq!(lines.len(), 2);
+        }
+
+        #[test]
+        fn wrapped_cell_lines_skip_beyond_len_returns_empty() {
+            let lines = wrapped_cell_lines("a\nb", 10, None, 10);
+
+            assert!(lines.is_empty());
+        }
+
+        #[test]
+        fn wrapped_cell_lines_skip_still_caps_and_ellipsizes() {
+            let lines = wrapped_cell_lines("a\nb\nc\nd\ne", 10, Some(2), 1);
+
+            assert_eq!(lines.len(), 2);
+        }
+
+        #[test]
+        fn clamp_offset_is_zero_when_no_cap() {
+            let clamped = clamp_cell_vertical_offset("a\nb\nc\nd", 10, None, 5);
+
+            assert_eq!(clamped, 0);
+        }
+
+        #[test]
+        fn clamp_offset_is_zero_when_cell_not_truncated() {
+            let clamped = clamp_cell_vertical_offset("a\nb", 10, Some(5), 5);
+
+            assert_eq!(clamped, 0);
+        }
+
+        #[test]
+        fn clamp_offset_caps_at_overflow_amount() {
+            // 5 wrapped lines, cap 2 -> 3 lines of overflow to scroll into.
+            let clamped = clamp_cell_vertical_offset("a\nb\nc\nd\ne", 10, Some(2), 100);
+
+            assert_eq!(clamped, 3);
+        }
+
+        #[test]
+        fn clamp_offset_passes_through_when_within_range() {
+            let clamped = clamp_cell_vertical_offset("a\nb\nc\nd\ne", 10, Some(2), 1);
+
+            assert_eq!(clamped, 1);
+        }
     }
 }

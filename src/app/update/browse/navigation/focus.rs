@@ -46,6 +46,10 @@ pub fn reduce_focus(
             }
             DispatchResult::handled()
         }
+        Action::ToggleLowScroll => {
+            state.ui.toggle_low_scroll();
+            DispatchResult::handled()
+        }
         Action::InspectorNextTab => {
             state.ui.inspector_tab = services
                 .db_capabilities

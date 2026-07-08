@@ -17,6 +17,9 @@ pub fn settings_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
     {
         hints.push(settings::EDIT.as_hint());
     }
+    if state.settings.section() == SettingsSection::LowScroll {
+        hints.push(settings::TOGGLE.as_hint());
+    }
     hints.push(settings::SECTION.as_hint());
     hints.push(settings::CANCEL.as_hint());
     hints

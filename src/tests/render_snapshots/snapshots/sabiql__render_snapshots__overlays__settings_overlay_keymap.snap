@@ -19,8 +19,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │Keymap                                                                        │                                │
 │                                │  > Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │Keymap preset                                                                 │                                │
-│                                │                  │                                                                              │                                │
+│                                │    Low Scroll    │Keymap preset                                                                 │                                │
+│                                │    ER Diagram    │                                                                              │                                │
 │                                │                  │  > Default        saved                                                      │                                │
 │                                │                  │    IDE                                                                       │                                │
 │                                │                  │                                                                              │                                │

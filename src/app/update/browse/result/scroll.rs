@@ -15,14 +15,45 @@ pub(super) fn result_col_count(state: &AppState) -> usize {
 }
 
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
+    // Low Scroll Mode rows have variable line heights, so the maximum offset is
+    // computed in lines (not row counts) from the last-measured layout.
+    if let Some(layout) = low_scroll_row_heights(state) {
+        return crate::model::shared::low_scroll::max_row_offset_line_based(
+            layout,
+            state.result_visible_rows(),
+        );
+    }
     let visible = state.result_visible_rows();
     result_row_count(state).saturating_sub(visible)
+}
+
+/// The per-row line heights measured for the result pane while Low Scroll Mode
+/// wraps content, or `None` when the normal row-count math applies. Empty
+/// heights (nothing measured yet) also fall back to the normal path.
+fn low_scroll_row_heights(state: &AppState) -> Option<&[u16]> {
+    state
+        .ui
+        .result_low_scroll_layout
+        .as_ref()
+        .map(|l| l.row_heights.as_slice())
+        .filter(|h| !h.is_empty())
 }
 
 fn ensure_row_visible(state: &mut AppState) {
     if let Some(row) = state.result_interaction.selection().row() {
         let visible = state.result_visible_rows();
         if visible == 0 {
+            return;
+        }
+        // Low Scroll Mode: rows wrap to multiple terminal lines, so keeping the
+        // selected row on screen is line-based, not row-count-based.
+        let offset = state.result_interaction.scroll_offset;
+        if let Some(new_offset) = low_scroll_row_heights(state).map(|layout| {
+            crate::model::shared::low_scroll::ensure_row_visible_line_based(
+                layout, offset, row, visible,
+            )
+        }) {
+            state.result_interaction.scroll_offset = new_offset;
             return;
         }
         if row < state.result_interaction.scroll_offset {
@@ -247,6 +278,25 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
             );
             DispatchResult::handled()
         }
+        Action::Scroll {
+            target: ScrollTarget::Cell,
+            direction: ScrollDirection::Down,
+            amount: ScrollAmount::Line,
+        } => {
+            state.result_interaction.cell_vertical_offset += 1;
+            DispatchResult::handled()
+        }
+        Action::Scroll {
+            target: ScrollTarget::Cell,
+            direction: ScrollDirection::Up,
+            amount: ScrollAmount::Line,
+        } => {
+            state.result_interaction.cell_vertical_offset = state
+                .result_interaction
+                .cell_vertical_offset
+                .saturating_sub(1);
+            DispatchResult::handled()
+        }
         _ => DispatchResult::pass(),
     }
 }
@@ -273,6 +323,65 @@ mod tests {
                 QuerySource::Preview,
             )));
         state
+    }
+
+    mod low_scroll_line_navigation {
+        use super::*;
+        use crate::model::shared::low_scroll::MeasuredLowScrollLayout;
+
+        fn down_line(state: &mut AppState) {
+            reduce_scroll(
+                state,
+                &Action::Scroll {
+                    target: ScrollTarget::Result,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+            );
+        }
+
+        /// Regression: in Low Scroll Mode each row wraps to several terminal
+        /// lines, so moving the selection past the last visible row must scroll
+        /// the viewport using line-based (not row-count) math. Previously the
+        /// reducer treated `result_visible_rows()` (a line budget) as a row
+        /// count, so the offset never advanced and the selection got "stuck".
+        #[test]
+        fn moving_selection_down_past_bottom_scrolls_viewport() {
+            // pane_height 9 -> visible line budget = 9 - 5 = 4.
+            let mut state = state_with_result_rows(20, 9);
+            // Every row is 2 lines tall: only 2 rows fit in a 4-line pane.
+            state.ui.result_low_scroll_layout = Some(MeasuredLowScrollLayout {
+                row_heights: vec![2; 20],
+            });
+            state.result_interaction.activate_cell(0, 0);
+
+            // Rows 0 and 1 are on screen; moving to row 1 keeps the offset.
+            down_line(&mut state);
+            assert_eq!(state.result_interaction.selection().row(), Some(1));
+            assert_eq!(state.result_interaction.scroll_offset, 0);
+
+            // Moving to row 2 pushes it below the pane, so the viewport scrolls.
+            down_line(&mut state);
+            assert_eq!(state.result_interaction.selection().row(), Some(2));
+            assert_eq!(state.result_interaction.scroll_offset, 1);
+
+            down_line(&mut state);
+            assert_eq!(state.result_interaction.selection().row(), Some(3));
+            assert_eq!(state.result_interaction.scroll_offset, 2);
+        }
+
+        /// Without a measured layout (mode off / nothing measured yet) the
+        /// reducer keeps the normal row-count visibility math.
+        #[test]
+        fn falls_back_to_row_count_math_without_layout() {
+            let mut state = state_with_result_rows(20, 9); // visible = 4
+            state.result_interaction.activate_cell(3, 0);
+
+            // Row 4 is the first past a 4-row viewport: offset advances by one.
+            down_line(&mut state);
+            assert_eq!(state.result_interaction.selection().row(), Some(4));
+            assert_eq!(state.result_interaction.scroll_offset, 1);
+        }
     }
 
     mod page_scroll {
@@ -663,6 +772,59 @@ mod tests {
                 assert_eq!(state.result_interaction.selection().cell(), Some(1));
                 assert_eq!(state.result_interaction.scroll_offset, 3);
             }
+        }
+    }
+
+    mod cell_vertical_scroll {
+        use super::*;
+
+        #[test]
+        fn down_increments_offset() {
+            let mut state = state_with_result_rows(10, 25);
+
+            reduce_scroll(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Cell,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+            );
+
+            assert_eq!(state.result_interaction.cell_vertical_offset, 1);
+        }
+
+        #[test]
+        fn up_decrements_offset() {
+            let mut state = state_with_result_rows(10, 25);
+            state.result_interaction.cell_vertical_offset = 3;
+
+            reduce_scroll(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Cell,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+            );
+
+            assert_eq!(state.result_interaction.cell_vertical_offset, 2);
+        }
+
+        #[test]
+        fn up_floors_at_zero() {
+            let mut state = state_with_result_rows(10, 25);
+
+            reduce_scroll(
+                &mut state,
+                &Action::Scroll {
+                    target: ScrollTarget::Cell,
+                    direction: ScrollDirection::Up,
+                    amount: ScrollAmount::Line,
+                },
+            );
+
+            assert_eq!(state.result_interaction.cell_vertical_offset, 0);
         }
     }
 

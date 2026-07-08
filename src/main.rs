@@ -149,6 +149,8 @@ async fn main() -> Result<()> {
         .settings
         .load_keymap_preset(app_settings.keymap_preset);
     state.settings.load_er_browser(app_settings.er_browser);
+    state.settings.load_low_scroll(app_settings.low_scroll);
+    state.ui.low_scroll = app_settings.low_scroll;
 
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {

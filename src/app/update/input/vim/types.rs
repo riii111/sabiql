@@ -33,6 +33,8 @@ pub enum VimNavigation {
     ScrollCursorCenter,
     ScrollCursorTop,
     ScrollCursorBottom,
+    ScrollCellUp,
+    ScrollCellDown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

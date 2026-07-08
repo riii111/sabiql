@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 470
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -20,8 +19,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │  > Appearance    │Theme                                                                         │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │  > Sabiql Dark    saved                                                      │                                │
-│                                │                  │    Light                                                                     │                                │
+│                                │    Low Scroll    │  > Sabiql Dark    saved                                                      │                                │
+│                                │    ER Diagram    │    Light                                                                     │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │

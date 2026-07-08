@@ -1,3 +1,4 @@
+use super::low_scroll::LowScrollSettings;
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
 use crate::model::shared::cursor::CursorMove;
@@ -6,16 +7,23 @@ use crate::model::shared::cursor::CursorMove;
 pub enum SettingsSection {
     Appearance,
     Keymap,
+    LowScroll,
     ErDiagram,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 3] = [Self::Appearance, Self::Keymap, Self::ErDiagram];
+    pub const ALL: [Self; 4] = [
+        Self::Appearance,
+        Self::Keymap,
+        Self::LowScroll,
+        Self::ErDiagram,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
             Self::Keymap => "Keymap",
+            Self::LowScroll => "Low Scroll",
             Self::ErDiagram => "ER Diagram",
         }
     }
@@ -183,6 +191,8 @@ pub struct SettingsState {
     selected_er_browser_choice: ErBrowserChoice,
     custom_er_browser: TextInputState,
     editing_custom_er_browser: bool,
+    saved_low_scroll: LowScrollSettings,
+    selected_low_scroll: LowScrollSettings,
     section: SettingsSection,
 }
 
@@ -197,6 +207,8 @@ impl Default for SettingsState {
             selected_er_browser_choice: ErBrowserChoice::SystemDefault,
             custom_er_browser: TextInputState::default(),
             editing_custom_er_browser: false,
+            saved_low_scroll: LowScrollSettings::default(),
+            selected_low_scroll: LowScrollSettings::default(),
             section: SettingsSection::Appearance,
         }
     }
@@ -208,6 +220,39 @@ impl SettingsState {
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
+    }
+
+    pub fn load_low_scroll(&mut self, settings: LowScrollSettings) {
+        self.saved_low_scroll = settings;
+        self.selected_low_scroll = settings;
+    }
+
+    pub fn saved_low_scroll(&self) -> LowScrollSettings {
+        self.saved_low_scroll
+    }
+
+    pub fn selected_low_scroll(&self) -> LowScrollSettings {
+        self.selected_low_scroll
+    }
+
+    /// Toggle the `allow_horizontal_scroll` flag (the primary on/off for the
+    /// no-horizontal-scroll behaviour).
+    pub fn toggle_low_scroll_horizontal(&mut self) {
+        self.selected_low_scroll.allow_horizontal_scroll =
+            !self.selected_low_scroll.allow_horizontal_scroll;
+    }
+
+    /// Cycle `max_lines_per_row` forward through the preset ladder, wrapping at
+    /// the end back to "no limit".
+    pub fn cycle_low_scroll_max_lines_next(&mut self) {
+        self.selected_low_scroll.max_lines_per_row =
+            next_max_lines(self.selected_low_scroll.max_lines_per_row);
+    }
+
+    /// Cycle `max_lines_per_row` backward.
+    pub fn cycle_low_scroll_max_lines_prev(&mut self) {
+        self.selected_low_scroll.max_lines_per_row =
+            prev_max_lines(self.selected_low_scroll.max_lines_per_row);
     }
 
     pub fn load_keymap_preset(&mut self, keymap_preset: KeymapPreset) {
@@ -223,6 +268,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.selected_low_scroll = self.saved_low_scroll;
         self.section = SettingsSection::Appearance;
     }
 
@@ -292,6 +338,9 @@ impl SettingsState {
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.next();
             }
+            SettingsSection::LowScroll => {
+                self.cycle_low_scroll_max_lines_next();
+            }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
                 self.selected_er_browser_choice = self.selected_er_browser_choice.next();
@@ -306,6 +355,9 @@ impl SettingsState {
             }
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.previous();
+            }
+            SettingsSection::LowScroll => {
+                self.cycle_low_scroll_max_lines_prev();
             }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
@@ -354,6 +406,7 @@ impl SettingsState {
         theme: ThemeId,
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
+        low_scroll: LowScrollSettings,
     ) {
         self.previous_theme = theme;
         self.selected_theme = theme;
@@ -364,6 +417,8 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.saved_low_scroll = low_scroll;
+        self.selected_low_scroll = low_scroll;
     }
 
     pub fn discard_selection(&mut self) {
@@ -373,6 +428,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.selected_low_scroll = self.saved_low_scroll;
     }
 }
 
@@ -380,6 +436,26 @@ fn normalize_browser(browser: Option<String>) -> Option<String> {
     browser
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+/// Preset ladder for `max_lines_per_row`. `None` means "no limit" (rows grow
+/// unbounded). Cycling wraps between the two ends.
+const MAX_LINES_LADDER: [Option<u16>; 6] = [None, Some(3), Some(5), Some(10), Some(20), Some(50)];
+
+fn next_max_lines(current: Option<u16>) -> Option<u16> {
+    let idx = MAX_LINES_LADDER
+        .iter()
+        .position(|&v| v == current)
+        .unwrap_or(0);
+    MAX_LINES_LADDER[(idx + 1) % MAX_LINES_LADDER.len()]
+}
+
+fn prev_max_lines(current: Option<u16>) -> Option<u16> {
+    let idx = MAX_LINES_LADDER
+        .iter()
+        .position(|&v| v == current)
+        .unwrap_or(0);
+    MAX_LINES_LADDER[(idx + MAX_LINES_LADDER.len() - 1) % MAX_LINES_LADDER.len()]
 }
 
 fn custom_input_for(browser: Option<&str>) -> TextInputState {

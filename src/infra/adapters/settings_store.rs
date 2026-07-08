@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
+use crate::app::model::shared::low_scroll::LowScrollSettings;
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
@@ -88,6 +89,8 @@ impl SettingsStore for TomlSettingsStore {
                 theme: None,
                 keymap_preset: None,
                 er_browser: None,
+                low_scroll_allow_horizontal_scroll: None,
+                low_scroll_max_lines_per_row: None,
                 connections: vec![],
             });
         set_app_settings(&mut config, settings);
@@ -116,6 +119,10 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
             .and_then(KeymapPreset::from_config_value)
             .unwrap_or(KeymapPreset::Default),
         er_browser: config.er_browser,
+        low_scroll: LowScrollSettings {
+            allow_horizontal_scroll: config.low_scroll_allow_horizontal_scroll.unwrap_or(false),
+            max_lines_per_row: config.low_scroll_max_lines_per_row.filter(|&n| n > 0),
+        },
     }
 }
 
@@ -123,6 +130,8 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.theme = Some(settings.theme_id.config_value().to_string());
     config.keymap_preset = Some(settings.keymap_preset.config_value().to_string());
     config.er_browser = settings.er_browser;
+    config.low_scroll_allow_horizontal_scroll = Some(settings.low_scroll.allow_horizontal_scroll);
+    config.low_scroll_max_lines_per_row = settings.low_scroll.max_lines_per_row;
 }
 
 #[cfg(test)]
@@ -153,6 +162,7 @@ mod tests {
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Google Chrome".to_string()),
+                low_scroll: LowScrollSettings::default(),
             })
             .unwrap();
 
@@ -188,6 +198,7 @@ ssl_mode = "prefer"
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
+                low_scroll: LowScrollSettings::default(),
             })
             .unwrap();
 
@@ -270,6 +281,7 @@ ssl_mode = "prefer"
             theme_id: ThemeId::Light,
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
+            low_scroll: LowScrollSettings::default(),
         });
 
         assert!(matches!(

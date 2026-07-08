@@ -17,17 +17,18 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
-│                                │    Appearance    │ER Diagram                                                                    │                                │
-│                                │    Keymap        │                                                                              │                                │
-│                                │    Low Scroll    │Browser                                                                       │                                │
-│                                │  > ER Diagram    │                                                                              │                                │
-│                                │                  │    System default                                                            │                                │
-│                                │                  │    Google Chrome                                                             │                                │
-│                                │                  │    Firefox                                                                   │                                │
-│                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Microsoft Edge                                                            │                                │
-│                                │                  │    Brave                                                                     │────────────────────────────────┘
-│                                │                  │  > Other: [Brave Browser] saved                                              │────────────────────────────────┐
+│                                │    Appearance    │Low Scroll Mode                                                               │                                │
+│                                │    Keymap        │Fit results without a horizontal scrollbar.                                   │                                │
+│                                │  > Low Scroll    │                                                                              │                                │
+│                                │    ER Diagram    │Allow horizontal scroll                                                       │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │  [Space] off (columns shrink to fit)                                         │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │Max lines per row                                                             │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │  [j/k] no limit                                                              │────────────────────────────────┘
+│                                │                  │                                                                              │────────────────────────────────┐
+│                                │                  │Toggle Low Scroll Mode at any time with L.                                    │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -38,8 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ i: Edit │ Tab/⇧Tab: Section │ Esc: Cancel ───────────────────────────────────────╯                                │
+│                                ╰ Enter: Apply │ Space: Toggle │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  i:Edit  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Apply  j/k/↑↓:Select  Space:Toggle  Tab/⇧Tab:Section  Esc:Cancel
