@@ -3,6 +3,7 @@
 //! Error variants may preserve `Error::source()` chains, but method signatures
 //! stay free of adapter-specific types.
 
+pub mod cached_result_exporter;
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
@@ -22,6 +23,7 @@ pub mod sql_dialect;
 pub mod sqlite_diagnostics;
 pub mod sqlite_path_validator;
 
+pub use cached_result_exporter::CachedResultExporter;
 pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};

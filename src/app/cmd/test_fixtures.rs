@@ -12,15 +12,15 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
-    SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
+    QueryValue, SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    AppSettings, ClipboardError, ClipboardWriter, ConfigWriter, ConfigWriterError, ConnectionStore,
-    DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter, FolderOpenError, FolderOpener,
-    MetadataProvider, PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore,
-    ServiceFileError, SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider,
-    SqlitePathValidator,
+    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
+    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
+    FolderOpenError, FolderOpener, MetadataProvider, PgServiceEntryReader, QueryExecutor,
+    QueryHistoryError, QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
+    SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
 
@@ -58,6 +58,52 @@ impl SqlitePathValidator for TestFsSqlitePathValidator {
                 &error.to_string(),
             )),
         }
+    }
+
+    fn canonicalize_database_path(&self, path: &str) -> Result<PathBuf, SqlitePathError> {
+        let path = Path::new(path);
+        let display = path.display().to_string();
+        std::fs::canonicalize(path).map_err(|error| {
+            classify_sqlite_metadata_error(&display, error.kind(), &error.to_string())
+        })
+    }
+}
+
+pub struct TestCachedResultExporter;
+#[async_trait::async_trait]
+impl CachedResultExporter for TestCachedResultExporter {
+    async fn export_cached_result_to_csv(
+        &self,
+        path: &Path,
+        columns: &[String],
+        values: &[Vec<QueryValue>],
+    ) -> Result<usize, DbOperationError> {
+        let file = std::fs::File::create(path)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let mut writer = csv::WriterBuilder::new().from_writer(file);
+        writer.write_record(columns)?;
+        for row in values {
+            let record = row
+                .iter()
+                .map(|value| match value {
+                    QueryValue::Null => String::new(),
+                    QueryValue::Text(text) | QueryValue::SqlLiteral(text) => text.clone(),
+                    QueryValue::Blob(bytes) => {
+                        let mut hex = String::with_capacity(bytes.len() * 2);
+                        for byte in bytes {
+                            let _ =
+                                std::fmt::Write::write_fmt(&mut hex, format_args!("{byte:02X}"));
+                        }
+                        hex
+                    }
+                })
+                .collect::<Vec<_>>();
+            writer.write_record(&record)?;
+        }
+        writer
+            .flush()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        Ok(values.len())
     }
 }
 
@@ -205,6 +251,7 @@ pub fn make_runner_with_dsn(
             query_executor,
             query_history_store: Arc::new(NoopQueryHistoryStore),
             sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
+            cached_result_exporter: Arc::new(TestCachedResultExporter),
         },
         ErDeps {
             er_exporter: Arc::new(NoopErExporter),
