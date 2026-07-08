@@ -1,24 +1,24 @@
 ---
-source: src/tests/render_snapshots/result_pane.rs
-assertion_line: 454
+source: src/tests/render_snapshots/overlays.rs
+assertion_line: 862
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
-│> public.notes                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││Owner:   (none)                                                                                                           │
-│                                       ││Comment: (none)                                                                                                           │
-│                                       ││Rows:    (none)                                                                                                           │
-│                                       ││Schema:  public                                                                                                           │
-│                                       ││Table:   notes                                                                                                            │
-│                ╭ Cell Detail ── body──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
-│                │Prompt:                                                                                                                           │               │
-│                │Summarize the incident timeline and include the operator notes.                                                                   │               │
+test_project | test_db | - | connected | local                                                                                                                       
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                ╭ SQL Editor ── [SQL] [Plan] ──────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
+│                │ EXPLAIN QUERY PLAN (0.04s)                                                                                                       │               │
+│                │   DELETE FROM users WHERE name = 'alice'                                                                                         │               │
 │                │                                                                                                                                  │               │
-│                │Memory:                                                                                                                           │               │
-│                │- User prefers concise status updates                                                                                             │               │
-│                │- Keep markdown bullets intact                                                                                                    │               │
-│                │                                                                                                                                  │               │
+│                │ SEARCH users USING INDEX idx_users_name                                                                                          │               │
+│                │   - SCAN orders                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
@@ -41,15 +41,14 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
-│                │149 chars                                                                                                                         │               │
-│                ╰ y: Copy │ /: Search │ Esc: Close ────────────────────────────────────────────────────────────────────────────────────────────────╯               │
+│                │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │               │
+│                │  [NORMAL]                                                                                                                 Ready  │               │
+│                ╰ y: Yank │ Tab/⇧Tab: Switch │ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────╯               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-y:Copy  /:Search  n/N:Next/Prev  j/k/↑↓:Scroll  Esc:Close

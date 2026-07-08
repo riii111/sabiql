@@ -53,7 +53,36 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 
 fn cell_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
-    let mut state = table_detail_loaded_state();
+    let mut state = create_test_state();
+    let mut metadata = fixtures::sample_metadata();
+    metadata.table_summaries = vec![TableSummary::new(
+        "public".to_string(),
+        "notes".to_string(),
+        Some(1),
+        false,
+    )];
+    state.session.mark_connected(Arc::new(metadata));
+    let mut table = sabiql_test_support::table::minimal("public", "notes");
+    table.columns = vec![
+        Column {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+            default: None,
+            comment: None,
+            ordinal_position: 1,
+        },
+        Column {
+            name: "body".to_string(),
+            data_type: "TEXT".to_string(),
+            attributes: ColumnAttributes::NULLABLE,
+            default: None,
+            comment: None,
+            ordinal_position: 2,
+        },
+    ];
+    table.primary_key = Some(vec!["id".to_string()]);
+    let _ = state.session.set_table_detail(table, 0);
     state
         .query
         .set_current_result(Arc::new(QueryResult::success(
@@ -66,6 +95,7 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             1,
             QuerySource::Preview,
         )));
+    state.query.pagination.reset_for_table("public", "notes");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 1);
     (state, now)

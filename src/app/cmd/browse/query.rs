@@ -11,6 +11,7 @@ use crate::domain::QuerySource;
 use crate::domain::QueryValue;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use crate::domain::sqlite_explain_query_plan_text_from_result;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{DbOperationError, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
@@ -201,13 +202,7 @@ pub async fn run(
             tokio::spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
-                        let plan_text = result
-                            .rows()
-                            .iter()
-                            .filter_map(|row| row.first())
-                            .cloned()
-                            .collect::<Vec<_>>()
-                            .join("\n");
+                        let plan_text = sqlite_explain_query_plan_text_from_result(&result);
                         tx.send(Action::ExplainCompleted {
                             dsn,
                             run_id,
@@ -551,6 +546,60 @@ mod tests {
             assert_ne!(
                 cached_csv_cell(&QueryValue::Null),
                 QueryValue::Null.display_value()
+            );
+        }
+    }
+
+    mod explain_plan_text {
+        use crate::domain::{QueryResult, QuerySource, sqlite_explain_query_plan_text_from_result};
+
+        #[test]
+        fn sqlite_query_plan_uses_detail_column() {
+            let result = QueryResult::success(
+                "EXPLAIN QUERY PLAN SELECT * FROM users".to_string(),
+                vec![
+                    "id".to_string(),
+                    "parent".to_string(),
+                    "notused".to_string(),
+                    "detail".to_string(),
+                ],
+                vec![
+                    vec![
+                        "2".to_string(),
+                        "0".to_string(),
+                        "56".to_string(),
+                        "SEARCH users USING INDEX idx_users_name".to_string(),
+                    ],
+                    vec![
+                        "5".to_string(),
+                        "2".to_string(),
+                        "0".to_string(),
+                        "SCAN orders".to_string(),
+                    ],
+                ],
+                1,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(
+                sqlite_explain_query_plan_text_from_result(&result),
+                "SEARCH users USING INDEX idx_users_name\n  - SCAN orders"
+            );
+        }
+
+        #[test]
+        fn non_sqlite_plan_keeps_first_column_fallback() {
+            let result = QueryResult::success(
+                "EXPLAIN SELECT * FROM users".to_string(),
+                vec!["QUERY PLAN".to_string()],
+                vec![vec!["Seq Scan on users".to_string()]],
+                1,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(
+                sqlite_explain_query_plan_text_from_result(&result),
+                "Seq Scan on users"
             );
         }
     }
