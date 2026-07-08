@@ -16,6 +16,7 @@ fn make_update_preview_with_key(diff: Vec<ColumnDiff>, sql: String, id: &str) ->
             schema: "public".to_string(),
             table: "users".to_string(),
             key_values: vec![("id".to_string(), QueryValue::text(id))],
+            uses_sqlite_rowid: false,
         },
         diff,
         guardrail: GuardrailDecision {
@@ -134,6 +135,7 @@ fn confirm_dialog_delete_preview_low_risk() {
             schema: "public".to_string(),
             table: "users".to_string(),
             key_values: vec![("id".to_string(), QueryValue::text("3"))],
+            uses_sqlite_rowid: false,
         },
         diff: vec![],
         guardrail: GuardrailDecision {

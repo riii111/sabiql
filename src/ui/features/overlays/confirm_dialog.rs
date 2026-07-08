@@ -138,6 +138,38 @@ impl ConfirmDialog {
         )));
         content_lines.push(Line::from(""));
 
+        if preview.target_summary.uses_sqlite_rowid
+            && matches!(preview.operation, WriteOperation::Update)
+        {
+            content_lines.push(Line::from(vec![Span::styled(
+                "Target",
+                Style::default().fg(theme.semantic.text.secondary),
+            )]));
+            content_lines.push(Line::from(vec![
+                Span::styled(
+                    "  Method: ",
+                    Style::default().fg(theme.semantic.text.secondary),
+                ),
+                Span::styled(
+                    preview.target_summary.identity_label(),
+                    Style::default().fg(theme.semantic.text.primary),
+                ),
+            ]));
+            for (key, value) in &preview.target_summary.key_values {
+                content_lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  {key}: "),
+                        Style::default().fg(theme.semantic.text.secondary),
+                    ),
+                    Span::styled(
+                        format!("\"{}\"", escape_preview_value(&value.display_value())),
+                        Style::default().fg(theme.semantic.text.primary),
+                    ),
+                ]));
+            }
+            content_lines.push(Line::from(""));
+        }
+
         match preview.operation {
             WriteOperation::Update => {
                 content_lines.push(Line::from(vec![Span::styled(
@@ -173,6 +205,18 @@ impl ConfirmDialog {
                     "Target",
                     Style::default().fg(theme.semantic.text.secondary),
                 )]));
+                if preview.target_summary.uses_sqlite_rowid {
+                    content_lines.push(Line::from(vec![
+                        Span::styled(
+                            "  Method: ",
+                            Style::default().fg(theme.semantic.text.secondary),
+                        ),
+                        Span::styled(
+                            preview.target_summary.identity_label(),
+                            Style::default().fg(theme.semantic.text.primary),
+                        ),
+                    ]));
+                }
                 for (key, value) in &preview.target_summary.key_values {
                     content_lines.push(Line::from(vec![
                         Span::styled(

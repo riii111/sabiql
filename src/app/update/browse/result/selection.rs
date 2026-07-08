@@ -73,9 +73,9 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
                 );
                 return DispatchResult::handled();
             }
-            if state.is_visible_preview_target_read_only() {
+            if let Some(reason) = state.visible_preview_target_read_only_reason() {
                 state.messages.set_error_at(
-                    EditGuardrailError::ReadOnlyPreviewTarget("view").to_string(),
+                    EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string(),
                     now,
                 );
                 return DispatchResult::handled();

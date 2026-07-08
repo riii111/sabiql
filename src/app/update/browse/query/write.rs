@@ -13,7 +13,7 @@ use crate::policy::preview_cell_text::{
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
-use crate::policy::write::write_update::{build_pk_pairs, escape_preview_value};
+use crate::policy::write::write_update::escape_preview_value;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
@@ -31,7 +31,7 @@ fn build_update_preview(
         return Err(EditGuardrailError::NoActiveCellEditSession);
     }
 
-    let (result, pk_cols) = editable_preview_base(state)?;
+    let (result, identity) = editable_preview_base(state)?;
 
     let row_idx = state
         .result_interaction
@@ -54,7 +54,7 @@ fn build_update_preview(
         .ok_or(EditGuardrailError::ColumnIndexOutOfBounds)?
         .clone();
 
-    ensure_column_writable(state, &column_name, pk_cols)?;
+    ensure_column_writable(state, &column_name, &identity)?;
     let new_value = match row_values
         .get(col_idx)
         .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
@@ -65,7 +65,7 @@ fn build_update_preview(
         }
     };
 
-    let pk_pairs = build_pk_pairs(&result.columns, row_values, pk_cols);
+    let pk_pairs = identity.key_pairs_for_row(result, row_idx);
     if let Some(pairs) = pk_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
     }
@@ -73,6 +73,7 @@ fn build_update_preview(
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: pk_pairs.clone().unwrap_or_default(),
+        uses_sqlite_rowid: identity.uses_sqlite_rowid(),
     };
     let has_where = pk_pairs.as_ref().is_some_and(|pairs| !pairs.is_empty());
     let has_stable_row_identity = pk_pairs.is_some();
@@ -134,6 +135,13 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     }
     match preview.operation {
         WriteOperation::Update => {
+            if preview.target_summary.uses_sqlite_rowid {
+                lines.push(format!(
+                    "Target: {} via {}",
+                    preview.target_summary.format_compact(),
+                    preview.target_summary.identity_label()
+                ));
+            }
             lines.push(preview.diff.first().map_or_else(
                 || "(no changes)".to_string(),
                 |d| {
@@ -147,10 +155,15 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
             ));
         }
         WriteOperation::Delete => {
-            lines.push(format!(
-                "Target: {}",
-                preview.target_summary.format_compact()
-            ));
+            let target = preview.target_summary.format_compact();
+            if preview.target_summary.uses_sqlite_rowid {
+                lines.push(format!(
+                    "Target: {target} via {}",
+                    preview.target_summary.identity_label()
+                ));
+            } else {
+                lines.push(format!("Target: {target}"));
+            }
         }
     }
     lines.join("\n")
@@ -395,7 +408,7 @@ mod tests {
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
+    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -444,6 +457,47 @@ mod tests {
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
+            state
+        }
+
+        fn sqlite_rowid_editable_state() -> AppState {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success_with_values(
+                    "SELECT rowid, message FROM logs".to_string(),
+                    vec!["rowid".to_string(), "message".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("7".to_string()),
+                        QueryValue::text("old"),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_first_column_hidden("rowid".to_string()),
+            ));
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "main".to_string(),
+                name: "logs".to_string(),
+                columns: vec![sabiql_test_support::column::test_nullable_column(
+                    "message", "TEXT", 1,
+                )],
+                primary_key: None,
+                ..sabiql_test_support::table::minimal("", "")
+            }));
+            state.query.pagination.reset_for_table("main", "logs");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 0, "old".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("new".to_string());
             state
         }
 
@@ -645,6 +699,35 @@ mod tests {
                         preview.sql,
                         "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
                     );
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_rowid_table_uses_hidden_rowid_for_update_preview() {
+            let mut state = sqlite_rowid_editable_state();
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert_eq!(
+                        preview.sql,
+                        "UPDATE \"logs\" SET \"message\" = 'new' WHERE \"rowid\" = 7"
+                    );
+                    assert!(preview.target_summary.uses_sqlite_rowid);
+                    assert_eq!(preview.target_summary.identity_label(), "SQLite rowid");
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }
@@ -985,6 +1068,7 @@ mod tests {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     key_values: vec![("id".to_string(), QueryValue::text("2"))],
+                    uses_sqlite_rowid: false,
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {
