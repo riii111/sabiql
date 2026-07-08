@@ -37,7 +37,7 @@ pub enum CliSqliteResolveError {
 #[derive(Debug, thiserror::Error)]
 pub enum CliSqliteActivateError {
     #[error("Cannot resolve SQLite database path: {0}")]
-    Canonicalize(#[from] std::io::Error),
+    Path(#[from] SqlitePathError),
 }
 
 impl CliSqliteTarget {
@@ -89,8 +89,9 @@ pub fn resolve_cli_sqlite_target(
 pub fn activate_cli_sqlite_connection(
     state: &mut AppState,
     target: &CliSqliteTarget,
+    validator: &impl SqlitePathValidator,
 ) -> Result<(), CliSqliteActivateError> {
-    let canonical_path = std::fs::canonicalize(target.path())?;
+    let canonical_path = validator.canonicalize_database_path(target.path())?;
     let connection_id = connection_id_for_path(&canonical_path.to_string_lossy());
     state.session.activate_cli_ephemeral_connection(
         &connection_id,
