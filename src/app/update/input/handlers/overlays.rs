@@ -211,5 +211,12 @@ mod tests {
 
             assert!(matches!(result, Action::ToggleModal(ModalKind::Help)));
         }
+
+        #[test]
+        fn r_runs_quick_check() {
+            let result = handle_sqlite_diagnostics_keys(combo(Key::Char('r')));
+
+            assert!(matches!(result, Action::RunSqliteDiagnosticsQuickCheck));
+        }
     }
 }

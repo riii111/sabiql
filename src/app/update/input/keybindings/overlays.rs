@@ -1633,10 +1633,22 @@ pub mod sqlite_diagnostics {
             combos: &[KeyCombo::plain(Key::Char('?'))],
         }],
     };
+
+    pub const RUN_QUICK_CHECK: ModeRow = ModeRow {
+        key_short: "r",
+        key: "r",
+        desc_short: "Run check",
+        description: "Run quick check",
+        bindings: &[ExecBinding {
+            action: Action::RunSqliteDiagnosticsQuickCheck,
+            combos: &[KeyCombo::plain(Key::Char('r'))],
+        }],
+    };
 }
 
 pub const SQLITE_DIAGNOSTICS_ROWS: &[ModeRow] = &[
     sqlite_diagnostics::SCROLL,
+    sqlite_diagnostics::RUN_QUICK_CHECK,
     sqlite_diagnostics::HELP,
     sqlite_diagnostics::ESC_CLOSE,
 ];

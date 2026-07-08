@@ -348,6 +348,7 @@ pub enum Action {
     RequestEditSelectedConnection,
 
     // SQLite diagnostics
+    RunSqliteDiagnosticsQuickCheck,
     SqliteDiagnosticsCoreLoaded {
         dsn: String,
         run_id: u64,

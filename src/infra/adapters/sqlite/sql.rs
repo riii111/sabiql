@@ -98,10 +98,10 @@ pub(super) fn user_tables_query() -> &'static str {
            m.sql
     FROM pragma_table_list() AS tl
     LEFT JOIN sqlite_master AS m
-      ON m.type = 'table'
+      ON m.type IN ('table', 'view')
      AND m.name = tl.name
     WHERE tl.schema = 'main'
-      AND tl.type IN ('table', 'virtual')
+      AND tl.type IN ('table', 'virtual', 'view')
       AND tl.name NOT LIKE 'sqlite_%'
     ORDER BY tl.name
     "
@@ -111,7 +111,7 @@ pub(super) fn legacy_user_tables_query() -> &'static str {
     r"
     SELECT name, sql
     FROM sqlite_master
-    WHERE type = 'table'
+    WHERE type IN ('table', 'view')
       AND name NOT LIKE 'sqlite_%'
     ORDER BY name
     "
@@ -210,7 +210,7 @@ pub(super) fn table_kind_info_query(table: &str) -> String {
         SELECT tl.type, tl.wr, tl.strict, m.sql
         FROM pragma_table_list() AS tl
         LEFT JOIN sqlite_master AS m
-          ON m.type = 'table'
+          ON m.type IN ('table', 'view')
          AND m.name = tl.name
         WHERE tl.schema = 'main'
           AND tl.name = {}
@@ -222,7 +222,7 @@ pub(super) fn table_kind_info_query(table: &str) -> String {
 
 pub(super) fn table_definition_query(table: &str) -> String {
     format!(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = {} LIMIT 1",
+        "SELECT sql FROM sqlite_master WHERE type IN ('table', 'view') AND name = {} LIMIT 1",
         quote_literal(table)
     )
 }
@@ -436,10 +436,10 @@ mod tests {
     }
 
     #[test]
-    fn user_tables_query_uses_table_list_and_excludes_shadow_tables() {
+    fn user_tables_query_uses_table_list_and_includes_views() {
         assert!(user_tables_query().contains("pragma_table_list()"));
         assert!(user_tables_query().contains("tl.schema = 'main'"));
-        assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
+        assert!(user_tables_query().contains("tl.type IN ('table', 'virtual', 'view')"));
         assert!(user_tables_query().contains("tl.type"));
         assert!(user_tables_query().contains("tl.wr"));
         assert!(user_tables_query().contains("tl.strict"));
@@ -447,8 +447,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_user_tables_query_lists_regular_tables_only() {
+    fn legacy_user_tables_query_lists_tables_and_views() {
         assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
+        assert!(legacy_user_tables_query().contains("type IN ('table', 'view')"));
         assert!(!legacy_user_tables_query().contains("fts5_tables"));
         assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
     }

@@ -22,6 +22,7 @@ impl Default for HelpState {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: false,
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
@@ -94,6 +95,7 @@ pub enum HelpOrigin {
         focused_pane: FocusedPane,
         result_active: bool,
         staged_delete_in_progress: bool,
+        can_write_preview: bool,
         keymap_preset: KeymapPreset,
     },
     CommandLine,
@@ -162,6 +164,7 @@ impl HelpOrigin {
                     .result_interaction
                     .staged_delete_rows()
                     .is_empty(),
+                can_write_preview: state.can_write_visible_preview(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
@@ -323,6 +326,7 @@ mod tests {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: false,
                 keymap_preset: KeymapPreset::Default,
             }
         ));

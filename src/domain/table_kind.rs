@@ -3,6 +3,7 @@ pub enum TableKind {
     #[default]
     Table,
     Virtual,
+    View,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

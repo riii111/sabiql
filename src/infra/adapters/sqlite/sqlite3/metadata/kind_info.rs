@@ -1,4 +1,6 @@
-use super::super::parser::lexer::{is_create_virtual_table_prefix, virtual_table_module_name};
+use super::super::parser::lexer::{
+    is_create_view_prefix, is_create_virtual_table_prefix, virtual_table_module_name,
+};
 use crate::domain::{TableKind, TableKindInfo};
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -25,10 +27,10 @@ pub(super) fn table_kind_info_from_pragma(
     sql: Option<&str>,
 ) -> TableKindInfo {
     let mut kind_info = TableKindInfo {
-        kind: if table_type == "virtual" {
-            TableKind::Virtual
-        } else {
-            TableKind::Table
+        kind: match table_type {
+            "virtual" => TableKind::Virtual,
+            "view" => TableKind::View,
+            _ => TableKind::Table,
         },
         is_strict: strict != 0,
         without_rowid: without_rowid != 0,
@@ -58,6 +60,8 @@ fn enrich_kind_from_legacy_sql(kind_info: &mut TableKindInfo, sql: Option<&str>)
     if is_create_virtual_table_prefix(sql) {
         kind_info.kind = TableKind::Virtual;
         kind_info.virtual_module = virtual_table_module_name(sql);
+    } else if is_create_view_prefix(sql) {
+        kind_info.kind = TableKind::View;
     }
 }
 
@@ -216,6 +220,21 @@ mod tests {
     }
 
     #[test]
+    fn pragma_type_marks_view_kind() {
+        let storage = table_kind_info_from_pragma(
+            "view",
+            0,
+            0,
+            Some("CREATE VIEW active_users AS SELECT id FROM users;"),
+        );
+
+        assert_eq!(storage.kind, TableKind::View);
+        assert!(storage.virtual_module.is_none());
+        assert!(!storage.is_strict);
+        assert!(!storage.without_rowid);
+    }
+
+    #[test]
     fn default_literal_does_not_mark_virtual_when_pragma_type_is_table() {
         let storage = table_kind_info_from_pragma(
             "table",
@@ -226,6 +245,15 @@ mod tests {
 
         assert_eq!(storage.kind, TableKind::Table);
         assert!(storage.virtual_module.is_none());
+    }
+
+    #[test]
+    fn legacy_sql_parses_view_kind() {
+        let storage = table_kind_info_from_legacy_sql(Some(
+            "CREATE VIEW active_users AS SELECT id FROM users;",
+        ));
+
+        assert_eq!(storage.kind, TableKind::View);
     }
 
     #[test]

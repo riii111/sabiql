@@ -20,8 +20,8 @@ test_project | test_db | - | connected | local
 │       │Effective query only: off        │      │
 │       │                                 │      │
 │       │Effective busy timeout (ms): 5000│      │
-│       ╰ Esc: Close │ ↑↓: Scroll ────────╯      │
+│       ╰ Esc: Close │ ↑↓: Scroll │ r: Run╯      │
 │           ││                                   │
 │           ││                                   │
 └───────────┘└───────────────────────────────────┘
-↑↓:Scroll  ?:Help  Esc:Close
+↑↓:Scroll  r:Run check  ?:Help  Esc:Close

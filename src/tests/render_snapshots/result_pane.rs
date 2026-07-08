@@ -255,6 +255,25 @@ fn result_pane_cell_active_mode() {
 }
 
 #[test]
+fn result_pane_view_cell_active_hides_write_hints() {
+    let mut state = table_detail_loaded_state();
+    let mut terminal = create_test_terminal();
+
+    with_current_result(&mut state);
+    state.query.pagination.reset_for_table("public", "users");
+    let mut table = state.session.table_detail().unwrap().clone();
+    table.kind_info = sabiql_test_support::table::view_kind_info();
+    let generation = state.session.selection_generation();
+    let _ = state.session.set_table_detail(table, generation);
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.activate_cell(1, 2);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn result_pane_cell_edit_mode() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();

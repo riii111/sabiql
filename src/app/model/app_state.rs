@@ -3,7 +3,7 @@ use std::time::Instant;
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::{DatabaseType, TableSummary};
+use crate::domain::{DatabaseType, TableKind, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
@@ -321,6 +321,21 @@ impl AppState {
             return true;
         }
         is_rerunnable_select(&result.query)
+    }
+
+    pub fn is_visible_preview_target_read_only(&self) -> bool {
+        if !self.query.can_edit_visible_result() {
+            return false;
+        }
+        let Some(table_detail) = self.session.table_detail() else {
+            return false;
+        };
+        self.query.pagination.matches_table(table_detail)
+            && table_detail.kind_info.kind == TableKind::View
+    }
+
+    pub fn can_write_visible_preview(&self) -> bool {
+        self.query.can_edit_visible_result() && !self.is_visible_preview_target_read_only()
     }
 
     /// True when a run-scoped async response no longer belongs to the active

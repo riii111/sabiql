@@ -1133,6 +1133,22 @@ mod tests {
         }
 
         #[test]
+        fn next_tab_cycles_from_plan_back_to_sql_for_sqlite_connection() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+            dispatch_explain(
+                &mut state,
+                &Action::SqlModalNextTab,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+        }
+
+        #[test]
         fn next_tab_normalizes_stale_plan_to_sql_when_explain_is_unsupported() {
             let mut state = sql_modal_state();
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
@@ -1196,7 +1212,7 @@ mod tests {
         }
 
         #[test]
-        fn prev_tab_cycles_to_compare_for_sqlite_connection() {
+        fn prev_tab_cycles_to_plan_for_sqlite_connection() {
             let mut state = sql_modal_state();
             activate_sqlite_connection(&mut state);
             state.sql_modal.set_active_tab(SqlModalTab::Sql);
@@ -1208,7 +1224,23 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Compare);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+        }
+
+        #[test]
+        fn prev_tab_cycles_from_plan_back_to_sql_for_sqlite_connection() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+            dispatch_explain(
+                &mut state,
+                &Action::SqlModalPrevTab,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 
         #[test]

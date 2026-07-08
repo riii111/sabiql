@@ -33,7 +33,7 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │Database list: 0: main @ /tmp/app.db                                                                             │                        │
 │                        │                                                                                                                 │                        │
-│                        │Quick check: Running...                                                                                          │                        │
+│                        │Quick check: Not run. Press r to run quick check.                                                                │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
@@ -42,7 +42,7 @@ test_project | test_db | - | connected | local
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
-│                        ╰ Esc: Close │ ↑↓: Scroll ────────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Close │ ↑↓: Scroll │ r: Run check ─────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | connected | local
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-↑↓:Scroll  ?:Help  Esc:Close
+↑↓:Scroll  r:Run check  ?:Help  Esc:Close

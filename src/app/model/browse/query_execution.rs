@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::domain::{QueryResult, QuerySource};
+use crate::domain::{QueryResult, QuerySource, Table};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::shared::async_run::AsyncRun;
 
@@ -53,6 +53,12 @@ impl PaginationState {
 
     pub fn has_table(&self) -> bool {
         !self.table.is_empty()
+    }
+
+    pub fn matches_table(&self, table: &Table) -> bool {
+        let schema_matches = table.schema == self.schema;
+        let name_matches = table.name == self.table;
+        schema_matches && name_matches
     }
 
     pub fn qualified_name(&self) -> String {

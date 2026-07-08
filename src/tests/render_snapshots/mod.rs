@@ -27,6 +27,14 @@ use sabiql_domain::{
     IndexType, QuerySource, Table,
 };
 
+fn trim_line_endings(output: &str) -> String {
+    output
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 mod confirm_dialogs;
 mod connection_flow;
 mod connection_management;

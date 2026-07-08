@@ -23,6 +23,7 @@ enum ExplainCapability {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbCapabilities {
     explain: ExplainCapability,
+    supports_plan_comparison: bool,
     supports_er_diagram: bool,
     supports_jsonb_detail: bool,
     database_type: Option<DatabaseType>,
@@ -33,6 +34,7 @@ pub struct DbCapabilities {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CapabilityFlags {
     explain: ExplainCapability,
+    supports_plan_comparison: bool,
     supports_er_diagram: bool,
     supports_jsonb_detail: bool,
 }
@@ -40,18 +42,21 @@ struct CapabilityFlags {
 impl CapabilityFlags {
     const NONE: Self = Self {
         explain: ExplainCapability::None,
+        supports_plan_comparison: false,
         supports_er_diagram: false,
         supports_jsonb_detail: false,
     };
 
     const POSTGRESQL: Self = Self {
         explain: ExplainCapability::QueryPlanAndAnalyze,
+        supports_plan_comparison: true,
         supports_er_diagram: true,
         supports_jsonb_detail: true,
     };
 
     const SQLITE: Self = Self {
         explain: ExplainCapability::QueryPlanOnly,
+        supports_plan_comparison: false,
         supports_er_diagram: false,
         supports_jsonb_detail: false,
     };
@@ -82,6 +87,7 @@ impl DbCapabilities {
         );
         Self {
             explain: flags.explain,
+            supports_plan_comparison: flags.supports_plan_comparison,
             supports_er_diagram: flags.supports_er_diagram,
             supports_jsonb_detail: flags.supports_jsonb_detail,
             database_type,
@@ -163,6 +169,10 @@ impl DbCapabilities {
         self.supports_er_diagram
     }
 
+    pub fn supports_plan_comparison(&self) -> bool {
+        self.supports_plan_comparison
+    }
+
     pub fn supports_jsonb_detail(&self) -> bool {
         self.supports_jsonb_detail
     }
@@ -188,10 +198,10 @@ impl DbCapabilities {
     }
 
     pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
-        if self.supports_explain() {
-            &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
-        } else {
-            &[SqlModalTab::Sql]
+        match (self.supports_explain(), self.supports_plan_comparison()) {
+            (true, true) => &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare],
+            (true, false) => &[SqlModalTab::Sql, SqlModalTab::Plan],
+            (false, _) => &[SqlModalTab::Sql],
         }
     }
 
@@ -267,6 +277,7 @@ mod tests {
 
             assert!(caps.supports_explain());
             assert!(caps.supports_explain_analyze());
+            assert!(caps.supports_plan_comparison());
             assert!(caps.supports_er_diagram());
             assert!(caps.supports_jsonb_detail());
             assert!(!caps.supports_sqlite_diagnostics());
@@ -290,6 +301,7 @@ mod tests {
 
             assert!(caps.supports_explain());
             assert!(!caps.supports_explain_analyze());
+            assert!(!caps.supports_plan_comparison());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
             assert!(caps.supports_sqlite_diagnostics());
@@ -316,7 +328,7 @@ mod tests {
             );
             assert_eq!(
                 caps.supported_sql_modal_tabs(),
-                &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+                &[SqlModalTab::Sql, SqlModalTab::Plan]
             );
         }
 
@@ -338,6 +350,7 @@ mod tests {
 
             assert!(!caps.supports_explain());
             assert!(!caps.supports_explain_analyze());
+            assert!(!caps.supports_plan_comparison());
             assert!(!caps.supports_er_diagram());
             assert!(!caps.supports_jsonb_detail());
             assert_eq!(caps.supported_inspector_tabs(), &[InspectorTab::Info]);
@@ -379,6 +392,16 @@ mod tests {
             assert_eq!(
                 caps.normalize_sql_modal_tab(SqlModalTab::Compare),
                 SqlModalTab::Compare
+            );
+        }
+
+        #[test]
+        fn sqlite_compare_tab_normalizes_to_sql() {
+            let sqlite_caps = DbCapabilities::sqlite_like();
+
+            assert_eq!(
+                sqlite_caps.normalize_sql_modal_tab(SqlModalTab::Compare),
+                SqlModalTab::Sql
             );
         }
 

@@ -832,6 +832,18 @@ fn sqlite_connected_state() -> AppState {
 }
 
 #[test]
+fn sqlite_sql_modal_omits_compare_tab() {
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
@@ -925,7 +937,39 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
             query_only: DiagnosticField::ok("off"),
             busy_timeout: DiagnosticField::ok("5000"),
             database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
-            ..Default::default()
+            quick_check: DiagnosticField::Pending,
+        },
+    );
+    state.sqlite_diagnostics.begin_quick_check();
+    state.modal.set_mode(InputMode::SqliteDiagnostics);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sqlite_diagnostics_overlay_quick_check_not_run() {
+    use sabiql_domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+
+    let mut state = sqlite_connected_state();
+    let mut terminal = create_test_terminal();
+
+    let run_id = state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.set_core_loaded(
+        run_id,
+        SqliteDiagnosticsSnapshot {
+            db_file: DiagnosticField::ok("/tmp/app.db"),
+            sqlite_version: DiagnosticField::ok("3.45.0"),
+            feature_summary: DiagnosticField::ok(
+                "FTS5: available\nFTS4: not available\nRTree: available\nJSON: available",
+            ),
+            foreign_keys: DiagnosticField::ok("on"),
+            journal_mode: DiagnosticField::ok("wal"),
+            query_only: DiagnosticField::ok("off"),
+            busy_timeout: DiagnosticField::ok("5000"),
+            database_list: DiagnosticField::ok("0: main @ /tmp/app.db"),
+            quick_check: DiagnosticField::Pending,
         },
     );
     state.modal.set_mode(InputMode::SqliteDiagnostics);

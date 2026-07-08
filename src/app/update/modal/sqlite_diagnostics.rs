@@ -25,18 +25,24 @@ pub(super) fn reduce_sqlite_diagnostics(
             };
             let run_id = state.sqlite_diagnostics.begin_fetch();
             state.modal.set_mode(InputMode::SqliteDiagnostics);
-            DispatchResult::handled_with(vec![
-                Effect::FetchSqliteDiagnosticsCore {
-                    dsn: dsn.clone(),
-                    run_id,
-                    read_only: true,
-                },
-                Effect::FetchSqliteDiagnosticsQuickCheck {
-                    dsn,
-                    run_id,
-                    read_only: true,
-                },
-            ])
+            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore {
+                dsn,
+                run_id,
+                read_only: true,
+            }])
+        }
+        Action::RunSqliteDiagnosticsQuickCheck => {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
+                return DispatchResult::handled();
+            };
+            let Some(run_id) = state.sqlite_diagnostics.begin_quick_check() else {
+                return DispatchResult::handled();
+            };
+            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsQuickCheck {
+                dsn,
+                run_id,
+                read_only: true,
+            }])
         }
         Action::CloseModal(ModalKind::SqliteDiagnostics) => {
             state.sqlite_diagnostics.clear();
@@ -111,7 +117,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
-        assert_eq!(effects.len(), 2);
+        assert_eq!(effects.len(), 1);
         assert!(matches!(
             effects[0],
             Effect::FetchSqliteDiagnosticsCore {
@@ -119,12 +125,35 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn run_quick_check_starts_read_only_effect_for_loaded_snapshot() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        let run_id = state.sqlite_diagnostics.begin_fetch();
+        state.sqlite_diagnostics.set_core_loaded(
+            run_id,
+            SqliteDiagnosticsSnapshot {
+                quick_check: DiagnosticField::Pending,
+                ..Default::default()
+            },
+        );
+
+        let effects = reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::RunSqliteDiagnosticsQuickCheck,
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(state.sqlite_diagnostics.is_quick_check_running());
         assert!(matches!(
-            effects[1],
-            Effect::FetchSqliteDiagnosticsQuickCheck {
+            effects.as_slice(),
+            [Effect::FetchSqliteDiagnosticsQuickCheck {
                 read_only: true,
                 ..
-            }
+            }]
         ));
     }
 
@@ -154,9 +183,13 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
         let run_id = state.sqlite_diagnostics.begin_fetch();
-        state
-            .sqlite_diagnostics
-            .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
+        state.sqlite_diagnostics.set_core_loaded(
+            run_id,
+            SqliteDiagnosticsSnapshot {
+                quick_check: DiagnosticField::Pending,
+                ..Default::default()
+            },
+        );
 
         reduce_sqlite_diagnostics(
             &mut state,
@@ -169,51 +202,13 @@ mod tests {
         )
         .unwrap();
 
-        assert!(state.sqlite_diagnostics.is_quick_check_pending());
-    }
-
-    #[test]
-    fn quick_check_loaded_before_core_clears_pending_when_core_arrives() {
-        let mut state = AppState::new("test".to_string());
-        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
-        let run_id = state.sqlite_diagnostics.begin_fetch();
-
-        reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::SqliteDiagnosticsQuickCheckLoaded {
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                run_id,
-                quick_check: DiagnosticField::ok("ok"),
-            },
-            Instant::now(),
-        )
-        .unwrap();
-
-        assert!(state.sqlite_diagnostics.is_loading());
-
-        reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::SqliteDiagnosticsCoreLoaded {
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                run_id,
-                snapshot: Box::new(SqliteDiagnosticsSnapshot {
-                    sqlite_version: DiagnosticField::ok("3.45.0"),
-                    ..Default::default()
-                }),
-            },
-            Instant::now(),
-        )
-        .unwrap();
-
-        assert!(!state.sqlite_diagnostics.is_quick_check_pending());
-        assert_eq!(
+        assert!(
             state
                 .sqlite_diagnostics
                 .snapshot()
                 .unwrap()
                 .quick_check
-                .ok_value(),
-            Some("ok")
+                .is_pending()
         );
     }
 
