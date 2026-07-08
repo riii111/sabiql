@@ -410,7 +410,7 @@ mod tests {
         );
         assert_eq!(
             registry.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
-            None
+            Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
         );
     }
 

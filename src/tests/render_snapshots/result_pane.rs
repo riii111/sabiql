@@ -4,7 +4,10 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, ColumnAttributes, QueryResult};
+use sabiql_domain::{
+    Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult,
+    TableSummary,
+};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
@@ -50,7 +53,36 @@ fn jsonb_detail_state() -> (AppState, std::time::Instant) {
 
 fn cell_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
-    let mut state = table_detail_loaded_state();
+    let mut state = create_test_state();
+    let mut metadata = fixtures::sample_metadata();
+    metadata.table_summaries = vec![TableSummary::new(
+        "public".to_string(),
+        "notes".to_string(),
+        Some(1),
+        false,
+    )];
+    state.session.mark_connected(Arc::new(metadata));
+    let mut table = sabiql_test_support::table::minimal("public", "notes");
+    table.columns = vec![
+        Column {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+            default: None,
+            comment: None,
+            ordinal_position: 1,
+        },
+        Column {
+            name: "body".to_string(),
+            data_type: "TEXT".to_string(),
+            attributes: ColumnAttributes::NULLABLE,
+            default: None,
+            comment: None,
+            ordinal_position: 2,
+        },
+    ];
+    table.primary_key = Some(vec!["id".to_string()]);
+    let _ = state.session.set_table_detail(table, 0);
     state
         .query
         .set_current_result(Arc::new(QueryResult::success(
@@ -63,6 +95,65 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             1,
             QuerySource::Preview,
         )));
+    state.query.pagination.reset_for_table("public", "notes");
+    state.ui.set_focused_pane(FocusedPane::Result);
+    state.result_interaction.activate_cell(0, 1);
+    (state, now)
+}
+
+fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
+    let now = test_instant();
+    let mut state = create_test_state();
+    let mut metadata = DatabaseMetadata::new("test_db".to_string());
+    metadata.table_summaries = vec![TableSummary::new(
+        "public".to_string(),
+        "notes".to_string(),
+        Some(100),
+        false,
+    )];
+    state.session.mark_connected(Arc::new(metadata));
+    let mut table = fixtures::sample_table_detail();
+    table.name = "notes".to_string();
+    table.columns = vec![
+        Column {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
+            default: None,
+            comment: None,
+            ordinal_position: 1,
+        },
+        Column {
+            name: "body".to_string(),
+            data_type: "TEXT".to_string(),
+            attributes: ColumnAttributes::empty(),
+            default: None,
+            comment: None,
+            ordinal_position: 2,
+        },
+    ];
+    table.primary_key = Some(vec!["id".to_string()]);
+    let _ = state.session.set_table_detail(table, 0);
+    state.ui.set_explorer_selection(Some(0));
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("sqlite-test"),
+        "sqlite",
+        DatabaseType::SQLite,
+        "sqlite:///tmp/app.db",
+    );
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT id, body FROM notes".to_string(),
+            vec!["id".to_string(), "body".to_string()],
+            vec![vec![
+                "1".to_string(),
+                r#"{"theme":"dark","roles":["admin","writer"],"enabled":true}"#.to_string(),
+            ]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.query.pagination.reset_for_table("public", "notes");
     state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 1);
     (state, now)
@@ -409,6 +500,24 @@ fn result_pane_jsonb_detail_mode() {
 #[test]
 fn result_pane_cell_detail_mode() {
     let (mut state, now) = cell_detail_state();
+    let mut terminal = create_test_terminal();
+
+    dispatch_result(
+        &mut state,
+        &Action::ResultOpenCellDetail,
+        &AppServices::stub(),
+        now,
+    );
+    assert_eq!(state.input_mode(), InputMode::CellDetail);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn result_pane_sqlite_json_text_cell_detail_mode() {
+    let (mut state, now) = sqlite_json_text_cell_detail_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(

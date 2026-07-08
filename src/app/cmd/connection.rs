@@ -542,6 +542,7 @@ mod tests {
                     query_executor: Arc::new(MockQueryExecutor::new()),
                     query_history_store: Arc::new(test_fixtures::NoopQueryHistoryStore),
                     sqlite_diagnostics: Arc::new(test_fixtures::NoopSqliteDiagnosticsProvider),
+                    cached_result_exporter: Arc::new(test_fixtures::TestCachedResultExporter),
                 },
                 ErDeps {
                     er_exporter: Arc::new(test_fixtures::NoopErExporter),

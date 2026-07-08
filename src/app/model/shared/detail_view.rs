@@ -72,6 +72,13 @@ impl DetailSearchState {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DetailDisplayMode {
+    #[default]
+    RawText,
+    FormattedJson,
+}
+
 #[derive(Debug, Clone)]
 pub struct DetailContentState {
     row: usize,
@@ -79,6 +86,7 @@ pub struct DetailContentState {
     column_name: String,
     original_content: String,
     display_content: String,
+    display_mode: DetailDisplayMode,
 }
 
 impl DetailContentState {
@@ -89,12 +97,31 @@ impl DetailContentState {
         original_content: String,
         display_content: String,
     ) -> Self {
+        Self::new_with_display_mode(
+            row,
+            col,
+            column_name,
+            original_content,
+            display_content,
+            DetailDisplayMode::RawText,
+        )
+    }
+
+    pub fn new_with_display_mode(
+        row: usize,
+        col: usize,
+        column_name: String,
+        original_content: String,
+        display_content: String,
+        display_mode: DetailDisplayMode,
+    ) -> Self {
         Self {
             row,
             col,
             column_name,
             original_content,
             display_content,
+            display_mode,
         }
     }
 
@@ -116,6 +143,10 @@ impl DetailContentState {
 
     pub fn original_content(&self) -> &str {
         &self.original_content
+    }
+
+    pub fn display_mode(&self) -> DetailDisplayMode {
+        self.display_mode
     }
 }
 
@@ -156,13 +187,32 @@ impl ReadOnlyDetailState {
         original_content: String,
         display_content: String,
     ) -> Self {
+        Self::open_with_display_mode(
+            row,
+            col,
+            column_name,
+            original_content,
+            display_content,
+            DetailDisplayMode::RawText,
+        )
+    }
+
+    pub fn open_with_display_mode(
+        row: usize,
+        col: usize,
+        column_name: String,
+        original_content: String,
+        display_content: String,
+        display_mode: DetailDisplayMode,
+    ) -> Self {
         Self {
-            content: DetailContentState::new(
+            content: DetailContentState::new_with_display_mode(
                 row,
                 col,
                 column_name,
                 original_content,
                 display_content,
+                display_mode,
             ),
             active: true,
             ..Self::default()
@@ -195,6 +245,10 @@ impl ReadOnlyDetailState {
 
     pub fn original_content(&self) -> &str {
         self.content.original_content()
+    }
+
+    pub fn display_mode(&self) -> DetailDisplayMode {
+        self.content.display_mode()
     }
 
     pub fn scroll_offset(&self) -> usize {

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::app::ports::outbound::SqlitePathValidator;
 use crate::domain::{SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error};
@@ -11,6 +11,14 @@ pub struct FsSqlitePathValidator;
 impl SqlitePathValidator for FsSqlitePathValidator {
     fn validate_database_path(&self, path: &str) -> Result<(), SqlitePathError> {
         validate_sqlite_database_path(Path::new(path))
+    }
+
+    fn canonicalize_database_path(&self, path: &str) -> Result<PathBuf, SqlitePathError> {
+        let path = Path::new(path);
+        let display = path.display().to_string();
+        std::fs::canonicalize(path).map_err(|error| {
+            classify_sqlite_metadata_error(&display, error.kind(), &error.to_string())
+        })
     }
 }
 
@@ -124,6 +132,30 @@ mod tests {
         assert!(matches!(
             FsSqlitePathValidator.validate_database_path(path.to_str().unwrap()),
             Err(SqlitePathError::NotDatabaseFile(_))
+        ));
+    }
+
+    #[test]
+    fn canonicalizes_existing_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        fs::write(&path, b"").unwrap();
+
+        let canonical_path = FsSqlitePathValidator
+            .canonicalize_database_path(path.to_str().unwrap())
+            .unwrap();
+
+        assert_eq!(canonical_path, fs::canonicalize(path).unwrap());
+    }
+
+    #[test]
+    fn canonicalize_reports_missing_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("missing.db");
+
+        assert!(matches!(
+            FsSqlitePathValidator.canonicalize_database_path(path.to_str().unwrap()),
+            Err(SqlitePathError::FileNotFound(_))
         ));
     }
 

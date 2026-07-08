@@ -505,15 +505,45 @@ mod tests {
     }
 
     #[test]
-    fn explain_generation_rejects_non_select_and_prefixed_explain() {
+    fn explain_generation_wraps_dml_with_query_plan() {
         let adapter = SqliteAdapter::new();
 
         assert_eq!(
             adapter.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
+            Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
+        );
+        assert_eq!(
+            adapter.build_explain_sql(
+                DatabaseType::SQLite,
+                "UPDATE users SET name = 'a' WHERE id = 1"
+            ),
+            Some("EXPLAIN QUERY PLAN UPDATE users SET name = 'a' WHERE id = 1".to_string())
+        );
+        assert_eq!(
+            adapter.build_explain_sql(
+                DatabaseType::SQLite,
+                "INSERT INTO users(name) SELECT name FROM old_users"
+            ),
+            Some(
+                "EXPLAIN QUERY PLAN INSERT INTO users(name) SELECT name FROM old_users".to_string()
+            )
+        );
+        assert_eq!(
+            adapter.build_explain_sql(DatabaseType::SQLite, "REPLACE INTO users(id) VALUES (1)"),
+            Some("EXPLAIN QUERY PLAN REPLACE INTO users(id) VALUES (1)".to_string())
+        );
+    }
+
+    #[test]
+    fn explain_generation_rejects_prefixed_explain_and_analyze() {
+        let adapter = SqliteAdapter::new();
+
+        assert_eq!(
+            adapter.build_explain_sql(DatabaseType::SQLite, "EXPLAIN SELECT 1"),
             None
         );
         assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "EXPLAIN SELECT 1"),
+            adapter.build_explain_sql(DatabaseType::SQLite, "CREATE TABLE users(id INTEGER)"),
             None
         );
         assert_eq!(

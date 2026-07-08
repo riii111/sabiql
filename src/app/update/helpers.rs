@@ -112,6 +112,10 @@ impl StableRowIdentity {
             Self::SqliteRowid { alias } => {
                 let rowid = result.hidden_value_at(row_idx, alias)?.clone();
                 let row = result.values().get(row_idx)?;
+                if row.is_empty() || result.columns.is_empty() || row.len() != result.columns.len()
+                {
+                    return None;
+                }
                 let mut pairs = Vec::with_capacity(row.len() + 1);
                 pairs.push((alias.clone(), rowid));
                 pairs.extend(result.columns.iter().cloned().zip(row.iter().cloned()));
@@ -794,6 +798,55 @@ mod tests {
             let (page, row) = deletion_refresh_target_bulk(4, 1, 2, 1);
             assert_eq!(page, 1);
             assert_eq!(row, Some(2));
+        }
+    }
+
+    mod stable_row_identity {
+        use super::*;
+
+        #[test]
+        fn sqlite_rowid_predicate_rejects_empty_visible_values() {
+            let result = QueryResult::success_with_values(
+                "SELECT rowid FROM logs".to_string(),
+                vec!["rowid".to_string()],
+                vec![vec![QueryValue::SqlLiteral("7".to_string())]],
+                1,
+                QuerySource::Preview,
+            )
+            .with_first_column_hidden("rowid".to_string());
+            let identity = StableRowIdentity::SqliteRowid {
+                alias: "rowid".to_string(),
+            };
+
+            assert_eq!(
+                identity.identity_pairs_for_row(&result, 0),
+                Some(vec![(
+                    "rowid".to_string(),
+                    QueryValue::SqlLiteral("7".to_string())
+                )])
+            );
+            assert_eq!(identity.predicate_pairs_for_row(&result, 0), None);
+        }
+
+        #[test]
+        fn sqlite_rowid_predicate_rejects_mismatched_visible_values() {
+            let result = QueryResult::success_with_values(
+                "SELECT rowid, message FROM logs".to_string(),
+                vec!["rowid".to_string(), "message".to_string()],
+                vec![vec![
+                    QueryValue::SqlLiteral("7".to_string()),
+                    QueryValue::text("hello"),
+                    QueryValue::text("extra"),
+                ]],
+                1,
+                QuerySource::Preview,
+            )
+            .with_first_column_hidden("rowid".to_string());
+            let identity = StableRowIdentity::SqliteRowid {
+                alias: "rowid".to_string(),
+            };
+
+            assert_eq!(identity.predicate_pairs_for_row(&result, 0), None);
         }
     }
 

@@ -8,6 +8,7 @@ use tokio::time::timeout;
 
 use async_trait::async_trait;
 
+use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{DbOperationError, QueryExecutor};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult,
@@ -96,6 +97,49 @@ impl SqliteCli {
             return Err(classify_query_error(&output.stderr));
         }
         Ok(output.stdout)
+    }
+
+    pub(in crate::adapters::sqlite) async fn execute_quote_with_explain_off(
+        &self,
+        path: &str,
+        sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        let output = self
+            .run(
+                path,
+                &[
+                    "-batch",
+                    "-bail",
+                    "-quote",
+                    "-header",
+                    "-cmd",
+                    ".explain off",
+                ],
+                sql,
+                read_only,
+            )
+            .await?;
+        if !output.status.success() {
+            return Err(classify_query_error(&output.stderr));
+        }
+        Ok(output.stdout)
+    }
+
+    async fn execute_quote_for_query_plan(
+        &self,
+        path: &str,
+        execution_sql: &str,
+        source_sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        // Detect against source_sql because execution_sql may include probe statements.
+        if is_sqlite_explain_query_plan_sql(source_sql) {
+            self.execute_quote_with_explain_off(path, execution_sql, read_only)
+                .await
+        } else {
+            self.execute_quote(path, execution_sql, read_only).await
+        }
     }
 
     pub(in crate::adapters::sqlite) async fn export_csv(
@@ -379,7 +423,7 @@ impl QueryExecutor for SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_quote(path, &execution_query, read_only)
+            .execute_quote_for_query_plan(path, &execution_query, query, read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
@@ -466,7 +510,10 @@ impl QueryExecutor for SqliteAdapter {
 #[cfg(test)]
 mod tests {
     use crate::app::ports::outbound::{QueryExecutor, SqlDialect};
-    use crate::domain::{CommandTag, DatabaseType, QuerySource, QueryValue};
+    use crate::domain::{
+        CommandTag, DatabaseType, QuerySource, QueryValue,
+        sqlite_explain_query_plan_text_from_result,
+    };
 
     use super::*;
 
@@ -887,7 +934,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let plan_text = explain_plan_text_from_result(&result);
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
 
             assert!(!plan_text.trim().is_empty(), "plan text must not be empty");
             assert!(
@@ -917,7 +964,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let plan_text = explain_plan_text_from_result(&result);
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
             let operation_lines = explain_plan_operation_lines(&plan_text);
 
             assert!(
@@ -934,14 +981,35 @@ mod tests {
             );
         }
 
-        fn explain_plan_text_from_result(result: &QueryResult) -> String {
-            result
-                .rows()
-                .iter()
-                .filter_map(|row| row.first())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("\n")
+        #[tokio::test]
+        async fn explain_query_plan_delete_does_not_modify_database() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+                 INSERT INTO users(name) VALUES ('alice'), ('bob');
+                 CREATE INDEX idx_users_name ON users(name);",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "EXPLAIN QUERY PLAN DELETE FROM users WHERE name = 'alice'",
+                    true,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT COUNT(*) AS total FROM users", true)
+                .await
+                .unwrap();
+
+            let plan_text = sqlite_explain_query_plan_text_from_result(&result);
+
+            assert!(
+                plan_text.to_ascii_lowercase().contains("users"),
+                "expected users table in plan, got: {plan_text}"
+            );
+            assert_eq!(rows.rows(), vec![vec!["2".to_string()]]);
         }
 
         fn explain_plan_operation_lines(plan_text: &str) -> Vec<&str> {

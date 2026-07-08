@@ -1,25 +1,24 @@
 ---
 source: src/tests/render_snapshots/result_pane.rs
-assertion_line: 454
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+test_project | test_db | - | connected | sqlite                                                                                                                      
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
 │> public.notes                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││Owner:   (none)                                                                                                           │
-│                                       ││Comment: (none)                                                                                                           │
-│                                       ││Rows:    (none)                                                                                                           │
+│                                       ││Rows:    ~100                                                                                                             │
 │                                       ││Schema:  public                                                                                                           │
 │                                       ││Table:   notes                                                                                                            │
+│                                       ││Kind:    Table                                                                                                            │
+│                                       ││Flags:   (none)                                                                                                           │
 │                ╭ Cell Detail ── body──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
-│                │Prompt:                                                                                                                           │               │
-│                │Summarize the incident timeline and include the operator notes.                                                                   │               │
-│                │                                                                                                                                  │               │
-│                │Memory:                                                                                                                           │               │
-│                │- User prefers concise status updates                                                                                             │               │
-│                │- Keep markdown bullets intact                                                                                                    │               │
-│                │                                                                                                                                  │               │
-│                │                                                                                                                                  │               │
+│                │{                                                                                                                                 │               │
+│                │  "enabled": true,                                                                                                                │               │
+│                │  "roles": [                                                                                                                      │               │
+│                │    "admin",                                                                                                                      │               │
+│                │    "writer"                                                                                                                      │               │
+│                │  ],                                                                                                                              │               │
+│                │  "theme": "dark"                                                                                                                 │               │
+│                │}                                                                                                                                 │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
@@ -44,7 +43,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
-│                │149 chars                                                                                                                         │               │
+│                │Formatted JSON | 58 chars raw                                                                                                     │               │
 │                ╰ y: Copy │ /: Search │ Esc: Close ────────────────────────────────────────────────────────────────────────────────────────────────╯               │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

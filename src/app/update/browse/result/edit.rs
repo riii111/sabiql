@@ -430,6 +430,40 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(state.result_interaction.cell_edit().is_active());
         }
+
+        #[test]
+        fn sqlite_text_json_cell_edits_raw_value() {
+            let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec!["1".to_string(), r#"{"b":2,"a":1}"#.to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state
+                .session
+                .set_table_detail_raw(Some(cell_edit_entry_guardrails::minimal_users_table()));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(
+                state.result_interaction.cell_edit().draft_value(),
+                r#"{"b":2,"a":1}"#
+            );
+        }
     }
 
     mod read_only_guard {
