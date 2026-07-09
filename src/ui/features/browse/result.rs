@@ -59,6 +59,9 @@ struct ResultTableParams<'a> {
     now: Instant,
     low_scroll: LowScrollSettings,
     low_scroll_enabled: bool,
+    /// Low Scroll Mode layout measured on the previous frame, reused when its
+    /// key still matches so per-row heights are not re-measured every draw.
+    stored_low_scroll: Option<&'a low_scroll_layout::MeasuredLowScrollLayout>,
 }
 
 impl ResultPane {
@@ -123,6 +126,7 @@ impl ResultPane {
                         now,
                         low_scroll: state.ui.low_scroll,
                         low_scroll_enabled: state.ui.low_scroll_enabled,
+                        stored_low_scroll: state.ui.result_low_scroll_layout.as_ref(),
                     },
                     theme,
                 )
@@ -211,6 +215,7 @@ impl ResultPane {
             now,
             low_scroll,
             low_scroll_enabled,
+            stored_low_scroll,
         } = params;
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -279,6 +284,15 @@ impl ResultPane {
         // horizontally like the normal table.
         let effective = effective_low_scroll(low_scroll, low_scroll_enabled);
         if low_scroll_enabled {
+            // Per-row heights only change with the result, the pane width, or a
+            // Low Scroll setting; reuse the previous frame's measurement when
+            // this key matches so plain scrolling never re-measures every row.
+            let low_scroll_key = low_scroll_layout::LowScrollLayoutKey {
+                result_generation,
+                inner_width: inner.width,
+                allow_horizontal_scroll: effective.allow_horizontal_scroll,
+                max_lines_per_row: effective.max_lines_per_row,
+            };
             let (plan, cell_vertical_offset, measured_layout) = if effective.allow_horizontal_scroll
             {
                 Self::render_low_scroll_table_scrollable(
@@ -296,6 +310,8 @@ impl ResultPane {
                     yank_flash,
                     cell_vertical_offset,
                     now,
+                    stored_low_scroll,
+                    low_scroll_key,
                     theme,
                 )
             } else {
@@ -312,6 +328,8 @@ impl ResultPane {
                     yank_flash,
                     cell_vertical_offset,
                     now,
+                    stored_low_scroll,
+                    low_scroll_key,
                     theme,
                 )
             };
@@ -530,31 +548,42 @@ impl ResultPane {
         yank_flash: Option<YankFlash>,
         cell_vertical_offset: usize,
         now: Instant,
+        stored_low_scroll: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
+        key: low_scroll_layout::LowScrollLayoutKey,
         theme: &ThemePalette,
     ) -> (
         ViewportPlan,
         usize,
         low_scroll_layout::MeasuredLowScrollLayout,
     ) {
-        let layout = low_scroll_layout::compute_layout(
-            &result.columns,
-            &result.rows,
-            ideal_widths,
-            inner.width,
-            &settings,
-            PADDING,
-        );
+        // Column widths are cheap (one pass over the columns); only the per-row
+        // heights are O(rows), so those are what the cache reuses.
+        let column_widths = low_scroll_layout::shrink_columns_to_fit(ideal_widths, inner.width);
 
         // Per-row line heights for every row, handed back to the scroll reducer
-        // so it can keep the selected row on screen with line-based math.
-        let measured_layout = low_scroll_layout::MeasuredLowScrollLayout {
-            row_heights: layout.rows.iter().map(|r| r.height).collect(),
-        };
+        // so it can keep the selected row on screen with line-based math. Reused
+        // across frames when the layout key is unchanged (the common case while
+        // scrolling), so a multi-million-row result is measured only once.
+        let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
+            result
+                .rows
+                .iter()
+                .map(|row| {
+                    low_scroll_layout::row_layout(
+                        row,
+                        &column_widths,
+                        PADDING,
+                        settings.max_lines_per_row,
+                    )
+                    .height
+                })
+                .collect()
+        });
+        let row_heights = &measured_layout.row_heights;
 
-        let widths: Vec<Constraint> = layout
-            .columns
+        let widths: Vec<Constraint> = column_widths
             .iter()
-            .map(|c| Constraint::Length(c.width))
+            .map(|&w| Constraint::Length(w))
             .collect();
 
         let header = Row::new(result.columns.iter().map(|c| Cell::from(c.clone())))
@@ -577,11 +606,13 @@ impl ResultPane {
         let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
         let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
         let mut used = 0usize;
-        for (abs_idx, row_layout) in layout.rows.iter().enumerate() {
-            if abs_idx < scroll_offset {
-                continue;
-            }
-            let h = row_layout.height as usize;
+        // Start at `scroll_offset` (not row 0) so this is O(visible rows), not
+        // O(scroll_offset) — otherwise scrolling deep into a huge result would
+        // walk millions of rows every frame just to skip them.
+        let start = scroll_offset.min(row_heights.len());
+        for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
+            let abs_idx = start + rel_idx;
+            let h = (h16.max(1)) as usize;
             if used + h > line_budget && used > 0 {
                 break;
             }
@@ -611,11 +642,10 @@ impl ResultPane {
                 };
 
                 let row_data = &result.rows[abs_row_idx];
-                let cells: Vec<Cell> = layout
-                    .columns
+                let cells: Vec<Cell> = column_widths
                     .iter()
                     .enumerate()
-                    .map(|(col_idx, col)| {
+                    .map(|(col_idx, &col_width)| {
                         let val = row_data.get(col_idx).map_or("", String::as_str);
                         let is_editing =
                             editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == col_idx);
@@ -623,7 +653,7 @@ impl ResultPane {
                             // Editing falls back to a single-line view to keep
                             // the cursor math consistent with the normal path.
                             let e = editing_cell.expect("checked above");
-                            let display = truncate_cell(e.draft, col.width as usize);
+                            let display = truncate_cell(e.draft, col_width as usize);
                             Cell::from(display).style(
                                 Style::default()
                                     .bg(theme.component.table.result_cell_active_bg)
@@ -633,7 +663,7 @@ impl ResultPane {
                             let skip = if is_active_row && active_cell == Some(col_idx) {
                                 let clamped = clamp_cell_vertical_offset(
                                     val,
-                                    col.width,
+                                    col_width,
                                     settings.max_lines_per_row,
                                     cell_vertical_offset,
                                 );
@@ -644,7 +674,7 @@ impl ResultPane {
                             };
                             let lines = wrapped_cell_lines(
                                 val,
-                                col.width,
+                                col_width,
                                 settings.max_lines_per_row,
                                 skip,
                             );
@@ -732,6 +762,8 @@ impl ResultPane {
         yank_flash: Option<YankFlash>,
         cell_vertical_offset: usize,
         now: Instant,
+        stored_low_scroll: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
+        key: low_scroll_layout::LowScrollLayoutKey,
         theme: &ThemePalette,
     ) -> (
         ViewportPlan,
@@ -743,23 +775,24 @@ impl ResultPane {
 
         // Per-row line heights for every row (computed against the natural
         // widths every column keeps in this path), handed back to the scroll
-        // reducer for line-based visibility math.
-        let row_heights: Vec<u16> = result
-            .rows
-            .iter()
-            .map(|row| {
-                low_scroll_layout::row_layout(
-                    row,
-                    ideal_widths,
-                    PADDING,
-                    settings.max_lines_per_row,
-                )
-                .height
-            })
-            .collect();
-        let measured_layout = low_scroll_layout::MeasuredLowScrollLayout {
-            row_heights: row_heights.clone(),
-        };
+        // reducer for line-based visibility math. Reused across frames when the
+        // layout key is unchanged so scrolling never re-measures every row.
+        let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
+            result
+                .rows
+                .iter()
+                .map(|row| {
+                    low_scroll_layout::row_layout(
+                        row,
+                        ideal_widths,
+                        PADDING,
+                        settings.max_lines_per_row,
+                    )
+                    .height
+                })
+                .collect()
+        });
+        let row_heights = &measured_layout.row_heights;
 
         let config = ColumnWidthConfig {
             ideal_widths,
@@ -806,11 +839,11 @@ impl ResultPane {
         let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
         let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
         let mut used = 0usize;
-        for (abs_idx, &h16) in row_heights.iter().enumerate() {
-            if abs_idx < scroll_offset {
-                continue;
-            }
-            let h = h16 as usize;
+        // Start at `scroll_offset` so this is O(visible rows), not O(offset).
+        let start = scroll_offset.min(row_heights.len());
+        for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
+            let abs_idx = start + rel_idx;
+            let h = (h16.max(1)) as usize;
             if used + h > line_budget && used > 0 {
                 break;
             }
@@ -1068,6 +1101,27 @@ fn effective_low_scroll(settings: LowScrollSettings, enabled: bool) -> LowScroll
             max_lines_per_row: settings.max_lines_per_row,
         }
     }
+}
+
+/// Reuse the previous frame's measured Low Scroll layout when its key still
+/// matches, otherwise measure fresh via `compute`.
+///
+/// Measuring per-row heights means wrapping every cell of every row — O(rows ×
+/// cols) unicode-width work, the expensive part of a Low Scroll draw for a
+/// large result. The key only changes on a new result, a resize, or a setting
+/// toggle, so plain scrolling hits the reuse path, which just clones two flat
+/// integer vectors (a cheap memcpy) instead of re-wrapping every row.
+fn measured_low_scroll_layout(
+    stored: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
+    key: low_scroll_layout::LowScrollLayoutKey,
+    compute: impl FnOnce() -> Vec<u16>,
+) -> low_scroll_layout::MeasuredLowScrollLayout {
+    if let Some(stored) = stored
+        && stored.key == key
+    {
+        return stored.clone();
+    }
+    low_scroll_layout::MeasuredLowScrollLayout::new(compute(), key)
 }
 
 /// The number of additional wrapped lines available below `cell_vertical_offset`

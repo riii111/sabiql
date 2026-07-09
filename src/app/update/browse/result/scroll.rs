@@ -1,5 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
+use crate::model::shared::low_scroll::MeasuredLowScrollLayout;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
@@ -17,26 +18,22 @@ pub(super) fn result_col_count(state: &AppState) -> usize {
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
     // Low Scroll Mode rows have variable line heights, so the maximum offset is
     // computed in lines (not row counts) from the last-measured layout.
-    if let Some(layout) = low_scroll_row_heights(state) {
-        return crate::model::shared::low_scroll::max_row_offset_line_based(
-            layout,
-            state.result_visible_rows(),
-        );
+    if let Some(layout) = low_scroll_layout(state) {
+        return layout.max_row_offset(state.result_visible_rows());
     }
     let visible = state.result_visible_rows();
     result_row_count(state).saturating_sub(visible)
 }
 
-/// The per-row line heights measured for the result pane while Low Scroll Mode
-/// wraps content, or `None` when the normal row-count math applies. Empty
-/// heights (nothing measured yet) also fall back to the normal path.
-fn low_scroll_row_heights(state: &AppState) -> Option<&[u16]> {
+/// The measured layout for the result pane while Low Scroll Mode wraps content,
+/// or `None` when the normal row-count math applies. An empty layout (nothing
+/// measured yet) also falls back to the normal path.
+fn low_scroll_layout(state: &AppState) -> Option<&MeasuredLowScrollLayout> {
     state
         .ui
         .result_low_scroll_layout
         .as_ref()
-        .map(|l| l.row_heights.as_slice())
-        .filter(|h| !h.is_empty())
+        .filter(|l| !l.row_heights.is_empty())
 }
 
 fn ensure_row_visible(state: &mut AppState) {
@@ -48,11 +45,9 @@ fn ensure_row_visible(state: &mut AppState) {
         // Low Scroll Mode: rows wrap to multiple terminal lines, so keeping the
         // selected row on screen is line-based, not row-count-based.
         let offset = state.result_interaction.scroll_offset;
-        if let Some(new_offset) = low_scroll_row_heights(state).map(|layout| {
-            crate::model::shared::low_scroll::ensure_row_visible_line_based(
-                layout, offset, row, visible,
-            )
-        }) {
+        if let Some(new_offset) =
+            low_scroll_layout(state).map(|layout| layout.ensure_row_visible(offset, row, visible))
+        {
             state.result_interaction.scroll_offset = new_offset;
             return;
         }
@@ -327,7 +322,7 @@ mod tests {
 
     mod low_scroll_line_navigation {
         use super::*;
-        use crate::model::shared::low_scroll::MeasuredLowScrollLayout;
+        use crate::model::shared::low_scroll::LowScrollLayoutKey;
 
         fn down_line(state: &mut AppState) {
             reduce_scroll(
@@ -350,9 +345,10 @@ mod tests {
             // pane_height 9 -> visible line budget = 9 - 5 = 4.
             let mut state = state_with_result_rows(20, 9);
             // Every row is 2 lines tall: only 2 rows fit in a 4-line pane.
-            state.ui.result_low_scroll_layout = Some(MeasuredLowScrollLayout {
-                row_heights: vec![2; 20],
-            });
+            state.ui.result_low_scroll_layout = Some(MeasuredLowScrollLayout::new(
+                vec![2; 20],
+                LowScrollLayoutKey::default(),
+            ));
             state.result_interaction.activate_cell(0, 0);
 
             // Rows 0 and 1 are on screen; moving to row 1 keeps the offset.

@@ -83,19 +83,163 @@ pub struct LowScrollLayout {
     pub rows: Vec<LowScrollRow>,
 }
 
+/// Identifies the inputs a measured layout was computed for, so the renderer
+/// can reuse a cached layout across frames instead of re-measuring every row.
+///
+/// The per-row heights only change when one of these changes: a new result
+/// (`result_generation`), a pane resize (`inner_width`, which drives the
+/// shrunk column widths), or a Low Scroll setting toggle. During plain
+/// vertical scrolling none of these move, so the cached vector is reused and
+/// the O(rows) measurement is skipped entirely.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LowScrollLayoutKey {
+    pub result_generation: u64,
+    pub inner_width: u16,
+    pub allow_horizontal_scroll: bool,
+    pub max_lines_per_row: Option<u16>,
+}
+
 /// Per-row line heights the scroll reducer needs to keep the active row visible.
 ///
-/// Measured by the renderer each frame (which owns the pane geometry) and
-/// written back through `RenderOutput` so the reducer can do line-based — not
+/// Measured by the renderer (which owns the pane geometry) and written back
+/// through `RenderOutput` so the reducer can do line-based — not
 /// row-count-based — visibility math.
 ///
 /// `row_heights[i]` is the rendered height in terminal lines of absolute row
 /// `i` (after the per-row cap and any dynamic screen-height clamp). It is
 /// indexed by absolute row index, matching `QueryResult::rows`.
+///
+/// `line_prefix` is a running total of clamped row heights: `line_prefix[i]` is
+/// the number of terminal lines occupied by rows `0..i` (so `line_prefix[0]` is
+/// `0` and `line_prefix[n]` is the grand total). It turns the reducer's
+/// visibility math — total lines, "lines above a row", and the maximum scroll
+/// offset — into O(1)/O(log n) lookups instead of O(n) walks over every row,
+/// which is what made scrolling a multi-million-row result unusable.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct MeasuredLowScrollLayout {
     /// Per-row rendered line heights, indexed by absolute row.
     pub row_heights: Vec<u16>,
+    /// Prefix sums of the clamped row heights; length `row_heights.len() + 1`.
+    pub line_prefix: Vec<usize>,
+    /// The inputs this layout was measured for (cache-validity key).
+    pub key: LowScrollLayoutKey,
+}
+
+impl MeasuredLowScrollLayout {
+    /// Build a measured layout from per-row heights, precomputing the prefix
+    /// sums used for line-based scroll math.
+    #[must_use]
+    pub fn new(row_heights: Vec<u16>, key: LowScrollLayoutKey) -> Self {
+        let mut line_prefix = Vec::with_capacity(row_heights.len() + 1);
+        let mut acc = 0usize;
+        line_prefix.push(0);
+        for &h in &row_heights {
+            acc = acc.saturating_add(h.max(1) as usize);
+            line_prefix.push(acc);
+        }
+        Self {
+            row_heights,
+            line_prefix,
+            key,
+        }
+    }
+
+    /// Total rendered lines across every row (O(1)).
+    #[must_use]
+    pub fn total_lines(&self) -> usize {
+        self.line_prefix.last().copied().unwrap_or(0)
+    }
+
+    /// Rendered height in terminal lines of absolute row `row`, defaulting to
+    /// `1` for out-of-range indices so callers can treat missing rows as
+    /// single-line without special-casing.
+    #[must_use]
+    pub fn row_height(&self, row: usize) -> usize {
+        self.row_heights.get(row).map_or(1, |&h| h.max(1) as usize)
+    }
+
+    /// Lines occupied by all rows before `row` (i.e. rows `0..row`), clamped to
+    /// the row count (O(1)).
+    fn lines_before(&self, row: usize) -> usize {
+        let idx = row.min(self.row_heights.len());
+        self.line_prefix[idx]
+    }
+
+    /// Clamp a `scroll_offset` (in rows) so `target_row` stays visible given the
+    /// per-row line heights and the available pane line budget.
+    ///
+    /// Line-based analogue of the normal table's row-count visibility math:
+    /// because rows have variable heights, a row counts as `row_height(row)`
+    /// lines, not 1.
+    ///
+    /// - If the target is already on screen, the offset is returned unchanged.
+    /// - If below the pane, the offset advances the *minimum* amount so the
+    ///   target's last line touches the pane bottom (mirroring the normal
+    ///   table's `row - visible + 1`).
+    /// - If above the pane, the offset retreats so the target is the first
+    ///   visible row.
+    ///
+    /// O(log n): the "lines above" total and the minimal advance are found via
+    /// the prefix sums rather than by walking rows.
+    #[must_use]
+    pub fn ensure_row_visible(
+        &self,
+        scroll_offset: usize,
+        target_row: usize,
+        line_budget: usize,
+    ) -> usize {
+        if line_budget == 0 || self.row_heights.is_empty() {
+            return scroll_offset;
+        }
+
+        let last = self.row_heights.len() - 1;
+        let target = target_row.min(last);
+
+        if target < scroll_offset {
+            // Above the viewport: make it the first visible row.
+            return target;
+        }
+
+        let lines_above = self.lines_before(target) - self.lines_before(scroll_offset);
+        let target_height = self.row_height(target);
+        if lines_above + target_height <= line_budget {
+            // Already visible.
+            return scroll_offset;
+        }
+
+        // Below the viewport: advance the minimum so the rows `offset..=target`
+        // fit the budget, i.e. the smallest `offset` with
+        // `line_prefix[offset] >= line_prefix[target + 1] - line_budget`.
+        let span_end = self.line_prefix[target + 1];
+        let threshold = span_end.saturating_sub(line_budget);
+        self.line_prefix
+            .partition_point(|&lines| lines < threshold)
+            .min(target)
+    }
+
+    /// Maximum row scroll offset given variable row heights: the largest offset
+    /// at which the trailing content still fills (or underfills) the pane.
+    /// Equivalent to `total_rows.saturating_sub(visible_rows)` in the normal
+    /// row-count world.
+    ///
+    /// O(log n): a binary search over the prefix sums for the first offset whose
+    /// trailing lines fit the budget.
+    #[must_use]
+    pub fn max_row_offset(&self, line_budget: usize) -> usize {
+        let n = self.row_heights.len();
+        if line_budget == 0 || n == 0 {
+            return 0;
+        }
+        let total = self.total_lines();
+        if total <= line_budget {
+            return 0;
+        }
+        // Smallest offset with `total - line_prefix[offset] <= line_budget`.
+        let threshold = total - line_budget;
+        self.line_prefix
+            .partition_point(|&lines| lines < threshold)
+            .min(n - 1)
+    }
 }
 
 impl LowScrollLayout {
@@ -267,101 +411,6 @@ fn narrowest_index(widths: &[u16]) -> Option<usize> {
         .enumerate()
         .min_by_key(|(_, w)| **w)
         .map(|(i, _)| i)
-}
-
-/// Number of terminal lines a given row occupies in the measured layout.
-/// Falls back to `1` for out-of-range indices so callers can treat missing
-/// rows as single-line without special-casing.
-#[must_use]
-pub fn measured_row_height(heights: &[u16], row: usize) -> usize {
-    heights.get(row).map_or(1, |&h| h.max(1) as usize)
-}
-
-/// Clamp a `scroll_offset` (in rows) so the `target_row` stays visible given
-/// the per-row line heights and the available pane line budget.
-///
-/// This is the line-based analogue of the normal table's row-count visibility
-/// math: because Low Scroll Mode rows have variable heights, a row counts as
-/// `row_heights[row]` lines, not 1.
-///
-/// - If the target is already on screen, the offset is returned unchanged.
-/// - If the target is below the pane, the offset advances the *minimum*
-///   amount so the target sits at the bottom of the viewport (its last line
-///   touches the pane bottom), mirroring the normal table's
-///   `row - visible + 1` behaviour for smooth line-by-line navigation.
-/// - If the target is above the pane, the offset retreats so the target is the
-///   first visible row.
-#[must_use]
-pub fn ensure_row_visible_line_based(
-    row_heights: &[u16],
-    scroll_offset: usize,
-    target_row: usize,
-    line_budget: usize,
-) -> usize {
-    if line_budget == 0 || row_heights.is_empty() {
-        return scroll_offset;
-    }
-
-    let last = row_heights.len() - 1;
-    let target = target_row.min(last);
-    let top = scroll_offset.min(last + 1);
-
-    // Lines consumed from `scroll_offset` up to (excluding) `target`.
-    let lines_above: usize = (top..target)
-        .map(|r| measured_row_height(row_heights, r))
-        .sum();
-    let target_height = measured_row_height(row_heights, target);
-
-    if target < scroll_offset {
-        // Above the viewport: make it the first visible row.
-        return target;
-    }
-
-    if lines_above + target_height <= line_budget {
-        // Already visible.
-        return scroll_offset;
-    }
-
-    // Below the viewport: advance the minimum so the target's bottom touches
-    // the pane bottom. Walk forward dropping leading rows until the target
-    // (at most) fills the pane.
-    let mut offset = scroll_offset;
-    let mut used = lines_above;
-    while offset < target && used + target_height > line_budget {
-        used = used.saturating_sub(measured_row_height(row_heights, offset));
-        offset += 1;
-    }
-    offset
-}
-
-/// Maximum row scroll offset given variable row heights.
-///
-/// The largest offset at which at least one line of content is still visible.
-/// Equivalent to `total_rows.saturating_sub(visible_rows)` in the normal
-/// row-count world.
-#[must_use]
-pub fn max_row_offset_line_based(row_heights: &[u16], line_budget: usize) -> usize {
-    if line_budget == 0 || row_heights.is_empty() {
-        return 0;
-    }
-    // Total rendered lines across all rows.
-    let total_lines: usize = row_heights.iter().map(|&h| h.max(1) as usize).sum();
-    if total_lines <= line_budget {
-        return 0;
-    }
-    // Find the largest offset whose leading rows leave at least one line.
-    let mut offset = 0usize;
-    let mut leading_lines = 0usize;
-    for (idx, &h) in row_heights.iter().enumerate() {
-        let remaining = total_lines.saturating_sub(leading_lines);
-        if remaining <= line_budget {
-            return offset;
-        }
-        leading_lines += h.max(1) as usize;
-        offset = idx + 1;
-    }
-    // Rows taller than the budget individually: last row is the floor.
-    row_heights.len().saturating_sub(1)
 }
 
 /// Compute the layout (height + truncation flag) for a single row given the
@@ -653,83 +702,107 @@ mod tests {
     mod line_based_visibility {
         use super::*;
 
+        fn layout(heights: Vec<u16>) -> MeasuredLowScrollLayout {
+            MeasuredLowScrollLayout::new(heights, LowScrollLayoutKey::default())
+        }
+
         #[test]
-        fn measured_row_height_defaults_to_one_out_of_range() {
-            assert_eq!(measured_row_height(&[3, 5], 10), 1);
-            assert_eq!(measured_row_height(&[3, 5], 0), 3);
-            assert_eq!(measured_row_height(&[3, 5], 1), 5);
+        fn row_height_defaults_to_one_out_of_range() {
+            let l = layout(vec![3, 5]);
+
+            assert_eq!(l.row_height(10), 1);
+            assert_eq!(l.row_height(0), 3);
+            assert_eq!(l.row_height(1), 5);
+        }
+
+        #[test]
+        fn total_lines_sums_clamped_heights() {
+            assert_eq!(layout(vec![3, 1, 5]).total_lines(), 9);
+            // Zero-height rows are clamped to a single line each.
+            assert_eq!(layout(vec![0, 0]).total_lines(), 2);
+            assert_eq!(layout(vec![]).total_lines(), 0);
         }
 
         #[test]
         fn ensure_visible_returns_unchanged_when_already_visible() {
             // Each row 1 line, budget 5, target 2, offset 0: visible.
-            let heights = vec![1, 1, 1, 1, 1];
+            let l = layout(vec![1, 1, 1, 1, 1]);
 
-            assert_eq!(ensure_row_visible_line_based(&heights, 0, 2, 5), 0);
+            assert_eq!(l.ensure_row_visible(0, 2, 5), 0);
         }
 
         #[test]
         fn ensure_visible_advances_minimally_when_below() {
             // Rows of 1 line each, budget 3, target 4, offset 0.
             // Normal table: offset = 4 - 3 + 1 = 2.
-            let heights = vec![1, 1, 1, 1, 1, 1];
+            let l = layout(vec![1, 1, 1, 1, 1, 1]);
 
-            assert_eq!(ensure_row_visible_line_based(&heights, 0, 4, 3), 2);
+            assert_eq!(l.ensure_row_visible(0, 4, 3), 2);
         }
 
         #[test]
         fn ensure_visible_accounts_for_tall_rows() {
             // Row 0 is 5 lines, row 1 is 1 line, budget 4.
-            // Target row 1: lines_above (row 0) = 5, +1 = 6 > 4 → advance.
-            // Drop row 0 (used -= 5 → 0), offset = 1. Now 0 + 1 <= 4.
-            let heights = vec![5, 1];
+            // Target row 1: lines_above (row 0) = 5, +1 = 6 > 4 → advance to 1.
+            let l = layout(vec![5, 1]);
 
-            assert_eq!(ensure_row_visible_line_based(&heights, 0, 1, 4), 1);
+            assert_eq!(l.ensure_row_visible(0, 1, 4), 1);
         }
 
         #[test]
         fn ensure_visible_pins_target_to_top_when_too_tall() {
             // A single row of 10 lines with budget 4: target 0 is too tall.
             // It can't fit, so offset stays 0 (it fills the pane).
-            let heights = vec![10];
+            let l = layout(vec![10]);
 
-            assert_eq!(ensure_row_visible_line_based(&heights, 0, 0, 4), 0);
+            assert_eq!(l.ensure_row_visible(0, 0, 4), 0);
         }
 
         #[test]
         fn ensure_visible_retreats_when_target_above() {
-            let heights = vec![1, 1, 1, 1, 1];
+            let l = layout(vec![1, 1, 1, 1, 1]);
 
-            assert_eq!(ensure_row_visible_line_based(&heights, 4, 1, 3), 1);
+            assert_eq!(l.ensure_row_visible(4, 1, 3), 1);
         }
 
         #[test]
         fn ensure_visible_handles_empty_heights() {
-            assert_eq!(ensure_row_visible_line_based(&[], 0, 0, 5), 0);
-            assert_eq!(ensure_row_visible_line_based(&[], 3, 1, 0), 3);
+            let l = layout(vec![]);
+
+            assert_eq!(l.ensure_row_visible(0, 0, 5), 0);
+            assert_eq!(l.ensure_row_visible(3, 1, 0), 3);
         }
 
         #[test]
         fn max_offset_is_zero_when_everything_fits() {
-            let heights = vec![1, 1, 1];
+            let l = layout(vec![1, 1, 1]);
 
-            assert_eq!(max_row_offset_line_based(&heights, 5), 0);
+            assert_eq!(l.max_row_offset(5), 0);
         }
 
         #[test]
         fn max_offset_accounts_for_tall_rows() {
             // 6 rows of 1 line each, budget 3 → can scroll until 2 rows left.
-            let heights = vec![1, 1, 1, 1, 1, 1];
+            let l = layout(vec![1, 1, 1, 1, 1, 1]);
 
-            assert_eq!(max_row_offset_line_based(&heights, 3), 3);
+            assert_eq!(l.max_row_offset(3), 3);
         }
 
         #[test]
         fn max_offset_with_one_huge_row_floors_at_last() {
             // A single 10-line row with budget 4: still offset 0.
-            let heights = vec![10];
+            let l = layout(vec![10]);
 
-            assert_eq!(max_row_offset_line_based(&heights, 4), 0);
+            assert_eq!(l.max_row_offset(4), 0);
+        }
+
+        #[test]
+        fn max_offset_with_mixed_tall_rows_floors_at_last() {
+            // Last row (5 lines) alone overflows a 4-line budget: floor at the
+            // last row so at least its top is shown.
+            let l = layout(vec![1, 1, 5]);
+
+            assert_eq!(l.max_row_offset(4), 2);
         }
     }
 }
