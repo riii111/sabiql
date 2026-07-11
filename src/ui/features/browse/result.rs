@@ -580,10 +580,11 @@ impl ResultPane {
         let start = scroll_offset.min(row_heights.len());
         for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
             let abs_idx = start + rel_idx;
-            let h = (h16.max(1)) as usize;
-            if used + h > line_budget && used > 0 {
+            let remaining = line_budget.saturating_sub(used);
+            if remaining == 0 {
                 break;
             }
+            let h = (h16.max(1) as usize).min(remaining);
             visible.push((abs_idx, h));
             used += h;
         }
@@ -628,8 +629,8 @@ impl ResultPane {
                         } else {
                             let effective_max_lines = effective_row_line_cap(
                                 settings.max_lines_per_row,
+                                row_heights[abs_row_idx] as usize,
                                 height,
-                                line_budget,
                             );
                             let skip = if is_active_row && active_cell == Some(col_idx) {
                                 let clamped = clamp_cell_vertical_offset(
@@ -670,7 +671,7 @@ impl ResultPane {
                     })
                     .collect();
 
-                let mut r = Row::new(cells).height(height.min(line_budget.max(1)).max(1) as u16);
+                let mut r = Row::new(cells).height(height.max(1) as u16);
                 if let Some(bg) = row_bg {
                     r = r.style(Style::default().bg(bg));
                 }
@@ -796,10 +797,11 @@ impl ResultPane {
         let start = scroll_offset.min(row_heights.len());
         for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
             let abs_idx = start + rel_idx;
-            let h = (h16.max(1)) as usize;
-            if used + h > line_budget && used > 0 {
+            let remaining = line_budget.saturating_sub(used);
+            if remaining == 0 {
                 break;
             }
+            let h = (h16.max(1) as usize).min(remaining);
             visible.push((abs_idx, h));
             used += h;
         }
@@ -858,8 +860,8 @@ impl ResultPane {
                         } else {
                             let effective_max_lines = effective_row_line_cap(
                                 settings.max_lines_per_row,
+                                row_heights[abs_row_idx] as usize,
                                 height,
-                                line_budget,
                             );
                             let skip = if is_active_row && active_cell == Some(orig_idx) {
                                 let clamped = clamp_cell_vertical_offset(
@@ -900,7 +902,7 @@ impl ResultPane {
                     })
                     .collect();
 
-                let mut r = Row::new(cells).height(height.min(line_budget.max(1)).max(1) as u16);
+                let mut r = Row::new(cells).height(height.max(1) as u16);
                 if let Some(bg) = row_bg {
                     r = r.style(Style::default().bg(bg));
                 }
@@ -1078,14 +1080,15 @@ fn measured_wrapped_cell_layout(
 /// The line cap actually in effect for a row: the configured `max_lines_per_row`
 /// tightened by whatever the pane can physically display this frame.
 ///
-/// The viewport row-selection loop only ever lets a row's height exceed
-/// `line_budget` when it's the first (and then only) visible row — every
-/// later row is excluded instead of overflowing. So when that happens the row
-/// runs below the bottom of the pane and gets silently clipped by the
-/// terminal unless we also treat `line_budget` as a cap here, the same way a
-/// configured `max_lines_per_row` is: this is what makes the ellipsis appear
-/// and Ctrl+J/K scrolling available in that case, not just when a row cap is
-/// configured.
+/// The viewport row-selection loop fills the pane top to bottom and clips
+/// whichever row lands last to however much space remains below it, rather
+/// than dropping it entirely — that keeps the pane fully painted instead of
+/// leaving a gap. `row_height` is the row's full desired height and
+/// `line_budget` here is that row's actual on-screen allowance (not
+/// necessarily the whole pane). When the row got clipped we also treat that
+/// allowance as a cap here, the same way a configured `max_lines_per_row` is:
+/// this is what makes the ellipsis appear and Ctrl+J/K scrolling available in
+/// that case, not just when a row cap is configured.
 fn effective_row_line_cap(
     settings_cap: Option<u16>,
     row_height: usize,
