@@ -3,7 +3,7 @@ use std::time::Instant;
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::{DatabaseType, TableKind, TableSummary};
+use crate::domain::{DatabaseType, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
@@ -28,6 +28,7 @@ use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
+use crate::policy::write::write_guardrails::{PreviewWriteability, preview_writeability};
 
 pub struct AppState {
     pub should_quit: bool,
@@ -331,34 +332,22 @@ impl AppState {
         if !self.query.pagination.matches_table(table_detail) {
             return None;
         }
-        let database_type = self.session.active_database_type();
-        let has_stable_identity = table_detail
-            .primary_key
-            .as_ref()
-            .is_some_and(|pk| !pk.is_empty())
-            || (database_type == Some(DatabaseType::SQLite)
-                && table_detail.sqlite_rowid_alias().is_some());
-        if table_detail.kind_info.kind == TableKind::View {
-            Some("view")
-        } else if table_detail.kind_info.kind == TableKind::Virtual {
-            Some("virtual table")
-        } else if table_detail.kind_info.without_rowid {
-            Some("WITHOUT ROWID table")
-        } else if !has_stable_identity && database_type == Some(DatabaseType::SQLite) {
-            Some("table without PRIMARY KEY or rowid")
-        } else if !has_stable_identity {
-            Some("table without PRIMARY KEY")
-        } else {
-            None
+        match preview_writeability(self.session.active_database_type_or_default(), table_detail) {
+            PreviewWriteability::Writable => None,
+            PreviewWriteability::ReadOnly(reason) => Some(reason),
+            PreviewWriteability::MissingStableRowIdentity => {
+                if self.session.active_database_type() == Some(DatabaseType::SQLite) {
+                    Some("table without PRIMARY KEY or rowid")
+                } else {
+                    Some("table without PRIMARY KEY")
+                }
+            }
         }
     }
 
-    pub fn is_visible_preview_target_read_only(&self) -> bool {
-        self.visible_preview_target_read_only_reason().is_some()
-    }
-
     pub fn can_write_visible_preview(&self) -> bool {
-        self.query.can_edit_visible_result() && !self.is_visible_preview_target_read_only()
+        self.query.can_edit_visible_result()
+            && self.visible_preview_target_read_only_reason().is_none()
     }
 
     /// True when a run-scoped async response no longer belongs to the active
@@ -375,7 +364,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table,
+        ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table, TableKind,
         TableKindInfo,
     };
     use crate::model::browse::row_detail::RowDetailState;

@@ -2,14 +2,14 @@ use unicode_casefold::UnicodeCaseFold;
 
 use crate::domain::DatabaseType;
 use crate::domain::connection::SqliteConnectionConfig;
-use crate::domain::{QueryResult, QueryValue, Table, TableKind};
+use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::write_guardrails::{
-    TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
+    PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
+    evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
 };
-use crate::policy::write::write_update::build_pk_pairs;
 use crate::services::AppServices;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -78,81 +78,6 @@ pub struct BulkDeletePreviewResult {
     pub target_row: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StableRowIdentity {
-    PrimaryKey(Vec<String>),
-    SqliteRowid { alias: String },
-}
-
-impl StableRowIdentity {
-    pub fn identity_pairs_for_row(
-        &self,
-        result: &QueryResult,
-        row_idx: usize,
-    ) -> Option<Vec<(String, QueryValue)>> {
-        match self {
-            Self::PrimaryKey(columns) => {
-                let row = result.values().get(row_idx)?;
-                build_pk_pairs(&result.columns, row, columns)
-            }
-            Self::SqliteRowid { alias } => result
-                .hidden_value_at(row_idx, alias)
-                .cloned()
-                .map(|value| vec![(alias.clone(), value)]),
-        }
-    }
-
-    pub fn predicate_pairs_for_row(
-        &self,
-        result: &QueryResult,
-        row_idx: usize,
-    ) -> Option<Vec<(String, QueryValue)>> {
-        match self {
-            Self::PrimaryKey(_) => self.identity_pairs_for_row(result, row_idx),
-            Self::SqliteRowid { alias } => {
-                let rowid = result.hidden_value_at(row_idx, alias)?.clone();
-                let row = result.values().get(row_idx)?;
-                if row.is_empty() || result.columns.is_empty() || row.len() != result.columns.len()
-                {
-                    return None;
-                }
-                let mut pairs = Vec::with_capacity(row.len() + 1);
-                pairs.push((alias.clone(), rowid));
-                pairs.extend(result.columns.iter().cloned().zip(row.iter().cloned()));
-                Some(pairs)
-            }
-        }
-    }
-
-    pub fn is_primary_key_column(&self, column_name: &str) -> bool {
-        match self {
-            Self::PrimaryKey(columns) => columns.iter().any(|pk| pk == column_name),
-            Self::SqliteRowid { alias: _ } => false,
-        }
-    }
-
-    pub fn uses_sqlite_rowid(&self) -> bool {
-        matches!(self, Self::SqliteRowid { .. })
-    }
-}
-
-pub fn stable_row_identity_for_table(
-    database_type: DatabaseType,
-    table: &Table,
-) -> Option<StableRowIdentity> {
-    if let Some(pk) = table.primary_key.as_ref().filter(|cols| !cols.is_empty()) {
-        return Some(StableRowIdentity::PrimaryKey(pk.clone()));
-    }
-    if database_type != DatabaseType::SQLite {
-        return None;
-    }
-    table
-        .sqlite_rowid_alias()
-        .map(|alias| StableRowIdentity::SqliteRowid {
-            alias: alias.to_string(),
-        })
-}
-
 pub fn reject_sqlite_null_pk(
     database_type: DatabaseType,
     pk_pairs: &[(String, QueryValue)],
@@ -193,19 +118,20 @@ pub fn editable_preview_base(
     if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
-    if table_detail.kind_info.kind == TableKind::View {
-        return Err(EditGuardrailError::ReadOnlyPreviewTarget("view"));
-    }
-    if table_detail.kind_info.kind == TableKind::Virtual {
-        return Err(EditGuardrailError::ReadOnlyPreviewTarget("virtual table"));
-    }
-    if table_detail.kind_info.without_rowid {
-        return Err(EditGuardrailError::ReadOnlyPreviewTarget(
-            "WITHOUT ROWID table",
-        ));
-    }
-
     let database_type = state.session.active_database_type_or_default();
+    match preview_writeability(database_type, table_detail) {
+        PreviewWriteability::Writable => {}
+        PreviewWriteability::ReadOnly(reason) => {
+            return Err(EditGuardrailError::ReadOnlyPreviewTarget(reason));
+        }
+        PreviewWriteability::MissingStableRowIdentity => {
+            return Err(if database_type == DatabaseType::SQLite {
+                EditGuardrailError::EditingRequiresStableRowIdentity
+            } else {
+                EditGuardrailError::EditingRequiresPrimaryKey
+            });
+        }
+    }
     let identity = stable_row_identity_for_table(database_type, table_detail).ok_or_else(|| {
         if database_type == DatabaseType::SQLite {
             EditGuardrailError::EditingRequiresStableRowIdentity
