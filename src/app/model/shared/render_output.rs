@@ -17,7 +17,8 @@ pub struct RenderOutput {
     /// line bounds within the pane) so the scroll reducer can do line-based
     /// visibility math instead of the row-count math used by the normal
     /// table. Like `result_viewport_plan`, it reflects the previous frame.
-    pub result_wrapped_cell_layout: Option<crate::model::shared::wrapped_cell::MeasuredWrappedCellLayout>,
+    pub result_wrapped_cell_layout:
+        Option<crate::model::shared::wrapped_cell::MeasuredWrappedCellLayout>,
     pub explorer_pane_height: u16,
     pub explorer_content_width: usize,
     pub inspector_pane_height: u16,

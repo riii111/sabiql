@@ -11,12 +11,12 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::wrapped_cell::{self as wrapped_cell_layout, WrappedCellSettings};
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
     select_viewport_columns, widths_fingerprint,
 };
+use crate::app::model::shared::wrapped_cell::{self as wrapped_cell_layout, WrappedCellSettings};
 use crate::domain::{QueryResult, QuerySource};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -626,11 +626,16 @@ impl ResultPane {
                                     .fg(theme.component.table.cell_edit_fg),
                             )
                         } else {
+                            let effective_max_lines = effective_row_line_cap(
+                                settings.max_lines_per_row,
+                                height,
+                                line_budget,
+                            );
                             let skip = if is_active_row && active_cell == Some(col_idx) {
                                 let clamped = clamp_cell_vertical_offset(
                                     val,
                                     col_width,
-                                    settings.max_lines_per_row,
+                                    effective_max_lines,
                                     cell_vertical_offset,
                                 );
                                 corrected_cell_vertical_offset = clamped;
@@ -638,12 +643,8 @@ impl ResultPane {
                             } else {
                                 0
                             };
-                            let lines = wrapped_cell_lines(
-                                val,
-                                col_width,
-                                settings.max_lines_per_row,
-                                skip,
-                            );
+                            let lines =
+                                wrapped_cell_lines(val, col_width, effective_max_lines, skip);
                             Cell::from(lines)
                         };
 
@@ -669,7 +670,7 @@ impl ResultPane {
                     })
                     .collect();
 
-                let mut r = Row::new(cells).height(height.max(1) as u16);
+                let mut r = Row::new(cells).height(height.min(line_budget.max(1)).max(1) as u16);
                 if let Some(bg) = row_bg {
                     r = r.style(Style::default().bg(bg));
                 }
@@ -855,11 +856,16 @@ impl ResultPane {
                                 )
                             }
                         } else {
+                            let effective_max_lines = effective_row_line_cap(
+                                settings.max_lines_per_row,
+                                height,
+                                line_budget,
+                            );
                             let skip = if is_active_row && active_cell == Some(orig_idx) {
                                 let clamped = clamp_cell_vertical_offset(
                                     val,
                                     col_width,
-                                    settings.max_lines_per_row,
+                                    effective_max_lines,
                                     cell_vertical_offset,
                                 );
                                 corrected_cell_vertical_offset = clamped;
@@ -867,12 +873,8 @@ impl ResultPane {
                             } else {
                                 0
                             };
-                            let lines = wrapped_cell_lines(
-                                val,
-                                col_width,
-                                settings.max_lines_per_row,
-                                skip,
-                            );
+                            let lines =
+                                wrapped_cell_lines(val, col_width, effective_max_lines, skip);
                             Cell::from(lines)
                         };
 
@@ -898,7 +900,7 @@ impl ResultPane {
                     })
                     .collect();
 
-                let mut r = Row::new(cells).height(height.max(1) as u16);
+                let mut r = Row::new(cells).height(height.min(line_budget.max(1)).max(1) as u16);
                 if let Some(bg) = row_bg {
                     r = r.style(Style::default().bg(bg));
                 }
@@ -1071,6 +1073,29 @@ fn measured_wrapped_cell_layout(
         return stored.clone();
     }
     wrapped_cell_layout::MeasuredWrappedCellLayout::new(compute(), key)
+}
+
+/// The line cap actually in effect for a row: the configured `max_lines_per_row`
+/// tightened by whatever the pane can physically display this frame.
+///
+/// The viewport row-selection loop only ever lets a row's height exceed
+/// `line_budget` when it's the first (and then only) visible row — every
+/// later row is excluded instead of overflowing. So when that happens the row
+/// runs below the bottom of the pane and gets silently clipped by the
+/// terminal unless we also treat `line_budget` as a cap here, the same way a
+/// configured `max_lines_per_row` is: this is what makes the ellipsis appear
+/// and Ctrl+J/K scrolling available in that case, not just when a row cap is
+/// configured.
+fn effective_row_line_cap(
+    settings_cap: Option<u16>,
+    row_height: usize,
+    line_budget: usize,
+) -> Option<u16> {
+    if line_budget == 0 || row_height <= line_budget {
+        return settings_cap;
+    }
+    let viewport_cap = line_budget.min(u16::MAX as usize) as u16;
+    Some(settings_cap.map_or(viewport_cap, |cap| cap.min(viewport_cap)))
 }
 
 /// The number of additional wrapped lines available below `cell_vertical_offset`
@@ -1449,6 +1474,40 @@ mod tests {
             let clamped = clamp_cell_vertical_offset("a\nb\nc\nd\ne", 10, Some(2), 1);
 
             assert_eq!(clamped, 1);
+        }
+    }
+
+    mod effective_row_line_cap_tests {
+        use super::*;
+
+        #[test]
+        fn no_cap_and_row_fits_stays_uncapped() {
+            assert_eq!(effective_row_line_cap(None, 5, 20), None);
+        }
+
+        #[test]
+        fn no_configured_cap_but_row_overflows_viewport_gets_capped_to_budget() {
+            // No max_lines_per_row set, but the row's natural height (50) is taller
+            // than what the pane can show (20 lines) -- the viewport itself must
+            // now act as the cap so an ellipsis appears and Ctrl+J/K can scroll.
+            assert_eq!(effective_row_line_cap(None, 50, 20), Some(20));
+        }
+
+        #[test]
+        fn configured_cap_tighter_than_viewport_is_unchanged() {
+            assert_eq!(effective_row_line_cap(Some(5), 5, 20), Some(5));
+        }
+
+        #[test]
+        fn configured_cap_looser_than_viewport_is_tightened_to_viewport() {
+            // cap=50 lets the row grow to 50 lines, but only 20 fit on screen.
+            assert_eq!(effective_row_line_cap(Some(50), 50, 20), Some(20));
+        }
+
+        #[test]
+        fn zero_line_budget_leaves_settings_cap_unchanged() {
+            assert_eq!(effective_row_line_cap(Some(5), 5, 0), Some(5));
+            assert_eq!(effective_row_line_cap(None, 5, 0), None);
         }
     }
 }

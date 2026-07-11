@@ -28,9 +28,9 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::model::shared::wrapped_cell::WrappedCellSettings;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::theme_id::ThemeId;
+    use crate::model::shared::wrapped_cell::WrappedCellSettings;
     use crate::ports::outbound::{AppSettings, SettingsStoreError};
 
     struct RecordingSettingsStore {

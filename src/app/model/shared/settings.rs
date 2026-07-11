@@ -1,6 +1,6 @@
-use super::wrapped_cell::WrappedCellSettings;
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
+use super::wrapped_cell::WrappedCellSettings;
 use crate::model::shared::cursor::CursorMove;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

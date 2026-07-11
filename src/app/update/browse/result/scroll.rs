@@ -1,7 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::wrapped_cell::MeasuredWrappedCellLayout;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
+use crate::model::shared::wrapped_cell::MeasuredWrappedCellLayout;
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
 };

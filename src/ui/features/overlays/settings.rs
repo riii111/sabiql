@@ -148,7 +148,12 @@ impl SettingsOverlay {
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
 
-    fn render_wrapped_cell(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+    fn render_wrapped_cell(
+        frame: &mut Frame,
+        content: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) {
         let wrapped_cell = state.settings.selected_wrapped_cell();
 
         let mut lines = vec![

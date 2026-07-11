@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::model::shared::wrapped_cell::WrappedCellSettings;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::shared::theme_id::ThemeId;
+use crate::model::shared::wrapped_cell::WrappedCellSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettings {

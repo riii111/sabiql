@@ -379,7 +379,10 @@ mod tests {
         #[case(1, 2, 1)]
         #[case(0, 2, 1)]
         fn wrap_width_subtracts_padding(#[case] col: u16, #[case] pad: u16, #[case] expected: u16) {
-            assert_eq!(WrappedCellSettings::effective_wrap_width(col, pad), expected);
+            assert_eq!(
+                WrappedCellSettings::effective_wrap_width(col, pad),
+                expected
+            );
         }
 
         #[rstest]
@@ -573,7 +576,10 @@ mod tests {
         #[test]
         fn includes_separators() {
             let layout = WrappedCellLayout {
-                columns: vec![WrappedCellColumn { width: 10 }, WrappedCellColumn { width: 20 }],
+                columns: vec![
+                    WrappedCellColumn { width: 10 },
+                    WrappedCellColumn { width: 20 },
+                ],
                 rows: vec![],
             };
 

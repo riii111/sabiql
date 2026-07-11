@@ -6,10 +6,10 @@ use super::focused_pane::FocusedPane;
 use super::help::HelpState;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
-use super::wrapped_cell::{WrappedCellSettings, MeasuredWrappedCellLayout};
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
+use super::wrapped_cell::{MeasuredWrappedCellLayout, WrappedCellSettings};
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;

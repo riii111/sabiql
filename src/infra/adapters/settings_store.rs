@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use super::app_config_file::{
     self, config_file_path, get_config_dir as app_config_dir, render_config_file, write_config_file,
 };
-use crate::app::model::shared::wrapped_cell::WrappedCellSettings;
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
+use crate::app::model::shared::wrapped_cell::WrappedCellSettings;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
 use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
 
@@ -130,7 +130,8 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.theme = Some(settings.theme_id.config_value().to_string());
     config.keymap_preset = Some(settings.keymap_preset.config_value().to_string());
     config.er_browser = settings.er_browser;
-    config.wrapped_cell_allow_horizontal_scroll = Some(settings.wrapped_cell.allow_horizontal_scroll);
+    config.wrapped_cell_allow_horizontal_scroll =
+        Some(settings.wrapped_cell.allow_horizontal_scroll);
     config.wrapped_cell_max_lines_per_row = settings.wrapped_cell.max_lines_per_row;
 }
 
