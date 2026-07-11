@@ -94,7 +94,13 @@ pub fn preview_writeability(database_type: DatabaseType, table: &Table) -> Previ
     if table.kind_info.without_rowid {
         return PreviewWriteability::ReadOnly("WITHOUT ROWID table");
     }
-    if stable_row_identity_for_table(database_type, table).is_none() {
+    let has_primary_key = table
+        .primary_key
+        .as_ref()
+        .is_some_and(|columns| !columns.is_empty());
+    let has_sqlite_rowid =
+        database_type == DatabaseType::SQLite && table.sqlite_rowid_alias().is_some();
+    if !has_primary_key && !has_sqlite_rowid {
         return PreviewWriteability::MissingStableRowIdentity;
     }
     PreviewWriteability::Writable
