@@ -791,6 +791,8 @@ impl MetadataProvider for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor};
     use crate::domain::{
         DatabaseType, FkAction, IndexType, Schema, TriggerEvent, TriggerTiming,
@@ -896,7 +898,7 @@ mod tests {
 
         #[tokio::test]
         async fn lists_user_tables_in_main_schema() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
             CREATE VIEW active_users AS SELECT id FROM users;
@@ -919,7 +921,7 @@ mod tests {
 
         #[tokio::test]
         async fn skips_row_count_even_when_table_has_rows() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
@@ -935,7 +937,7 @@ mod tests {
 
         #[tokio::test]
         async fn empty_database_returns_no_tables() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
+            let (_dir, dsn) = super::test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
@@ -946,7 +948,7 @@ mod tests {
 
         #[tokio::test]
         async fn hides_fts5_shadow_tables_from_normal_table_list() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
@@ -971,7 +973,7 @@ mod tests {
 
         impl TableKindInfoMetadataFixture {
             async fn new() -> Self {
-                let (dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+                let (dir, dsn) = super::test_support::make_sqlite_db(
                     r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             CREATE TABLE strict_users(id INTEGER PRIMARY KEY, name TEXT);
@@ -1057,7 +1059,7 @@ mod tests {
 
         #[tokio::test]
         async fn hides_rtree_shadow_tables_from_normal_table_list() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE places(id INTEGER PRIMARY KEY, name TEXT);
             CREATE VIRTUAL TABLE places_geo USING rtree(
@@ -1081,7 +1083,7 @@ mod tests {
 
         #[tokio::test]
         async fn detects_virtual_tables_in_schema() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 "CREATE VIRTUAL TABLE notes_fts USING fts5(body);",
             );
             let adapter = SqliteAdapter::new();
@@ -1092,9 +1094,8 @@ mod tests {
 
         #[tokio::test]
         async fn simple_schema_has_no_virtual_tables() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-                "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-            );
+            let (_dir, dsn) =
+                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
             let path = SqliteAdapter::path_from_dsn(&dsn).unwrap();
 
@@ -1107,9 +1108,8 @@ mod tests {
 
         #[tokio::test]
         async fn non_main_schema_returns_object_missing() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-                "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-            );
+            let (_dir, dsn) =
+                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter.fetch_table_detail(&dsn, "other", "users").await;
@@ -1119,9 +1119,8 @@ mod tests {
 
         #[tokio::test]
         async fn missing_table_returns_object_missing() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-                "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-            );
+            let (_dir, dsn) =
+                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
@@ -1131,7 +1130,7 @@ mod tests {
 
         #[tokio::test]
         async fn loads_columns_indexes_and_foreign_keys() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
@@ -1178,7 +1177,7 @@ mod tests {
 
         #[tokio::test]
         async fn columns_and_fks_skips_row_count() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
@@ -1201,7 +1200,7 @@ mod tests {
 
         #[tokio::test]
         async fn columns_and_fks_skips_triggers_and_source_ddl() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN
@@ -1229,7 +1228,7 @@ mod tests {
         #[tokio::test]
         async fn without_primary_key_sets_primary_key_none() {
             let (_dir, dsn) =
-                sabiql_test_support::infra::make_sqlite_db("CREATE TABLE logs(message TEXT);");
+                super::test_support::make_sqlite_db("CREATE TABLE logs(message TEXT);");
             let adapter = SqliteAdapter::new();
 
             let detail = adapter
@@ -1243,7 +1242,7 @@ mod tests {
 
         #[tokio::test]
         async fn columns_and_fks_preserves_unique_column_attributes_without_returning_indexes() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 "CREATE TABLE users(email TEXT UNIQUE NOT NULL);",
             );
             let adapter = SqliteAdapter::new();
@@ -1264,7 +1263,7 @@ mod tests {
 
         #[tokio::test]
         async fn partial_unique_index_does_not_mark_column_unique() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(email TEXT);
             CREATE UNIQUE INDEX idx_users_email_active
@@ -1308,7 +1307,7 @@ mod tests {
 
         #[tokio::test]
         async fn generated_and_hidden_columns_are_read_only() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(
                 id INTEGER PRIMARY KEY,
@@ -1349,7 +1348,7 @@ mod tests {
 
         #[tokio::test]
         async fn source_ddl_preserves_without_rowid_and_virtual_table_syntax() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE settings(
                 key TEXT PRIMARY KEY,
@@ -1408,7 +1407,7 @@ mod tests {
 
         #[tokio::test]
         async fn partial_expression_index_preserves_metadata_and_definition() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT);
             CREATE INDEX idx_users_email_lower
@@ -1441,7 +1440,7 @@ mod tests {
 
         #[tokio::test]
         async fn partial_index_preserves_where_clause_in_definition() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(email TEXT);
             CREATE INDEX idx_users_email_active
@@ -1474,7 +1473,7 @@ mod tests {
 
         #[tokio::test]
         async fn descending_and_collation_indexes_preserve_definition() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(name TEXT, created_at TEXT);
             CREATE INDEX idx_users_name_desc ON users(name DESC);
@@ -1523,7 +1522,7 @@ mod tests {
 
         #[tokio::test]
         async fn composite_foreign_key_groups_columns_in_sequence_order() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
@@ -1553,7 +1552,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_without_target_columns_resolves_parent_primary_key() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE parent(a INTEGER, b INTEGER, PRIMARY KEY(a, b));
             CREATE TABLE child(
@@ -1579,7 +1578,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_to_missing_table_is_kept_as_unresolved() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             PRAGMA foreign_keys=OFF;
             CREATE TABLE child(
@@ -1603,7 +1602,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_to_missing_column_is_kept_as_unresolved() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             PRAGMA foreign_keys=OFF;
             CREATE TABLE parent(a INTEGER PRIMARY KEY);
@@ -1629,7 +1628,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_without_target_columns_and_missing_parent_pk_is_unresolved() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             PRAGMA foreign_keys=OFF;
             CREATE TABLE parent(a INTEGER);
@@ -1653,7 +1652,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_target_column_matches_case_insensitively() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE parent(id INTEGER PRIMARY KEY);
             CREATE TABLE child(x INTEGER REFERENCES parent(ID));
@@ -1677,9 +1676,8 @@ mod tests {
 
         #[tokio::test]
         async fn change_with_table_shape() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-                "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-            );
+            let (_dir, dsn) =
+                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
@@ -1692,7 +1690,7 @@ mod tests {
 
         #[tokio::test]
         async fn include_foreign_key_update_action() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
@@ -1719,7 +1717,7 @@ mod tests {
 
         #[tokio::test]
         async fn unresolved_foreign_key_is_included_in_signature() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             PRAGMA foreign_keys=OFF;
             CREATE TABLE child(
@@ -1745,25 +1743,25 @@ mod tests {
         #[tokio::test]
         async fn index_desc_and_collation_change_signature() {
             let adapter = SqliteAdapter::new();
-            let (_asc_dir, asc_dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_asc_dir, asc_dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(name TEXT);
             CREATE INDEX idx_users_name ON users(name);
             ",
             );
-            let (_desc_dir, desc_dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_desc_dir, desc_dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(name TEXT);
             CREATE INDEX idx_users_name ON users(name DESC);
             ",
             );
-            let (_binary_dir, binary_dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_binary_dir, binary_dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(name TEXT);
             CREATE INDEX idx_users_name ON users(name);
             ",
             );
-            let (_nocase_dir, nocase_dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_nocase_dir, nocase_dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(name TEXT);
             CREATE INDEX idx_users_name ON users(name COLLATE NOCASE);
@@ -1828,7 +1826,7 @@ mod tests {
                 INSERT INTO audit(user_id) VALUES (new.id);
             END;
             ";
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(setup);
+            let (_dir, dsn) = super::test_support::make_sqlite_db(setup);
             let adapter = SqliteAdapter::new();
 
             let before = adapter.fetch_table_signatures(&dsn).await.unwrap();
@@ -1860,7 +1858,7 @@ mod tests {
 
         #[tokio::test]
         async fn table_detail_loads_trigger_without_explicit_timing() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             CREATE TRIGGER users_log INSERT ON users BEGIN SELECT 1; END;
@@ -1881,7 +1879,7 @@ mod tests {
 
         #[tokio::test]
         async fn table_detail_loads_trigger_metadata_from_sqlite_master_sql() {
-            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
+            let (_dir, dsn) = super::test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             CREATE TRIGGER IF NOT EXISTS users_audit AFTER INSERT ON users BEGIN SELECT 1; END;

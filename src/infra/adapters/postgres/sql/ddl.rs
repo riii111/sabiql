@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::adapters::test_support;
+
 use std::fmt::Write as _;
 
 use crate::app::ports::outbound::DdlGenerator;
@@ -98,7 +101,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..sabiql_test_support::infra::minimal_table("", "")
+            ..super::test_support::minimal_table("", "")
         }
     }
 

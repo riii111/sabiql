@@ -183,6 +183,8 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use std::sync::Arc;
 
     use super::*;
@@ -1210,7 +1212,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "old_table".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }
         }
 
@@ -1503,7 +1505,7 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             })
         }
 

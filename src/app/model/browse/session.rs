@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_support;
+
 use std::sync::Arc;
 
 use crate::domain::{
@@ -464,7 +467,7 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             row_count_estimate: Some(100),
-            ..sabiql_test_support::table::minimal("", "")
+            ..super::test_support::table::minimal("", "")
         }
     }
 

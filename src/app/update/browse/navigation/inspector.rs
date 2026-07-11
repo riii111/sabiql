@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_support;
+
 use crate::model::app_state::AppState;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
@@ -130,7 +133,7 @@ mod tests {
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     attributes: ColumnAttributes::empty(),
-                    ..sabiql_test_support::column::test_nullable_column(
+                    ..super::test_support::column::test_nullable_column(
                         format!("col_{i}"),
                         "text",
                         i as i32,
@@ -142,7 +145,7 @@ mod tests {
                 name: "test_table".to_string(),
                 columns: cols,
                 row_count_estimate: Some(0),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }));
             state
         }

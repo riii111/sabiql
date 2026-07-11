@@ -132,6 +132,8 @@ fn clipboard_unavailable() -> Action {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::domain::{Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
     use crate::ports::outbound::ddl_generator::DdlGenerator;
@@ -445,11 +447,11 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: Some(vec!["id".to_string()]),
                 row_count_estimate: Some(0),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }));
             state
         }

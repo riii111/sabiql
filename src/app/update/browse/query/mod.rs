@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_support;
+
 mod execution;
 mod pagination;
 mod write;
@@ -129,9 +132,9 @@ pub(super) mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..sabiql_test_support::column::test_nullable_column("id", "int", 1)
+                    ..super::test_support::column::test_nullable_column("id", "int", 1)
                 },
-                sabiql_test_support::column::test_nullable_column("name", "text", 2),
+                super::test_support::column::test_nullable_column("name", "text", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
             indexes: vec![Index {
@@ -148,7 +151,7 @@ pub(super) mod tests {
                 function_name: "f".to_string(),
                 security_definer: false,
             }],
-            ..sabiql_test_support::table::minimal("", "")
+            ..super::test_support::table::minimal("", "")
         }
     }
 
@@ -156,7 +159,7 @@ pub(super) mod tests {
         let mut detail = users_table_detail();
         detail
             .columns
-            .push(sabiql_test_support::column::test_nullable_column(
+            .push(super::test_support::column::test_nullable_column(
                 "metadata", "jsonb", 3,
             ));
         detail

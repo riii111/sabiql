@@ -62,7 +62,7 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
         false,
     )];
     state.session.mark_connected(Arc::new(metadata));
-    let mut table = sabiql_test_support::table::minimal("public", "notes");
+    let mut table = fixtures::minimal_table("public", "notes");
     table.columns = vec![
         Column {
             name: "id".to_string(),
@@ -353,7 +353,7 @@ fn result_pane_view_cell_active_hides_write_hints() {
     with_current_result(&mut state);
     state.query.pagination.reset_for_table("public", "users");
     let mut table = state.session.table_detail().unwrap().clone();
-    table.kind_info = sabiql_test_support::table::view_kind_info();
+    table.kind_info = fixtures::view_kind_info();
     let generation = state.session.selection_generation();
     let _ = state.session.set_table_detail(table, generation);
     state.ui.set_focused_pane(FocusedPane::Result);

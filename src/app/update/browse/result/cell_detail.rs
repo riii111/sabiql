@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_support;
+
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
@@ -220,12 +223,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                sabiql_test_support::column::test_nullable_column("body", data_type.to_string(), 2),
+                super::test_support::column::test_nullable_column("body", data_type.to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..sabiql_test_support::table::minimal("", "")
+            ..super::test_support::table::minimal("", "")
         }));
         state.result_interaction.activate_cell(0, 1);
         state

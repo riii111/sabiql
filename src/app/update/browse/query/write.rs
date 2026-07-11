@@ -407,6 +407,8 @@ pub fn reduce_write(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::update::test_fixtures;
 
@@ -487,11 +489,11 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "main".to_string(),
                 name: "logs".to_string(),
-                columns: vec![sabiql_test_support::column::test_nullable_column(
+                columns: vec![super::test_support::column::test_nullable_column(
                     "message", "TEXT", 1,
                 )],
                 primary_key: None,
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "logs");
             state.modal.set_mode(InputMode::CellEdit);

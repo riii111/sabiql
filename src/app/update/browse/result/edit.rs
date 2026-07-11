@@ -145,6 +145,8 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
@@ -160,7 +162,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }
         }
 
@@ -267,7 +269,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -286,7 +288,7 @@ mod tests {
         fn view_detail_blocks_cell_edit_entry() {
             let mut state = preview_state_with_selection();
             let mut table = minimal_users_table();
-            table.kind_info = sabiql_test_support::table::view_kind_info();
+            table.kind_info = super::test_support::table::view_kind_info();
             state.session.set_table_detail_raw(Some(table));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -308,11 +310,11 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
                 },
                 Column {
                     attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    ..sabiql_test_support::column::test_nullable_column("name", "text", 2)
+                    ..super::test_support::column::test_nullable_column("name", "text", 2)
                 },
             ];
             state.session.set_table_detail_raw(Some(table));
@@ -389,9 +391,9 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                sabiql_test_support::column::test_nullable_column("name", "jsonb", 2),
+                super::test_support::column::test_nullable_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

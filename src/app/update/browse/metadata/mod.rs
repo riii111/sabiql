@@ -1,3 +1,6 @@
+#[cfg(test)]
+use crate::test_support;
+
 use std::time::Instant;
 
 mod er_neighbors;
@@ -71,7 +74,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
-        Box::new(sabiql_test_support::table::minimal(schema, name))
+        Box::new(super::test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {

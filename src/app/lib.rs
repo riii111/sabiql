@@ -15,4 +15,7 @@ pub mod update;
 pub mod ports;
 pub mod services;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use sabiql_domain as domain;

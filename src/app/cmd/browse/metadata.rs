@@ -276,6 +276,8 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -603,7 +605,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..super::test_support::table::minimal("", "")
             }
         }
 
