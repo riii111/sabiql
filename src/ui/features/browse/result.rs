@@ -11,7 +11,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
-use crate::app::model::shared::low_scroll::{self as low_scroll_layout, LowScrollSettings};
+use crate::app::model::shared::wrapped_cell::{self as wrapped_cell_layout, WrappedCellSettings};
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -32,9 +32,9 @@ pub struct RenderedResultGeometry {
     pub widths_cache: ColumnWidthsCache,
     /// Corrected/clamped `cell_vertical_offset` for the active cell.
     pub cell_vertical_offset: usize,
-    /// Low Scroll Mode layout (per-row line heights), or `None` when the mode
+    /// Wrapped Cell Mode layout (per-row line heights), or `None` when the mode
     /// is off. Drives line-based scroll math in the reducer.
-    pub low_scroll_layout: Option<low_scroll_layout::MeasuredLowScrollLayout>,
+    pub wrapped_cell_layout: Option<wrapped_cell_layout::MeasuredWrappedCellLayout>,
 }
 
 struct EditingCellView<'a> {
@@ -57,11 +57,11 @@ struct ResultTableParams<'a> {
     yank_flash: Option<YankFlash>,
     cell_vertical_offset: usize,
     now: Instant,
-    low_scroll: LowScrollSettings,
-    low_scroll_enabled: bool,
-    /// Low Scroll Mode layout measured on the previous frame, reused when its
+    wrapped_cell: WrappedCellSettings,
+    wrapped_cell_enabled: bool,
+    /// Wrapped Cell Mode layout measured on the previous frame, reused when its
     /// key still matches so per-row heights are not re-measured every draw.
-    stored_low_scroll: Option<&'a low_scroll_layout::MeasuredLowScrollLayout>,
+    stored_wrapped_cell: Option<&'a wrapped_cell_layout::MeasuredWrappedCellLayout>,
 }
 
 impl ResultPane {
@@ -87,7 +87,7 @@ impl ResultPane {
             plan: ViewportPlan::default(),
             widths_cache: ColumnWidthsCache::default(),
             cell_vertical_offset: 0,
-            low_scroll_layout: None,
+            wrapped_cell_layout: None,
         };
 
         if let Some(result) = result {
@@ -124,9 +124,9 @@ impl ResultPane {
                         yank_flash: state.result_interaction.yank_flash,
                         cell_vertical_offset: state.result_interaction.cell_vertical_offset,
                         now,
-                        low_scroll: state.ui.low_scroll,
-                        low_scroll_enabled: state.ui.low_scroll_enabled,
-                        stored_low_scroll: state.ui.result_low_scroll_layout.as_ref(),
+                        wrapped_cell: state.ui.wrapped_cell,
+                        wrapped_cell_enabled: state.ui.wrapped_cell_enabled,
+                        stored_wrapped_cell: state.ui.result_wrapped_cell_layout.as_ref(),
                     },
                     theme,
                 )
@@ -213,9 +213,9 @@ impl ResultPane {
             yank_flash,
             cell_vertical_offset,
             now,
-            low_scroll,
-            low_scroll_enabled,
-            stored_low_scroll,
+            wrapped_cell,
+            wrapped_cell_enabled,
+            stored_wrapped_cell,
         } = params;
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -225,7 +225,7 @@ impl ResultPane {
                 plan: ViewportPlan::default(),
                 widths_cache: ColumnWidthsCache::default(),
                 cell_vertical_offset: 0,
-                low_scroll_layout: None,
+                wrapped_cell_layout: None,
             };
         }
 
@@ -261,15 +261,15 @@ impl ResultPane {
         };
 
         // `ideal_widths` is based on first lines only (normal view truncates to
-        // one line). Low Scroll wraps the full cell, so width must account for
+        // one line). Wrapped Cell wraps the full cell, so width must account for
         // the widest line — otherwise jsonb output starting with `{` gets squeezed.
-        let low_scroll_ideal_widths = low_scroll_enabled
-            .then(|| calculate_low_scroll_ideal_widths(&result.columns, &result.rows));
-        let low_scroll_widths = low_scroll_ideal_widths.as_deref().unwrap_or(ideal_widths);
+        let wrapped_cell_ideal_widths = wrapped_cell_enabled
+            .then(|| calculate_wrapped_cell_ideal_widths(&result.columns, &result.rows));
+        let wrapped_cell_widths = wrapped_cell_ideal_widths.as_deref().unwrap_or(ideal_widths);
 
-        let effective = effective_low_scroll(low_scroll, low_scroll_enabled);
-        if low_scroll_enabled {
-            let low_scroll_key = low_scroll_layout::LowScrollLayoutKey {
+        let effective = effective_wrapped_cell(wrapped_cell, wrapped_cell_enabled);
+        if wrapped_cell_enabled {
+            let wrapped_cell_key = wrapped_cell_layout::WrappedCellLayoutKey {
                 result_generation,
                 inner_width: inner.width,
                 allow_horizontal_scroll: effective.allow_horizontal_scroll,
@@ -277,11 +277,11 @@ impl ResultPane {
             };
             let (plan, cell_vertical_offset, measured_layout) = if effective.allow_horizontal_scroll
             {
-                Self::render_low_scroll_table_scrollable(
+                Self::render_wrapped_cell_table_scrollable(
                     frame,
                     inner,
                     result,
-                    low_scroll_widths,
+                    wrapped_cell_widths,
                     min_widths,
                     horizontal_offset,
                     effective,
@@ -292,16 +292,16 @@ impl ResultPane {
                     yank_flash,
                     cell_vertical_offset,
                     now,
-                    stored_low_scroll,
-                    low_scroll_key,
+                    stored_wrapped_cell,
+                    wrapped_cell_key,
                     theme,
                 )
             } else {
-                Self::render_low_scroll_table(
+                Self::render_wrapped_cell_table(
                     frame,
                     inner,
                     result,
-                    low_scroll_widths,
+                    wrapped_cell_widths,
                     effective,
                     scroll_offset,
                     selection,
@@ -310,8 +310,8 @@ impl ResultPane {
                     yank_flash,
                     cell_vertical_offset,
                     now,
-                    stored_low_scroll,
-                    low_scroll_key,
+                    stored_wrapped_cell,
+                    wrapped_cell_key,
                     theme,
                 )
             };
@@ -319,7 +319,7 @@ impl ResultPane {
                 plan,
                 widths_cache,
                 cell_vertical_offset,
-                low_scroll_layout: Some(measured_layout),
+                wrapped_cell_layout: Some(measured_layout),
             };
         }
 
@@ -342,7 +342,7 @@ impl ResultPane {
                 plan,
                 widths_cache,
                 cell_vertical_offset: 0,
-                low_scroll_layout: None,
+                wrapped_cell_layout: None,
             };
         }
 
@@ -502,25 +502,25 @@ impl ResultPane {
             plan,
             widths_cache,
             cell_vertical_offset: 0,
-            low_scroll_layout: None,
+            wrapped_cell_layout: None,
         }
     }
 
-    /// Render the result table in Low Scroll Mode: all columns fit within
+    /// Render the result table in Wrapped Cell Mode: all columns fit within
     /// `inner.width`, cell text wraps, and rows expand vertically.
     ///
     /// Returns the (unused) viewport plan so the caller can keep a consistent
-    /// return shape; low-scroll never produces a horizontal scrollbar.
+    /// return shape; wrapped-cell never produces a horizontal scrollbar.
     #[allow(
         clippy::too_many_arguments,
         reason = "mirrors the normal render_table signature"
     )]
-    fn render_low_scroll_table(
+    fn render_wrapped_cell_table(
         frame: &mut Frame,
         inner: Rect,
         result: &QueryResult,
         ideal_widths: &[u16],
-        settings: LowScrollSettings,
+        settings: WrappedCellSettings,
         scroll_offset: usize,
         selection: &ResultSelection,
         editing_cell: Option<&EditingCellView<'_>>,
@@ -528,23 +528,23 @@ impl ResultPane {
         yank_flash: Option<YankFlash>,
         cell_vertical_offset: usize,
         now: Instant,
-        stored_low_scroll: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
-        key: low_scroll_layout::LowScrollLayoutKey,
+        stored_wrapped_cell: Option<&wrapped_cell_layout::MeasuredWrappedCellLayout>,
+        key: wrapped_cell_layout::WrappedCellLayoutKey,
         theme: &ThemePalette,
     ) -> (
         ViewportPlan,
         usize,
-        low_scroll_layout::MeasuredLowScrollLayout,
+        wrapped_cell_layout::MeasuredWrappedCellLayout,
     ) {
-        let column_widths = low_scroll_layout::shrink_columns_to_fit(ideal_widths, inner.width);
+        let column_widths = wrapped_cell_layout::shrink_columns_to_fit(ideal_widths, inner.width);
 
         // Reuse previous frame's layout when key matches.
-        let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
+        let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
             result
                 .rows
                 .iter()
                 .map(|row| {
-                    low_scroll_layout::row_layout(
+                    wrapped_cell_layout::row_layout(
                         row,
                         &column_widths,
                         PADDING,
@@ -708,14 +708,14 @@ impl ResultPane {
         clippy::too_many_arguments,
         reason = "mirrors the normal render_table signature"
     )]
-    fn render_low_scroll_table_scrollable(
+    fn render_wrapped_cell_table_scrollable(
         frame: &mut Frame,
         inner: Rect,
         result: &QueryResult,
         ideal_widths: &[u16],
         min_widths: &[u16],
         horizontal_offset: usize,
-        settings: LowScrollSettings,
+        settings: WrappedCellSettings,
         scroll_offset: usize,
         selection: &ResultSelection,
         editing_cell: Option<&EditingCellView<'_>>,
@@ -723,24 +723,24 @@ impl ResultPane {
         yank_flash: Option<YankFlash>,
         cell_vertical_offset: usize,
         now: Instant,
-        stored_low_scroll: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
-        key: low_scroll_layout::LowScrollLayoutKey,
+        stored_wrapped_cell: Option<&wrapped_cell_layout::MeasuredWrappedCellLayout>,
+        key: wrapped_cell_layout::WrappedCellLayoutKey,
         theme: &ThemePalette,
     ) -> (
         ViewportPlan,
         usize,
-        low_scroll_layout::MeasuredLowScrollLayout,
+        wrapped_cell_layout::MeasuredWrappedCellLayout,
     ) {
         let plan = ViewportPlan::calculate(ideal_widths, min_widths, inner.width);
         let clamped_offset = horizontal_offset.min(plan.max_offset);
 
         // Reuse previous frame's layout when key matches.
-        let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
+        let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
             result
                 .rows
                 .iter()
                 .map(|row| {
-                    low_scroll_layout::row_layout(
+                    wrapped_cell_layout::row_layout(
                         row,
                         ideal_widths,
                         PADDING,
@@ -1005,11 +1005,11 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
 }
 
 /// Like `calculate_ideal_widths`, but sizes each column by the widest *line*
-/// across the whole cell rather than just the first line. Low Scroll Mode
+/// across the whole cell rather than just the first line. Wrapped Cell Mode
 /// wraps and displays every line, so its width budgeting needs to reflect the
 /// full multi-line content (e.g. `jsonb_pretty()` output, which often starts
 /// with a lone `{` far shorter than the lines that follow).
-pub(crate) fn calculate_low_scroll_ideal_widths(
+pub(crate) fn calculate_wrapped_cell_ideal_widths(
     headers: &[String],
     rows: &[Vec<String>],
 ) -> Vec<u16> {
@@ -1038,39 +1038,39 @@ pub(crate) fn calculate_low_scroll_ideal_widths(
         .collect()
 }
 
-/// The runtime-effective Low Scroll settings for the result pane: the
+/// The runtime-effective Wrapped Cell settings for the result pane: the
 /// persisted config only applies when the runtime toggle (`L`) is on; when off,
 /// horizontal scrolling is always allowed so the normal viewport path runs.
-fn effective_low_scroll(settings: LowScrollSettings, enabled: bool) -> LowScrollSettings {
+fn effective_wrapped_cell(settings: WrappedCellSettings, enabled: bool) -> WrappedCellSettings {
     if enabled {
         settings
     } else {
-        LowScrollSettings {
+        WrappedCellSettings {
             allow_horizontal_scroll: true,
             max_lines_per_row: settings.max_lines_per_row,
         }
     }
 }
 
-/// Reuse the previous frame's measured Low Scroll layout when its key still
+/// Reuse the previous frame's measured Wrapped Cell layout when its key still
 /// matches, otherwise measure fresh via `compute`.
 ///
 /// Measuring per-row heights means wrapping every cell of every row — O(rows ×
-/// cols) unicode-width work, the expensive part of a Low Scroll draw for a
+/// cols) unicode-width work, the expensive part of a Wrapped Cell draw for a
 /// large result. The key only changes on a new result, a resize, or a setting
 /// toggle, so plain scrolling hits the reuse path, which just clones two flat
 /// integer vectors (a cheap memcpy) instead of re-wrapping every row.
-fn measured_low_scroll_layout(
-    stored: Option<&low_scroll_layout::MeasuredLowScrollLayout>,
-    key: low_scroll_layout::LowScrollLayoutKey,
+fn measured_wrapped_cell_layout(
+    stored: Option<&wrapped_cell_layout::MeasuredWrappedCellLayout>,
+    key: wrapped_cell_layout::WrappedCellLayoutKey,
     compute: impl FnOnce() -> Vec<u16>,
-) -> low_scroll_layout::MeasuredLowScrollLayout {
+) -> wrapped_cell_layout::MeasuredWrappedCellLayout {
     if let Some(stored) = stored
         && stored.key == key
     {
         return stored.clone();
     }
-    low_scroll_layout::MeasuredLowScrollLayout::new(compute(), key)
+    wrapped_cell_layout::MeasuredWrappedCellLayout::new(compute(), key)
 }
 
 /// The number of additional wrapped lines available below `cell_vertical_offset`
@@ -1085,11 +1085,11 @@ fn clamp_cell_vertical_offset(
     let Some(cap) = max_lines_per_row else {
         return 0;
     };
-    let total = LowScrollSettings::wrapped_cell_lines(text, col_width, PADDING) as usize;
+    let total = WrappedCellSettings::wrapped_cell_lines(text, col_width, PADDING) as usize;
     offset.min(total.saturating_sub(cap as usize))
 }
 
-/// Wrap a cell's text into ratatui lines for Low Scroll Mode, applying the
+/// Wrap a cell's text into ratatui lines for Wrapped Cell Mode, applying the
 /// optional row cap with a trailing "..." on the last line when truncated.
 /// `skip` drops that many wrapped lines from the top first (scrolling into a
 /// truncated cell).
@@ -1099,7 +1099,7 @@ fn wrapped_cell_lines(
     max_lines: Option<u16>,
     skip: usize,
 ) -> Vec<Line<'static>> {
-    let wrap_width = LowScrollSettings::effective_wrap_width(col_width, PADDING);
+    let wrap_width = WrappedCellSettings::effective_wrap_width(col_width, PADDING);
     let mut lines = crate::primitives::utils::text_utils::wrap_text_lines(text, wrap_width);
 
     if skip > 0 {
@@ -1241,7 +1241,7 @@ mod tests {
         }
     }
 
-    mod calculate_low_scroll_ideal_widths_tests {
+    mod calculate_wrapped_cell_ideal_widths_tests {
         use super::*;
 
         #[test]
@@ -1252,10 +1252,10 @@ mod tests {
             ]];
 
             let ideal = calculate_ideal_widths(&headers, &rows);
-            let low_scroll = calculate_low_scroll_ideal_widths(&headers, &rows);
+            let wrapped_cell = calculate_wrapped_cell_ideal_widths(&headers, &rows);
 
-            assert!(low_scroll[0] > ideal[0]);
-            assert_eq!(low_scroll[0], 38);
+            assert!(wrapped_cell[0] > ideal[0]);
+            assert_eq!(wrapped_cell[0], 38);
         }
     }
 

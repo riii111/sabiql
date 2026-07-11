@@ -772,9 +772,9 @@ pub mod settings {
         key_short: "Space",
         key: "Space",
         desc_short: "Toggle",
-        description: "Toggle on/off (Low Scroll)",
+        description: "Toggle on/off (Wrapped Cell)",
         bindings: &[ExecBinding {
-            action: Action::SettingsToggleLowScrollScroll,
+            action: Action::SettingsToggleWrappedCellScroll,
             combos: &[KeyCombo::plain(Key::Char(' '))],
         }],
     };

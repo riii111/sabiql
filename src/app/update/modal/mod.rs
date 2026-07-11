@@ -311,7 +311,7 @@ mod tests {
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
-                        low_scroll: crate::model::shared::low_scroll::LowScrollSettings::default(),
+                        wrapped_cell: crate::model::shared::wrapped_cell::WrappedCellSettings::default(),
                     }),
                     Instant::now(),
                 )

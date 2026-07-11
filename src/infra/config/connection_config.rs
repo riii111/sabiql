@@ -21,9 +21,9 @@ pub struct ConnectionConfigFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub er_browser: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub low_scroll_allow_horizontal_scroll: Option<bool>,
+    pub wrapped_cell_allow_horizontal_scroll: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub low_scroll_max_lines_per_row: Option<u16>,
+    pub wrapped_cell_max_lines_per_row: Option<u16>,
     pub connections: Vec<ConnectionConfigEntry>,
 }
 
@@ -48,8 +48,8 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
             theme: None,
             keymap_preset: None,
             er_browser: None,
-            low_scroll_allow_horizontal_scroll: None,
-            low_scroll_max_lines_per_row: None,
+            wrapped_cell_allow_horizontal_scroll: None,
+            wrapped_cell_max_lines_per_row: None,
             connections: profiles
                 .iter()
                 .map(|p| ConnectionConfigEntry {

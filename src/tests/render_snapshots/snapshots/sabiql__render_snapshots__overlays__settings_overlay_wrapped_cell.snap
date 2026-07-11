@@ -17,9 +17,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
-│                                │    Appearance    │Low Scroll Mode                                                               │                                │
+│                                │    Appearance    │Wrapped Cell Mode                                                             │                                │
 │                                │    Keymap        │Fit results without a horizontal scrollbar.                                   │                                │
-│                                │  > Low Scroll    │                                                                              │                                │
+│                                │  > Wrapped Cell  │                                                                              │                                │
 │                                │    ER Diagram    │Allow horizontal scroll                                                       │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │  [Space] off (columns shrink to fit)                                         │                                │
@@ -28,7 +28,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │  [j/k] no limit                                                              │────────────────────────────────┘
 │                                │                  │                                                                              │────────────────────────────────┐
-│                                │                  │Toggle Low Scroll Mode at any time with L.                                    │                                │
+│                                │                  │Toggle Wrapped Cell Mode at any time with L.                                  │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │

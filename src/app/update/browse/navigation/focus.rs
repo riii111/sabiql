@@ -46,8 +46,8 @@ pub fn reduce_focus(
             }
             DispatchResult::handled()
         }
-        Action::ToggleLowScroll => {
-            state.ui.toggle_low_scroll();
+        Action::ToggleWrappedCell => {
+            state.ui.toggle_wrapped_cell();
             DispatchResult::handled()
         }
         Action::InspectorNextTab => {

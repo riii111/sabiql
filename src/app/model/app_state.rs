@@ -130,7 +130,7 @@ impl AppState {
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
         self.ui.inspector_pane_height = output.inspector_pane_height;
         self.ui.result_pane_height = output.result_pane_height;
-        self.ui.result_low_scroll_layout = output.result_low_scroll_layout;
+        self.ui.result_wrapped_cell_layout = output.result_wrapped_cell_layout;
         if let Some(width) = output.command_line_visible_width {
             self.command_line_visible_width = width;
         }

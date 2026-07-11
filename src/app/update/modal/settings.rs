@@ -42,8 +42,8 @@ pub(super) fn reduce_settings(
             state.settings.stop_custom_browser_edit();
             DispatchResult::handled()
         }
-        Action::SettingsToggleLowScrollScroll => {
-            state.settings.toggle_low_scroll_horizontal();
+        Action::SettingsToggleWrappedCellScroll => {
+            state.settings.toggle_wrapped_cell_horizontal();
             DispatchResult::handled()
         }
         Action::TextInput {
@@ -78,7 +78,7 @@ pub(super) fn reduce_settings(
                 theme_id,
                 keymap_preset: state.settings.selected_keymap_preset(),
                 er_browser: state.settings.selected_er_browser(),
-                low_scroll: state.settings.selected_low_scroll(),
+                wrapped_cell: state.settings.selected_wrapped_cell(),
             };
             DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
         }
@@ -93,10 +93,10 @@ pub(super) fn reduce_settings(
                 settings.theme_id,
                 settings.keymap_preset,
                 settings.er_browser.clone(),
-                settings.low_scroll,
+                settings.wrapped_cell,
             );
-            // Reflect the saved Low Scroll settings into the live UI state.
-            state.ui.low_scroll = settings.low_scroll;
+            // Reflect the saved Wrapped Cell settings into the live UI state.
+            state.ui.wrapped_cell = settings.wrapped_cell;
             state
                 .messages
                 .set_success_at("Settings saved".to_string(), now);

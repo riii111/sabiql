@@ -45,7 +45,7 @@ impl SettingsOverlay {
         match state.settings.section() {
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
             SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
-            SettingsSection::LowScroll => Self::render_low_scroll(frame, content, state, theme),
+            SettingsSection::WrappedCell => Self::render_wrapped_cell(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
         }
     }
@@ -148,13 +148,13 @@ impl SettingsOverlay {
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
 
-    fn render_low_scroll(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
-        let low_scroll = state.settings.selected_low_scroll();
+    fn render_wrapped_cell(frame: &mut Frame, content: Rect, state: &AppState, theme: &ThemePalette) {
+        let wrapped_cell = state.settings.selected_wrapped_cell();
 
         let mut lines = vec![
             Line::raw(""),
             Line::from(Span::styled(
-                "Low Scroll Mode",
+                "Wrapped Cell Mode",
                 Style::default()
                     .fg(theme.semantic.text.primary)
                     .add_modifier(Modifier::BOLD),
@@ -171,12 +171,12 @@ impl SettingsOverlay {
             Line::raw(""),
         ];
 
-        let scroll_label = if low_scroll.allow_horizontal_scroll {
+        let scroll_label = if wrapped_cell.allow_horizontal_scroll {
             "on (default widths)"
         } else {
             "off (columns shrink to fit)"
         };
-        let scroll_style = if low_scroll.allow_horizontal_scroll {
+        let scroll_style = if wrapped_cell.allow_horizontal_scroll {
             Style::default().fg(theme.semantic.text.secondary)
         } else {
             theme.picker_selected_style()
@@ -192,7 +192,7 @@ impl SettingsOverlay {
             Style::default().fg(theme.semantic.text.primary),
         )));
         lines.push(Line::raw(""));
-        let lines_label = match low_scroll.max_lines_per_row {
+        let lines_label = match wrapped_cell.max_lines_per_row {
             None => "no limit".to_string(),
             Some(n) => format!("{n} lines"),
         };
@@ -206,7 +206,7 @@ impl SettingsOverlay {
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            "Toggle Low Scroll Mode at any time with L.",
+            "Toggle Wrapped Cell Mode at any time with L.",
             Style::default().fg(theme.semantic.text.muted),
         )));
 

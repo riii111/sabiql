@@ -21,7 +21,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││  Ctrl+P             Open Table Picker                                           │                                        │
 │                                       ││  ,                  Open Settings                                               │                                        │
 │                                       ││  f                  Toggle Focus mode                                           │                                        │
-│                                       ││  Alt+L              Toggle Low Scroll Mode                                      │                                        │
+│                                       ││  Alt+L              Toggle Wrapped Cell Mode                                    │                                        │
 │                                       ││  r                  Reload metadata                                             │                                        │
 │                                       ││  s                  Open SQL Editor                                             │                                        │
 │                                       ││  e                  Open ER Diagram                                             │                                        │

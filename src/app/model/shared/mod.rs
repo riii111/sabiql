@@ -8,7 +8,7 @@ pub mod help;
 pub mod input_mode;
 pub mod inspector_tab;
 pub mod key_sequence;
-pub mod low_scroll;
+pub mod wrapped_cell;
 pub mod message;
 pub mod modal;
 pub mod multi_line_input;

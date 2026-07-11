@@ -6,7 +6,7 @@ use super::focused_pane::FocusedPane;
 use super::help::HelpState;
 use super::inspector_tab::InspectorTab;
 use super::key_sequence::KeySequenceState;
-use super::low_scroll::{LowScrollSettings, MeasuredLowScrollLayout};
+use super::wrapped_cell::{WrappedCellSettings, MeasuredWrappedCellLayout};
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
@@ -196,9 +196,9 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     pub result_pane_height: u16,
-    pub low_scroll: LowScrollSettings,
-    pub low_scroll_enabled: bool,
-    pub result_low_scroll_layout: Option<MeasuredLowScrollLayout>,
+    pub wrapped_cell: WrappedCellSettings,
+    pub wrapped_cell_enabled: bool,
+    pub result_wrapped_cell_layout: Option<MeasuredWrappedCellLayout>,
     pub jsonb_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,
@@ -235,19 +235,19 @@ impl UiState {
         self.theme_id = theme_id;
     }
 
-    pub fn effective_low_scroll(&self) -> LowScrollSettings {
-        if self.low_scroll_enabled {
-            self.low_scroll
+    pub fn effective_wrapped_cell(&self) -> WrappedCellSettings {
+        if self.wrapped_cell_enabled {
+            self.wrapped_cell
         } else {
-            LowScrollSettings {
+            WrappedCellSettings {
                 allow_horizontal_scroll: true,
-                max_lines_per_row: self.low_scroll.max_lines_per_row,
+                max_lines_per_row: self.wrapped_cell.max_lines_per_row,
             }
         }
     }
 
-    pub fn toggle_low_scroll(&mut self) {
-        self.low_scroll_enabled = !self.low_scroll_enabled;
+    pub fn toggle_wrapped_cell(&mut self) {
+        self.wrapped_cell_enabled = !self.wrapped_cell_enabled;
     }
 
     pub fn result_visible_rows(&self) -> usize {

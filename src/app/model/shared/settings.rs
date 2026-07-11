@@ -1,4 +1,4 @@
-use super::low_scroll::LowScrollSettings;
+use super::wrapped_cell::WrappedCellSettings;
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
 use crate::model::shared::cursor::CursorMove;
@@ -7,7 +7,7 @@ use crate::model::shared::cursor::CursorMove;
 pub enum SettingsSection {
     Appearance,
     Keymap,
-    LowScroll,
+    WrappedCell,
     ErDiagram,
 }
 
@@ -15,7 +15,7 @@ impl SettingsSection {
     pub const ALL: [Self; 4] = [
         Self::Appearance,
         Self::Keymap,
-        Self::LowScroll,
+        Self::WrappedCell,
         Self::ErDiagram,
     ];
 
@@ -23,7 +23,7 @@ impl SettingsSection {
         match self {
             Self::Appearance => "Appearance",
             Self::Keymap => "Keymap",
-            Self::LowScroll => "Low Scroll",
+            Self::WrappedCell => "Wrapped Cell",
             Self::ErDiagram => "ER Diagram",
         }
     }
@@ -191,8 +191,8 @@ pub struct SettingsState {
     selected_er_browser_choice: ErBrowserChoice,
     custom_er_browser: TextInputState,
     editing_custom_er_browser: bool,
-    saved_low_scroll: LowScrollSettings,
-    selected_low_scroll: LowScrollSettings,
+    saved_wrapped_cell: WrappedCellSettings,
+    selected_wrapped_cell: WrappedCellSettings,
     section: SettingsSection,
 }
 
@@ -207,8 +207,8 @@ impl Default for SettingsState {
             selected_er_browser_choice: ErBrowserChoice::SystemDefault,
             custom_er_browser: TextInputState::default(),
             editing_custom_er_browser: false,
-            saved_low_scroll: LowScrollSettings::default(),
-            selected_low_scroll: LowScrollSettings::default(),
+            saved_wrapped_cell: WrappedCellSettings::default(),
+            selected_wrapped_cell: WrappedCellSettings::default(),
             section: SettingsSection::Appearance,
         }
     }
@@ -222,34 +222,34 @@ impl SettingsState {
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
     }
 
-    pub fn load_low_scroll(&mut self, settings: LowScrollSettings) {
-        self.saved_low_scroll = settings;
-        self.selected_low_scroll = settings;
+    pub fn load_wrapped_cell(&mut self, settings: WrappedCellSettings) {
+        self.saved_wrapped_cell = settings;
+        self.selected_wrapped_cell = settings;
     }
 
-    pub fn saved_low_scroll(&self) -> LowScrollSettings {
-        self.saved_low_scroll
+    pub fn saved_wrapped_cell(&self) -> WrappedCellSettings {
+        self.saved_wrapped_cell
     }
 
-    pub fn selected_low_scroll(&self) -> LowScrollSettings {
-        self.selected_low_scroll
+    pub fn selected_wrapped_cell(&self) -> WrappedCellSettings {
+        self.selected_wrapped_cell
     }
 
     /// Toggle the `allow_horizontal_scroll` flag (the primary on/off for the
     /// no-horizontal-scroll behaviour).
-    pub fn toggle_low_scroll_horizontal(&mut self) {
-        self.selected_low_scroll.allow_horizontal_scroll =
-            !self.selected_low_scroll.allow_horizontal_scroll;
+    pub fn toggle_wrapped_cell_horizontal(&mut self) {
+        self.selected_wrapped_cell.allow_horizontal_scroll =
+            !self.selected_wrapped_cell.allow_horizontal_scroll;
     }
 
-    pub fn cycle_low_scroll_max_lines_next(&mut self) {
-        self.selected_low_scroll.max_lines_per_row =
-            next_max_lines(self.selected_low_scroll.max_lines_per_row);
+    pub fn cycle_wrapped_cell_max_lines_next(&mut self) {
+        self.selected_wrapped_cell.max_lines_per_row =
+            next_max_lines(self.selected_wrapped_cell.max_lines_per_row);
     }
 
-    pub fn cycle_low_scroll_max_lines_prev(&mut self) {
-        self.selected_low_scroll.max_lines_per_row =
-            prev_max_lines(self.selected_low_scroll.max_lines_per_row);
+    pub fn cycle_wrapped_cell_max_lines_prev(&mut self) {
+        self.selected_wrapped_cell.max_lines_per_row =
+            prev_max_lines(self.selected_wrapped_cell.max_lines_per_row);
     }
 
     pub fn load_keymap_preset(&mut self, keymap_preset: KeymapPreset) {
@@ -265,7 +265,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
-        self.selected_low_scroll = self.saved_low_scroll;
+        self.selected_wrapped_cell = self.saved_wrapped_cell;
         self.section = SettingsSection::Appearance;
     }
 
@@ -335,8 +335,8 @@ impl SettingsState {
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.next();
             }
-            SettingsSection::LowScroll => {
-                self.cycle_low_scroll_max_lines_next();
+            SettingsSection::WrappedCell => {
+                self.cycle_wrapped_cell_max_lines_next();
             }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
@@ -353,8 +353,8 @@ impl SettingsState {
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.previous();
             }
-            SettingsSection::LowScroll => {
-                self.cycle_low_scroll_max_lines_prev();
+            SettingsSection::WrappedCell => {
+                self.cycle_wrapped_cell_max_lines_prev();
             }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
@@ -403,7 +403,7 @@ impl SettingsState {
         theme: ThemeId,
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
-        low_scroll: LowScrollSettings,
+        wrapped_cell: WrappedCellSettings,
     ) {
         self.previous_theme = theme;
         self.selected_theme = theme;
@@ -414,8 +414,8 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
-        self.saved_low_scroll = low_scroll;
-        self.selected_low_scroll = low_scroll;
+        self.saved_wrapped_cell = wrapped_cell;
+        self.selected_wrapped_cell = wrapped_cell;
     }
 
     pub fn discard_selection(&mut self) {
@@ -425,7 +425,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
-        self.selected_low_scroll = self.saved_low_scroll;
+        self.selected_wrapped_cell = self.saved_wrapped_cell;
     }
 }
 

@@ -501,7 +501,7 @@ fn settings_overlay_er_diagram() {
 }
 
 #[test]
-fn settings_overlay_low_scroll() {
+fn settings_overlay_wrapped_cell() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 

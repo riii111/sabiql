@@ -15,7 +15,7 @@ pub struct ResultInteraction {
     pub scroll_offset: usize,
     pub horizontal_offset: usize,
     /// Vertical scroll offset into the currently active cell's wrapped lines
-    /// (Low Scroll Mode only). Clamped/corrected each frame in
+    /// (Wrapped Cell Mode only). Clamped/corrected each frame in
     /// `AppState::apply_render_output`, mirroring `result_viewport_plan`.
     pub cell_vertical_offset: usize,
     pub yank_flash: Option<YankFlash>,

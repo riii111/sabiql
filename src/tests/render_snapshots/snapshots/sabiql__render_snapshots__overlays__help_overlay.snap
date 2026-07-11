@@ -22,7 +22,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  F1                                           Open Command Palette                                             ││                        │
 │                        │  :                                            Enter command line                                               ││                        │
 │                        │  f                                            Toggle Focus mode                                                ││                        │
-│                        │  Alt+L                                        Toggle Low Scroll Mode                                           ││                        │
+│                        │  Alt+L                                        Toggle Wrapped Cell Mode                                         ││                        │
 │                        │  Ctrl+R                                       Enable Read-Only mode                                            ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Navigation                                                                                                    ││                        │

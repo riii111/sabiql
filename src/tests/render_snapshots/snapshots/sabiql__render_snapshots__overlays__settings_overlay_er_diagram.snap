@@ -19,7 +19,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │ER Diagram                                                                    │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    Low Scroll    │Browser                                                                       │                                │
+│                                │    Wrapped Cell  │Browser                                                                       │                                │
 │                                │  > ER Diagram    │                                                                              │                                │
 │                                │                  │  > System default     saved                                                  │                                │
 │                                │                  │    Google Chrome                                                             │                                │

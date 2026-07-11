@@ -19,7 +19,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │  > Appearance    │Theme                                                                         │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    Low Scroll    │  > Sabiql Dark    saved                                                      │                                │
+│                                │    Wrapped Cell  │  > Sabiql Dark    saved                                                      │                                │
 │                                │    ER Diagram    │    Light                                                                     │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │

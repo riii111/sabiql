@@ -17,7 +17,7 @@ pub fn settings_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
     {
         hints.push(settings::EDIT.as_hint());
     }
-    if state.settings.section() == SettingsSection::LowScroll {
+    if state.settings.section() == SettingsSection::WrappedCell {
         hints.push(settings::TOGGLE.as_hint());
     }
     hints.push(settings::SECTION.as_hint());

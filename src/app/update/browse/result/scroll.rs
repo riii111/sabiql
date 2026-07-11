@@ -1,6 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::low_scroll::MeasuredLowScrollLayout;
+use crate::model::shared::wrapped_cell::MeasuredWrappedCellLayout;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::update::action::{
     Action, CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
@@ -16,17 +16,17 @@ pub(super) fn result_col_count(state: &AppState) -> usize {
 }
 
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
-    if let Some(layout) = low_scroll_layout(state) {
+    if let Some(layout) = wrapped_cell_layout(state) {
         return layout.max_row_offset(state.result_visible_rows());
     }
     let visible = state.result_visible_rows();
     result_row_count(state).saturating_sub(visible)
 }
 
-fn low_scroll_layout(state: &AppState) -> Option<&MeasuredLowScrollLayout> {
+fn wrapped_cell_layout(state: &AppState) -> Option<&MeasuredWrappedCellLayout> {
     state
         .ui
-        .result_low_scroll_layout
+        .result_wrapped_cell_layout
         .as_ref()
         .filter(|l| !l.row_heights.is_empty())
 }
@@ -39,7 +39,7 @@ fn ensure_row_visible(state: &mut AppState) {
         }
         let offset = state.result_interaction.scroll_offset;
         if let Some(new_offset) =
-            low_scroll_layout(state).map(|layout| layout.ensure_row_visible(offset, row, visible))
+            wrapped_cell_layout(state).map(|layout| layout.ensure_row_visible(offset, row, visible))
         {
             state.result_interaction.scroll_offset = new_offset;
             return;
@@ -313,9 +313,9 @@ mod tests {
         state
     }
 
-    mod low_scroll_line_navigation {
+    mod wrapped_cell_line_navigation {
         use super::*;
-        use crate::model::shared::low_scroll::LowScrollLayoutKey;
+        use crate::model::shared::wrapped_cell::WrappedCellLayoutKey;
 
         fn down_line(state: &mut AppState) {
             reduce_scroll(
@@ -331,9 +331,9 @@ mod tests {
         #[test]
         fn moving_selection_down_past_bottom_scrolls_viewport() {
             let mut state = state_with_result_rows(20, 9);
-            state.ui.result_low_scroll_layout = Some(MeasuredLowScrollLayout::new(
+            state.ui.result_wrapped_cell_layout = Some(MeasuredWrappedCellLayout::new(
                 vec![2; 20],
-                LowScrollLayoutKey::default(),
+                WrappedCellLayoutKey::default(),
             ));
             state.result_interaction.activate_cell(0, 0);
 

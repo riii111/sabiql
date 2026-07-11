@@ -1,6 +1,6 @@
-//! Low Scroll Mode layout engine.
+//! Wrapped Cell Mode layout engine.
 //!
-//! When Low Scroll Mode is active and horizontal scrolling is disabled, the
+//! When Wrapped Cell Mode is active and horizontal scrolling is disabled, the
 //! entire result set must fit inside the pane width without a horizontal
 //! scrollbar. Columns are shrunk to fit and cell text is wrapped, expanding
 //! rows vertically so the whole cell content is visible.
@@ -22,15 +22,15 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
     })
 }
 
-/// Low Scroll Mode settings: persisted config stored in the settings UI.
+/// Wrapped Cell Mode settings: persisted config stored in the settings UI.
 /// Default disables horizontal scroll (columns shrink to fit) with no row cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LowScrollSettings {
+pub struct WrappedCellSettings {
     pub allow_horizontal_scroll: bool,
     pub max_lines_per_row: Option<u16>,
 }
 
-impl LowScrollSettings {
+impl WrappedCellSettings {
     #[must_use]
     pub fn effective_wrap_width(col_width: u16, padding: u16) -> u16 {
         col_width.saturating_sub(padding).max(1)
@@ -44,21 +44,21 @@ impl LowScrollSettings {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LowScrollColumn {
+pub struct WrappedCellColumn {
     pub width: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LowScrollRow {
+pub struct WrappedCellRow {
     pub height: u16,
     pub truncated: bool,
 }
 
-/// Complete Low Scroll Mode layout: one width per column, one height per row.
+/// Complete Wrapped Cell Mode layout: one width per column, one height per row.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct LowScrollLayout {
-    pub columns: Vec<LowScrollColumn>,
-    pub rows: Vec<LowScrollRow>,
+pub struct WrappedCellLayout {
+    pub columns: Vec<WrappedCellColumn>,
+    pub rows: Vec<WrappedCellRow>,
 }
 
 /// Identifies the inputs a measured layout was computed for, so the renderer
@@ -66,11 +66,11 @@ pub struct LowScrollLayout {
 ///
 /// The per-row heights only change when one of these changes: a new result
 /// (`result_generation`), a pane resize (`inner_width`, which drives the
-/// shrunk column widths), or a Low Scroll setting toggle. During plain
+/// shrunk column widths), or a Wrapped Cell setting toggle. During plain
 /// vertical scrolling none of these move, so the cached vector is reused and
 /// the O(rows) measurement is skipped entirely.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct LowScrollLayoutKey {
+pub struct WrappedCellLayoutKey {
     pub result_generation: u64,
     pub inner_width: u16,
     pub allow_horizontal_scroll: bool,
@@ -82,15 +82,15 @@ pub struct LowScrollLayoutKey {
 /// `line_prefix` is the prefix sum of clamped row heights, enabling O(1)/O(log n)
 /// visibility lookups instead of O(n) row walks — critical for large result sets.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct MeasuredLowScrollLayout {
+pub struct MeasuredWrappedCellLayout {
     pub row_heights: Vec<u16>,
     pub line_prefix: Vec<usize>,
-    pub key: LowScrollLayoutKey,
+    pub key: WrappedCellLayoutKey,
 }
 
-impl MeasuredLowScrollLayout {
+impl MeasuredWrappedCellLayout {
     #[must_use]
-    pub fn new(row_heights: Vec<u16>, key: LowScrollLayoutKey) -> Self {
+    pub fn new(row_heights: Vec<u16>, key: WrappedCellLayoutKey) -> Self {
         let mut line_prefix = Vec::with_capacity(row_heights.len() + 1);
         let mut acc = 0usize;
         line_prefix.push(0);
@@ -172,7 +172,7 @@ impl MeasuredLowScrollLayout {
     }
 }
 
-impl LowScrollLayout {
+impl WrappedCellLayout {
     #[must_use]
     pub fn total_width(&self) -> u16 {
         total_width_with_separators(&self.column_widths())
@@ -194,36 +194,36 @@ fn total_width_with_separators(widths: &[u16]) -> u16 {
 }
 
 /// Compute per-column widths (shrunk to fit) and per-row heights (from
-/// wrapped cell text) for Low Scroll Mode.
+/// wrapped cell text) for Wrapped Cell Mode.
 #[must_use]
 pub fn compute_layout(
     headers: &[String],
     rows: &[Vec<String>],
     ideal_widths: &[u16],
     available_width: u16,
-    settings: &LowScrollSettings,
+    settings: &WrappedCellSettings,
     padding: u16,
-) -> LowScrollLayout {
+) -> WrappedCellLayout {
     if ideal_widths.is_empty() {
-        return LowScrollLayout::default();
+        return WrappedCellLayout::default();
     }
 
     let column_widths = shrink_columns_to_fit(ideal_widths, available_width);
-    let columns: Vec<LowScrollColumn> = column_widths
+    let columns: Vec<WrappedCellColumn> = column_widths
         .iter()
-        .map(|&w| LowScrollColumn { width: w })
+        .map(|&w| WrappedCellColumn { width: w })
         .collect();
 
     let row_cap = settings.max_lines_per_row;
 
-    let computed_rows: Vec<LowScrollRow> = rows
+    let computed_rows: Vec<WrappedCellRow> = rows
         .iter()
         .map(|row| row_layout(row, &column_widths, padding, row_cap))
         .collect();
 
     let _ = headers;
 
-    LowScrollLayout {
+    WrappedCellLayout {
         columns,
         rows: computed_rows,
     }
@@ -321,17 +321,17 @@ pub fn row_layout(
     column_widths: &[u16],
     padding: u16,
     row_cap: Option<u16>,
-) -> LowScrollRow {
+) -> WrappedCellRow {
     if let Some(cap) = row_cap {
         let overflowed = overflowed_any(row, column_widths, padding, cap);
         let raw_max = max_wrapped_lines(row, column_widths, padding);
-        return LowScrollRow {
+        return WrappedCellRow {
             height: raw_max.min(cap).max(1),
             truncated: overflowed,
         };
     }
 
-    LowScrollRow {
+    WrappedCellRow {
         height: max_wrapped_lines(row, column_widths, padding).max(1),
         truncated: false,
     }
@@ -342,7 +342,7 @@ fn max_wrapped_lines(row: &[String], column_widths: &[u16], padding: u16) -> u16
         .enumerate()
         .map(|(col_idx, cell)| {
             column_widths.get(col_idx).map_or(1, |&col_width| {
-                LowScrollSettings::wrapped_cell_lines(cell, col_width, padding)
+                WrappedCellSettings::wrapped_cell_lines(cell, col_width, padding)
             })
         })
         .max()
@@ -352,7 +352,7 @@ fn max_wrapped_lines(row: &[String], column_widths: &[u16], padding: u16) -> u16
 fn overflowed_any(row: &[String], column_widths: &[u16], padding: u16, cap: u16) -> bool {
     row.iter().enumerate().any(|(col_idx, cell)| {
         column_widths.get(col_idx).is_some_and(|&col_width| {
-            LowScrollSettings::wrapped_cell_lines(cell, col_width, padding) > cap
+            WrappedCellSettings::wrapped_cell_lines(cell, col_width, padding) > cap
         })
     })
 }
@@ -367,7 +367,7 @@ mod tests {
 
         #[test]
         fn default_disables_scroll_and_no_cap() {
-            let s = LowScrollSettings::default();
+            let s = WrappedCellSettings::default();
 
             assert!(!s.allow_horizontal_scroll);
             assert_eq!(s.max_lines_per_row, None);
@@ -379,7 +379,7 @@ mod tests {
         #[case(1, 2, 1)]
         #[case(0, 2, 1)]
         fn wrap_width_subtracts_padding(#[case] col: u16, #[case] pad: u16, #[case] expected: u16) {
-            assert_eq!(LowScrollSettings::effective_wrap_width(col, pad), expected);
+            assert_eq!(WrappedCellSettings::effective_wrap_width(col, pad), expected);
         }
 
         #[rstest]
@@ -394,7 +394,7 @@ mod tests {
             #[case] expected: u16,
         ) {
             assert_eq!(
-                LowScrollSettings::wrapped_cell_lines(text, col, pad),
+                WrappedCellSettings::wrapped_cell_lines(text, col, pad),
                 expected
             );
         }
@@ -474,9 +474,9 @@ mod tests {
     mod compute_layout {
         use super::*;
 
-        fn settings(allow_scroll: bool, cap: Option<u16>) -> LowScrollSettings {
-            LowScrollSettings {
-                allow_horizontal_scroll: allow_scroll,
+        fn settings(alwrapped_cell: bool, cap: Option<u16>) -> WrappedCellSettings {
+            WrappedCellSettings {
+                allow_horizontal_scroll: alwrapped_cell,
                 max_lines_per_row: cap,
             }
         }
@@ -572,8 +572,8 @@ mod tests {
 
         #[test]
         fn includes_separators() {
-            let layout = LowScrollLayout {
-                columns: vec![LowScrollColumn { width: 10 }, LowScrollColumn { width: 20 }],
+            let layout = WrappedCellLayout {
+                columns: vec![WrappedCellColumn { width: 10 }, WrappedCellColumn { width: 20 }],
                 rows: vec![],
             };
 
@@ -582,8 +582,8 @@ mod tests {
 
         #[test]
         fn single_column_no_separator() {
-            let layout = LowScrollLayout {
-                columns: vec![LowScrollColumn { width: 15 }],
+            let layout = WrappedCellLayout {
+                columns: vec![WrappedCellColumn { width: 15 }],
                 rows: vec![],
             };
 
@@ -594,8 +594,8 @@ mod tests {
     mod line_based_visibility {
         use super::*;
 
-        fn layout(heights: Vec<u16>) -> MeasuredLowScrollLayout {
-            MeasuredLowScrollLayout::new(heights, LowScrollLayoutKey::default())
+        fn layout(heights: Vec<u16>) -> MeasuredWrappedCellLayout {
+            MeasuredWrappedCellLayout::new(heights, WrappedCellLayoutKey::default())
         }
 
         #[test]

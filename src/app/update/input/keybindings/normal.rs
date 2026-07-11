@@ -104,12 +104,12 @@ pub mod global {
         combos: &[KeyCombo::plain(Key::Char('f'))],
     };
 
-    pub const LOW_SCROLL: KeyBinding = KeyBinding {
+    pub const WRAPPED_CELL: KeyBinding = KeyBinding {
         key_short: "⌥L",
         key: "Alt+L",
-        desc_short: "LowScroll",
-        description: "Toggle Low Scroll Mode",
-        action: Action::ToggleLowScroll,
+        desc_short: "WrappedCell",
+        description: "Toggle Wrapped Cell Mode",
+        action: Action::ToggleWrappedCell,
         combos: &[KeyCombo::alt(Key::Char('L'))],
     };
 
@@ -252,7 +252,7 @@ pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE,
     global::FOCUS,
     global::EXIT_FOCUS,
-    global::LOW_SCROLL,
+    global::WRAPPED_CELL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,
@@ -274,7 +274,7 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE_IDE,
     global::FOCUS,
     global::EXIT_FOCUS,
-    global::LOW_SCROLL,
+    global::WRAPPED_CELL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,

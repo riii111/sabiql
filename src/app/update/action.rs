@@ -343,7 +343,7 @@ pub enum Action {
     SettingsPreviousSection,
     SettingsStartCustomBrowserEdit,
     SettingsStopCustomBrowserEdit,
-    SettingsToggleLowScrollScroll,
+    SettingsToggleWrappedCellScroll,
     SettingsApply,
     SettingsCancel,
     SettingsSaved(AppSettings),
@@ -519,7 +519,7 @@ pub enum Action {
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
     ToggleReadOnly,
-    ToggleLowScroll,
+    ToggleWrappedCell,
 
     // Query history
     QueryHistoryLoaded(
