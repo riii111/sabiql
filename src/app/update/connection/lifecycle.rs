@@ -141,6 +141,22 @@ mod tests {
     }
 
     #[test]
+    fn cached_switch_terminates_active_query_run() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+        let stale_run_id = state.query.begin_running(std::time::Instant::now());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.query.is_running());
+        assert!(!state.query.is_current_run(stale_run_id));
+    }
+
+    #[test]
     fn preserves_cached_sqlite_ddl_inspector_tab() {
         let mut state = AppState::new("test".to_string());
         let target_id = ConnectionId::new();

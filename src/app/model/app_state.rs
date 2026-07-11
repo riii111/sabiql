@@ -594,12 +594,8 @@ mod tests {
             let mut state = make_state();
 
             let gen1 = state.session.selection_generation();
-            let gen2 = state
-                .session
-                .select_table("public", "t1", &mut state.query.pagination);
-            let gen3 = state
-                .session
-                .select_table("public", "t2", &mut state.query.pagination);
+            let gen2 = state.session.select_table("public", "t1", &mut state.query);
+            let gen3 = state.session.select_table("public", "t2", &mut state.query);
 
             assert_eq!(gen1, 0);
             assert_eq!(gen2, 1);
@@ -611,10 +607,9 @@ mod tests {
             let mut state = make_state();
 
             let initial_gen = state.session.selection_generation();
-            let current_gen =
-                state
-                    .session
-                    .select_table("public", "users", &mut state.query.pagination);
+            let current_gen = state
+                .session
+                .select_table("public", "users", &mut state.query);
 
             assert!(initial_gen < current_gen);
         }
@@ -952,7 +947,7 @@ mod tests {
                 let mut state = make_state();
                 let _ = state
                     .session
-                    .select_table("public", "users", &mut state.query.pagination);
+                    .select_table("public", "users", &mut state.query);
                 let generation = state.session.selection_generation();
                 activate_postgres_connection(&mut state, "dsn://test");
                 let run_id = state.session.begin_table_detail_run();

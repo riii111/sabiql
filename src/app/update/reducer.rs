@@ -151,10 +151,9 @@ fn reduce_inner(
 }
 
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
-    let generation =
-        state
-            .session
-            .select_table(&table.schema, &table.name, &mut state.query.pagination);
+    let generation = state
+        .session
+        .select_table(&table.schema, &table.name, &mut state.query);
     state.result_interaction.reset_interaction();
 
     let schema = table.schema.clone();
@@ -986,7 +985,7 @@ mod tests {
             state.ui.set_explorer_selected_raw(2);
             let _ = state
                 .session
-                .select_table("public", "users", &mut state.query.pagination);
+                .select_table("public", "users", &mut state.query);
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(

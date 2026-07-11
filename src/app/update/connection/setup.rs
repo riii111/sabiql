@@ -185,6 +185,7 @@ pub fn reduce_connection_setup(
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
+            state.query.mark_idle();
             state.session.mark_connecting();
             DispatchResult::handled_with(vec![Effect::SaveAndConnect {
                 id: state.connection_setup.editing_id().cloned(),
@@ -515,6 +516,18 @@ mod tests {
         }
 
         #[test]
+        fn save_terminates_active_query_run() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            let stale_run_id = state.query.begin_running(Instant::now());
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert!(!state.query.is_running());
+            assert!(!state.query.is_current_run(stale_run_id));
+        }
+
+        #[test]
         fn sqlite_save_enters_connecting_state() {
             let mut state = AppState::new("test".to_string());
             state
@@ -649,7 +662,7 @@ mod tests {
             state.ui.set_explorer_selected_raw(3);
             let _ = state
                 .session
-                .select_table("public", "users", &mut state.query.pagination);
+                .select_table("public", "users", &mut state.query);
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(

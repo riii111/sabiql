@@ -624,6 +624,31 @@ mod tests {
             assert!(state.query.current_result().is_none());
             assert!(state.query.is_running());
         }
+
+        #[test]
+        fn selection_change_rejects_stale_adhoc_completion() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+
+            dispatch_query(
+                &mut state,
+                &Action::QueryCompleted {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: stale_run_id,
+                    result: adhoc_result(),
+                    generation: 0,
+                    target_page: None,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.current_result().is_none());
+            assert!(!state.query.is_running());
+        }
     }
 
     mod query_failed {

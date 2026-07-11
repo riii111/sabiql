@@ -64,9 +64,7 @@ pub(super) fn reduce_loading(
                     state
                         .ui
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
-                    state
-                        .session
-                        .clear_table_selection(&mut state.query.pagination);
+                    state.session.clear_table_selection(&mut state.query);
                     state.query.clear_current_result();
                 }
             }
@@ -103,9 +101,7 @@ pub(super) fn reduce_loading(
             state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
                 state.session.set_metadata(None);
-                state
-                    .session
-                    .clear_table_selection(&mut state.query.pagination);
+                state.session.clear_table_selection(&mut state.query);
                 state.query.clear_current_result();
                 state.ui.set_explorer_selection(None);
                 state.result_interaction.reset_view();
