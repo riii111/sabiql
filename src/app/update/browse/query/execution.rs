@@ -8,6 +8,7 @@ use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSele
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
@@ -271,7 +272,7 @@ pub fn reduce_execution(
                     dsn,
                     run_id,
                     query: query.clone(),
-                    read_only: state.session.is_read_only(),
+                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }])
             } else {
                 DispatchResult::handled()

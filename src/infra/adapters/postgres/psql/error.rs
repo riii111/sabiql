@@ -1,4 +1,17 @@
-use crate::app::ports::outbound::DbOperationError;
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+
+pub(in crate::adapters::postgres) fn classify_cli_spawn_error(
+    error: std::io::Error,
+) -> DbOperationError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        DbOperationError::CommandNotFound {
+            command: DatabaseCli::Psql,
+            details: error.to_string(),
+        }
+    } else {
+        DbOperationError::QueryFailed(error.to_string())
+    }
+}
 
 pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
