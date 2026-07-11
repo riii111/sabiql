@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
+use crate::ports::outbound::AccessMode;
 use crate::update::action::{Action, ScrollAmount, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -53,7 +54,7 @@ pub(super) fn reduce_confirm_dialog(
                             dsn,
                             run_id,
                             query: sql,
-                            read_only: state.session.is_read_only(),
+                            access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                         }])
                     } else {
                         state.result_interaction.clear_write_preview();
@@ -84,7 +85,6 @@ pub(super) fn reduce_confirm_dialog(
                             query: export_query,
                             file_name,
                             row_count,
-                            read_only: state.session.is_read_only(),
                         }])
                     } else {
                         DispatchResult::handled()

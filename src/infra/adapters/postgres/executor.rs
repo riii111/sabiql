@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
 use super::PostgresAdapter;
@@ -14,7 +14,6 @@ impl QueryExecutor for PostgresAdapter {
         table: &str,
         limit: usize,
         offset: usize,
-        read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         // Editing a cell re-fetches the same page; stable ordering prevents the
         // edited row from shifting position after the refresh.
@@ -24,7 +23,7 @@ impl QueryExecutor for PostgresAdapter {
             .await
             .unwrap_or_default();
         let query = Self::build_preview_query(schema, table, &order_columns, limit, offset);
-        self.execute_query_raw(dsn, &query, QuerySource::Preview, read_only)
+        self.execute_query_raw(dsn, &query, QuerySource::Preview, true)
             .await
     }
 
@@ -32,9 +31,9 @@ impl QueryExecutor for PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        self.execute_query_raw(dsn, query, QuerySource::Adhoc, read_only)
+        self.execute_query_raw(dsn, query, QuerySource::Adhoc, access_mode.is_read_only())
             .await
     }
 
@@ -42,18 +41,14 @@ impl QueryExecutor for PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        self.execute_write_raw(dsn, query, read_only).await
+        self.execute_write_raw(dsn, query, access_mode.is_read_only())
+            .await
     }
 
-    async fn count_query_rows(
-        &self,
-        dsn: &str,
-        query: &str,
-        read_only: bool,
-    ) -> Result<usize, DbOperationError> {
-        self.count_rows(dsn, query, read_only).await
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
+        self.count_rows(dsn, query, true).await
     }
 
     async fn export_to_csv(
@@ -61,8 +56,7 @@ impl QueryExecutor for PostgresAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
-        read_only: bool,
     ) -> Result<usize, DbOperationError> {
-        self.export_csv_to_file(dsn, query, path, read_only).await
+        self.export_csv_to_file(dsn, query, path, true).await
     }
 }

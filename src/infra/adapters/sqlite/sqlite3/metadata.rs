@@ -791,7 +791,7 @@ impl MetadataProvider for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor};
+    use crate::app::ports::outbound::{AccessMode, DdlGenerator, MetadataProvider, QueryExecutor};
     use crate::domain::{
         DatabaseType, FkAction, IndexType, Schema, TriggerEvent, TriggerTiming,
         UNRESOLVED_FK_COLUMN,
@@ -1843,7 +1843,10 @@ mod tests {
                 .signature
                 .clone();
 
-            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, trigger, AccessMode::ReadWrite)
+                .await
+                .unwrap();
 
             let after = adapter.fetch_table_signatures(&dsn).await.unwrap();
             let after_signature = &after

@@ -10,7 +10,7 @@ use tokio::time::timeout;
 use async_trait::async_trait;
 
 use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
-use crate::app::ports::outbound::{DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError, QueryExecutor};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult,
     available_sqlite_rowid_alias,
@@ -154,14 +154,16 @@ impl SqliteCli {
         let mut cmd = Command::new("sqlite3");
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
-        cmd.arg("--").arg(path).arg(sql);
+        cmd.arg("--")
+            .arg(sqlite_database_uri(path, read_only))
+            .arg(sql);
 
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(classify_cli_spawn_error)?;
+            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
 
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -237,7 +239,9 @@ impl SqliteCli {
         for arg in args {
             cmd.arg(arg);
         }
-        cmd.arg("--").arg(path).arg(sql);
+        cmd.arg("--")
+            .arg(sqlite_database_uri(path, read_only))
+            .arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
     }
 
@@ -268,7 +272,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(classify_cli_spawn_error)?;
+            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
 
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -307,6 +311,11 @@ impl SqliteCli {
             stderr,
         })
     }
+}
+
+fn sqlite_database_uri(path: &str, read_only: bool) -> String {
+    let mode = if read_only { "ro" } else { "rw" };
+    format!("file:{}?mode={mode}", urlencoding::encode(path))
 }
 
 fn count_csv_records(path: &std::path::Path) -> Result<usize, csv::Error> {
@@ -390,7 +399,6 @@ impl QueryExecutor for SqliteAdapter {
         table: &str,
         limit: usize,
         offset: usize,
-        _read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
@@ -417,7 +425,7 @@ impl QueryExecutor for SqliteAdapter {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let marker = sqlite_probe_marker();
@@ -431,7 +439,7 @@ impl QueryExecutor for SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_quote_for_query_plan(path, &execution_query, query, read_only)
+            .execute_quote_for_query_plan(path, &execution_query, query, access_mode.is_read_only())
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
@@ -475,10 +483,10 @@ impl QueryExecutor for SqliteAdapter {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
         let (affected_rows, execution_time_ms) = self
-            .execute_changes_query(Self::path_from_dsn(dsn)?, query, read_only)
+            .execute_changes_query(Self::path_from_dsn(dsn)?, query, access_mode.is_read_only())
             .await?;
         Ok(WriteExecutionResult {
             affected_rows,
@@ -486,12 +494,7 @@ impl QueryExecutor for SqliteAdapter {
         })
     }
 
-    async fn count_query_rows(
-        &self,
-        dsn: &str,
-        query: &str,
-        _read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
         let stdout = self
             .cli
             .execute_csv(Self::path_from_dsn(dsn)?, query, true)
@@ -504,7 +507,6 @@ impl QueryExecutor for SqliteAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
-        _read_only: bool,
     ) -> Result<usize, DbOperationError> {
         if !is_sqlite_rerunnable_export_query(query)? {
             return Err(sqlite_export_not_rerunnable_error());
@@ -517,7 +519,7 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::{QueryExecutor, SqlDialect};
+    use crate::app::ports::outbound::{AccessMode, QueryExecutor, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
         sqlite_explain_query_plan_text_from_result,
@@ -539,7 +541,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "users", 1, 1, true)
+                .execute_preview(&dsn, "main", "users", 1, 1)
                 .await
                 .unwrap();
 
@@ -559,7 +561,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -582,7 +584,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -619,9 +621,12 @@ mod tests {
                 &QueryValue::text("new"),
                 &predicate,
             );
-            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let write = adapter
+                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
+                .await
+                .unwrap();
             let preview = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -645,15 +650,22 @@ mod tests {
             ];
 
             adapter
-                .execute_write(&dsn, "DELETE FROM logs WHERE rowid = 1", false)
+                .execute_write(
+                    &dsn,
+                    "DELETE FROM logs WHERE rowid = 1",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
-            adapter.execute_adhoc(&dsn, "VACUUM", false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
+                .await
+                .unwrap();
             adapter
                 .execute_write(
                     &dsn,
                     "INSERT INTO logs(message, note) VALUES ('replacement', NULL)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -666,9 +678,12 @@ mod tests {
                 &QueryValue::text("new"),
                 &stale_pairs,
             );
-            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let write = adapter
+                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
+                .await
+                .unwrap();
             let remaining = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -694,9 +709,12 @@ mod tests {
             ]];
 
             let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &rows);
-            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let write = adapter
+                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
+                .await
+                .unwrap();
             let preview = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -719,24 +737,34 @@ mod tests {
             ]];
 
             adapter
-                .execute_write(&dsn, "DELETE FROM logs WHERE rowid = 1", false)
+                .execute_write(
+                    &dsn,
+                    "DELETE FROM logs WHERE rowid = 1",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
-            adapter.execute_adhoc(&dsn, "VACUUM", false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
+                .await
+                .unwrap();
             adapter
                 .execute_write(
                     &dsn,
                     "INSERT INTO logs(message) VALUES ('replacement')",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
 
             let sql =
                 adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &stale_rows);
-            let write = adapter.execute_write(&dsn, &sql, false).await.unwrap();
+            let write = adapter
+                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
+                .await
+                .unwrap();
             let remaining = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0, true)
+                .execute_preview(&dsn, "main", "logs", 10, 0)
                 .await
                 .unwrap();
 
@@ -752,9 +780,7 @@ mod tests {
             );
             let adapter = SqliteAdapter::new();
 
-            let result = adapter
-                .execute_preview(&dsn, "other", "users", 10, 0, true)
-                .await;
+            let result = adapter.execute_preview(&dsn, "other", "users", 10, 0).await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         }
@@ -770,7 +796,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let preview = adapter
-                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
 
@@ -790,13 +816,13 @@ mod tests {
                 )]],
             );
             let write = adapter
-                .execute_write(&dsn, &delete_sql, false)
+                .execute_write(&dsn, &delete_sql, AccessMode::ReadWrite)
                 .await
                 .unwrap();
             assert_eq!(write.affected_rows, 1);
 
             let remaining = adapter
-                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
             assert_eq!(remaining.row_count(), 1);
@@ -817,7 +843,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "notes_fts", 10, 0, true)
+                .execute_preview(&dsn, "main", "notes_fts", 10, 0)
                 .await
                 .unwrap();
 
@@ -840,7 +866,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
 
@@ -865,7 +891,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
 
@@ -893,7 +919,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_preview(&dsn, "main", "users", 10, 0, true)
+                .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
 
@@ -916,7 +942,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "SELECT 1 AS value", true)
+                .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -937,7 +963,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "EXPLAIN QUERY PLAN SELECT * FROM users WHERE name = 'alice'",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -967,7 +993,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "EXPLAIN QUERY PLAN SELECT * FROM users u JOIN orders o ON u.id = o.user_id",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -1002,12 +1028,16 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "EXPLAIN QUERY PLAN DELETE FROM users WHERE name = 'alice'",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT COUNT(*) AS total FROM users", true)
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT COUNT(*) AS total FROM users",
+                    AccessMode::ReadOnly,
+                )
                 .await
                 .unwrap();
 
@@ -1057,14 +1087,15 @@ mod tests {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(setup);
             let adapter = SqliteAdapter::new();
 
-            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, trigger, AccessMode::ReadWrite)
+                .await
+                .unwrap();
 
             let result = adapter
                 .execute_adhoc(
                     &dsn,
-                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'agent_messages_fts_ai'",
-                    true,
-                )
+                    "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'agent_messages_fts_ai'", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1102,13 +1133,16 @@ mod tests {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(setup);
             let adapter = SqliteAdapter::new();
 
-            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, trigger, AccessMode::ReadWrite)
+                .await
+                .unwrap();
 
             let result = adapter
                 .execute_adhoc(
                     &dsn,
                     "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'sync_end'",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -1133,7 +1167,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap_err();
@@ -1152,7 +1186,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -1173,9 +1207,7 @@ mod tests {
             let result = adapter
             .execute_adhoc(
                 &dsn,
-                "SELECT 1 AS ignored; SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker",
-                true,
-            )
+                "SELECT 1 AS ignored; SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker", AccessMode::ReadOnly)
             .await
             .unwrap();
 
@@ -1196,7 +1228,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "SELECT 1 AS a, 2 AS b UNION ALL SELECT 3, 4; SELECT 5 AS c, 6 AS d",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -1212,7 +1244,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "SELECT 1 AS a; SELECT 2 AS b WHERE false", true)
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT 1 AS a; SELECT 2 AS b WHERE false",
+                    AccessMode::ReadOnly,
+                )
                 .await
                 .unwrap();
 
@@ -1229,7 +1265,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "PRAGMA table_info(users)", true)
+                .execute_adhoc(&dsn, "PRAGMA table_info(users)", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1246,7 +1282,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "PRAGMA foreign_keys", false)
+                .execute_adhoc(&dsn, "PRAGMA foreign_keys", AccessMode::ReadWrite)
                 .await
                 .unwrap();
 
@@ -1259,7 +1295,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "PRAGMA query_only", true)
+                .execute_adhoc(&dsn, "PRAGMA query_only", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1272,7 +1308,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "PRAGMA busy_timeout", true)
+                .execute_adhoc(&dsn, "PRAGMA busy_timeout", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1285,7 +1321,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "VALUES (1)", true)
+                .execute_adhoc(&dsn, "VALUES (1)", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1304,7 +1340,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "UPDATE users SET name = 'x' WHERE id = 1", false)
+                .execute_adhoc(
+                    &dsn,
+                    "UPDATE users SET name = 'x' WHERE id = 1",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1323,7 +1363,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "REPLACE INTO users(id, name) VALUES (1, 'z')", false)
+                .execute_adhoc(
+                    &dsn,
+                    "REPLACE INTO users(id, name) VALUES (1, 'z')",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1345,7 +1389,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "UPDATE users SET name = 'x' WHERE id = 1; SELECT 42",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1368,7 +1412,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "UPDATE users SET name = 'x' WHERE id = 1; SELECT name FROM users",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1394,7 +1438,7 @@ mod tests {
                     "INSERT INTO users(id, name) VALUES (2, 'b'), (3, 'c');
                      UPDATE users SET name = 'z' WHERE id IN (1, 2);
                      DELETE FROM users WHERE id = 3",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1413,7 +1457,7 @@ mod tests {
                     &dsn,
                     "CREATE TABLE users(id INTEGER PRIMARY KEY);
                      INSERT INTO users(id) VALUES (1)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1436,12 +1480,12 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "BEGIN; INSERT INTO users(id) VALUES (1); ROLLBACK",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1464,12 +1508,12 @@ mod tests {
                      SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1493,12 +1537,12 @@ mod tests {
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK TO sp;
                      COMMIT",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1524,12 +1568,12 @@ mod tests {
                      INSERT INTO users(id) VALUES (3);
                      ROLLBACK TO sp;
                      COMMIT",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1555,12 +1599,12 @@ mod tests {
                      INSERT INTO users(id) VALUES (3);
                      ROLLBACK TO outer_sp;
                      COMMIT",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1584,12 +1628,12 @@ mod tests {
                      ROLLBACK TO sp;
                      INSERT INTO users(id) VALUES (3);
                      RELEASE sp",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1607,14 +1651,12 @@ mod tests {
             let result = adapter
                 .execute_adhoc(
                     &dsn,
-                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                    false,
-                )
+                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)", AccessMode::ReadWrite)
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
             assert!(rows.rows().is_empty());
@@ -1630,13 +1672,11 @@ mod tests {
             let result = adapter
                 .execute_adhoc(
                     &dsn,
-                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)",
-                    false,
-                )
+                    "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)", AccessMode::ReadWrite)
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1656,7 +1696,7 @@ mod tests {
                     &dsn,
                     "WITH payload(id) AS (VALUES (1), (2))
                      INSERT INTO users(id) SELECT id FROM payload",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1676,13 +1716,13 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
             assert!(rows.rows().is_empty());
@@ -1701,13 +1741,13 @@ mod tests {
                     "WITH payload(id) AS (VALUES (1))
                      INSERT INTO users(id) SELECT id FROM payload;
                      INSERT INTO missing(id) VALUES (2)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
             assert!(rows.rows().is_empty());
@@ -1722,11 +1762,13 @@ mod tests {
             let query =
                 "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
 
-            let result = adapter.execute_adhoc(&dsn, query, false).await;
+            let result = adapter
+                .execute_adhoc(&dsn, query, AccessMode::ReadWrite)
+                .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
             assert!(rows.rows().is_empty());
@@ -1742,14 +1784,12 @@ mod tests {
             let result = adapter
                 .execute_adhoc(
                     &dsn,
-                    "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                    false,
-                )
+                    "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)", AccessMode::ReadWrite)
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
             assert!(rows.rows().is_empty());
@@ -1769,7 +1809,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "DELETE FROM users WHERE id = 1 -- cleanup selected row",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1789,7 +1829,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "INSERT INTO users(name) VALUES ('a') RETURNING id, name",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1813,7 +1853,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "UPDATE users SET name = 'x' RETURNING id, name",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1836,7 +1876,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "DELETE FROM users WHERE id = 1 RETURNING id, name",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1853,7 +1893,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "INSERT INTO returning_log(name) VALUES ('a')", false)
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO returning_log(name) VALUES ('a')",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1869,7 +1913,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "INSERT INTO `my returning`(name) VALUES ('a')", false)
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO `my returning`(name) VALUES ('a')",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1885,7 +1933,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "INSERT INTO [my returning](name) VALUES ('a')", false)
+                .execute_adhoc(
+                    &dsn,
+                    "INSERT INTO [my returning](name) VALUES ('a')",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1899,7 +1951,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "CREATE TABLE users(id INTEGER PRIMARY KEY)", false)
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY)",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -1929,10 +1985,10 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", false)
+                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", AccessMode::ReadWrite)
                 .await;
             let children = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1954,7 +2010,7 @@ mod tests {
                 .execute_write(
                     &dsn,
                     "INSERT INTO users(id, email) VALUES (1, 'a@example.com')",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
@@ -1963,7 +2019,7 @@ mod tests {
                 .execute_write(
                     &dsn,
                     "INSERT INTO users(id, email) VALUES (2, 'a@example.com')",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await;
 
@@ -1975,7 +2031,9 @@ mod tests {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
-            let result = adapter.execute_adhoc(&dsn, "SELEKT 1", true).await;
+            let result = adapter
+                .execute_adhoc(&dsn, "SELEKT 1", AccessMode::ReadOnly)
+                .await;
 
             assert!(matches!(result, Err(DbOperationError::QueryFailed(message))
                     if message.to_ascii_lowercase().contains("syntax error")));
@@ -1997,11 +2055,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", false)
+                .execute_write(&dsn, "DELETE FROM orgs WHERE id = 1", AccessMode::ReadWrite)
                 .await
                 .unwrap();
             let children = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -2020,7 +2078,11 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_write(&dsn, "DELETE FROM users WHERE id IN (1, 2)", false)
+                .execute_write(
+                    &dsn,
+                    "DELETE FROM users WHERE id IN (1, 2)",
+                    AccessMode::ReadWrite,
+                )
                 .await
                 .unwrap();
 
@@ -2038,7 +2100,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let count = adapter
-                .count_query_rows(&dsn, "SELECT COUNT(*) FROM users", true)
+                .count_query_rows(&dsn, "SELECT COUNT(*) FROM users")
                 .await
                 .unwrap();
 
@@ -2057,7 +2119,7 @@ mod tests {
             let adapter = SqliteAdapter::new();
 
             let row_count = adapter
-                .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path, true)
+                .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path)
                 .await
                 .unwrap();
             let csv = std::fs::read_to_string(path).unwrap();
@@ -2079,12 +2141,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let row_count = adapter
-                .export_to_csv(
-                    &dsn,
-                    "SELECT id, message FROM logs ORDER BY id",
-                    &path,
-                    true,
-                )
+                .export_to_csv(&dsn, "SELECT id, message FROM logs ORDER BY id", &path)
                 .await
                 .unwrap();
 
@@ -2100,7 +2157,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", &path, false)
+                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", &path)
                 .await;
 
             assert!(matches!(
@@ -2118,7 +2175,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .export_to_csv(&dsn, "SELECT id FROM missing", &path, true)
+                .export_to_csv(&dsn, "SELECT id FROM missing", &path)
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
@@ -2131,7 +2188,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .count_query_rows(&dsn, "SELECT COUNT(*) FROM missing", true)
+                .count_query_rows(&dsn, "SELECT COUNT(*) FROM missing")
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
@@ -2145,7 +2202,11 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_write(&dsn, "INSERT INTO users(id) VALUES (1)", true)
+                .execute_write(
+                    &dsn,
+                    "INSERT INTO users(id) VALUES (1)",
+                    AccessMode::ReadOnly,
+                )
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
@@ -2159,7 +2220,11 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_write(&dsn, "CREATE TABLE users(id INTEGER)", false)
+                .execute_write(
+                    &dsn,
+                    "CREATE TABLE users(id INTEGER)",
+                    AccessMode::ReadWrite,
+                )
                 .await;
 
             assert!(matches!(
@@ -2173,6 +2238,33 @@ world'), (2, 'done');
 
     mod dsn_validation {
         use super::*;
+
+        #[test]
+        fn database_uri_uses_non_creating_access_modes() {
+            let read_write = sqlite_database_uri("/tmp/sabiql database?.db", false);
+            let read_only = sqlite_database_uri("/tmp/sabiql database?.db", true);
+
+            assert!(read_write.starts_with("file:"));
+            assert!(read_write.contains("%3F"));
+            assert!(read_write.ends_with("?mode=rw"));
+            assert!(read_only.ends_with("?mode=ro"));
+        }
+
+        #[tokio::test]
+        async fn read_write_uri_rejects_missing_database_without_creating_file() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("missing.db");
+            let output = Command::new("sqlite3")
+                .arg("--")
+                .arg(sqlite_database_uri(path.to_str().unwrap(), false))
+                .arg("CREATE TABLE users(id INTEGER)")
+                .output()
+                .await
+                .unwrap();
+
+            assert!(!output.status.success());
+            assert!(!path.exists());
+        }
 
         #[tokio::test]
         async fn relative_path_starting_with_dash_is_opened_as_database_path() {
@@ -2194,7 +2286,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .execute_adhoc(&dsn, "SELECT 1 AS value", false)
+                .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadWrite)
                 .await;
 
             let result = result.unwrap();

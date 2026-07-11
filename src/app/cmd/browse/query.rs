@@ -113,14 +113,13 @@ pub async fn run(
             limit,
             offset,
             target_page,
-            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
                 match executor
-                    .execute_preview(&dsn, &schema, &table, limit, offset, read_only)
+                    .execute_preview(&dsn, &schema, &table, limit, offset)
                     .await
                 {
                     Ok(result) => {
@@ -156,13 +155,13 @@ pub async fn run(
             query,
             source_query,
             is_analyze,
-            read_only,
+            access_mode,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                match executor.execute_adhoc(&dsn, &query, read_only).await {
+                match executor.execute_adhoc(&dsn, &query, access_mode).await {
                     Ok(result) => {
                         let plan_text = sqlite_explain_query_plan_text_from_result(&result);
                         tx.send(Action::ExplainCompleted {
@@ -194,7 +193,7 @@ pub async fn run(
             dsn,
             run_id,
             query,
-            read_only,
+            access_mode,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
@@ -205,7 +204,7 @@ pub async fn run(
             let query_for_history = query.clone();
 
             tokio::spawn(async move {
-                match executor.execute_adhoc(&dsn, &query, read_only).await {
+                match executor.execute_adhoc(&dsn, &query, access_mode).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
                             let rows = result
@@ -263,7 +262,7 @@ pub async fn run(
             dsn,
             run_id,
             query,
-            read_only,
+            access_mode,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
@@ -274,7 +273,7 @@ pub async fn run(
             let query_for_history = query.clone();
 
             tokio::spawn(async move {
-                match executor.execute_write(&dsn, &query, read_only).await {
+                match executor.execute_write(&dsn, &query, access_mode).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
                             save_query_history(
@@ -326,16 +325,12 @@ pub async fn run(
             count_query,
             export_query,
             file_name,
-            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
             tokio::spawn(async move {
-                let row_count = executor
-                    .count_query_rows(&dsn, &count_query, read_only)
-                    .await
-                    .ok();
+                let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
                 tx.send(Action::CsvExportRowsCounted {
                     dsn,
                     run_id,
@@ -355,14 +350,13 @@ pub async fn run(
             query,
             file_name,
             row_count,
-            read_only,
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
 
             tokio::spawn(async move {
-                match executor.export_to_csv(&dsn, &query, &path, read_only).await {
+                match executor.export_to_csv(&dsn, &query, &path).await {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
@@ -720,7 +714,7 @@ mod tests {
             mock_executor
                 .expect_execute_preview()
                 .once()
-                .returning(|_, _, _, _, _, _| Ok(test_fixtures::sample_query_result()));
+                .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
 
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
@@ -747,7 +741,6 @@ mod tests {
                         limit: 100,
                         offset: 0,
                         target_page: 0,
-                        read_only: false,
                     }],
                     &mut renderer,
                     state,
@@ -773,7 +766,7 @@ mod tests {
             mock_executor
                 .expect_execute_preview()
                 .once()
-                .returning(|_, _, _, _, _, _| {
+                .returning(|_, _, _, _, _| {
                     Err(DbOperationError::QueryFailed("syntax error".to_string()))
                 });
 
@@ -802,7 +795,6 @@ mod tests {
                         limit: 100,
                         offset: 0,
                         target_page: 0,
-                        read_only: false,
                     }],
                     &mut renderer,
                     state,

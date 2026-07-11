@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, QueryExecutor, SqliteDiagnosticsProvider};
+use crate::app::ports::outbound::{
+    AccessMode, DbOperationError, QueryExecutor, SqliteDiagnosticsProvider,
+};
 use crate::domain::{DiagnosticField, QueryResult, SqliteDiagnosticsSnapshot};
 
 use super::SqliteAdapter;
@@ -10,7 +12,6 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
     async fn fetch_diagnostics_core(
         &self,
         dsn: &str,
-        _read_only: bool,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
         let db_file = DiagnosticField::ok(Self::path_from_dsn(dsn)?);
 
@@ -36,7 +37,7 @@ impl SqliteDiagnosticsProvider for SqliteAdapter {
         })
     }
 
-    async fn fetch_quick_check(&self, dsn: &str, _read_only: bool) -> DiagnosticField {
+    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
         fetch_field(self, dsn, "PRAGMA quick_check;", quick_check_field).await
     }
 }
@@ -47,23 +48,25 @@ async fn fetch_field(
     query: &str,
     map: fn(Result<QueryResult, DbOperationError>) -> DiagnosticField,
 ) -> DiagnosticField {
-    map(adapter.execute_adhoc(dsn, query, true).await)
+    map(QueryExecutor::execute_adhoc(adapter, dsn, query, AccessMode::ReadOnly).await)
 }
 
 async fn fetch_feature_summary(adapter: &SqliteAdapter, dsn: &str) -> DiagnosticField {
     let compile_options = feature_probe(
-        adapter
-            .execute_adhoc(dsn, "PRAGMA compile_options;", true)
-            .await,
+        QueryExecutor::execute_adhoc(
+            adapter,
+            dsn,
+            "PRAGMA compile_options;",
+            AccessMode::ReadOnly,
+        )
+        .await,
     );
     let module_list = feature_probe(
-        adapter
-            .execute_adhoc(dsn, "PRAGMA module_list;", true)
+        QueryExecutor::execute_adhoc(adapter, dsn, "PRAGMA module_list;", AccessMode::ReadOnly)
             .await,
     );
     let function_list = feature_probe(
-        adapter
-            .execute_adhoc(dsn, "PRAGMA function_list;", true)
+        QueryExecutor::execute_adhoc(adapter, dsn, "PRAGMA function_list;", AccessMode::ReadOnly)
             .await,
     );
 
@@ -284,7 +287,7 @@ mod tests {
         );
         let adapter = SqliteAdapter::new();
 
-        let snapshot = adapter.fetch_diagnostics_core(&dsn, false).await.unwrap();
+        let snapshot = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
 
         assert!(snapshot.db_file.is_ok());
         assert!(snapshot.sqlite_version.is_ok());
@@ -305,7 +308,7 @@ mod tests {
         );
         let adapter = SqliteAdapter::new();
 
-        let quick_check = adapter.fetch_quick_check(&dsn, true).await;
+        let quick_check = adapter.fetch_quick_check(&dsn).await;
 
         assert!(quick_check.is_ok());
         assert!(

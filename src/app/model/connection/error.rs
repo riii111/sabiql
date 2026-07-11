@@ -1,5 +1,5 @@
 use crate::policy::password_masking::mask_password;
-use crate::ports::outbound::DbOperationError;
+use crate::ports::outbound::{DatabaseCli, DbOperationError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -151,10 +151,11 @@ impl ConnectionErrorInfo {
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
         let raw_details = error.raw_details().into_owned();
         let kind = match error {
-            DbOperationError::CommandNotFound(details) if details.starts_with("sqlite3:") => {
-                ConnectionErrorKind::SqliteCliNotFound
-            }
-            DbOperationError::CommandNotFound(_) => ConnectionErrorKind::CliNotFound,
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::Sqlite3,
+                ..
+            } => ConnectionErrorKind::SqliteCliNotFound,
+            DbOperationError::CommandNotFound { .. } => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
             DbOperationError::UnsupportedOperation(details)
@@ -357,9 +358,10 @@ mod tests {
         #[test]
         fn from_db_operation_error_classifies_missing_sqlite_cli() {
             let info =
-                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::CommandNotFound(
-                    "sqlite3: No such file or directory".to_string(),
-                ));
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::CommandNotFound {
+                    command: DatabaseCli::Sqlite3,
+                    details: "No such file or directory".to_string(),
+                });
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteCliNotFound);
             assert_eq!(info.summary(), "sqlite3 not found");

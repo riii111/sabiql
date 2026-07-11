@@ -1,10 +1,14 @@
-use crate::app::ports::outbound::DbOperationError;
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
 
 pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
+    command: DatabaseCli,
     error: std::io::Error,
 ) -> DbOperationError {
     if error.kind() == std::io::ErrorKind::NotFound {
-        DbOperationError::CommandNotFound(format!("sqlite3: {error}"))
+        DbOperationError::CommandNotFound {
+            command,
+            details: error.to_string(),
+        }
     } else {
         DbOperationError::QueryFailed(error.to_string())
     }
@@ -173,14 +177,17 @@ mod tests {
 
     #[test]
     fn missing_sqlite_cli_has_command_specific_details() {
-        let error = classify_cli_spawn_error(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "No such file or directory",
-        ));
+        let error = classify_cli_spawn_error(
+            DatabaseCli::Sqlite3,
+            std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory"),
+        );
 
         assert!(matches!(
             error,
-            DbOperationError::CommandNotFound(details) if details.starts_with("sqlite3:")
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::Sqlite3,
+                ..
+            }
         ));
     }
 }
