@@ -1533,7 +1533,7 @@ mod tests {
                     "CREATE TABLE users(id INTEGER PRIMARY KEY);\
                      INSERT INTO users(id) VALUES (1);\
                      INSERT INTO missing(id) VALUES (2)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await;
 
@@ -1542,7 +1542,7 @@ mod tests {
                 .execute_adhoc(
                     &dsn,
                     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'",
-                    true,
+                    AccessMode::ReadOnly,
                 )
                 .await
                 .unwrap();
@@ -1561,12 +1561,16 @@ mod tests {
                      INSERT INTO users(id) VALUES (1);\
                      VACUUM;\
                      INSERT INTO users(id) VALUES (2)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users ORDER BY id", true)
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT id FROM users ORDER BY id",
+                    AccessMode::ReadOnly,
+                )
                 .await
                 .unwrap();
 
@@ -1587,12 +1591,12 @@ mod tests {
                     "PRAGMA journal_mode = WAL;\
                      CREATE TABLE users(id INTEGER PRIMARY KEY);\
                      INSERT INTO users(id) VALUES (1)",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();
             let rows = adapter
-                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                 .await
                 .unwrap();
 
@@ -1610,7 +1614,7 @@ mod tests {
                     "PRAGMA foreign_keys = ON;
                      CREATE TABLE parent(id INTEGER PRIMARY KEY);
                      PRAGMA foreign_keys",
-                    false,
+                    AccessMode::ReadWrite,
                 )
                 .await
                 .unwrap();

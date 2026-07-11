@@ -146,6 +146,13 @@ mod tests {
     }
 
     #[test]
+    fn vacuum_is_transaction_incompatible() {
+        assert!(is_transaction_incompatible("VACUUM"));
+        assert!(is_transaction_incompatible("  VACUUM"));
+        assert!(is_transaction_incompatible("VACUUM INTO 'backup.db'"));
+    }
+
+    #[test]
     fn query_pragma_is_not_transaction_incompatible() {
         assert!(!is_transaction_incompatible("PRAGMA foreign_keys"));
         assert!(!is_transaction_incompatible("PRAGMA journal_mode"));

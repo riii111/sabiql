@@ -544,6 +544,7 @@ pub fn evaluate_multi_statement_for_database(
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
+        || (transaction_policy.requires_acknowledgement() && has_table_name_input)
     {
         return MultiStatementDecision::Block {
             reason: "Statements require different confirmations; run them separately".to_string(),
@@ -1652,6 +1653,16 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
             let result = evaluate_multi_statement_for_database(
                 DatabaseType::SQLite,
                 "PRAGMA foreign_keys = OFF; DROP TABLE users",
+            );
+
+            assert!(matches!(result, MultiStatementDecision::Block { .. }));
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_and_typed_drop_with_non_dangerous_pragma_are_blocked() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "PRAGMA foreign_keys = ON; DROP TABLE users",
             );
 
             assert!(matches!(result, MultiStatementDecision::Block { .. }));
