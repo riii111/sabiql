@@ -84,7 +84,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn select_table(&mut self, schema: &str, table: &str, query: &mut QueryExecution) -> u64 {
-        query.mark_idle();
+        query.reset_for_context_change();
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
@@ -103,7 +103,7 @@ impl BrowseSession {
     }
 
     pub fn clear_table_selection(&mut self, query: &mut QueryExecution) {
-        query.mark_idle();
+        query.reset_for_context_change();
         self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
@@ -273,7 +273,7 @@ impl BrowseSession {
     }
 
     fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
-        query.mark_idle();
+        query.reset_for_context_change();
         self.metadata.clone_from(&cache.metadata);
         self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key
@@ -306,7 +306,7 @@ impl BrowseSession {
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
-        query.mark_idle();
+        query.reset_for_context_change();
         self.metadata = None;
         self.table_detail = None;
         self.selected_table_key = None;
