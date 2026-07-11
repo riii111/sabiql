@@ -402,6 +402,37 @@ fn is_transaction_control(statement: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SqliteStatementClass {
+    ReadOnly,
+    Write,
+    TransactionControl,
+    TransactionIncompatible,
+}
+
+fn classify_sqlite_statement(statement: &str) -> SqliteStatementClass {
+    if is_transaction_control(statement) {
+        return SqliteStatementClass::TransactionControl;
+    }
+    if is_transaction_incompatible(statement) {
+        return SqliteStatementClass::TransactionIncompatible;
+    }
+    if is_write_statement(statement) {
+        return SqliteStatementClass::Write;
+    }
+    SqliteStatementClass::ReadOnly
+}
+
+fn is_transaction_incompatible(statement: &str) -> bool {
+    let keyword = first_keyword(statement);
+    if keyword.eq_ignore_ascii_case("VACUUM") {
+        return true;
+    }
+    keyword.eq_ignore_ascii_case("PRAGMA")
+        && sqlite_pragma_name(statement).is_some_and(|name| name == "journal_mode")
+        && !is_read_only_sqlite_pragma(statement)
+}
+
 fn is_write_statement(statement: &str) -> bool {
     if is_dml_statement(statement) {
         return true;
@@ -423,16 +454,18 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
 }
 
 fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
-    if is_write_statement(statement)
-        || is_dml_statement(statement)
-        || is_transaction_control(statement)
-    {
+    if matches!(
+        classify_sqlite_statement(statement),
+        SqliteStatementClass::Write
+            | SqliteStatementClass::TransactionControl
+            | SqliteStatementClass::TransactionIncompatible
+    ) {
         return false;
     }
     match first_keyword(statement).to_ascii_uppercase().as_str() {
         "SELECT" | "EXPLAIN" | "VALUES" => true,
         "WITH" => !is_dml_statement(statement),
-        "PRAGMA" => is_read_only_sqlite_export_pragma(statement),
+        "PRAGMA" => is_read_only_sqlite_pragma(statement),
         _ => false,
     }
 }
@@ -477,7 +510,7 @@ fn is_read_only_parameterized_pragma(name: &str) -> bool {
     )
 }
 
-fn is_read_only_sqlite_export_pragma(statement: &str) -> bool {
+fn is_read_only_sqlite_pragma(statement: &str) -> bool {
     let Some(name) = sqlite_pragma_name(statement) else {
         return false;
     };
@@ -506,8 +539,18 @@ pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
     BeginCommit,
 }
 
-fn needs_write_batch_wrap(statements: &[&str]) -> bool {
-    statements.len() > 1 && statements.iter().any(|stmt| is_write_statement(stmt))
+fn should_auto_wrap_in_transaction(statements: &[&str]) -> bool {
+    statements.len() > 1
+        && statements
+            .iter()
+            .any(|stmt| classify_sqlite_statement(stmt) == SqliteStatementClass::Write)
+        && statements.iter().all(|stmt| {
+            !matches!(
+                classify_sqlite_statement(stmt),
+                SqliteStatementClass::TransactionControl
+                    | SqliteStatementClass::TransactionIncompatible
+            )
+        })
 }
 
 fn rollback_has_to_clause(statement: &str) -> bool {
@@ -604,15 +647,11 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_wrap_mode(
     query: &str,
 ) -> Result<SqliteWrapMode, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
-    if !needs_write_batch_wrap(&statements) {
-        return Ok(SqliteWrapMode::None);
-    }
-
-    if statements.iter().any(|stmt| is_transaction_control(stmt)) {
-        return Ok(SqliteWrapMode::None);
-    }
-
-    Ok(SqliteWrapMode::BeginCommit)
+    Ok(if should_auto_wrap_in_transaction(&statements) {
+        SqliteWrapMode::BeginCommit
+    } else {
+        SqliteWrapMode::None
+    })
 }
 
 fn sqlite_transaction_block(query: &str) -> String {
@@ -926,6 +965,18 @@ END";
     }
 
     #[test]
+    fn append_changes_keeps_transaction_incompatible_statement_outside_auto_transaction() {
+        let query = "INSERT INTO users(id) VALUES (1); VACUUM";
+
+        let wrapped = append_changes_query(query).unwrap();
+
+        assert_eq!(
+            wrapped,
+            "INSERT INTO users(id) VALUES (1); VACUUM\n;\nSELECT changes() AS affected_rows;"
+        );
+    }
+
+    #[test]
     fn append_changes_keeps_explicit_begin_commit_transaction_control() {
         let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
 
@@ -992,6 +1043,83 @@ END";
                 SqliteWrapMode::None
             );
         }
+
+        #[test]
+        fn vacuum_prevents_auto_transaction_wrap() {
+            assert_eq!(
+                sqlite_wrap_mode("INSERT INTO users(id) VALUES (1); VACUUM").unwrap(),
+                SqliteWrapMode::None
+            );
+        }
+
+        #[test]
+        fn journal_mode_change_prevents_auto_transaction_wrap() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "PRAGMA journal_mode = WAL; CREATE TABLE users(id INTEGER PRIMARY KEY)"
+                )
+                .unwrap(),
+                SqliteWrapMode::None
+            );
+        }
+
+        #[test]
+        fn journal_mode_query_does_not_prevent_auto_transaction_wrap() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "PRAGMA journal_mode; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+                )
+                .unwrap(),
+                SqliteWrapMode::BeginCommit
+            );
+        }
+
+        #[test]
+        fn ddl_and_dml_still_use_auto_transaction_wrap() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users(id) VALUES (1)"
+                )
+                .unwrap(),
+                SqliteWrapMode::BeginCommit
+            );
+        }
+    }
+
+    mod statement_classification {
+        use super::*;
+
+        #[test]
+        fn distinguishes_journal_mode_query_from_change() {
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA journal_mode"),
+                SqliteStatementClass::ReadOnly
+            );
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA main.journal_mode = WAL"),
+                SqliteStatementClass::TransactionIncompatible
+            );
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA journal_mode(WAL)"),
+                SqliteStatementClass::TransactionIncompatible
+            );
+        }
+
+        #[test]
+        fn classifies_vacuum_and_writes_for_auto_transaction_policy() {
+            assert_eq!(
+                classify_sqlite_statement("VACUUM INTO 'backup.db'"),
+                SqliteStatementClass::TransactionIncompatible
+            );
+            assert_eq!(
+                classify_sqlite_statement("CREATE TABLE users(id INTEGER PRIMARY KEY)"),
+                SqliteStatementClass::Write
+            );
+            assert_eq!(
+                classify_sqlite_statement("BEGIN"),
+                SqliteStatementClass::TransactionControl
+            );
+        }
     }
 
     #[test]
@@ -1000,6 +1128,7 @@ END";
             "SELECT 1; SELECT 2",
             "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
             "PRAGMA foreign_keys=OFF",
+            "PRAGMA journal_mode=WAL",
             "PRAGMA wal_checkpoint(TRUNCATE)",
         ] {
             assert!(!is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");

@@ -1418,6 +1418,83 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn ddl_and_dml_still_roll_back_as_one_auto_transaction() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                     INSERT INTO users(id) VALUES (1);\
+                     INSERT INTO missing(id) VALUES (2)",
+                    false,
+                )
+                .await;
+
+            assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+            let tables = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+                    true,
+                )
+                .await
+                .unwrap();
+            assert!(tables.rows().is_empty());
+        }
+
+        #[tokio::test]
+        async fn vacuum_in_mixed_sql_runs_outside_auto_transaction() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            adapter
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                     INSERT INTO users(id) VALUES (1);\
+                     VACUUM;\
+                     INSERT INTO users(id) VALUES (2)",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users ORDER BY id", true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                rows.rows(),
+                vec![vec!["1".to_string()], vec!["2".to_string()]]
+            );
+        }
+
+        #[tokio::test]
+        async fn journal_mode_change_in_mixed_sql_runs_outside_auto_transaction() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            adapter
+                .execute_adhoc(
+                    &dsn,
+                    "PRAGMA journal_mode = WAL;\
+                     CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                     INSERT INTO users(id) VALUES (1)",
+                    false,
+                )
+                .await
+                .unwrap();
+            let rows = adapter
+                .execute_adhoc(&dsn, "SELECT id FROM users", true)
+                .await
+                .unwrap();
+
+            assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
         async fn rolled_back_dml_returns_rollback_tag() {
             let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY);",
