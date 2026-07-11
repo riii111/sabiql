@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CsvCachedResultExporter;
@@ -15,9 +16,7 @@ impl CachedResultExporter for CsvCachedResultExporter {
         columns: Vec<String>,
         values: Vec<Vec<QueryValue>>,
     ) -> Result<usize, DbOperationError> {
-        tokio::task::spawn_blocking(move || write_cached_result_csv(path, columns, values))
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+        write_cached_result_csv(path, columns, values).await
     }
 }
 
@@ -36,23 +35,44 @@ fn cached_csv_cell(value: &QueryValue) -> String {
     }
 }
 
-fn write_cached_result_csv(
+async fn write_cached_result_csv(
     path: PathBuf,
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
 ) -> Result<usize, DbOperationError> {
-    let file = std::fs::File::create(path)
+    let mut file = tokio::fs::File::create(path)
+        .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut writer = csv::WriterBuilder::new().from_writer(file);
-    writer.write_record(columns)?;
+    let header = encode_csv_record(columns.iter())?;
+    file.write_all(&header)
+        .await
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     for row in &values {
         let record: Vec<String> = row.iter().map(cached_csv_cell).collect();
-        writer.write_record(&record)?;
+        let encoded = encode_csv_record(record.iter())?;
+        file.write_all(&encoded)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     }
-    writer
-        .flush()
+    file.flush()
+        .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     Ok(values.len())
+}
+
+fn encode_csv_record<'a, I>(record: I) -> Result<Vec<u8>, DbOperationError>
+where
+    I: IntoIterator<Item = &'a String>,
+{
+    let mut encoded = Vec::new();
+    {
+        let mut writer = csv::WriterBuilder::new().from_writer(&mut encoded);
+        writer.write_record(record)?;
+        writer
+            .flush()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    }
+    Ok(encoded)
 }
 
 #[cfg(test)]

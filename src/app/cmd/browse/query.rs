@@ -1,5 +1,7 @@
-use std::path::PathBuf;
+use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
@@ -13,7 +15,9 @@ use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::domain::sqlite_explain_query_plan_text_from_result;
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
+use crate::ports::outbound::{
+    CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryStore,
+};
 use crate::update::action::Action;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -90,6 +94,61 @@ fn resolve_export_path(file_name: &str) -> PathBuf {
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."));
     dir.join(file_stem)
+}
+
+struct ExportTempFile {
+    path: PathBuf,
+    cleanup: bool,
+}
+
+impl ExportTempFile {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            cleanup: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.cleanup = false;
+    }
+}
+
+impl Drop for ExportTempFile {
+    fn drop(&mut self) {
+        if self.cleanup {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+fn temporary_export_path(final_path: &Path) -> PathBuf {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let file_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("export.csv");
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    final_path.with_file_name(format!(
+        ".{file_name}.{}.{}.part",
+        std::process::id(),
+        sequence
+    ))
+}
+
+async fn export_to_path<F, Fut>(final_path: PathBuf, export: F) -> Result<usize, DbOperationError>
+where
+    F: FnOnce(PathBuf) -> Fut,
+    Fut: Future<Output = Result<usize, DbOperationError>>,
+{
+    let temporary_path = temporary_export_path(&final_path);
+    let mut cleanup = ExportTempFile::new(temporary_path.clone());
+    let row_count = export(temporary_path.clone()).await?;
+    tokio::fs::rename(&temporary_path, &final_path)
+        .await
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    cleanup.disarm();
+    Ok(row_count)
 }
 
 #[allow(
@@ -362,9 +421,16 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
+            let export_dsn = dsn.clone();
 
             query_tasks.spawn(async move {
-                match executor.export_to_csv(&dsn, &query, &path, read_only).await {
+                let result = export_to_path(path.clone(), |temporary_path| async move {
+                    executor
+                        .export_to_csv(&export_dsn, &query, &temporary_path, read_only)
+                        .await
+                })
+                .await;
+                match result {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
@@ -403,9 +469,12 @@ pub async fn run(
             let exported_path = path.display().to_string();
 
             query_tasks.spawn(async move {
-                let result = exporter
-                    .export_cached_result_to_csv(path, columns, values)
-                    .await;
+                let result = export_to_path(path, |temporary_path| async move {
+                    exporter
+                        .export_cached_result_to_csv(temporary_path, columns, values)
+                        .await
+                })
+                .await;
 
                 match result {
                     Ok(_) => {
@@ -434,7 +503,7 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::{epoch_days_to_ymd, resolve_export_path};
+    use super::{epoch_days_to_ymd, export_to_path, resolve_export_path};
 
     mod export_path {
         use std::path::Path;
@@ -481,6 +550,63 @@ mod tests {
                     .extension()
                     .is_some_and(|ext: &std::ffi::OsStr| ext.eq_ignore_ascii_case("csv"))
             );
+        }
+    }
+
+    mod atomic_export {
+        use std::future::pending;
+
+        use crate::ports::outbound::DbOperationError;
+        use tempfile::tempdir;
+        use tokio::sync::oneshot;
+
+        use super::*;
+
+        #[tokio::test]
+        async fn cancellation_removes_partial_temporary_file() {
+            let dir = tempdir().unwrap();
+            let final_path = dir.path().join("export.csv");
+            let (started_tx, started_rx) = oneshot::channel();
+
+            let task = tokio::spawn(export_to_path(
+                final_path.clone(),
+                move |temporary_path| async move {
+                    tokio::fs::write(temporary_path, b"partial,csv\n")
+                        .await
+                        .unwrap();
+                    started_tx.send(()).ok();
+                    pending::<Result<usize, DbOperationError>>().await
+                },
+            ));
+
+            started_rx.await.unwrap();
+            task.abort();
+            task.await.unwrap_err();
+
+            assert!(!final_path.exists());
+            assert_eq!(dir.path().read_dir().unwrap().count(), 0);
+        }
+
+        #[tokio::test]
+        async fn success_renames_temporary_file_atomically() {
+            let dir = tempdir().unwrap();
+            let final_path = dir.path().join("export.csv");
+
+            let row_count = export_to_path(final_path.clone(), |temporary_path| async move {
+                tokio::fs::write(temporary_path, b"complete,csv\n")
+                    .await
+                    .unwrap();
+                Ok(3)
+            })
+            .await
+            .unwrap();
+
+            assert_eq!(row_count, 3);
+            assert_eq!(
+                tokio::fs::read_to_string(&final_path).await.unwrap(),
+                "complete,csv\n"
+            );
+            assert_eq!(dir.path().read_dir().unwrap().count(), 1);
         }
     }
 
