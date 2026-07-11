@@ -69,13 +69,17 @@ mod tests {
         });
         let (tx, mut rx) = mpsc::channel(1);
 
+        let wrapped_cell = WrappedCellSettings {
+            allow_horizontal_scroll: true,
+            max_lines_per_row: Some(10),
+        };
         run(
             Effect::SaveSettings {
                 settings: AppSettings {
                     theme_id: ThemeId::Light,
                     keymap_preset: KeymapPreset::Ide,
                     er_browser: Some("Firefox".to_string()),
-                    wrapped_cell: WrappedCellSettings::default(),
+                    wrapped_cell,
                 },
             },
             &tx,
@@ -92,12 +96,17 @@ mod tests {
             store.saved.lock().unwrap()[0].keymap_preset,
             KeymapPreset::Ide
         );
+        assert_eq!(
+            store.saved.lock().unwrap()[0].wrapped_cell,
+            wrapped_cell
+        );
         assert!(matches!(
             rx.recv().await,
             Some(Action::SettingsSaved(settings))
                 if settings.theme_id == ThemeId::Light
                     && settings.keymap_preset == KeymapPreset::Ide
                     && settings.er_browser.as_deref() == Some("Firefox")
+                    && settings.wrapped_cell == wrapped_cell
         ));
     }
 

@@ -158,12 +158,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
 
+        let wrapped = WrappedCellSettings {
+            allow_horizontal_scroll: true,
+            max_lines_per_row: Some(10),
+        };
         store
             .save(AppSettings {
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Google Chrome".to_string()),
-                wrapped_cell: WrappedCellSettings::default(),
+                wrapped_cell: wrapped,
             })
             .unwrap();
 
@@ -171,6 +175,7 @@ mod tests {
         assert_eq!(settings.theme_id, ThemeId::Light);
         assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
         assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
+        assert_eq!(settings.wrapped_cell, wrapped);
     }
 
     #[test]
@@ -199,7 +204,10 @@ ssl_mode = "prefer"
                 theme_id: ThemeId::Light,
                 keymap_preset: KeymapPreset::Ide,
                 er_browser: Some("Firefox".to_string()),
-                wrapped_cell: WrappedCellSettings::default(),
+                wrapped_cell: WrappedCellSettings {
+                    allow_horizontal_scroll: true,
+                    max_lines_per_row: Some(5),
+                },
             })
             .unwrap();
 
@@ -282,7 +290,10 @@ ssl_mode = "prefer"
             theme_id: ThemeId::Light,
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
-            wrapped_cell: WrappedCellSettings::default(),
+            wrapped_cell: WrappedCellSettings {
+                allow_horizontal_scroll: true,
+                max_lines_per_row: Some(5),
+            },
         });
 
         assert!(matches!(

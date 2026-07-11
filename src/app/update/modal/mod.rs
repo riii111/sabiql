@@ -305,23 +305,31 @@ mod tests {
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
+                let wrapped_cell = crate::model::shared::wrapped_cell::WrappedCellSettings {
+                    allow_horizontal_scroll: true,
+                    max_lines_per_row: Some(8),
+                };
                 let effects = super::dispatch_modal(
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
-                        wrapped_cell:
-                            crate::model::shared::wrapped_cell::WrappedCellSettings::default(),
+                        wrapped_cell,
                     }),
                     Instant::now(),
                 )
                 .unwrap();
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert_eq!(state.ui.wrapped_cell, wrapped_cell);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
                 assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
                 assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
+                assert_eq!(
+                    state.settings.saved_wrapped_cell(),
+                    wrapped_cell
+                );
                 assert!(
                     state
                         .messages

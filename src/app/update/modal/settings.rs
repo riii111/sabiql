@@ -95,7 +95,6 @@ pub(super) fn reduce_settings(
                 settings.er_browser.clone(),
                 settings.wrapped_cell,
             );
-            // Reflect the saved Wrapped Cell settings into the live UI state.
             state.ui.wrapped_cell = settings.wrapped_cell;
             state
                 .messages

@@ -165,7 +165,7 @@ impl SettingsOverlay {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(Span::styled(
-                "Fit results without a horizontal scrollbar.",
+                "Wrap wide result cells; optionally shrink columns to avoid horizontal scrolling.",
                 Style::default().fg(theme.semantic.text.secondary),
             )),
             Line::raw(""),
@@ -211,7 +211,7 @@ impl SettingsOverlay {
 
         lines.push(Line::raw(""));
         lines.push(Line::from(Span::styled(
-            "Toggle Wrapped Cell Mode at any time with L.",
+            "Toggle Wrapped Cell Mode at any time with Alt+L.",
             Style::default().fg(theme.semantic.text.muted),
         )));
 

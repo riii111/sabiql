@@ -15,7 +15,7 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
         return 0;
     }
 
-    text.lines().fold(0u16, |acc, line| {
+    text.split('\n').fold(0u16, |acc, line| {
         let w = UnicodeWidthStr::width(line).min(u16::MAX as usize) as u16;
         let wrapped = w.max(1).div_ceil(width);
         acc.saturating_add(wrapped)
@@ -184,13 +184,13 @@ impl WrappedCellLayout {
 }
 
 fn total_width_with_separators(widths: &[u16]) -> u16 {
-    let sum: u16 = widths.iter().sum();
+    let sum: u32 = widths.iter().map(|&w| u32::from(w)).sum();
     let separators = if widths.len() > 1 {
-        (widths.len() - 1) as u16
+        (widths.len() - 1) as u32
     } else {
         0
     };
-    sum + separators
+    (sum + separators).min(u16::MAX as u32) as u16
 }
 
 /// Compute per-column widths (shrunk to fit) and per-row heights (from
@@ -221,6 +221,8 @@ pub fn compute_layout(
         .map(|row| row_layout(row, &column_widths, padding, row_cap))
         .collect();
 
+    // `headers` is kept in the signature for API compatibility but is not used
+    // here because column widths are derived purely from data dimensions.
     let _ = headers;
 
     WrappedCellLayout {
@@ -254,7 +256,26 @@ fn distribute_budget(ideal: &[u16], budget: u16, min_width: u16) -> Vec<u16> {
 
     let min_total = min_width.saturating_mul(n as u16);
     if budget <= min_total {
-        return vec![min_width; n];
+        // Budget too tight for even minimum widths — scale down proportionally
+        // so we still fit within the pane.
+        let min_sum: u32 = min_width as u32 * n as u32;
+        let separator_overhead = (n.saturating_sub(1) as u16).min(budget);
+        let content_budget = budget.saturating_sub(separator_overhead);
+        if content_budget == 0 {
+            let per_col = budget.saturating_div(n.max(1) as u16);
+            return vec![per_col.max(1); n];
+        }
+        let mut scaled: Vec<u16> = ideal
+            .iter()
+            .map(|&w| {
+                let s = (u32::from(w) * u32::from(content_budget))
+                    .checked_div(min_sum)
+                    .unwrap_or_else(|| u32::from(min_width)) as u16;
+                s.max(1)
+            })
+            .collect();
+        reconcile_to_budget(&mut scaled, content_budget, 1);
+        return scaled;
     }
 
     let ideal_total: u32 = ideal.iter().map(|&w| u32::from(w)).sum();
@@ -477,9 +498,9 @@ mod tests {
     mod compute_layout {
         use super::*;
 
-        fn settings(alwrapped_cell: bool, cap: Option<u16>) -> WrappedCellSettings {
+        fn settings(allow_scroll: bool, cap: Option<u16>) -> WrappedCellSettings {
             WrappedCellSettings {
-                allow_horizontal_scroll: alwrapped_cell,
+                allow_horizontal_scroll: allow_scroll,
                 max_lines_per_row: cap,
             }
         }

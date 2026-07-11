@@ -18,18 +18,18 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │Wrapped Cell Mode                                                             │                                │
-│                                │    Keymap        │Fit results without a horizontal scrollbar.                                   │                                │
-│                                │  > Wrapped Cell  │                                                                              │                                │
-│                                │    ER Diagram    │Allow horizontal scroll                                                       │                                │
+│                                │    Keymap        │Wrap wide result cells; optionally shrink columns to avoid horizontal         │                                │
+│                                │  > Wrapped Cell  │scrolling.                                                                    │                                │
+│                                │    ER Diagram    │                                                                              │                                │
+│                                │                  │Allow horizontal scroll                                                       │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │  [Space] off (columns shrink to fit)                                         │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │Max lines per row                                                             │                                │
+│                                │                  │                                                                              │────────────────────────────────┘
+│                                │                  │  [j/k] no limit                                                              │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
-│                                │                  │  [j/k] no limit                                                              │────────────────────────────────┘
-│                                │                  │                                                                              │────────────────────────────────┐
-│                                │                  │Toggle Wrapped Cell Mode at any time with L.                                  │                                │
-│                                │                  │                                                                              │                                │
+│                                │                  │Toggle Wrapped Cell Mode at any time with Alt+L.                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │

@@ -235,8 +235,8 @@ impl SettingsState {
         self.selected_wrapped_cell
     }
 
-    /// Toggle the `allow_horizontal_scroll` flag (the primary on/off for the
-    /// no-horizontal-scroll behaviour).
+    /// Update the horizontal scroll setting for the currently selected
+    /// wrapped-cell config (deferred until Apply).
     pub fn toggle_wrapped_cell_horizontal(&mut self) {
         self.selected_wrapped_cell.allow_horizontal_scroll =
             !self.selected_wrapped_cell.allow_horizontal_scroll;

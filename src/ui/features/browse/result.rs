@@ -506,6 +506,30 @@ impl ResultPane {
         }
     }
 
+    /// Compute the row background color based on row state (flash, staged,
+    /// active, striped). Shared between the non-scrollable and scrollable
+    /// render paths.
+    fn row_background(
+        row_idx: usize,
+        scroll_offset: usize,
+        is_row_flash: bool,
+        is_staged_for_delete: bool,
+        is_active_row: bool,
+        theme: &ThemePalette,
+    ) -> Option<ratatui::style::Color> {
+        if is_row_flash {
+            Some(theme.component.feedback.yank_flash_bg)
+        } else if is_staged_for_delete {
+            Some(theme.component.table.staged_delete_bg)
+        } else if is_active_row {
+            Some(theme.component.table.result_row_active_bg)
+        } else if (row_idx - scroll_offset) % 2 == 1 {
+            Some(theme.component.table.striped_row_bg)
+        } else {
+            None
+        }
+    }
+
     /// Render the result table in Wrapped Cell Mode: all columns fit within
     /// `inner.width`, cell text wraps, and rows expand vertically.
     ///
@@ -570,8 +594,6 @@ impl ResultPane {
             )
             .height(1);
 
-        let active_row = selection.row();
-        let active_cell = selection.cell();
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
         let mut corrected_cell_vertical_offset = 0usize;
         let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
@@ -589,6 +611,8 @@ impl ResultPane {
             used += h;
         }
 
+        let active_row = selection.row();
+        let active_cell = selection.cell();
         let rows: Vec<Row> = visible
             .iter()
             .map(|&(abs_row_idx, height)| {
@@ -598,18 +622,14 @@ impl ResultPane {
                     .filter(|f| yank_flash_active && f.row == abs_row_idx)
                     .map(|f| f.col);
                 let is_row_flash = flash_scope == Some(None);
-                let row_bg = if is_row_flash {
-                    Some(theme.component.feedback.yank_flash_bg)
-                } else if is_staged_for_delete {
-                    Some(theme.component.table.staged_delete_bg)
-                } else if is_active_row {
-                    Some(theme.component.table.result_row_active_bg)
-                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
-                    Some(theme.component.table.striped_row_bg)
-                } else {
-                    None
-                };
-
+                let row_bg = Self::row_background(
+                    abs_row_idx,
+                    scroll_offset,
+                    is_row_flash,
+                    is_staged_for_delete,
+                    is_active_row,
+                    theme,
+                );
                 let row_data = &result.rows[abs_row_idx];
                 let cells: Vec<Cell> = column_widths
                     .iter()
@@ -736,24 +756,6 @@ impl ResultPane {
         let plan = ViewportPlan::calculate(ideal_widths, min_widths, inner.width);
         let clamped_offset = horizontal_offset.min(plan.max_offset);
 
-        // Reuse previous frame's layout when key matches.
-        let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
-            result
-                .rows
-                .iter()
-                .map(|row| {
-                    wrapped_cell_layout::row_layout(
-                        row,
-                        ideal_widths,
-                        PADDING,
-                        settings.max_lines_per_row,
-                    )
-                    .height
-                })
-                .collect()
-        });
-        let row_heights = &measured_layout.row_heights;
-
         let config = ColumnWidthConfig {
             ideal_widths,
             min_widths,
@@ -767,8 +769,28 @@ impl ResultPane {
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
-            return (plan, 0, measured_layout);
+            return (plan, 0, wrapped_cell_layout::MeasuredWrappedCellLayout::default());
         }
+
+        // Reuse previous frame's layout when key matches. Measure with
+        // viewport_widths (capped by select_viewport_columns) so heights match
+        // the actual rendered column widths.
+        let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
+            result
+                .rows
+                .iter()
+                .map(|row| {
+                    wrapped_cell_layout::row_layout(
+                        row,
+                        &viewport_widths,
+                        PADDING,
+                        settings.max_lines_per_row,
+                    )
+                    .height
+                })
+                .collect()
+        });
+        let row_heights = &measured_layout.row_heights;
 
         let widths: Vec<Constraint> = viewport_widths
             .iter()
@@ -815,17 +837,14 @@ impl ResultPane {
                     .filter(|f| yank_flash_active && f.row == abs_row_idx)
                     .map(|f| f.col);
                 let is_row_flash = flash_scope == Some(None);
-                let row_bg = if is_row_flash {
-                    Some(theme.component.feedback.yank_flash_bg)
-                } else if is_staged_for_delete {
-                    Some(theme.component.table.staged_delete_bg)
-                } else if is_active_row {
-                    Some(theme.component.table.result_row_active_bg)
-                } else if (abs_row_idx - scroll_offset) % 2 == 1 {
-                    Some(theme.component.table.striped_row_bg)
-                } else {
-                    None
-                };
+                let row_bg = Self::row_background(
+                    abs_row_idx,
+                    scroll_offset,
+                    is_row_flash,
+                    is_staged_for_delete,
+                    is_active_row,
+                    theme,
+                );
 
                 let row_data = &result.rows[abs_row_idx];
                 let cells: Vec<Cell> = viewport_indices
@@ -984,28 +1003,7 @@ fn truncate_cell(s: &str, max_width: usize) -> String {
 }
 
 pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
-    use unicode_width::UnicodeWidthStr;
-
-    const SAMPLE_ROWS: usize = 50;
-
-    headers
-        .iter()
-        .enumerate()
-        .map(|(col_idx, header)| {
-            let mut max_width = UnicodeWidthStr::width(header.as_str());
-
-            let sample_size = rows.len().min(SAMPLE_ROWS);
-            for row in rows.iter().take(sample_size) {
-                if let Some(cell) = row.get(col_idx) {
-                    let first_line = cell.lines().next().unwrap_or(cell);
-                    max_width = max_width.max(UnicodeWidthStr::width(first_line));
-                }
-            }
-
-            let max_width = max_width.min(MAX_COL_WIDTH as usize) as u16;
-            (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
-        })
-        .collect()
+    calculate_ideal_widths_inner(headers, rows, false)
 }
 
 /// Like `calculate_ideal_widths`, but sizes each column by the widest *line*
@@ -1016,6 +1014,14 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
 pub(crate) fn calculate_wrapped_cell_ideal_widths(
     headers: &[String],
     rows: &[Vec<String>],
+) -> Vec<u16> {
+    calculate_ideal_widths_inner(headers, rows, true)
+}
+
+fn calculate_ideal_widths_inner(
+    headers: &[String],
+    rows: &[Vec<String>],
+    consider_all_lines: bool,
 ) -> Vec<u16> {
     use unicode_width::UnicodeWidthStr;
 
@@ -1030,8 +1036,13 @@ pub(crate) fn calculate_wrapped_cell_ideal_widths(
             let sample_size = rows.len().min(SAMPLE_ROWS);
             for row in rows.iter().take(sample_size) {
                 if let Some(cell) = row.get(col_idx) {
-                    for line in cell.lines() {
-                        max_width = max_width.max(UnicodeWidthStr::width(line));
+                    if consider_all_lines {
+                        for line in cell.lines() {
+                            max_width = max_width.max(UnicodeWidthStr::width(line));
+                        }
+                    } else {
+                        let first_line = cell.lines().next().unwrap_or(cell);
+                        max_width = max_width.max(UnicodeWidthStr::width(first_line));
                     }
                 }
             }
@@ -1045,6 +1056,8 @@ pub(crate) fn calculate_wrapped_cell_ideal_widths(
 /// The runtime-effective Wrapped Cell settings for the result pane: the
 /// persisted config only applies when the runtime toggle (`L`) is on; when off,
 /// horizontal scrolling is always allowed so the normal viewport path runs.
+/// Mirrors `UiState::effective_wrapped_cell` to keep the call site in render
+/// consistent with the model layer.
 fn effective_wrapped_cell(settings: WrappedCellSettings, enabled: bool) -> WrappedCellSettings {
     if enabled {
         settings
@@ -1148,7 +1161,8 @@ fn wrapped_cell_lines(
 }
 
 /// Append "..." to `line`, trimming it first if needed so the result never
-/// exceeds `width` display cells.
+/// exceeds `width` display cells. When `width` is too small for the ellipsis
+/// itself, the line is truncated to fit as many dots as possible.
 fn append_ellipsis(line: &mut String, width: u16) {
     let ellipsis = "...";
     let max = width as usize;
@@ -1156,6 +1170,11 @@ fn append_ellipsis(line: &mut String, width: u16) {
     let ellipsis_width = unicode_width::UnicodeWidthStr::width(ellipsis);
     if current + ellipsis_width <= max {
         line.push_str(ellipsis);
+        return;
+    }
+    // If width is 0 or too small for even the ellipsis, truncate to fit dots.
+    if max == 0 {
+        *line = String::new();
         return;
     }
     let budget = max.saturating_sub(ellipsis_width);
