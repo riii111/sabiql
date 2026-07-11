@@ -758,7 +758,6 @@ fn statement_emits_result_set(statement: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::DbOperationError;
 
     #[test]
     fn split_sqlite_statements_ignores_semicolons_in_literals_and_comments() {

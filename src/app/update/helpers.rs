@@ -631,7 +631,6 @@ mod tests {
 
     mod validate_sqlite_path {
         use super::*;
-        use crate::domain::connection::DatabaseType;
 
         #[test]
         fn empty_path_sets_required_error() {

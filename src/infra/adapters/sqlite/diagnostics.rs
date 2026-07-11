@@ -302,7 +302,7 @@ mod tests {
     use crate::adapters::test_support;
 
     use super::*;
-    use crate::domain::{QueryResult, QuerySource};
+    use crate::domain::QuerySource;
 
     fn empty_query_result() -> QueryResult {
         QueryResult::success(String::new(), vec![], vec![], 0, QuerySource::Adhoc)

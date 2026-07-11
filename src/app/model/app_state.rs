@@ -984,8 +984,7 @@ mod tests {
 
     mod connection_catalog {
         use super::*;
-        use crate::domain::connection::{ConnectionProfile, SslMode};
-        use crate::model::connection::list::ConnectionListItem;
+        use crate::domain::connection::SslMode;
 
         fn make_profile(name: &str) -> ConnectionProfile {
             ConnectionProfile::new_postgres(

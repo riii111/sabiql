@@ -41,9 +41,7 @@ pub fn format_for_cell_detail(
 
 #[cfg(test)]
 mod tests {
-    use super::super::handling::{
-        PreviewCellTextDisplayHandling, preview_cell_text_display_handling,
-    };
+    use super::super::handling::preview_cell_text_display_handling;
     use super::*;
     use crate::domain::DatabaseType;
 

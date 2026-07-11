@@ -130,8 +130,6 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::settings::KeymapPreset;
-    use crate::app::model::shared::theme_id::ThemeId;
     use tempfile::TempDir;
 
     #[test]

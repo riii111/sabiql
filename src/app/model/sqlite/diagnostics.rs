@@ -250,7 +250,6 @@ pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDispl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::DiagnosticField;
 
     #[test]
     fn begin_fetch_assigns_monotonic_run_id() {

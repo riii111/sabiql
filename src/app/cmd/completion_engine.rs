@@ -924,7 +924,6 @@ mod tests {
 
     use super::*;
     pub use crate::domain::Column;
-    use crate::domain::Table;
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
@@ -1114,7 +1113,6 @@ mod tests {
 
     mod schema_qualified_limit {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn schema_qualified_candidates_limited_to_max() {
@@ -1167,7 +1165,6 @@ mod tests {
 
     mod prefix_match_ranking {
         use super::*;
-        use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
         #[test]
         fn keyword_prefix_match_ranked_first() {
@@ -1372,7 +1369,6 @@ mod tests {
 
     mod alias_column_context {
         use super::*;
-        use crate::policy::sql::lexer::{SqlContext, TableReference};
 
         #[test]
         fn alias_dot_returns_alias_column_context() {
@@ -1469,8 +1465,7 @@ mod tests {
 
     mod cte_or_table_context {
         use super::*;
-        use crate::domain::DatabaseMetadata;
-        use crate::policy::sql::lexer::{CteDefinition, SqlContext};
+        use crate::policy::sql::lexer::CteDefinition;
 
         #[test]
         fn from_clause_with_cte_returns_cte_or_table() {
@@ -1547,8 +1542,6 @@ mod tests {
 
     mod alias_column_completion {
         use super::*;
-        use crate::domain::{DatabaseMetadata, Table, TableSummary};
-        use crate::policy::sql::lexer::{SqlContext, TableReference};
 
         #[test]
         fn cached_table_returns_columns() {
@@ -1666,7 +1659,7 @@ mod tests {
 
     mod fk_column_scoring {
         use super::*;
-        use crate::domain::{FkAction, ForeignKey, Table};
+        use crate::domain::{FkAction, ForeignKey};
 
         fn create_table_with_fk() -> Table {
             Table {
@@ -1742,7 +1735,6 @@ mod tests {
 
     mod contains_match {
         use super::*;
-        use crate::domain::Table;
 
         #[test]
         fn finds_contains_matches() {
@@ -1789,7 +1781,6 @@ mod tests {
 
     mod recent_columns_scoring {
         use super::*;
-        use crate::domain::Table;
 
         #[test]
         fn recent_column_returns_boosted_score() {
@@ -1857,7 +1848,6 @@ mod tests {
 
     mod missing_tables {
         use super::*;
-        use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
         #[test]
         fn empty_sql_returns_empty() {
@@ -2052,7 +2042,6 @@ mod tests {
 
     mod integration_tests {
         use super::*;
-        use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
         fn create_users_table() -> Table {
             Table {
@@ -2342,7 +2331,6 @@ mod tests {
 
     mod target_table_boost {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn update_target_columns_get_boost() {
@@ -2414,7 +2402,6 @@ mod tests {
 
     mod all_cache_columns {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn no_from_with_2char_prefix_returns_all_cached_columns() {
@@ -2474,7 +2461,6 @@ mod tests {
 
     mod lru_cache_behavior {
         use super::*;
-        use crate::domain::TableSummary;
 
         #[test]
         fn evicted_table_appears_in_missing_tables() {
@@ -2589,7 +2575,6 @@ mod tests {
         use super::*;
 
         fn meta_with_tables(tables: &[(&str, &str, &[&str])]) -> DatabaseMetadata {
-            use crate::domain::TableSummary;
             let mut meta = DatabaseMetadata::new("test".to_string());
             meta.table_summaries = tables
                 .iter()

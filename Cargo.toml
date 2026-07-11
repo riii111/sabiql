@@ -93,6 +93,9 @@ workspace = true
 lto = true
 codegen-units = 1
 
+[workspace.lints.rust]
+redundant_imports = "deny"
+
 [workspace.lints.clippy]
 # Groups
 all = { level = "deny", priority = -1 }

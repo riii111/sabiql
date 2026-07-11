@@ -1,5 +1,4 @@
 use ratatui::prelude::*;
-use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;

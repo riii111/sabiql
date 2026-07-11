@@ -160,7 +160,6 @@ impl AppServices {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{DatabaseType, QueryValue};
 
     #[test]
     fn stub_sqlite_explain_passes_through_existing_query_plan_prefix() {

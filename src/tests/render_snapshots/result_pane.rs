@@ -1,13 +1,9 @@
 use super::*;
 use harness::{table_detail_loaded_state, with_current_result};
 use sabiql_app::model::app_state::AppState;
-use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{
-    Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult,
-    TableSummary,
-};
+use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
 
 fn jsonb_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();

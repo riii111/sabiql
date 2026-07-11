@@ -509,7 +509,7 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::{QueryExecutor, SqlDialect};
+    use crate::app::ports::outbound::SqlDialect;
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
         sqlite_explain_query_plan_text_from_result,

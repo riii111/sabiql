@@ -563,7 +563,7 @@ mod tests {
     mod edit_lifecycle {
         use super::*;
         use crate::model::browse::jsonb_detail::JsonbDetailMode;
-        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::CursorMove;
         use rstest::rstest;
 
@@ -856,7 +856,6 @@ mod tests {
 
     mod yank {
         use super::*;
-        use crate::cmd::effect::Effect;
 
         #[test]
         fn copies_all_text_to_clipboard() {
@@ -1051,7 +1050,6 @@ mod tests {
 
     mod reducer_chain {
         use super::*;
-        use crate::cmd::effect::Effect;
         use crate::model::browse::jsonb_detail::JsonbDetailMode;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
         use crate::update::reducer::reduce as reduce_app;

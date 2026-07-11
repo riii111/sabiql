@@ -282,7 +282,7 @@ mod tests {
 
     use super::*;
     use crate::domain::connection::SslMode;
-    use crate::domain::{Column, ColumnAttributes, QueryValue};
+    use crate::domain::{Column, ColumnAttributes};
 
     fn make_table() -> Table {
         Table {

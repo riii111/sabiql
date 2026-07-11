@@ -791,7 +791,7 @@ impl MetadataProvider for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::{DdlGenerator, MetadataProvider, QueryExecutor};
+    use crate::app::ports::outbound::{DdlGenerator, QueryExecutor};
     use crate::domain::{
         DatabaseType, FkAction, IndexType, Schema, TriggerEvent, TriggerTiming,
         UNRESOLVED_FK_COLUMN,

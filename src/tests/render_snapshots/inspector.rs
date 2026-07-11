@@ -1,7 +1,7 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
-use sabiql_domain::{ConnectionId, DatabaseType, TableKind, TableKindInfo};
+use sabiql_domain::{ConnectionId, TableKind, TableKindInfo};
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {

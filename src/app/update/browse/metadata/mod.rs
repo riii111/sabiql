@@ -157,7 +157,6 @@ mod tests {
     mod prefetch_table_detail {
         use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn backoff_table_requeued_at_tail_with_process_effect() {
@@ -881,7 +880,6 @@ mod tests {
     mod fk_neighbors_discovered {
         use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn empty_neighbors_dispatches_generate() {

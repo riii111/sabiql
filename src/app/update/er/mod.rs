@@ -167,7 +167,6 @@ mod tests {
 
     mod er_generate_from_cache {
         use super::*;
-        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn idle_status_returns_generate_effect() {
@@ -208,7 +207,6 @@ mod tests {
 
     mod smart_er_refresh_completed {
         use super::*;
-        use std::collections::HashMap;
 
         #[test]
         fn no_changes_dispatches_generate_from_cache() {
