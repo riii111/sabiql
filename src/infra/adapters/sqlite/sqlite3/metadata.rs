@@ -890,7 +890,11 @@ mod tests {
 
             let result = adapter.fetch_metadata(&dsn).await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ConnectionFailed(details))
+                    if details.contains("SQLite database file not found")
+            ));
             assert!(!path.exists());
         }
 

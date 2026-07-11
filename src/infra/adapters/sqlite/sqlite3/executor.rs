@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
@@ -15,8 +16,8 @@ use crate::domain::{
     available_sqlite_rowid_alias,
 };
 
-use super::super::{SqliteAdapter, sql};
-use super::error::classify_query_error;
+use super::super::{SqliteAdapter, path_validation, sql};
+use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{
     aggregate_sqlite_command_tag, append_changes_query, command_tag_result,
     is_sqlite_rerunnable_export_query, last_sqlite_result_set, parse_affected_rows,
@@ -149,6 +150,7 @@ impl SqliteCli {
         output_path: &std::path::Path,
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
+        Self::ensure_database_path(path)?;
         let mut cmd = Command::new("sqlite3");
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
@@ -159,7 +161,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| DbOperationError::CommandNotFound(error.to_string()))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -229,6 +231,7 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
+        Self::ensure_database_path(path)?;
         let mut cmd = Command::new("sqlite3");
         Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
@@ -236,6 +239,11 @@ impl SqliteCli {
         }
         cmd.arg("--").arg(path).arg(sql);
         Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
+        path_validation::validate_sqlite_database_path(Path::new(path))
+            .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
@@ -260,7 +268,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| DbOperationError::CommandNotFound(error.to_string()))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -382,7 +390,7 @@ impl QueryExecutor for SqliteAdapter {
         table: &str,
         limit: usize,
         offset: usize,
-        read_only: bool,
+        _read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
@@ -397,7 +405,7 @@ impl QueryExecutor for SqliteAdapter {
         let query =
             sql::build_preview_query(table, &columns, &order_columns, rowid_alias, limit, offset);
         let result = self
-            .execute_quoted_query(path, &query, QuerySource::Preview, read_only)
+            .execute_quoted_query(path, &query, QuerySource::Preview, true)
             .await?;
         Ok(match rowid_alias {
             Some(alias) => result.with_first_column_hidden(alias.to_string()),
@@ -482,11 +490,11 @@ impl QueryExecutor for SqliteAdapter {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        _read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let stdout = self
             .cli
-            .execute_csv(Self::path_from_dsn(dsn)?, query, read_only)
+            .execute_csv(Self::path_from_dsn(dsn)?, query, true)
             .await?;
         parse_count_result(&stdout)
     }
@@ -496,13 +504,13 @@ impl QueryExecutor for SqliteAdapter {
         dsn: &str,
         query: &str,
         path: &std::path::Path,
-        read_only: bool,
+        _read_only: bool,
     ) -> Result<usize, DbOperationError> {
         if !is_sqlite_rerunnable_export_query(query)? {
             return Err(sqlite_export_not_rerunnable_error());
         }
         self.cli
-            .export_csv(Self::path_from_dsn(dsn)?, query, path, read_only)
+            .export_csv(Self::path_from_dsn(dsn)?, query, path, true)
             .await
     }
 }
@@ -2142,6 +2150,25 @@ world'), (2, 'done');
 
             assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
         }
+
+        #[tokio::test]
+        async fn missing_database_is_rejected_without_creating_an_empty_file() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("missing.db");
+            let dsn = format!("sqlite://{}", path.display());
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_write(&dsn, "CREATE TABLE users(id INTEGER)", false)
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ConnectionFailed(details))
+                    if details.contains("SQLite database file not found")
+            ));
+            assert!(!path.exists());
+        }
     }
 
     mod dsn_validation {
@@ -2162,6 +2189,7 @@ world'), (2, 'done');
                 .as_nanos();
             let path = format!("-sabiql-{unique}.db");
             let _cleanup = CleanupPath(path.clone());
+            std::fs::write(&path, b"").unwrap();
             let dsn = format!("sqlite://{path}");
             let adapter = SqliteAdapter::new();
 
