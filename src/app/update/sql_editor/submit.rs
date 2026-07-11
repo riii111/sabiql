@@ -1,10 +1,12 @@
 use std::time::Instant;
 
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
+use crate::policy::sql::sqlite_transaction::sqlite_transaction_policy;
 use crate::policy::write::sql_risk::{
-    ConfirmationType, MultiStatementDecision, adhoc_label_for_table_name_confirmation,
-    evaluate_multi_statement_for_database,
+    AcknowledgeReason, ConfirmationType, MultiStatementDecision,
+    adhoc_label_for_table_name_confirmation, evaluate_multi_statement_for_database,
 };
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::update::action::Action;
@@ -22,6 +24,16 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
             state.sql_modal.dismiss_completion();
 
             let database_type = state.session.active_database_type_or_default();
+
+            if database_type == DatabaseType::SQLite
+                && sqlite_transaction_policy(&query).requires_acknowledgement()
+            {
+                state.sql_modal.begin_confirming_risk(
+                    AcknowledgeReason::NonAtomicTransaction,
+                    "SQLite transaction".to_string(),
+                );
+                return DispatchResult::handled();
+            }
 
             match evaluate_multi_statement_for_database(database_type, &query) {
                 MultiStatementDecision::Block { reason } => {

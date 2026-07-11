@@ -429,7 +429,8 @@ fn is_transaction_incompatible(statement: &str) -> bool {
         return true;
     }
     keyword.eq_ignore_ascii_case("PRAGMA")
-        && sqlite_pragma_name(statement).is_some_and(|name| name == "journal_mode")
+        && sqlite_pragma_name(statement)
+            .is_some_and(|name| matches!(name.as_str(), "journal_mode" | "foreign_keys"))
         && !is_read_only_sqlite_pragma(statement)
 }
 
@@ -1102,6 +1103,14 @@ END";
             assert_eq!(
                 classify_sqlite_statement("PRAGMA journal_mode(WAL)"),
                 SqliteStatementClass::TransactionIncompatible
+            );
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA foreign_keys = OFF"),
+                SqliteStatementClass::TransactionIncompatible
+            );
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA foreign_keys"),
+                SqliteStatementClass::ReadOnly
             );
         }
 

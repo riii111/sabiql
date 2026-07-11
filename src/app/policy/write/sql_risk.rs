@@ -16,6 +16,9 @@ pub enum AcknowledgeReason {
     // Risk is known to be high, but no target name could be extracted for
     // typed-name confirmation.
     TargetNameUnavailable,
+    // SQLite cannot run this multi-statement script inside the automatic
+    // transaction because one statement changes connection-level settings.
+    NonAtomicTransaction,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
