@@ -190,4 +190,17 @@ mod tests {
             }
         ));
     }
+
+    #[test]
+    fn non_missing_sqlite_cli_error_is_query_failed() {
+        let error = classify_cli_spawn_error(
+            DatabaseCli::Sqlite3,
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        );
+
+        assert!(matches!(
+            error,
+            DbOperationError::QueryFailed(details) if details == "permission denied"
+        ));
+    }
 }

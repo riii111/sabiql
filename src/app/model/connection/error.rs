@@ -72,7 +72,7 @@ impl ConnectionErrorKind {
     pub fn summary(self) -> &'static str {
         match self {
             Self::CliNotFound => "Database CLI not found",
-            Self::SqliteCliNotFound => "sqlite3 not found",
+            Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_summary(),
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
             Self::DatabaseNotFound => "Database does not exist",
@@ -93,7 +93,7 @@ impl ConnectionErrorKind {
     pub fn hint(self) -> &'static str {
         match self {
             Self::CliNotFound => "Install the database CLI (e.g. psql) and add it to PATH",
-            Self::SqliteCliNotFound => "Install sqlite3 and add it to PATH",
+            Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_hint(),
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
             Self::DatabaseNotFound => "Check database name",

@@ -553,7 +553,12 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             fill_valid_form(&mut state);
 
-            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            let first_effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            assert!(first_effects.is_some_and(|effects| matches!(
+                effects.as_slice(),
+                [Effect::SaveAndConnect { .. }]
+            )));
+
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
 
             assert!(effects.is_some_and(|effects| effects.is_empty()));

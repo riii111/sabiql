@@ -237,10 +237,6 @@ async fn normalize_sqlite_profile(
         .expect("SQLite profile requires SQLite config")
         .path()
         .to_string();
-    validate_sqlite_database_path(validator, path.clone())
-        .await
-        .map_err(ConnectionProfileError::SqlitePath)?;
-
     let canonical_path = canonicalize_sqlite_database_path(validator, path)
         .await
         .map_err(ConnectionProfileError::SqlitePath)?;
@@ -249,6 +245,9 @@ async fn normalize_sqlite_profile(
             "SQLite database path is not valid UTF-8".to_string(),
         ))
     })?;
+    validate_sqlite_database_path(validator, canonical_path.to_string())
+        .await
+        .map_err(ConnectionProfileError::SqlitePath)?;
     let config = SqliteConnectionConfig::new(canonical_path.to_string())?;
 
     ConnectionProfile::with_id_and_config(
@@ -311,7 +310,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn sqlite_profile_is_saved_before_adapter_metadata_exists() {
+        async fn sqlite_profile_is_canonicalized_before_save() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("app.db");
             fs::write(&path, b"").unwrap();

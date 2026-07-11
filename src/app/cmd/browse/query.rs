@@ -820,4 +820,151 @@ mod tests {
             );
         }
     }
+
+    mod execute_access_mode {
+        use std::cell::RefCell;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use tokio::sync::mpsc;
+
+        use crate::cmd::cache::TtlCache;
+        use crate::cmd::completion_engine::CompletionEngine;
+        use crate::cmd::effect::Effect;
+        use crate::cmd::test_fixtures;
+        use crate::domain::WriteExecutionResult;
+        use crate::model::app_state::AppState;
+        use crate::ports::outbound::connection_store::MockConnectionStore;
+        use crate::ports::outbound::metadata::MockMetadataProvider;
+        use crate::ports::outbound::query_executor::MockQueryExecutor;
+        use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
+        use crate::services::AppServices;
+        use crate::update::action::Action;
+
+        struct NoopRenderer;
+        impl Renderer for NoopRenderer {
+            fn draw(
+                &mut self,
+                _state: &AppState,
+                _services: &AppServices,
+                _now: std::time::Instant,
+            ) -> RenderResult<RenderOutput> {
+                Ok(RenderOutput::default())
+            }
+        }
+
+        async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
+            let cache = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![effect],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            tokio::time::timeout(Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed")
+        }
+
+        #[tokio::test]
+        async fn execute_adhoc_forwards_access_mode() {
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_adhoc()
+                .once()
+                .withf(|_, _, access_mode| *access_mode == AccessMode::ReadOnly)
+                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+
+            let action = run_effect(
+                Effect::ExecuteAdhoc {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+        }
+
+        #[tokio::test]
+        async fn execute_explain_forwards_access_mode() {
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_adhoc()
+                .once()
+                .withf(|_, _, access_mode| *access_mode == AccessMode::ReadOnly)
+                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+
+            let action = run_effect(
+                Effect::ExecuteExplain {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 2,
+                    query: "EXPLAIN SELECT 1".to_string(),
+                    source_query: "SELECT 1".to_string(),
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(action, Action::ExplainCompleted { run_id: 2, .. }));
+        }
+
+        #[tokio::test]
+        async fn execute_write_forwards_access_mode() {
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_write()
+                .once()
+                .withf(|_, _, access_mode| *access_mode == AccessMode::ReadWrite)
+                .returning(|_, _, _| {
+                    Ok(WriteExecutionResult {
+                        affected_rows: 1,
+                        execution_time_ms: 0,
+                    })
+                });
+
+            let action = run_effect(
+                Effect::ExecuteWrite {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    query: "INSERT INTO users VALUES (1)".to_string(),
+                    access_mode: AccessMode::ReadWrite,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExecuteWriteSucceeded {
+                    run_id: 3,
+                    affected_rows: 1,
+                    ..
+                }
+            ));
+        }
+    }
 }

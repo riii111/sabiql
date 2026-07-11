@@ -5,11 +5,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
-use super::error::classify_query_error;
+use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{ParseCommandTagError, split_sql_statements};
 
 // Keep user SQL server-side: stdin scripts would let psql interpret
@@ -141,10 +141,7 @@ impl PostgresAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| DbOperationError::CommandNotFound {
-                command: DatabaseCli::Psql,
-                details: e.to_string(),
-            })?;
+            .map_err(classify_cli_spawn_error)?;
 
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -419,10 +416,7 @@ impl PostgresAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| DbOperationError::CommandNotFound {
-                command: DatabaseCli::Psql,
-                details: e.to_string(),
-            })?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();

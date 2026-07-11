@@ -154,17 +154,17 @@ impl SqliteCli {
         let mut cmd = Command::new("sqlite3");
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
-        cmd.arg("--")
-            .arg(sqlite_database_uri(path, read_only))
-            .arg(sql);
+        cmd.arg(sqlite_database_uri(path, read_only));
 
         let mut child = cmd
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
 
+        let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
@@ -174,25 +174,34 @@ impl SqliteCli {
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            if let Some(mut stdout) = stdout {
-                let mut buf = [0u8; 8192];
-                loop {
-                    let n = stdout.read(&mut buf).await?;
-                    if n == 0 {
-                        break;
+            let (stdin_result, stdout_result, stderr_result) = tokio::join!(
+                write_sql_to_stdin(stdin, sql),
+                async {
+                    if let Some(mut stdout) = stdout {
+                        let mut buf = [0u8; 8192];
+                        loop {
+                            let n = stdout.read(&mut buf).await?;
+                            if n == 0 {
+                                break;
+                            }
+                            writer.write_all(&buf[..n]).await?;
+                        }
+                        writer.flush().await?;
                     }
-                    writer.write_all(&buf[..n]).await?;
+                    Ok::<_, std::io::Error>(())
+                },
+                async {
+                    let mut buf = Vec::new();
+                    if let Some(ref mut stderr) = stderr_handle {
+                        stderr.read_to_end(&mut buf).await?;
+                    }
+                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
                 }
-                writer.flush().await?;
-            }
+            );
 
-            let stderr = {
-                let mut buf = Vec::new();
-                if let Some(ref mut stderr) = stderr_handle {
-                    stderr.read_to_end(&mut buf).await?;
-                }
-                String::from_utf8_lossy(&buf).into_owned()
-            };
+            stdin_result?;
+            stdout_result?;
+            let stderr = stderr_result?;
             let status = child.wait().await?;
             Ok::<_, std::io::Error>((status, stderr))
         })
@@ -239,10 +248,8 @@ impl SqliteCli {
         for arg in args {
             cmd.arg(arg);
         }
-        cmd.arg("--")
-            .arg(sqlite_database_uri(path, read_only))
-            .arg(sql);
-        Self::collect_output(&mut cmd, self.timeout_secs).await
+        cmd.arg(sqlite_database_uri(path, read_only));
+        Self::collect_output(&mut cmd, self.timeout_secs, sql).await
     }
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
@@ -266,19 +273,23 @@ impl SqliteCli {
     async fn collect_output(
         cmd: &mut Command,
         timeout_secs: u64,
+        sql: &str,
     ) -> Result<SqliteOutput, DbOperationError> {
         let mut child = cmd
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
 
+        let stdin = child.stdin.take();
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
         let result = timeout(Duration::from_secs(timeout_secs), async {
-            let (stdout_result, stderr_result) = tokio::join!(
+            let (stdin_result, stdout_result, stderr_result) = tokio::join!(
+                write_sql_to_stdin(stdin, sql),
                 async {
                     let mut buf = Vec::new();
                     if let Some(ref mut stdout) = stdout_handle {
@@ -295,6 +306,7 @@ impl SqliteCli {
                 }
             );
 
+            stdin_result?;
             let stdout = stdout_result?;
             let stderr = stderr_result?;
             let status = child.wait().await?;
@@ -313,9 +325,46 @@ impl SqliteCli {
     }
 }
 
+async fn write_sql_to_stdin(
+    stdin: Option<tokio::process::ChildStdin>,
+    sql: &str,
+) -> Result<(), std::io::Error> {
+    if let Some(mut stdin) = stdin {
+        if let Err(error) = stdin.write_all(sql.as_bytes()).await
+            && error.kind() != std::io::ErrorKind::BrokenPipe
+        {
+            return Err(error);
+        }
+        if let Err(error) = stdin.shutdown().await
+            && error.kind() != std::io::ErrorKind::BrokenPipe
+        {
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
 fn sqlite_database_uri(path: &str, read_only: bool) -> String {
+    sqlite_database_uri_for_platform(path, read_only, cfg!(windows))
+}
+
+fn sqlite_database_uri_for_platform(path: &str, read_only: bool, is_windows: bool) -> String {
     let mode = if read_only { "ro" } else { "rw" };
-    format!("file:{}?mode={mode}", urlencoding::encode(path))
+    let path = sqlite_uri_path(path, is_windows);
+    format!("file:{}?mode={mode}", urlencoding::encode(&path))
+}
+
+fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
+    if !is_windows {
+        return path.to_string();
+    }
+
+    let path = path.replace('\\', "/");
+    if path.as_bytes().get(1) == Some(&b':') && !path.starts_with('/') {
+        format!("/{path}")
+    } else {
+        path
+    }
 }
 
 fn count_csv_records(path: &std::path::Path) -> Result<usize, csv::Error> {
@@ -2250,17 +2299,35 @@ world'), (2, 'done');
             assert!(read_only.ends_with("?mode=ro"));
         }
 
+        #[test]
+        fn windows_database_uri_normalizes_drive_paths() {
+            assert_eq!(
+                sqlite_uri_path(r"C:\Users\sabiql\database.sqlite", true),
+                "/C:/Users/sabiql/database.sqlite"
+            );
+            assert!(
+                sqlite_database_uri_for_platform(r"C:\Users\sabiql\database.sqlite", false, true,)
+                    .starts_with("file:%2FC%3A%2FUsers%2Fsabiql%2Fdatabase.sqlite?")
+            );
+        }
+
         #[tokio::test]
         async fn read_write_uri_rejects_missing_database_without_creating_file() {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("missing.db");
-            let output = Command::new("sqlite3")
-                .arg("--")
+            let mut child = Command::new("sqlite3")
                 .arg(sqlite_database_uri(path.to_str().unwrap(), false))
-                .arg("CREATE TABLE users(id INTEGER)")
-                .output()
+                .stdin(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut stdin = child.stdin.take().unwrap();
+            stdin
+                .write_all(b"CREATE TABLE users(id INTEGER)")
                 .await
                 .unwrap();
+            stdin.shutdown().await.unwrap();
+            drop(stdin);
+            let output = child.wait_with_output().await.unwrap();
 
             assert!(!output.status.success());
             assert!(!path.exists());
