@@ -1166,8 +1166,6 @@ mod tests {
     }
 
     mod prefix_match_ranking {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
@@ -1335,8 +1333,6 @@ mod tests {
     }
 
     mod score_ranking {
-        use crate::test_support;
-
         use super::*;
 
         #[test]
@@ -1550,8 +1546,6 @@ mod tests {
     }
 
     mod alias_column_completion {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::{DatabaseMetadata, Table, TableSummary};
         use crate::policy::sql::lexer::{SqlContext, TableReference};
@@ -1671,8 +1665,6 @@ mod tests {
     }
 
     mod fk_column_scoring {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::{FkAction, ForeignKey, Table};
 
@@ -1749,8 +1741,6 @@ mod tests {
     }
 
     mod contains_match {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::Table;
 
@@ -1798,8 +1788,6 @@ mod tests {
     }
 
     mod recent_columns_scoring {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::Table;
 
@@ -1868,8 +1856,6 @@ mod tests {
     }
 
     mod missing_tables {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
@@ -2065,8 +2051,6 @@ mod tests {
     }
 
     mod integration_tests {
-        use crate::test_support;
-
         use super::*;
         use crate::domain::{DatabaseMetadata, Table, TableSummary};
 

@@ -760,8 +760,6 @@ mod tests {
     }
 
     mod ui_facade {
-        use crate::test_support;
-
         use super::*;
 
         fn sqlite_preview_state_with_table(mut table: Table) -> AppState {
