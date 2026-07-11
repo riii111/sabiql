@@ -276,8 +276,6 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support;
-
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -598,6 +596,8 @@ mod tests {
     }
 
     mod table_detail_dispatch {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::Table;
 
@@ -605,7 +605,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }
         }
 

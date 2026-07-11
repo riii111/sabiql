@@ -183,8 +183,6 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support;
-
     use std::sync::Arc;
 
     use super::*;
@@ -1205,6 +1203,8 @@ mod tests {
     }
 
     mod confirm_selection_safety {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::{DatabaseMetadata, Table, TableSummary};
 
@@ -1212,7 +1212,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "old_table".to_string(),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -1498,6 +1498,8 @@ mod tests {
     }
 
     mod table_detail_cached {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::Table;
 
@@ -1505,7 +1507,7 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             })
         }
 

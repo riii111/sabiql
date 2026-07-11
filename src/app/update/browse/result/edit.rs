@@ -145,8 +145,6 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support;
-
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
@@ -155,6 +153,8 @@ mod tests {
     use std::sync::Arc;
 
     mod cell_edit_entry_guardrails {
+        use crate::test_support;
+
         use super::*;
 
         pub(super) fn minimal_users_table() -> Table {
@@ -162,7 +162,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "users".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -269,7 +269,7 @@ mod tests {
                 schema: "public".to_string(),
                 name: "posts".to_string(),
                 primary_key: Some(vec!["id".to_string()]),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -288,7 +288,7 @@ mod tests {
         fn view_detail_blocks_cell_edit_entry() {
             let mut state = preview_state_with_selection();
             let mut table = minimal_users_table();
-            table.kind_info = super::test_support::table::view_kind_info();
+            table.kind_info = test_support::table::view_kind_info();
             state.session.set_table_detail_raw(Some(table));
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
@@ -310,11 +310,11 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 },
                 Column {
                     attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                    ..super::test_support::column::test_nullable_column("name", "text", 2)
+                    ..test_support::column::test_nullable_column("name", "text", 2)
                 },
             ];
             state.session.set_table_detail_raw(Some(table));
@@ -375,6 +375,8 @@ mod tests {
     }
 
     mod jsonb_dispatch {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::DatabaseType;
         use crate::domain::connection::ConnectionId;
@@ -391,9 +393,9 @@ mod tests {
             table.columns = vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                super::test_support::column::test_nullable_column("name", "jsonb", 2),
+                test_support::column::test_nullable_column("name", "jsonb", 2),
             ];
             state.session.set_table_detail_raw(Some(table));
             state

@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::adapters::test_support;
-
 use std::fmt::Write as _;
 
 use crate::app::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
@@ -403,6 +400,8 @@ impl SqlDialect for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use super::*;
     use crate::domain::{Column, ColumnAttributes, Trigger, TriggerEvent, TriggerTiming};
 
@@ -423,7 +422,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..super::test_support::minimal_table("", "")
+            ..test_support::minimal_table("", "")
         }
     }
 

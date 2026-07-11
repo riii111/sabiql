@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_support;
-
 use std::sync::Arc;
 
 use crate::domain::{
@@ -448,6 +445,8 @@ impl BrowseSession {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
 
@@ -467,7 +466,7 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             row_count_estimate: Some(100),
-            ..super::test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 

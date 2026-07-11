@@ -552,8 +552,6 @@ pub fn validate_all(state: &mut ConnectionSetupState) {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_support;
-
     use super::*;
     use crate::domain::Column;
     use std::sync::Arc;
@@ -853,6 +851,8 @@ mod tests {
     }
 
     mod bulk_delete_preview {
+        use crate::test_support;
+
         use super::*;
 
         fn editable_state(database_type: DatabaseType) -> AppState {
@@ -882,12 +882,12 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY,
-                        ..super::test_support::column::test_nullable_column("id", "INTEGER", 1)
+                        ..test_support::column::test_nullable_column("id", "INTEGER", 1)
                     },
-                    super::test_support::column::test_nullable_column("name", "TEXT", 2),
+                    test_support::column::test_nullable_column("name", "TEXT", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);
@@ -918,11 +918,11 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "main".to_string(),
                 name: "logs".to_string(),
-                columns: vec![super::test_support::column::test_nullable_column(
+                columns: vec![test_support::column::test_nullable_column(
                     "message", "TEXT", 1,
                 )],
                 primary_key: None,
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "logs");
             state.result_interaction.stage_row(0);

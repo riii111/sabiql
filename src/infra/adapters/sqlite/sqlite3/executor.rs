@@ -509,8 +509,6 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::adapters::test_support;
-
     use crate::app::ports::outbound::{QueryExecutor, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
@@ -520,11 +518,13 @@ mod tests {
     use super::*;
 
     mod preview {
+        use crate::adapters::test_support;
+
         use super::*;
 
         #[tokio::test]
         async fn returns_columns_rows_and_respects_pagination() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
@@ -544,7 +544,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_table_preview_hides_rowid_but_keeps_internal_identity() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(message TEXT);
             INSERT INTO logs(message) VALUES ('first'), ('second');
@@ -567,7 +567,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_table_preview_uses_unshadowed_rowid_alias() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(rowid TEXT, message TEXT);
             INSERT INTO logs(rowid, message) VALUES ('user-visible', 'first');
@@ -593,7 +593,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_update_predicate_updates_matching_current_row() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(message TEXT);
             INSERT INTO logs(message) VALUES ('old');
@@ -625,7 +625,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_update_predicate_rejects_reused_rowid_with_changed_values() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(message TEXT, note TEXT);
             INSERT INTO logs(message, note) VALUES ('old', NULL);
@@ -675,7 +675,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_delete_predicate_deletes_matching_current_row() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(message TEXT);
             INSERT INTO logs(message) VALUES ('old');
@@ -700,7 +700,7 @@ mod tests {
 
         #[tokio::test]
         async fn rowid_delete_predicate_rejects_reused_rowid_with_changed_values() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(message TEXT);
             INSERT INTO logs(message) VALUES ('old');
@@ -742,7 +742,7 @@ mod tests {
         #[tokio::test]
         async fn rejects_non_main_schema() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -754,7 +754,7 @@ mod tests {
 
         #[tokio::test]
         async fn preserves_nul_text_primary_key_for_preview_and_delete() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES ('a' || char(0) || 'bc', 'target'), ('only', 'other');
@@ -801,7 +801,7 @@ mod tests {
 
         #[tokio::test]
         async fn excludes_hidden_columns_from_preview_select_list() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
             INSERT INTO notes_fts(body) VALUES ('hello');
@@ -823,7 +823,7 @@ mod tests {
 
         #[tokio::test]
         async fn preserves_distinct_c0_text_values_in_preview() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, value TEXT);
             INSERT INTO users(value) VALUES (char(1) || char(1));
@@ -849,7 +849,7 @@ mod tests {
 
         #[tokio::test]
         async fn preserves_sentinel_like_text_without_nul_in_preview() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, token TEXT);
             INSERT INTO users(token) VALUES (char(1) || 'SABIQL_HEX:4142');
@@ -873,7 +873,7 @@ mod tests {
 
         #[tokio::test]
         async fn keeps_generated_columns_in_preview_select_list() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(
                 id INTEGER PRIMARY KEY,
@@ -899,11 +899,13 @@ mod tests {
     }
 
     mod adhoc_execution {
+        use crate::adapters::test_support;
+
         use super::*;
 
         #[tokio::test]
         async fn select_returns_query_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -920,7 +922,7 @@ mod tests {
 
         #[tokio::test]
         async fn explain_query_plan_returns_readable_detail_lines() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
                  CREATE INDEX idx_users_name ON users(name);",
             );
@@ -950,7 +952,7 @@ mod tests {
 
         #[tokio::test]
         async fn explain_query_plan_for_join_includes_both_scan_targets() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY);
                  CREATE TABLE orders(id INTEGER, user_id INTEGER);",
             );
@@ -984,7 +986,7 @@ mod tests {
 
         #[tokio::test]
         async fn explain_query_plan_delete_does_not_modify_database() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
                  INSERT INTO users(name) VALUES ('alice'), ('bob');
                  CREATE INDEX idx_users_name ON users(name);",
@@ -1047,7 +1049,7 @@ mod tests {
                 VALUES (new.id, new.role, new.content);
             END
             ";
-            let (_dir, dsn) = super::test_support::make_sqlite_db(setup);
+            let (_dir, dsn) = test_support::make_sqlite_db(setup);
             let adapter = SqliteAdapter::new();
 
             adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
@@ -1092,7 +1094,7 @@ mod tests {
                 INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
             END
             ";
-            let (_dir, dsn) = super::test_support::make_sqlite_db(setup);
+            let (_dir, dsn) = test_support::make_sqlite_db(setup);
             let adapter = SqliteAdapter::new();
 
             adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
@@ -1118,7 +1120,7 @@ mod tests {
         #[tokio::test]
         async fn unclosed_create_trigger_fails_before_execution() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let error = adapter
@@ -1135,7 +1137,7 @@ mod tests {
 
         #[tokio::test]
         async fn select_preserves_quoted_newline_in_multicolumn_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE notes(id INTEGER PRIMARY KEY, body TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -1159,7 +1161,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_select_preserves_quoted_newline_in_last_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1181,7 +1183,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_select_does_not_treat_data_row_as_next_header() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1200,7 +1202,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_select_empty_trailing_result_returns_empty_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1216,7 +1218,7 @@ mod tests {
         #[tokio::test]
         async fn pragma_result_does_not_get_select_command_tag() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1233,7 +1235,7 @@ mod tests {
 
         #[tokio::test]
         async fn enables_foreign_keys_before_user_sql() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1246,7 +1248,7 @@ mod tests {
 
         #[tokio::test]
         async fn read_only_session_enables_query_only_before_user_sql() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1259,7 +1261,7 @@ mod tests {
 
         #[tokio::test]
         async fn applies_busy_timeout_before_user_sql() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1272,7 +1274,7 @@ mod tests {
 
         #[tokio::test]
         async fn values_result_does_not_get_select_command_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1286,7 +1288,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_returns_affected_rows_command_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1305,7 +1307,7 @@ mod tests {
 
         #[tokio::test]
         async fn replace_into_returns_insert_refresh_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1324,7 +1326,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_with_following_select_uses_trailing_changes_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1347,7 +1349,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_with_following_select_preserves_result_set_and_refresh_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1371,7 +1373,7 @@ mod tests {
 
         #[tokio::test]
         async fn multi_dml_uses_last_effective_refresh_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1396,7 +1398,7 @@ mod tests {
 
         #[tokio::test]
         async fn ddl_wins_over_later_dml_for_refresh_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1419,7 +1421,7 @@ mod tests {
         #[tokio::test]
         async fn rolled_back_dml_returns_rollback_tag() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1442,7 +1444,7 @@ mod tests {
         #[tokio::test]
         async fn full_rollback_inside_savepoint_discards_outer_dml() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1469,7 +1471,7 @@ mod tests {
         #[tokio::test]
         async fn savepoint_rollback_discards_inner_dml_only() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1497,7 +1499,7 @@ mod tests {
         #[tokio::test]
         async fn rollback_to_keeps_savepoint_for_later_rollback() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1527,7 +1529,7 @@ mod tests {
         #[tokio::test]
         async fn rollback_to_named_outer_savepoint_discards_nested_frames() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1557,7 +1559,7 @@ mod tests {
         #[tokio::test]
         async fn top_level_savepoint_rollback_to_discards_inner_dml_only() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1585,7 +1587,7 @@ mod tests {
         #[tokio::test]
         async fn top_level_savepoint_multi_write_rolls_back_when_later_statement_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1607,7 +1609,7 @@ mod tests {
         #[tokio::test]
         async fn top_level_savepoint_without_release_does_not_persist_on_success() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1630,7 +1632,7 @@ mod tests {
         #[tokio::test]
         async fn with_insert_reports_affected_rows_command_tag() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1650,7 +1652,7 @@ mod tests {
         #[tokio::test]
         async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1672,7 +1674,7 @@ mod tests {
         #[tokio::test]
         async fn with_dml_rolls_back_when_later_statement_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1696,7 +1698,7 @@ mod tests {
         #[tokio::test]
         async fn returning_dml_rolls_back_when_later_statement_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
             let query =
                 "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
@@ -1714,7 +1716,7 @@ mod tests {
         #[tokio::test]
         async fn select_then_dml_rolls_back_when_later_statement_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1735,7 +1737,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_with_trailing_line_comment_returns_affected_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a');
@@ -1758,7 +1760,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_returning_preserves_returned_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -1779,7 +1781,7 @@ mod tests {
 
         #[tokio::test]
         async fn update_returning_preserves_returned_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1802,7 +1804,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_returning_preserves_returned_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -1825,7 +1827,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_table_name_containing_returning_reports_affected_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE returning_log(id INTEGER PRIMARY KEY, name TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -1841,7 +1843,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_backtick_quoted_identifier_containing_returning_reports_affected_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE `my returning`(id INTEGER PRIMARY KEY, name TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -1857,7 +1859,7 @@ mod tests {
 
         #[tokio::test]
         async fn dml_bracket_quoted_identifier_containing_returning_reports_affected_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE [my returning](id INTEGER PRIMARY KEY, name TEXT);",
             );
             let adapter = SqliteAdapter::new();
@@ -1873,7 +1875,7 @@ mod tests {
 
         #[tokio::test]
         async fn ddl_returns_schema_refresh_command_tag() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -1889,11 +1891,13 @@ mod tests {
     }
 
     mod write_execution {
+        use crate::adapters::test_support;
+
         use super::*;
 
         #[tokio::test]
         async fn foreign_key_restrict_rejects_parent_delete_with_child_row() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
@@ -1923,7 +1927,7 @@ mod tests {
 
         #[tokio::test]
         async fn unique_constraint_violation_is_classified() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 "CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL);",
             );
             let adapter = SqliteAdapter::new();
@@ -1950,7 +1954,7 @@ mod tests {
 
         #[tokio::test]
         async fn syntax_error_stays_query_failed_with_details() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter.execute_adhoc(&dsn, "SELEKT 1", true).await;
@@ -1961,7 +1965,7 @@ mod tests {
 
         #[tokio::test]
         async fn foreign_key_cascade_applies_to_parent_delete() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE orgs(id INTEGER PRIMARY KEY);
             CREATE TABLE users(
@@ -1989,7 +1993,7 @@ mod tests {
 
         #[tokio::test]
         async fn returns_affected_rows() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -2007,7 +2011,7 @@ mod tests {
 
         #[tokio::test]
         async fn count_query_rows_parses_count_result() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db(
+            let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
             INSERT INTO users(id) VALUES (1), (2), (3);
@@ -2025,7 +2029,7 @@ mod tests {
 
         #[tokio::test]
         async fn export_to_csv_writes_rows_and_returns_row_count() {
-            let (dir, dsn) = super::test_support::make_sqlite_db(
+            let (dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
             INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
@@ -2046,7 +2050,7 @@ mod tests {
 
         #[tokio::test]
         async fn export_to_csv_counts_records_with_embedded_newlines() {
-            let (dir, dsn) = super::test_support::make_sqlite_db(
+            let (dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(id INTEGER PRIMARY KEY, message TEXT);
             INSERT INTO logs(id, message) VALUES (1, 'hello
@@ -2072,7 +2076,7 @@ world'), (2, 'done');
         #[tokio::test]
         async fn export_to_csv_rejects_write_sql() {
             let (dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let path = dir.path().join("write_export.csv");
             let adapter = SqliteAdapter::new();
 
@@ -2090,7 +2094,7 @@ world'), (2, 'done');
 
         #[tokio::test]
         async fn export_to_csv_missing_table_returns_object_missing_and_removes_file() {
-            let (dir, dsn) = super::test_support::make_sqlite_db("");
+            let (dir, dsn) = test_support::make_sqlite_db("");
             let path = dir.path().join("missing_export.csv");
             let adapter = SqliteAdapter::new();
 
@@ -2104,7 +2108,7 @@ world'), (2, 'done');
 
         #[tokio::test]
         async fn count_query_rows_missing_table_returns_object_missing() {
-            let (_dir, dsn) = super::test_support::make_sqlite_db("");
+            let (_dir, dsn) = test_support::make_sqlite_db("");
             let adapter = SqliteAdapter::new();
 
             let result = adapter
@@ -2117,7 +2121,7 @@ world'), (2, 'done');
         #[tokio::test]
         async fn read_only_write_fails() {
             let (_dir, dsn) =
-                super::test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
             let adapter = SqliteAdapter::new();
 
             let result = adapter

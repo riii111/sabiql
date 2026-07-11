@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_support;
-
 use std::time::Instant;
 
 use super::explain_context::ExplainContext;
@@ -423,7 +420,7 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            ..super::test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -763,6 +760,8 @@ mod tests {
     }
 
     mod ui_facade {
+        use crate::test_support;
+
         use super::*;
 
         fn sqlite_preview_state_with_table(mut table: Table) -> AppState {
@@ -857,8 +856,7 @@ mod tests {
 
         #[test]
         fn sqlite_rowid_table_can_write_preview_without_primary_key() {
-            let state =
-                sqlite_preview_state_with_table(super::test_support::table::minimal("", ""));
+            let state = sqlite_preview_state_with_table(test_support::table::minimal("", ""));
 
             assert!(state.can_write_visible_preview());
             assert_eq!(state.visible_preview_target_read_only_reason(), None);
@@ -873,7 +871,7 @@ mod tests {
             #[case] without_rowid: bool,
             #[case] reason: &str,
         ) {
-            let mut table = super::test_support::table::minimal("", "");
+            let mut table = test_support::table::minimal("", "");
             table.kind_info = TableKindInfo {
                 kind,
                 without_rowid,
@@ -890,11 +888,11 @@ mod tests {
 
         #[test]
         fn sqlite_table_with_all_rowid_aliases_shadowed_is_read_only() {
-            let mut table = super::test_support::table::minimal("", "");
+            let mut table = test_support::table::minimal("", "");
             table.columns = vec![
-                super::test_support::column::test_nullable_column("rowid", "TEXT", 1),
-                super::test_support::column::test_nullable_column("_rowid_", "TEXT", 2),
-                super::test_support::column::test_nullable_column("oid", "TEXT", 3),
+                test_support::column::test_nullable_column("rowid", "TEXT", 1),
+                test_support::column::test_nullable_column("_rowid_", "TEXT", 2),
+                test_support::column::test_nullable_column("oid", "TEXT", 3),
             ];
             let state = sqlite_preview_state_with_table(table);
 
@@ -907,8 +905,7 @@ mod tests {
 
         #[test]
         fn postgres_table_without_primary_key_does_not_mention_rowid() {
-            let state =
-                postgres_preview_state_with_table(super::test_support::table::minimal("", ""));
+            let state = postgres_preview_state_with_table(test_support::table::minimal("", ""));
 
             assert!(!state.can_write_visible_preview());
             assert_eq!(

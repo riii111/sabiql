@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_support;
-
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
@@ -369,12 +366,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..super::test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                super::test_support::column::test_nullable_column("settings", "jsonb", 2),
+                test_support::column::test_nullable_column("settings", "jsonb", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..super::test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -564,6 +561,8 @@ mod tests {
     }
 
     mod edit_lifecycle {
+        use crate::test_support;
+
         use super::*;
         use crate::model::browse::jsonb_detail::JsonbDetailMode;
         use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
@@ -631,11 +630,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..super::test_support::column::test_nullable_column("id", "integer", 1)
+                        ..test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..super::test_support::column::test_nullable_column("settings", "jsonb", 2)
+                        ..test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -659,11 +658,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..super::test_support::column::test_nullable_column("id", "integer", 1)
+                        ..test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..super::test_support::column::test_nullable_column("settings", "jsonb", 2)
+                        ..test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()

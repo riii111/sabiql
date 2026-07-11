@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_support;
-
 use std::time::Instant;
 
 mod er_neighbors;
@@ -53,6 +50,8 @@ pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) ->
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, Table};
@@ -74,7 +73,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
-        Box::new(super::test_support::table::minimal(schema, name))
+        Box::new(test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {

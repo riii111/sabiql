@@ -1,6 +1,3 @@
-#[cfg(test)]
-use crate::test_support;
-
 use crate::model::app_state::AppState;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
@@ -118,6 +115,8 @@ mod tests {
     use std::time::Instant;
 
     mod inspector_scroll_top_bottom {
+        use crate::test_support;
+
         use super::*;
 
         fn state_with_table_detail(columns: usize) -> AppState {
@@ -133,7 +132,7 @@ mod tests {
             let cols: Vec<Column> = (0..columns)
                 .map(|i| Column {
                     attributes: ColumnAttributes::empty(),
-                    ..super::test_support::column::test_nullable_column(
+                    ..test_support::column::test_nullable_column(
                         format!("col_{i}"),
                         "text",
                         i as i32,
@@ -145,7 +144,7 @@ mod tests {
                 name: "test_table".to_string(),
                 columns: cols,
                 row_count_estimate: Some(0),
-                ..super::test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state
         }
