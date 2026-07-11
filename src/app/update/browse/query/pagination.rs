@@ -115,7 +115,7 @@ pub fn reduce_pagination(
             let row_count = result.row_count();
 
             if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                match sqlite_export_plan(&export_query, &result.columns, row_count) {
+                match sqlite_export_plan(result.source, &export_query, &result.columns, row_count) {
                     SqliteExportPlan::NotExportable { reason } => {
                         state.messages.set_error_at(reason, now);
                         return DispatchResult::handled();
@@ -907,6 +907,37 @@ mod tests {
 
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
+            }
+
+            #[test]
+            fn preview_exports_visible_typed_values_from_cache() {
+                let mut state = sqlite_state();
+                state.query.set_current_result(Arc::new(
+                    QueryResult::success_with_values(
+                        "SELECT \"_rowid_\" AS \"__sabiql_rowid\", CASE WHEN typeof(\"message\") = 'text' THEN hex(\"message\") END AS \"message\" FROM \"logs\"".to_string(),
+                        vec!["message".to_string()],
+                        vec![vec![QueryValue::text("a\0bc")]],
+                        1,
+                        QuerySource::Preview,
+                    ),
+                ));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::ExportCsvFromCache {
+                    columns, values, ..
+                } = &effects[0]
+                else {
+                    panic!("expected cached CSV export effect");
+                };
+                assert_eq!(columns, &["message"]);
+                assert_eq!(values, &vec![vec![QueryValue::text("a\0bc")]]);
             }
         }
     }

@@ -1,4 +1,4 @@
-use crate::domain::DatabaseType;
+use crate::domain::{DatabaseType, QuerySource};
 use crate::policy::sql::statement_classifier::{classify, first_keyword};
 use crate::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_multi_statement_for_database, evaluate_sql_risk_for_database,
@@ -11,7 +11,15 @@ pub enum SqliteExportPlan {
     NotExportable { reason: String },
 }
 
-pub fn sqlite_export_plan(query: &str, columns: &[String], row_count: usize) -> SqliteExportPlan {
+pub fn sqlite_export_plan(
+    source: QuerySource,
+    query: &str,
+    columns: &[String],
+    row_count: usize,
+) -> SqliteExportPlan {
+    if source == QuerySource::Preview {
+        return SqliteExportPlan::CachedResult { row_count };
+    }
     if is_sqlite_rerunnable_export_query(query) {
         return SqliteExportPlan::RerunnableQuery {
             query: query.to_string(),
@@ -209,7 +217,12 @@ mod tests {
 
         #[test]
         fn write_only_without_rows_is_not_exportable() {
-            let plan = sqlite_export_plan("INSERT INTO users(id) VALUES (1)", &[], 0);
+            let plan = sqlite_export_plan(
+                QuerySource::Adhoc,
+                "INSERT INTO users(id) VALUES (1)",
+                &[],
+                0,
+            );
             assert_eq!(
                 plan,
                 SqliteExportPlan::NotExportable {
@@ -221,6 +234,7 @@ mod tests {
         #[test]
         fn mixed_query_with_rows_uses_cached_result() {
             let plan = sqlite_export_plan(
+                QuerySource::Adhoc,
                 "INSERT INTO users(id) VALUES (1); SELECT id FROM users",
                 &["id".to_string()],
                 1,
@@ -230,8 +244,25 @@ mod tests {
 
         #[test]
         fn select_uses_rerunnable_query() {
-            let plan = sqlite_export_plan("SELECT id FROM users", &["id".to_string()], 1);
+            let plan = sqlite_export_plan(
+                QuerySource::Adhoc,
+                "SELECT id FROM users",
+                &["id".to_string()],
+                1,
+            );
             assert!(matches!(plan, SqliteExportPlan::RerunnableQuery { .. }));
+        }
+
+        #[test]
+        fn preview_uses_cached_result() {
+            let plan = sqlite_export_plan(
+                QuerySource::Preview,
+                "SELECT __sabiql_rowid, CASE WHEN typeof(message) = 'text' THEN hex(message) END",
+                &["message".to_string()],
+                2,
+            );
+
+            assert_eq!(plan, SqliteExportPlan::CachedResult { row_count: 2 });
         }
     }
 }
