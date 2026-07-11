@@ -38,7 +38,7 @@ pub fn sqlite_transaction_policy(
     SqliteTransactionPolicy::AutoWrap
 }
 
-pub(crate) fn is_transaction_incompatible(statement: &str) -> bool {
+pub fn is_transaction_incompatible(statement: &str) -> bool {
     if first_keyword(statement).as_deref() == Some("VACUUM") {
         return true;
     }

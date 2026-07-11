@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::app::policy::sql::sqlite_transaction::is_transaction_incompatible;
 use crate::app::ports::outbound::DbOperationError;
 
 fn is_ident_char(byte: u8) -> bool {
@@ -428,17 +429,6 @@ fn classify_sqlite_statement(statement: &str) -> SqliteStatementClass {
         return SqliteStatementClass::Ddl;
     }
     SqliteStatementClass::ReadOnly
-}
-
-fn is_transaction_incompatible(statement: &str) -> bool {
-    let keyword = first_keyword(statement);
-    if keyword.eq_ignore_ascii_case("VACUUM") {
-        return true;
-    }
-    keyword.eq_ignore_ascii_case("PRAGMA")
-        && sqlite_pragma_name(statement)
-            .is_some_and(|name| matches!(name.as_str(), "journal_mode" | "foreign_keys"))
-        && !is_read_only_sqlite_pragma(statement)
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
@@ -1118,6 +1108,17 @@ END";
         }
 
         #[test]
+        fn quoted_foreign_keys_change_prevents_auto_transaction_wrap() {
+            assert_eq!(
+                sqlite_wrap_mode(
+                    "/* setup */ PRAGMA [foreign_keys](OFF); CREATE TABLE users(id INTEGER PRIMARY KEY)"
+                )
+                .unwrap(),
+                SqliteWrapMode::None
+            );
+        }
+
+        #[test]
         fn journal_mode_query_does_not_prevent_auto_transaction_wrap() {
             assert_eq!(
                 sqlite_wrap_mode(
@@ -1164,6 +1165,14 @@ END";
             assert_eq!(
                 classify_sqlite_statement("PRAGMA foreign_keys"),
                 SqliteStatementClass::ReadOnly
+            );
+            assert_eq!(
+                classify_sqlite_statement("PRAGMA \"foreign_keys\" = OFF"),
+                SqliteStatementClass::TransactionIncompatible
+            );
+            assert_eq!(
+                classify_sqlite_statement("/* setup */ PRAGMA [foreign_keys](OFF)"),
+                SqliteStatementClass::TransactionIncompatible
             );
         }
 
