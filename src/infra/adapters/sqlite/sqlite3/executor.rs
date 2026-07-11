@@ -18,11 +18,12 @@ use crate::domain::{
 use super::super::{SqliteAdapter, sql};
 use super::error::classify_query_error;
 use super::parser::{
-    aggregate_sqlite_command_tag, append_changes_query, command_tag_result,
-    is_sqlite_rerunnable_export_query, last_sqlite_result_set, parse_affected_rows,
-    parse_count_result, quoted_to_query_result, sqlite_adhoc_execution_query,
-    sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_tags,
-    statement_counts_as_select_tag, strip_sqlite_probes, try_split_sqlite_statements,
+    SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
+    command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
+    parse_affected_rows, parse_count_result, quoted_to_query_result,
+    sqlite_adhoc_execution_query_for_plan, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
+    sqlite_statement_plan, sqlite_statement_tags, statement_counts_as_select_tag,
+    strip_sqlite_probes,
 };
 
 pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -356,7 +357,7 @@ impl SqliteAdapter {
     async fn execute_changes_query(
         &self,
         path: &str,
-        query: &str,
+        plan: &SqliteStatementPlan<'_>,
         read_only: bool,
     ) -> Result<(usize, u64), DbOperationError> {
         #[expect(
@@ -366,7 +367,7 @@ impl SqliteAdapter {
         let start = Instant::now();
         let stdout = self
             .cli
-            .execute_csv(path, &append_changes_query(query)?, read_only)
+            .execute_csv(path, &append_changes_query_for_plan(plan), read_only)
             .await?;
         let elapsed = start.elapsed().as_millis() as u64;
         Ok((parse_affected_rows(&stdout)?, elapsed))
@@ -412,9 +413,9 @@ impl QueryExecutor for SqliteAdapter {
         read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
+        let plan = sqlite_statement_plan(query)?;
         let marker = sqlite_probe_marker();
-        let statements = try_split_sqlite_statements(query)?;
-        let execution_query = sqlite_adhoc_execution_query(query, &marker)?;
+        let execution_query = sqlite_adhoc_execution_query_for_plan(&plan, &marker);
 
         #[expect(
             clippy::disallowed_methods,
@@ -428,7 +429,8 @@ impl QueryExecutor for SqliteAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
         let (stdout, changes) = strip_sqlite_probes(&stdout, &marker)?;
         let stdout = last_sqlite_result_set(&stdout, &marker)?.unwrap_or(stdout);
-        let tag = aggregate_sqlite_command_tag(&sqlite_statement_tags(&statements, &changes));
+        let statements = plan.statements();
+        let tag = aggregate_sqlite_command_tag(&sqlite_statement_tags(statements, &changes));
 
         if stdout.trim().is_empty() {
             if let Some(tag) = tag {
@@ -469,9 +471,10 @@ impl QueryExecutor for SqliteAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let (affected_rows, execution_time_ms) = self
-            .execute_changes_query(Self::path_from_dsn(dsn)?, query, read_only)
-            .await?;
+        let path = Self::path_from_dsn(dsn)?;
+        let plan = sqlite_statement_plan(query)?;
+        let (affected_rows, execution_time_ms) =
+            self.execute_changes_query(path, &plan, read_only).await?;
         Ok(WriteExecutionResult {
             affected_rows,
             execution_time_ms,
@@ -1492,6 +1495,25 @@ mod tests {
                 .unwrap();
 
             assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[tokio::test]
+        async fn foreign_keys_change_in_mixed_sql_is_not_a_transaction_noop() {
+            let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_adhoc(
+                    &dsn,
+                    "PRAGMA foreign_keys = ON;
+                     CREATE TABLE parent(id INTEGER PRIMARY KEY);
+                     PRAGMA foreign_keys",
+                    false,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]

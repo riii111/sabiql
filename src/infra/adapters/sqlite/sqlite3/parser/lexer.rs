@@ -405,7 +405,8 @@ fn is_transaction_control(statement: &str) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SqliteStatementClass {
     ReadOnly,
-    Write,
+    Dml,
+    Ddl,
     TransactionControl,
     TransactionIncompatible,
 }
@@ -417,8 +418,14 @@ fn classify_sqlite_statement(statement: &str) -> SqliteStatementClass {
     if is_transaction_incompatible(statement) {
         return SqliteStatementClass::TransactionIncompatible;
     }
-    if is_write_statement(statement) {
-        return SqliteStatementClass::Write;
+    if is_dml_statement(statement) {
+        return SqliteStatementClass::Dml;
+    }
+    if matches!(
+        first_keyword(statement).to_ascii_uppercase().as_str(),
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
+    ) {
+        return SqliteStatementClass::Ddl;
     }
     SqliteStatementClass::ReadOnly
 }
@@ -434,16 +441,6 @@ fn is_transaction_incompatible(statement: &str) -> bool {
         && !is_read_only_sqlite_pragma(statement)
 }
 
-fn is_write_statement(statement: &str) -> bool {
-    if is_dml_statement(statement) {
-        return true;
-    }
-    matches!(
-        first_keyword(statement).to_ascii_uppercase().as_str(),
-        "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
-    )
-}
-
 pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
     query: &str,
 ) -> Result<bool, DbOperationError> {
@@ -457,7 +454,8 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
 fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
     if matches!(
         classify_sqlite_statement(statement),
-        SqliteStatementClass::Write
+        SqliteStatementClass::Dml
+            | SqliteStatementClass::Ddl
             | SqliteStatementClass::TransactionControl
             | SqliteStatementClass::TransactionIncompatible
     ) {
@@ -534,24 +532,73 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error()
     )
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
     None,
     BeginCommit,
 }
 
-fn should_auto_wrap_in_transaction(statements: &[&str]) -> bool {
-    statements.len() > 1
-        && statements
-            .iter()
-            .any(|stmt| classify_sqlite_statement(stmt) == SqliteStatementClass::Write)
-        && statements.iter().all(|stmt| {
+#[derive(Debug)]
+pub(in crate::adapters::sqlite::sqlite3) struct SqliteStatementPlan<'a> {
+    query: &'a str,
+    statements: Vec<&'a str>,
+    classes: Vec<SqliteStatementClass>,
+    wrap_mode: SqliteWrapMode,
+}
+
+impl<'a> SqliteStatementPlan<'a> {
+    pub(in crate::adapters::sqlite::sqlite3) fn query(&self) -> &'a str {
+        self.query
+    }
+
+    pub(in crate::adapters::sqlite::sqlite3) fn statements(&self) -> &[&'a str] {
+        &self.statements
+    }
+
+    pub(in crate::adapters::sqlite::sqlite3) fn is_dml(&self, index: usize) -> bool {
+        self.classes[index] == SqliteStatementClass::Dml
+    }
+
+    pub(in crate::adapters::sqlite::sqlite3) fn wrap_mode(&self) -> SqliteWrapMode {
+        self.wrap_mode
+    }
+}
+
+fn is_write_class(class: SqliteStatementClass) -> bool {
+    matches!(class, SqliteStatementClass::Dml | SqliteStatementClass::Ddl)
+}
+
+fn should_auto_wrap_in_transaction(classes: &[SqliteStatementClass]) -> bool {
+    classes.len() > 1
+        && classes.iter().copied().any(is_write_class)
+        && classes.iter().all(|class| {
             !matches!(
-                classify_sqlite_statement(stmt),
+                class,
                 SqliteStatementClass::TransactionControl
                     | SqliteStatementClass::TransactionIncompatible
             )
         })
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
+    query: &str,
+) -> Result<SqliteStatementPlan<'_>, DbOperationError> {
+    let statements = try_split_sqlite_statements(query)?;
+    let classes: Vec<_> = statements
+        .iter()
+        .map(|statement| classify_sqlite_statement(statement))
+        .collect();
+    let wrap_mode = if should_auto_wrap_in_transaction(&classes) {
+        SqliteWrapMode::BeginCommit
+    } else {
+        SqliteWrapMode::None
+    };
+    Ok(SqliteStatementPlan {
+        query,
+        statements,
+        classes,
+        wrap_mode,
+    })
 }
 
 fn rollback_has_to_clause(statement: &str) -> bool {
@@ -644,15 +691,9 @@ pub(super) fn is_rollback_to(statement: &str) -> bool {
     rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_wrap_mode(
-    query: &str,
-) -> Result<SqliteWrapMode, DbOperationError> {
-    let statements = try_split_sqlite_statements(query)?;
-    Ok(if should_auto_wrap_in_transaction(&statements) {
-        SqliteWrapMode::BeginCommit
-    } else {
-        SqliteWrapMode::None
-    })
+#[cfg(test)]
+fn sqlite_wrap_mode(query: &str) -> Result<SqliteWrapMode, DbOperationError> {
+    Ok(sqlite_statement_plan(query)?.wrap_mode())
 }
 
 fn sqlite_transaction_block(query: &str) -> String {
@@ -660,11 +701,11 @@ fn sqlite_transaction_block(query: &str) -> String {
     format!("BEGIN;\n{trimmed}\n;\nCOMMIT")
 }
 
-fn sqlite_execution_query(query: &str) -> Result<Cow<'_, str>, DbOperationError> {
-    Ok(match sqlite_wrap_mode(query)? {
-        SqliteWrapMode::BeginCommit => Cow::Owned(sqlite_transaction_block(query)),
-        SqliteWrapMode::None => Cow::Borrowed(query),
-    })
+fn sqlite_execution_query_for_plan<'query>(plan: &SqliteStatementPlan<'query>) -> Cow<'query, str> {
+    match plan.wrap_mode() {
+        SqliteWrapMode::BeginCommit => Cow::Owned(sqlite_transaction_block(plan.query())),
+        SqliteWrapMode::None => Cow::Borrowed(plan.query()),
+    }
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_probe_marker() -> String {
@@ -701,23 +742,29 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query(
-    query: &str,
+#[cfg(test)]
+fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> Result<String, DbOperationError> {
+    let plan = sqlite_statement_plan(query)?;
+    Ok(sqlite_adhoc_execution_query_for_plan(&plan, marker))
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(
+    plan: &SqliteStatementPlan<'_>,
     marker: &str,
-) -> Result<String, DbOperationError> {
-    let statements = try_split_sqlite_statements(query)?;
+) -> String {
+    let statements = plan.statements();
     if statements.is_empty() {
-        return Ok(query.to_string());
+        return plan.query().to_string();
     }
 
-    let wrap_mode = sqlite_wrap_mode(query)?;
+    let wrap_mode = plan.wrap_mode();
     let mut parts = Vec::with_capacity(statements.len() * 2 + 2);
     if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("BEGIN".to_string());
     }
     for (index, statement) in statements.iter().enumerate() {
         parts.push((*statement).to_string());
-        if is_dml_statement(statement) {
+        if plan.is_dml(index) {
             parts.push(sqlite_changes_probe(marker, index));
         }
         if statement_emits_result_set(statement) {
@@ -727,16 +774,22 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query(
     if matches!(wrap_mode, SqliteWrapMode::BeginCommit) {
         parts.push("COMMIT".to_string());
     }
-    Ok(parts.join("\n;\n"))
+    parts.join("\n;\n")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query(
-    query: &str,
-) -> Result<String, DbOperationError> {
-    let body = sqlite_execution_query(query)?.trim_end().to_string();
+#[cfg(test)]
+fn append_changes_query(query: &str) -> Result<String, DbOperationError> {
+    let plan = sqlite_statement_plan(query)?;
+    Ok(append_changes_query_for_plan(&plan))
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query_for_plan(
+    plan: &SqliteStatementPlan<'_>,
+) -> String {
+    let body = sqlite_execution_query_for_plan(plan).trim_end().to_string();
     // The standalone separator also terminates a trailing line comment before
     // appending the changes() probe.
-    Ok(format!("{body}\n;\nSELECT changes() AS affected_rows;"))
+    format!("{body}\n;\nSELECT changes() AS affected_rows;")
 }
 
 pub(super) fn dml_keyword(statement: &str) -> Option<&'static str> {
@@ -1122,7 +1175,7 @@ END";
             );
             assert_eq!(
                 classify_sqlite_statement("CREATE TABLE users(id INTEGER PRIMARY KEY)"),
-                SqliteStatementClass::Write
+                SqliteStatementClass::Ddl
             );
             assert_eq!(
                 classify_sqlite_statement("BEGIN"),
