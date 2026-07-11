@@ -426,6 +426,25 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use tokio::sync::mpsc;
+
+    use crate::cmd::cache::TtlCache;
+    use crate::cmd::completion_engine::CompletionEngine;
+    use crate::cmd::effect::Effect;
+    use crate::cmd::test_fixtures;
+    use crate::domain::WriteExecutionResult;
+    use crate::model::app_state::AppState;
+    use crate::ports::outbound::connection_store::MockConnectionStore;
+    use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
+    use crate::services::AppServices;
+    use crate::update::action::Action;
+
     use super::{epoch_days_to_ymd, resolve_export_path};
 
     mod export_path {
@@ -822,24 +841,7 @@ mod tests {
     }
 
     mod execute_access_mode {
-        use std::cell::RefCell;
-        use std::sync::Arc;
-        use std::time::Duration;
-
-        use tokio::sync::mpsc;
-
-        use crate::cmd::cache::TtlCache;
-        use crate::cmd::completion_engine::CompletionEngine;
-        use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures;
-        use crate::domain::WriteExecutionResult;
-        use crate::model::app_state::AppState;
-        use crate::ports::outbound::connection_store::MockConnectionStore;
-        use crate::ports::outbound::metadata::MockMetadataProvider;
-        use crate::ports::outbound::query_executor::MockQueryExecutor;
-        use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
-        use crate::services::AppServices;
-        use crate::update::action::Action;
+        use super::*;
 
         struct NoopRenderer;
         impl Renderer for NoopRenderer {
