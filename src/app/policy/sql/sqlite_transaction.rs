@@ -1,8 +1,4 @@
-use crate::domain::DatabaseType;
-use crate::policy::sql::statement_classifier::classify;
-use crate::policy::write::sql_risk::{
-    evaluate_sql_risk_for_database, split_statements_for_database,
-};
+use crate::policy::sql::statement_classifier::{StatementKind, first_keyword};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteTransactionPolicy {
@@ -18,20 +14,18 @@ impl SqliteTransactionPolicy {
     }
 }
 
-pub fn sqlite_transaction_policy(sql: &str) -> SqliteTransactionPolicy {
-    let statements = split_statements_for_database(DatabaseType::SQLite, sql);
-    if statements.len() < 2
-        || !statements.iter().any(|statement| {
-            !evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(statement), statement)
-                .read_only_allowed
-        })
-    {
+pub fn sqlite_transaction_policy(
+    statements: &[String],
+    statement_kinds: &[StatementKind],
+    has_write: bool,
+) -> SqliteTransactionPolicy {
+    if statements.len() < 2 || statements.len() != statement_kinds.len() || !has_write {
         return SqliteTransactionPolicy::NotNeeded;
     }
 
-    if statements
+    if statement_kinds
         .iter()
-        .any(|statement| is_transaction_control(statement))
+        .any(|kind| matches!(kind, StatementKind::Transaction))
     {
         return SqliteTransactionPolicy::UserManaged;
     }
@@ -44,63 +38,108 @@ pub fn sqlite_transaction_policy(sql: &str) -> SqliteTransactionPolicy {
     SqliteTransactionPolicy::AutoWrap
 }
 
-fn is_transaction_control(statement: &str) -> bool {
-    matches!(
-        first_keyword(statement).as_deref(),
-        Some("BEGIN" | "COMMIT" | "END" | "ROLLBACK" | "SAVEPOINT" | "RELEASE")
-    )
-}
-
-fn is_transaction_incompatible(statement: &str) -> bool {
+pub(crate) fn is_transaction_incompatible(statement: &str) -> bool {
     if first_keyword(statement).as_deref() == Some("VACUUM") {
         return true;
     }
     let Some((name, tail)) = pragma_name_and_tail(statement) else {
         return false;
     };
-    matches!(name.as_str(), "journal_mode" | "foreign_keys")
-        && (tail.contains('=') || tail.trim_start().starts_with('('))
+    matches!(name.as_str(), "journal_mode" | "foreign_keys") && pragma_has_value(tail)
 }
 
-fn first_keyword(statement: &str) -> Option<String> {
-    statement
-        .trim_start()
-        .split(|ch: char| !ch.is_ascii_alphabetic())
-        .next()
-        .filter(|keyword| !keyword.is_empty())
-        .map(str::to_ascii_uppercase)
+fn pragma_has_value(tail: &str) -> bool {
+    let tail = trim_sql_prefix(tail);
+    tail.starts_with('=') || tail.starts_with('(')
+}
+
+fn trim_sql_prefix(mut sql: &str) -> &str {
+    loop {
+        let trimmed = sql.trim_start();
+        if let Some(comment) = trimmed.strip_prefix("--") {
+            sql = comment.find('\n').map_or("", |index| &comment[index + 1..]);
+            continue;
+        }
+        if let Some(comment) = trimmed.strip_prefix("/*") {
+            sql = comment.find("*/").map_or("", |index| &comment[index + 2..]);
+            continue;
+        }
+        return trimmed;
+    }
 }
 
 fn pragma_name_and_tail(statement: &str) -> Option<(String, &str)> {
-    let trimmed = statement.trim_start();
+    let trimmed = trim_sql_prefix(statement);
     if !trimmed.get(..6)?.eq_ignore_ascii_case("PRAGMA") {
         return None;
     }
-    let tail = trimmed.get(6..)?.trim_start();
-    let name_end = tail
-        .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
-        .unwrap_or(tail.len());
-    let name = tail
-        .get(..name_end)?
-        .rsplit('.')
-        .next()?
-        .to_ascii_lowercase();
-    Some((name, tail.get(name_end..)?))
+    let tail = trim_sql_prefix(trimmed.get(6..)?);
+    let (name, rest) = match tail.as_bytes().first()? {
+        b'"' | b'\'' | b'`' => {
+            let quote = tail.as_bytes()[0] as char;
+            let end = tail[1..].find(quote)? + 1;
+            (tail.get(1..end)?, tail.get(end + 1..)?)
+        }
+        b'[' => {
+            let end = tail.find(']')?;
+            (tail.get(1..end)?, tail.get(end + 1..)?)
+        }
+        _ => {
+            let end = tail
+                .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
+                .unwrap_or(tail.len());
+            (tail.get(..end)?, tail.get(end..)?)
+        }
+    };
+    Some((name.rsplit('.').next()?.to_ascii_lowercase(), rest))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::DatabaseType;
+    use crate::policy::sql::statement_classifier::classify;
+    use crate::policy::write::sql_risk::split_statements_for_database;
+
+    fn policy_for(sql: &str) -> SqliteTransactionPolicy {
+        let statements = split_statements_for_database(DatabaseType::SQLite, sql);
+        let kinds: Vec<_> = statements
+            .iter()
+            .map(|statement| classify(statement))
+            .collect();
+        sqlite_transaction_policy(&statements, &kinds, true)
+    }
 
     #[test]
     fn incompatible_setters_require_an_acknowledgement() {
         assert_eq!(
-            sqlite_transaction_policy("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)"),
+            policy_for("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)"),
             SqliteTransactionPolicy::IncompatibleStatement
         );
         assert_eq!(
-            sqlite_transaction_policy("PRAGMA journal_mode(WAL); CREATE TABLE users(id INTEGER)"),
+            policy_for("PRAGMA journal_mode(WAL); CREATE TABLE users(id INTEGER)"),
             SqliteTransactionPolicy::IncompatibleStatement
         );
+    }
+
+    #[test]
+    fn comments_and_quoted_pragma_names_are_classified() {
+        for sql in [
+            "-- setup\nPRAGMA foreign_keys=OFF; CREATE TABLE users(id INTEGER)",
+            "PRAGMA \"foreign_keys\"=OFF; CREATE TABLE users(id INTEGER)",
+            "PRAGMA [foreign_keys](OFF); CREATE TABLE users(id INTEGER)",
+        ] {
+            assert_eq!(
+                policy_for(sql),
+                SqliteTransactionPolicy::IncompatibleStatement,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn query_pragma_is_not_transaction_incompatible() {
+        assert!(!is_transaction_incompatible("PRAGMA foreign_keys"));
+        assert!(!is_transaction_incompatible("PRAGMA journal_mode"));
     }
 }

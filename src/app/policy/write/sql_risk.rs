@@ -1,5 +1,8 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
+use crate::policy::sql::sqlite_transaction::{
+    SqliteTransactionPolicy, is_transaction_incompatible, sqlite_transaction_policy,
+};
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
     extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
@@ -489,50 +492,80 @@ pub fn evaluate_multi_statement_for_database(
         };
     }
 
-    let mut decisions: Vec<(String, SqlRiskDecision)> = Vec::new();
+    let mut decisions: Vec<(String, StatementKind, SqlRiskDecision)> = Vec::new();
 
     for stmt in &statements {
         let kind = classify(stmt);
         let decision = evaluate_sql_risk_for_database(database_type, &kind, stmt);
-        decisions.push((stmt.clone(), decision));
+        decisions.push((stmt.clone(), kind, decision));
     }
 
     let has_table_name_input = decisions
         .iter()
-        .any(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+        .any(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
     let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
-        .filter_map(|(_, d)| match &d.confirmation {
+        .filter_map(|(_, _, d)| match &d.confirmation {
             ConfirmationType::Acknowledge { reason, .. } => Some(reason),
             _ => None,
         })
         .collect();
     let has_acknowledge = !ack_reasons.is_empty();
     let mixed_ack_reasons = ack_reasons.windows(2).any(|w| w[0] != w[1]);
+    let statement_kinds: Vec<_> = decisions.iter().map(|(_, kind, _)| kind.clone()).collect();
+    let transaction_policy = if database_type == DatabaseType::SQLite {
+        sqlite_transaction_policy(
+            &statements,
+            &statement_kinds,
+            decisions.iter().any(|(_, _, d)| !d.read_only_allowed),
+        )
+    } else {
+        SqliteTransactionPolicy::NotNeeded
+    };
 
     // One dialog can only carry one consent: a typed-name confirmation must not
     // silently approve statements that need their own acknowledgment, and one
     // acknowledgment must not cover statements flagged for a different reason
     // (the dialog would hide the other reason from the user).
-    if (has_table_name_input && has_acknowledge) || mixed_ack_reasons {
+    let has_non_transaction_acknowledge = transaction_policy.requires_acknowledgement()
+        && decisions
+            .iter()
+            .enumerate()
+            .any(|(index, (_, _, decision))| {
+                matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
+                    && !is_transaction_incompatible(&statements[index])
+            });
+    if (has_table_name_input && has_acknowledge)
+        || mixed_ack_reasons
+        || has_non_transaction_acknowledge
+    {
         return MultiStatementDecision::Block {
             reason: "Statements require different confirmations; run them separately".to_string(),
         };
     }
 
-    let max_risk = decisions.iter().map(|(_, d)| d.risk_level).max().unwrap();
-    let confirmation = if has_table_name_input {
+    let max_risk = decisions
+        .iter()
+        .map(|(_, _, d)| d.risk_level)
+        .max()
+        .unwrap();
+    let confirmation = if transaction_policy.requires_acknowledgement() {
+        ConfirmationType::Acknowledge {
+            reason: AcknowledgeReason::NonAtomicTransaction,
+            label: "SQLite transaction".to_string(),
+        }
+    } else if has_table_name_input {
         decisions
             .iter()
-            .find(|(_, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
-            .map(|(_, d)| d.confirmation.clone())
+            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+            .map(|(_, _, d)| d.confirmation.clone())
             .unwrap()
     } else if has_acknowledge {
         // Mixed reasons are blocked above; the first Acknowledge represents all.
         decisions
             .iter()
-            .find(|(_, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
-            .map(|(_, d)| d.confirmation.clone())
+            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
+            .map(|(_, _, d)| d.confirmation.clone())
             .unwrap()
     } else {
         ConfirmationType::Immediate
@@ -543,7 +576,7 @@ pub fn evaluate_multi_statement_for_database(
         risk: SqlRiskDecision {
             risk_level: max_risk,
             confirmation,
-            read_only_allowed: decisions.iter().all(|(_, d)| d.read_only_allowed),
+            read_only_allowed: decisions.iter().all(|(_, _, d)| d.read_only_allowed),
         },
     }
 }
@@ -1563,6 +1596,38 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
                 }
                 _ => panic!("expected Allow"),
             }
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_requires_non_atomic_acknowledgement() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
+            );
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::NonAtomicTransaction,
+                            ref label,
+                        } if label == "SQLite transaction"
+                    ));
+                    assert!(!risk.read_only_allowed);
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_and_typed_drop_are_blocked_together() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "PRAGMA foreign_keys = OFF; DROP TABLE users",
+            );
+
+            assert!(matches!(result, MultiStatementDecision::Block { .. }));
         }
 
         #[test]

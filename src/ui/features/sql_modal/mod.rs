@@ -80,6 +80,10 @@ impl SqlModal {
                             " SQL \u{2500}\u{2500} \u{26a0} HIGH ",
                             theme.semantic.status.error,
                         ),
+                        AcknowledgeReason::NonAtomicTransaction => (
+                            " SQL \u{2500}\u{2500} \u{26a0} NON-ATOMIC ",
+                            theme.semantic.status.warning,
+                        ),
                     };
                     render_modal_with_border_color(
                         frame,
