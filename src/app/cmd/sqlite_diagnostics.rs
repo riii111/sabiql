@@ -13,15 +13,11 @@ pub fn run(
     provider: &Arc<dyn SqliteDiagnosticsProvider>,
 ) {
     match effect {
-        Effect::FetchSqliteDiagnosticsCore {
-            dsn,
-            run_id,
-            read_only,
-        } => {
+        Effect::FetchSqliteDiagnosticsCore { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             tokio::spawn(async move {
-                let action = match provider.fetch_diagnostics_core(&dsn, read_only).await {
+                let action = match provider.fetch_diagnostics_core(&dsn).await {
                     Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
                         dsn,
                         run_id,
@@ -38,15 +34,11 @@ pub fn run(
                 let _ = action_tx.send(action).await;
             });
         }
-        Effect::FetchSqliteDiagnosticsQuickCheck {
-            dsn,
-            run_id,
-            read_only,
-        } => {
+        Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             tokio::spawn(async move {
-                let quick_check = provider.fetch_quick_check(&dsn, read_only).await;
+                let quick_check = provider.fetch_quick_check(&dsn).await;
                 let _ = action_tx
                     .send(Action::SqliteDiagnosticsQuickCheckLoaded {
                         dsn,
@@ -72,7 +64,7 @@ mod tests {
     async fn dispatches_core_snapshot_on_success() {
         let (tx, mut rx) = mpsc::channel(1);
         let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider.expect_fetch_diagnostics_core().returning(|_, _| {
+        provider.expect_fetch_diagnostics_core().returning(|_| {
             Ok(SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("3.45.0"),
                 ..Default::default()
@@ -84,7 +76,6 @@ mod tests {
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
-                read_only: true,
             },
             &tx,
             &provider,
@@ -106,14 +97,13 @@ mod tests {
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider
             .expect_fetch_quick_check()
-            .returning(|_, _| DiagnosticField::ok("ok"));
+            .returning(|_| DiagnosticField::ok("ok"));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
         run(
             Effect::FetchSqliteDiagnosticsQuickCheck {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
-                read_only: true,
             },
             &tx,
             &provider,
@@ -135,14 +125,13 @@ mod tests {
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider
             .expect_fetch_diagnostics_core()
-            .returning(|_, _| Err(DbOperationError::QueryFailed("boom".to_string())));
+            .returning(|_| Err(DbOperationError::QueryFailed("boom".to_string())));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
         run(
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
-                read_only: true,
             },
             &tx,
             &provider,

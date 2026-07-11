@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{
-    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
+    SqlDialect,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
@@ -71,7 +72,6 @@ impl QueryExecutor for MySqlAdapter {
         _table: &str,
         _limit: usize,
         _offset: usize,
-        _read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
@@ -82,7 +82,7 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _read_only: bool,
+        _access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
@@ -93,19 +93,14 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _read_only: bool,
+        _access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
 
-    async fn count_query_rows(
-        &self,
-        _dsn: &str,
-        _query: &str,
-        _read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    async fn count_query_rows(&self, _dsn: &str, _query: &str) -> Result<usize, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
@@ -116,7 +111,6 @@ impl QueryExecutor for MySqlAdapter {
         _dsn: &str,
         _query: &str,
         _path: &std::path::Path,
-        _read_only: bool,
     ) -> Result<usize, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),

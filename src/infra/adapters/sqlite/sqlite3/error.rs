@@ -1,4 +1,18 @@
-use crate::app::ports::outbound::DbOperationError;
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+
+pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
+    command: DatabaseCli,
+    error: std::io::Error,
+) -> DbOperationError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        DbOperationError::CommandNotFound {
+            command,
+            details: error.to_string(),
+        }
+    } else {
+        DbOperationError::QueryFailed(error.to_string())
+    }
+}
 
 pub(in crate::adapters::sqlite) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
@@ -159,5 +173,34 @@ mod tests {
                 DbOperationError::QueryFailed(details) if details.is_empty()
             ));
         }
+    }
+
+    #[test]
+    fn missing_sqlite_cli_has_command_specific_details() {
+        let error = classify_cli_spawn_error(
+            DatabaseCli::Sqlite3,
+            std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory"),
+        );
+
+        assert!(matches!(
+            error,
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::Sqlite3,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn non_missing_sqlite_cli_error_is_query_failed() {
+        let error = classify_cli_spawn_error(
+            DatabaseCli::Sqlite3,
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
+        );
+
+        assert!(matches!(
+            error,
+            DbOperationError::QueryFailed(details) if details == "permission denied"
+        ));
     }
 }

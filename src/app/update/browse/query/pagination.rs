@@ -74,7 +74,6 @@ fn dispatch_cached_csv_export(
 }
 
 fn dispatch_rerunnable_csv_export(
-    state: &AppState,
     dsn: String,
     run_id: u64,
     export_query: String,
@@ -88,7 +87,6 @@ fn dispatch_rerunnable_csv_export(
         count_query,
         export_query,
         file_name,
-        read_only: state.session.is_read_only(),
     }])
 }
 
@@ -122,9 +120,7 @@ pub fn reduce_pagination(
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
                         let run_id = state.query.begin_running(now);
-                        return dispatch_rerunnable_csv_export(
-                            state, dsn, run_id, query, file_name,
-                        );
+                        return dispatch_rerunnable_csv_export(dsn, run_id, query, file_name);
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
                         let columns = result.columns.clone();
@@ -144,7 +140,7 @@ pub fn reduce_pagination(
             }
 
             let run_id = state.query.begin_running(now);
-            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+            dispatch_rerunnable_csv_export(dsn, run_id, export_query, file_name)
         }
 
         Action::CsvExportRowsCounted {
@@ -188,7 +184,6 @@ pub fn reduce_pagination(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.session.is_read_only(),
                 }])
             }
         }
@@ -210,7 +205,6 @@ pub fn reduce_pagination(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.session.is_read_only(),
             }])
         }
 
