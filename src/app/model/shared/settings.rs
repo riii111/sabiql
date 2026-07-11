@@ -242,14 +242,11 @@ impl SettingsState {
             !self.selected_low_scroll.allow_horizontal_scroll;
     }
 
-    /// Cycle `max_lines_per_row` forward through the preset ladder, wrapping at
-    /// the end back to "no limit".
     pub fn cycle_low_scroll_max_lines_next(&mut self) {
         self.selected_low_scroll.max_lines_per_row =
             next_max_lines(self.selected_low_scroll.max_lines_per_row);
     }
 
-    /// Cycle `max_lines_per_row` backward.
     pub fn cycle_low_scroll_max_lines_prev(&mut self) {
         self.selected_low_scroll.max_lines_per_row =
             prev_max_lines(self.selected_low_scroll.max_lines_per_row);
@@ -438,8 +435,6 @@ fn normalize_browser(browser: Option<String>) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-/// Preset ladder for `max_lines_per_row`. `None` means "no limit" (rows grow
-/// unbounded). Cycling wraps between the two ends.
 const MAX_LINES_LADDER: [Option<u16>; 6] = [None, Some(3), Some(5), Some(10), Some(20), Some(50)];
 
 fn next_max_lines(current: Option<u16>) -> Option<u16> {

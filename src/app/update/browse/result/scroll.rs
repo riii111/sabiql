@@ -16,8 +16,6 @@ pub(super) fn result_col_count(state: &AppState) -> usize {
 }
 
 pub(super) fn result_max_scroll(state: &AppState) -> usize {
-    // Low Scroll Mode rows have variable line heights, so the maximum offset is
-    // computed in lines (not row counts) from the last-measured layout.
     if let Some(layout) = low_scroll_layout(state) {
         return layout.max_row_offset(state.result_visible_rows());
     }
@@ -25,9 +23,6 @@ pub(super) fn result_max_scroll(state: &AppState) -> usize {
     result_row_count(state).saturating_sub(visible)
 }
 
-/// The measured layout for the result pane while Low Scroll Mode wraps content,
-/// or `None` when the normal row-count math applies. An empty layout (nothing
-/// measured yet) also falls back to the normal path.
 fn low_scroll_layout(state: &AppState) -> Option<&MeasuredLowScrollLayout> {
     state
         .ui
@@ -42,8 +37,6 @@ fn ensure_row_visible(state: &mut AppState) {
         if visible == 0 {
             return;
         }
-        // Low Scroll Mode: rows wrap to multiple terminal lines, so keeping the
-        // selected row on screen is line-based, not row-count-based.
         let offset = state.result_interaction.scroll_offset;
         if let Some(new_offset) =
             low_scroll_layout(state).map(|layout| layout.ensure_row_visible(offset, row, visible))
@@ -335,28 +328,19 @@ mod tests {
             );
         }
 
-        /// Regression: in Low Scroll Mode each row wraps to several terminal
-        /// lines, so moving the selection past the last visible row must scroll
-        /// the viewport using line-based (not row-count) math. Previously the
-        /// reducer treated `result_visible_rows()` (a line budget) as a row
-        /// count, so the offset never advanced and the selection got "stuck".
         #[test]
         fn moving_selection_down_past_bottom_scrolls_viewport() {
-            // pane_height 9 -> visible line budget = 9 - 5 = 4.
             let mut state = state_with_result_rows(20, 9);
-            // Every row is 2 lines tall: only 2 rows fit in a 4-line pane.
             state.ui.result_low_scroll_layout = Some(MeasuredLowScrollLayout::new(
                 vec![2; 20],
                 LowScrollLayoutKey::default(),
             ));
             state.result_interaction.activate_cell(0, 0);
 
-            // Rows 0 and 1 are on screen; moving to row 1 keeps the offset.
             down_line(&mut state);
             assert_eq!(state.result_interaction.selection().row(), Some(1));
             assert_eq!(state.result_interaction.scroll_offset, 0);
 
-            // Moving to row 2 pushes it below the pane, so the viewport scrolls.
             down_line(&mut state);
             assert_eq!(state.result_interaction.selection().row(), Some(2));
             assert_eq!(state.result_interaction.scroll_offset, 1);
@@ -366,14 +350,11 @@ mod tests {
             assert_eq!(state.result_interaction.scroll_offset, 2);
         }
 
-        /// Without a measured layout (mode off / nothing measured yet) the
-        /// reducer keeps the normal row-count visibility math.
         #[test]
         fn falls_back_to_row_count_math_without_layout() {
-            let mut state = state_with_result_rows(20, 9); // visible = 4
+            let mut state = state_with_result_rows(20, 9);
             state.result_interaction.activate_cell(3, 0);
 
-            // Row 4 is the first past a 4-row viewport: offset advances by one.
             down_line(&mut state);
             assert_eq!(state.result_interaction.selection().row(), Some(4));
             assert_eq!(state.result_interaction.scroll_offset, 1);

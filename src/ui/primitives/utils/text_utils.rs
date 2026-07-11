@@ -64,15 +64,7 @@ pub fn wrapped_line_count(text: &str, width: u16) -> u16 {
     })
 }
 
-/// Wrap `text` into display-width-bounded lines, preserving explicit
-/// newlines.
-///
-/// Wrapping is greedy by display cells (not words) so columnar data and JSON
-/// fill the cell predictably. Each returned line is at most `width` display
-/// cells wide.
-///
-/// Returns at least one line per input so the cell always occupies a row even
-/// when empty.
+/// Wrap `text` at display-cell boundaries, preserving explicit newlines.
 #[must_use]
 pub fn wrap_text_lines(text: &str, width: u16) -> Vec<String> {
     use unicode_width::UnicodeWidthChar;

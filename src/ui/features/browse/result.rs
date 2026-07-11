@@ -260,33 +260,15 @@ impl ResultPane {
             )
         };
 
-        // Low Scroll Mode: when enabled and the result would overflow
-        // horizontally, shrink columns to fit and wrap cell text vertically
-        // instead of scrolling.
-        //
-        // `ideal_widths` above is deliberately based on each cell's first line
-        // only (the normal view truncates to one line anyway). Low Scroll Mode
-        // wraps the *whole* cell, so a column's width must be judged by its
-        // widest line overall — otherwise multi-line content whose first line
-        // is short (e.g. `jsonb_pretty()` output starting with `{`) gets
-        // squeezed into a near-zero-width column instead of one sized to fit
-        // its actual content.
+        // `ideal_widths` is based on first lines only (normal view truncates to
+        // one line). Low Scroll wraps the full cell, so width must account for
+        // the widest line — otherwise jsonb output starting with `{` gets squeezed.
         let low_scroll_ideal_widths = low_scroll_enabled
             .then(|| calculate_low_scroll_ideal_widths(&result.columns, &result.rows));
         let low_scroll_widths = low_scroll_ideal_widths.as_deref().unwrap_or(ideal_widths);
 
-        // Low Scroll Mode, once toggled on (`L`), always wraps multi-line cell
-        // content vertically instead of clipping it to a single line — that's
-        // true whether or not horizontal scrolling is also allowed. The
-        // "Allow horizontal scroll" setting only decides how column *width* is
-        // handled: shrink every column to fit the pane (no horizontal
-        // scrolling), or keep natural widths and let the user scroll
-        // horizontally like the normal table.
         let effective = effective_low_scroll(low_scroll, low_scroll_enabled);
         if low_scroll_enabled {
-            // Per-row heights only change with the result, the pane width, or a
-            // Low Scroll setting; reuse the previous frame's measurement when
-            // this key matches so plain scrolling never re-measures every row.
             let low_scroll_key = low_scroll_layout::LowScrollLayoutKey {
                 result_generation,
                 inner_width: inner.width,
@@ -397,7 +379,6 @@ impl ResultPane {
             .map(|(abs_row_idx, row)| {
                 let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
-                // None = no flash; Some(None) = full row; Some(Some(c)) = cell c
                 let flash_scope = yank_flash
                     .filter(|f| yank_flash_active && f.row == abs_row_idx)
                     .map(|f| f.col);
@@ -486,7 +467,6 @@ impl ResultPane {
 
         frame.render_widget(table, inner);
 
-        // Scroll indicators (pass inner area, not outer with border)
         let total_rows = result.rows.len();
         let total_cols = result.columns.len();
 
@@ -556,14 +536,9 @@ impl ResultPane {
         usize,
         low_scroll_layout::MeasuredLowScrollLayout,
     ) {
-        // Column widths are cheap (one pass over the columns); only the per-row
-        // heights are O(rows), so those are what the cache reuses.
         let column_widths = low_scroll_layout::shrink_columns_to_fit(ideal_widths, inner.width);
 
-        // Per-row line heights for every row, handed back to the scroll reducer
-        // so it can keep the selected row on screen with line-based math. Reused
-        // across frames when the layout key is unchanged (the common case while
-        // scrolling), so a multi-million-row result is measured only once.
+        // Reuse previous frame's layout when key matches.
         let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
             result
                 .rows
@@ -599,16 +574,9 @@ impl ResultPane {
         let active_cell = selection.cell();
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
         let mut corrected_cell_vertical_offset = 0usize;
-
-        // Visible row budget in terminal lines. Because rows have variable
-        // heights, we walk rows from the scroll offset accumulating height
-        // until the pane is full.
         let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
-        let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
+        let mut visible: Vec<(usize, usize)> = Vec::new();
         let mut used = 0usize;
-        // Start at `scroll_offset` (not row 0) so this is O(visible rows), not
-        // O(scroll_offset) — otherwise scrolling deep into a huge result would
-        // walk millions of rows every frame just to skip them.
         let start = scroll_offset.min(row_heights.len());
         for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
             let abs_idx = start + rel_idx;
@@ -650,8 +618,6 @@ impl ResultPane {
                         let is_editing =
                             editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == col_idx);
                         let mut cell = if is_editing {
-                            // Editing falls back to a single-line view to keep
-                            // the cursor math consistent with the normal path.
                             let e = editing_cell.expect("checked above");
                             let display = truncate_cell(e.draft, col_width as usize);
                             Cell::from(display).style(
@@ -716,7 +682,6 @@ impl ResultPane {
             .style(Style::default().fg(theme.semantic.text.primary));
         frame.render_widget(table, inner);
 
-        // Vertical scroll only; no horizontal scrollbar in low-scroll mode.
         use crate::primitives::atoms::scroll_indicator::{
             VerticalScrollParams, render_vertical_scroll_indicator_bar,
         };
@@ -739,10 +704,6 @@ impl ResultPane {
         )
     }
 
-    /// Render the result table in Low Scroll Mode with horizontal scrolling
-    /// allowed: columns keep their natural (unshrunk) widths and the user can
-    /// scroll horizontally like the normal table, but cell text still wraps
-    /// vertically and rows expand to fit whatever is currently visible.
     #[allow(
         clippy::too_many_arguments,
         reason = "mirrors the normal render_table signature"
@@ -773,10 +734,7 @@ impl ResultPane {
         let plan = ViewportPlan::calculate(ideal_widths, min_widths, inner.width);
         let clamped_offset = horizontal_offset.min(plan.max_offset);
 
-        // Per-row line heights for every row (computed against the natural
-        // widths every column keeps in this path), handed back to the scroll
-        // reducer for line-based visibility math. Reused across frames when the
-        // layout key is unchanged so scrolling never re-measures every row.
+        // Reuse previous frame's layout when key matches.
         let measured_layout = measured_low_scroll_layout(stored_low_scroll, key, || {
             result
                 .rows
@@ -831,15 +789,9 @@ impl ResultPane {
         let active_cell = selection.cell();
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
         let mut corrected_cell_vertical_offset = 0usize;
-
-        // Row height is computed from every column in the row (via
-        // `ideal_widths`, which every column keeps in this render path since
-        // nothing is shrunk to fit) so it stays stable as the user scrolls
-        // horizontally past a taller off-screen cell.
         let line_budget = inner.height.saturating_sub(RESULT_INNER_OVERHEAD) as usize;
-        let mut visible: Vec<(usize, usize)> = Vec::new(); // (abs_row_idx, height)
+        let mut visible: Vec<(usize, usize)> = Vec::new();
         let mut used = 0usize;
-        // Start at `scroll_offset` so this is O(visible rows), not O(offset).
         let start = scroll_offset.min(row_heights.len());
         for (rel_idx, &h16) in row_heights[start..].iter().enumerate() {
             let abs_idx = start + rel_idx;
@@ -1004,14 +956,11 @@ fn cell_edit_line_with_cursor(
 ) -> Line<'static> {
     let total = text.chars().count();
 
-    // For narrow columns, try to keep cursor visible
     if max_chars == 0 {
         return Line::from(vec![]);
     }
 
-    // Determine viewport window to keep cursor visible
     let view_start = if cursor >= total {
-        // Cursor at end: need space for block cursor
         let effective = max_chars.saturating_sub(1);
         total.saturating_sub(effective)
     } else if cursor < max_chars {
@@ -1213,7 +1162,6 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // "name" = 4 chars + 2 padding = 6
             assert_eq!(result[0], 6);
         }
 
@@ -1228,9 +1176,7 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 2);
-            // id: max(2, 1) + 2 = 4
             assert_eq!(result[0], 4);
-            // name: max(4, 5) + 2 = 7
             assert_eq!(result[1], 7);
         }
 
@@ -1243,7 +1189,6 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // Should be capped at MAX_COL_WIDTH (200)
             assert_eq!(result[0], 200);
         }
 
@@ -1255,7 +1200,6 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // "日本語テスト" = 6 chars × 2 cells + 2 padding = 14
             assert_eq!(result[0], 14);
         }
 
@@ -1269,7 +1213,6 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 1);
-            // "short" = 5 chars, max(4, 5) + 2 = 7
             assert_eq!(result[0], 7);
         }
 
@@ -1292,11 +1235,8 @@ mod tests {
             let result = calculate_ideal_widths(&headers, &rows);
 
             assert_eq!(result.len(), 3);
-            // id: max(2, 2) + 2 = 4
             assert_eq!(result[0], 4);
-            // name: max(4, 13) + 2 = 15
             assert_eq!(result[1], 15);
-            // email: max(5, 17) + 2 = 19
             assert_eq!(result[2], 19);
         }
     }
@@ -1306,9 +1246,6 @@ mod tests {
 
         #[test]
         fn considers_widest_line_not_just_first() {
-            // Mirrors jsonb_pretty() output: first line is a lone "{" but a
-            // later line is much wider. The normal ideal-width calc would
-            // size this column at 3-4 cells; low-scroll must not.
             let headers = vec!["data".to_string()];
             let rows = vec![vec![
                 "{\n    \"name\": \"a very long value here\"\n}".to_string(),
@@ -1318,7 +1255,6 @@ mod tests {
             let low_scroll = calculate_low_scroll_ideal_widths(&headers, &rows);
 
             assert!(low_scroll[0] > ideal[0]);
-            // widest line is `    "name": "a very long value here"` = 36 chars + 2 padding
             assert_eq!(low_scroll[0], 38);
         }
     }

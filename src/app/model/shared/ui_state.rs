@@ -196,20 +196,8 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     pub result_pane_height: u16,
-    /// Live Low Scroll Mode settings applied to the result pane. `enabled` is
-    /// the runtime on/off (toggled with `L`); the inner fields are the
-    /// persisted configuration.
     pub low_scroll: LowScrollSettings,
-    /// Runtime toggle: when true, Low Scroll Mode is active for the result
-    /// pane (overrides the column-width/scroll viewport). Separate from the
-    /// persisted config so the user can flip it instantly without saving.
     pub low_scroll_enabled: bool,
-    /// Per-row rendered line heights measured by the renderer during the
-    /// previous draw while Low Scroll Mode is active, or `None` when the mode
-    /// is off. Lets the scroll reducer keep the selected row visible with
-    /// line-based math (rows have variable heights) instead of the row-count
-    /// math used by the normal table. Mirrors `result_viewport_plan` in that it
-    /// reflects the previous frame.
     pub result_low_scroll_layout: Option<MeasuredLowScrollLayout>,
     pub jsonb_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
@@ -247,15 +235,10 @@ impl UiState {
         self.theme_id = theme_id;
     }
 
-    /// The effective Low Scroll settings for the result pane: the persisted
-    /// config, but only meaningful when the runtime toggle is on.
     pub fn effective_low_scroll(&self) -> LowScrollSettings {
         if self.low_scroll_enabled {
             self.low_scroll
         } else {
-            // When the runtime toggle is off, behave as the default
-            // (allow-horizontal-scroll) regardless of saved config so the
-            // viewport math is unaffected.
             LowScrollSettings {
                 allow_horizontal_scroll: true,
                 max_lines_per_row: self.low_scroll.max_lines_per_row,
