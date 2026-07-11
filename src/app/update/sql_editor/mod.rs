@@ -328,7 +328,7 @@ mod tests {
         fn sqlite_incompatible_transaction_enters_non_atomic_acknowledgement() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content(
-                "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)".to_string(),
+                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)".to_string(),
             );
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
 

@@ -6,11 +6,16 @@ pub enum SqliteTransactionPolicy {
     NotNeeded,
     UserManaged,
     IncompatibleStatement,
+    ClassificationMismatch,
 }
 
 impl SqliteTransactionPolicy {
     pub fn requires_acknowledgement(self) -> bool {
         matches!(self, Self::IncompatibleStatement)
+    }
+
+    pub fn is_invalid(self) -> bool {
+        matches!(self, Self::ClassificationMismatch)
     }
 }
 
@@ -19,7 +24,10 @@ pub fn sqlite_transaction_policy(
     statement_kinds: &[StatementKind],
     has_write: bool,
 ) -> SqliteTransactionPolicy {
-    if statements.len() < 2 || statements.len() != statement_kinds.len() || !has_write {
+    if statements.len() != statement_kinds.len() {
+        return SqliteTransactionPolicy::ClassificationMismatch;
+    }
+    if statements.len() < 2 || !has_write {
         return SqliteTransactionPolicy::NotNeeded;
     }
 
@@ -141,5 +149,14 @@ mod tests {
     fn query_pragma_is_not_transaction_incompatible() {
         assert!(!is_transaction_incompatible("PRAGMA foreign_keys"));
         assert!(!is_transaction_incompatible("PRAGMA journal_mode"));
+    }
+
+    #[test]
+    fn classification_mismatch_is_not_treated_as_not_needed() {
+        let statements = vec!["INSERT INTO users(id) VALUES (1)".to_string()];
+        assert_eq!(
+            sqlite_transaction_policy(&statements, &[], true),
+            SqliteTransactionPolicy::ClassificationMismatch
+        );
     }
 }

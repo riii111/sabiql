@@ -523,6 +523,12 @@ pub fn evaluate_multi_statement_for_database(
         SqliteTransactionPolicy::NotNeeded
     };
 
+    if transaction_policy.is_invalid() {
+        return MultiStatementDecision::Block {
+            reason: "SQLite transaction policy could not classify all statements".to_string(),
+        };
+    }
+
     // One dialog can only carry one consent: a typed-name confirmation must not
     // silently approve statements that need their own acknowledgment, and one
     // acknowledgment must not cover statements flagged for a different reason
@@ -549,7 +555,7 @@ pub fn evaluate_multi_statement_for_database(
         .map(|(_, _, d)| d.risk_level)
         .max()
         .unwrap();
-    let confirmation = if transaction_policy.requires_acknowledgement() {
+    let confirmation = if transaction_policy.requires_acknowledgement() && !has_acknowledge {
         ConfirmationType::Acknowledge {
             reason: AcknowledgeReason::NonAtomicTransaction,
             label: "SQLite transaction".to_string(),
@@ -1602,7 +1608,7 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
         fn sqlite_incompatible_transaction_requires_non_atomic_acknowledgement() {
             let result = evaluate_multi_statement_for_database(
                 DatabaseType::SQLite,
-                "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
+                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)",
             );
 
             match result {
@@ -1615,6 +1621,27 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
                         } if label == "SQLite transaction"
                     ));
                     assert!(!risk.read_only_allowed);
+                }
+                _ => panic!("expected Allow"),
+            }
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_preserves_high_risk_acknowledgement() {
+            let result = evaluate_multi_statement_for_database(
+                DatabaseType::SQLite,
+                "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
+            );
+
+            match result {
+                MultiStatementDecision::Allow { risk, .. } => {
+                    assert!(matches!(
+                        risk.confirmation,
+                        ConfirmationType::Acknowledge {
+                            reason: AcknowledgeReason::TargetNameUnavailable,
+                            ref label,
+                        } if label == "PRAGMA"
+                    ));
                 }
                 _ => panic!("expected Allow"),
             }
