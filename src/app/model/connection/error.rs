@@ -4,6 +4,7 @@ use crate::ports::outbound::DbOperationError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
     CliNotFound,
+    SqliteCliNotFound,
     HostUnreachable,
     AuthFailed,
     DatabaseNotFound,
@@ -71,6 +72,7 @@ impl ConnectionErrorKind {
     pub fn summary(self) -> &'static str {
         match self {
             Self::CliNotFound => "Database CLI not found",
+            Self::SqliteCliNotFound => "sqlite3 not found",
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
             Self::DatabaseNotFound => "Database does not exist",
@@ -91,6 +93,7 @@ impl ConnectionErrorKind {
     pub fn hint(self) -> &'static str {
         match self {
             Self::CliNotFound => "Install the database CLI (e.g. psql) and add it to PATH",
+            Self::SqliteCliNotFound => "Install sqlite3 and add it to PATH",
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
             Self::DatabaseNotFound => "Check database name",
@@ -148,6 +151,9 @@ impl ConnectionErrorInfo {
     pub fn from_db_operation_error(error: &DbOperationError) -> Self {
         let raw_details = error.raw_details().into_owned();
         let kind = match error {
+            DbOperationError::CommandNotFound(details) if details.starts_with("sqlite3:") => {
+                ConnectionErrorKind::SqliteCliNotFound
+            }
             DbOperationError::CommandNotFound(_) => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
@@ -278,6 +284,7 @@ mod tests {
 
         #[rstest]
         #[case(ConnectionErrorKind::CliNotFound)]
+        #[case(ConnectionErrorKind::SqliteCliNotFound)]
         #[case(ConnectionErrorKind::HostUnreachable)]
         #[case(ConnectionErrorKind::AuthFailed)]
         #[case(ConnectionErrorKind::DatabaseNotFound)]
@@ -345,6 +352,18 @@ mod tests {
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteFileNotFound);
             assert_eq!(info.summary(), "SQLite database file not found");
+        }
+
+        #[test]
+        fn from_db_operation_error_classifies_missing_sqlite_cli() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::CommandNotFound(
+                    "sqlite3: No such file or directory".to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::SqliteCliNotFound);
+            assert_eq!(info.summary(), "sqlite3 not found");
+            assert_eq!(info.hint(), "Install sqlite3 and add it to PATH");
         }
 
         #[rstest]

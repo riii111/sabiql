@@ -60,6 +60,9 @@ impl DbOperationError {
             Self::EmptyResponse(_) => "Database returned an empty response",
             Self::CsvParse(_) => "Failed to parse database CSV output",
             Self::CommandTagParseFailed(_) => "Failed to parse database command tag",
+            Self::CommandNotFound(details) if details.starts_with("sqlite3:") => {
+                "sqlite3 not found"
+            }
             Self::CommandNotFound(_) => "Database CLI not found",
             Self::Timeout(_) => "Operation timed out",
             Self::Canceled(_) => "Operation canceled",
@@ -88,6 +91,9 @@ impl DbOperationError {
             Self::EmptyResponse(_) => "Retry the operation and inspect the command output",
             Self::CsvParse(_) => "Check whether the adapter returned malformed CSV",
             Self::CommandTagParseFailed(_) => "Check whether the command output format changed",
+            Self::CommandNotFound(details) if details.starts_with("sqlite3:") => {
+                "Install sqlite3 and add it to PATH"
+            }
             Self::CommandNotFound(_) => "Install the database client and add it to PATH",
             Self::Timeout(_) => "Retry the operation or increase the timeout",
             Self::Canceled(_) => "Retry the operation if needed",
@@ -245,6 +251,15 @@ mod tests {
 
     mod user_messages {
         use super::*;
+
+        #[test]
+        fn sqlite_cli_not_found_has_sqlite_specific_guidance() {
+            let error =
+                DbOperationError::CommandNotFound("sqlite3: No such file or directory".to_string());
+
+            assert_eq!(error.summary(), "sqlite3 not found");
+            assert_eq!(error.hint(), "Install sqlite3 and add it to PATH");
+        }
 
         #[test]
         fn actionable_message_uses_summary_and_hint() {

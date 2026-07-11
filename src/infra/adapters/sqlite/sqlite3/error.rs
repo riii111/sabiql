@@ -1,5 +1,15 @@
 use crate::app::ports::outbound::DbOperationError;
 
+pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
+    error: std::io::Error,
+) -> DbOperationError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        DbOperationError::CommandNotFound(format!("sqlite3: {error}"))
+    } else {
+        DbOperationError::QueryFailed(error.to_string())
+    }
+}
+
 pub(in crate::adapters::sqlite) fn classify_query_error(stderr: &str) -> DbOperationError {
     let trimmed = stderr.trim();
     let Some(details) = (!trimmed.is_empty()).then_some(trimmed) else {
@@ -159,5 +169,18 @@ mod tests {
                 DbOperationError::QueryFailed(details) if details.is_empty()
             ));
         }
+    }
+
+    #[test]
+    fn missing_sqlite_cli_has_command_specific_details() {
+        let error = classify_cli_spawn_error(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No such file or directory",
+        ));
+
+        assert!(matches!(
+            error,
+            DbOperationError::CommandNotFound(details) if details.starts_with("sqlite3:")
+        ));
     }
 }
