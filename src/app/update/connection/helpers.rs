@@ -34,6 +34,7 @@ pub(super) fn connection_save_fetch_effects(
     };
     if database_type == DatabaseType::SQLite {
         vec![Effect::Sequence(vec![
+            Effect::CancelActiveQuery,
             Effect::CacheInvalidate {
                 dsn: dsn.to_string(),
             },
@@ -41,7 +42,11 @@ pub(super) fn connection_save_fetch_effects(
             fetch,
         ])]
     } else {
-        vec![Effect::ClearCompletionEngineCache, fetch]
+        vec![
+            Effect::CancelActiveQuery,
+            Effect::ClearCompletionEngineCache,
+            fetch,
+        ]
     }
 }
 

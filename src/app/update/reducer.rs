@@ -159,7 +159,7 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let schema = table.schema.clone();
     let table_name = table.name.clone();
 
-    let mut effects = Vec::new();
+    let mut effects = vec![Effect::CancelActiveQuery];
     if let Some(dsn) = state.session.dsn().map(String::from) {
         let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {
@@ -1038,7 +1038,7 @@ mod tests {
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
         }
 
         #[test]
@@ -2284,7 +2284,7 @@ mod tests {
                     .explorer_selected,
                 5
             );
-            assert_eq!(effects.len(), 2);
+            assert_eq!(effects.len(), 3);
         }
 
         #[test]
@@ -2333,7 +2333,7 @@ mod tests {
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
             );
-            assert_eq!(effects.len(), 1);
+            assert_eq!(effects.len(), 2);
         }
     }
 

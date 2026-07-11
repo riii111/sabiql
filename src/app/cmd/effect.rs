@@ -81,6 +81,7 @@ pub enum Effect {
         query: String,
         read_only: bool,
     },
+    CancelActiveQuery,
     CountRowsForExport {
         dsn: String,
         run_id: u64,

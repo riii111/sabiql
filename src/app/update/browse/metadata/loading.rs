@@ -66,6 +66,7 @@ pub(super) fn reduce_loading(
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
                     state.session.clear_table_selection(&mut state.query);
                     state.query.clear_current_result();
+                    effects.push(Effect::CancelActiveQuery);
                 }
             }
 
@@ -110,7 +111,11 @@ pub(super) fn reduce_loading(
             if state.er_preparation.status() == ErStatus::Waiting {
                 state.er_preparation.mark_idle();
             }
-            DispatchResult::handled()
+            DispatchResult::handled_with(if was_connected {
+                vec![]
+            } else {
+                vec![Effect::CancelActiveQuery]
+            })
         }
         Action::LoadMetadata => {
             if let Some(dsn) = state.session.dsn().map(String::from) {

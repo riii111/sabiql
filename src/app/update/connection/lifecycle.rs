@@ -45,12 +45,16 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::handled_with(vec![
+                    Effect::CancelActiveQuery,
+                    Effect::ClearCompletionEngineCache,
+                ])
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
                 let run_id = state.session.begin_connecting(dsn);
                 DispatchResult::handled_with(vec![
+                    Effect::CancelActiveQuery,
                     Effect::ClearCompletionEngineCache,
                     Effect::FetchMetadata {
                         dsn: dsn.clone(),

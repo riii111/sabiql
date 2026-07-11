@@ -6,6 +6,7 @@ use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
+use crate::cmd::query_task::QueryTaskRegistry;
 use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
 use crate::domain::command_tag::CommandTag;
@@ -101,6 +102,7 @@ pub async fn run(
     query_executor: &Arc<dyn QueryExecutor>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
     cached_result_exporter: &Arc<dyn CachedResultExporter>,
+    query_tasks: &QueryTaskRegistry,
     state: &AppState,
 ) -> Result<()> {
     match effect {
@@ -118,7 +120,7 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 match executor
                     .execute_preview(&dsn, &schema, &table, limit, offset, read_only)
                     .await
@@ -161,7 +163,7 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         let plan_text = sqlite_explain_query_plan_text_from_result(&result);
@@ -204,7 +206,7 @@ pub async fn run(
             let conn_id = state.session.active_connection_id().cloned();
             let query_for_history = query.clone();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, read_only).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
@@ -273,7 +275,7 @@ pub async fn run(
             let conn_id = state.session.active_connection_id().cloned();
             let query_for_history = query.clone();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 match executor.execute_write(&dsn, &query, read_only).await {
                     Ok(result) => {
                         if let Some(cid) = &conn_id {
@@ -331,7 +333,7 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 let row_count = executor
                     .count_query_rows(&dsn, &count_query, read_only)
                     .await
@@ -361,7 +363,7 @@ pub async fn run(
             let tx = action_tx.clone();
             let path = resolve_export_path(&file_name);
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 match executor.export_to_csv(&dsn, &query, &path, read_only).await {
                     Ok(_) => {
                         tx.send(Action::CsvExportSucceeded {
@@ -400,7 +402,7 @@ pub async fn run(
             let path = resolve_export_path(&file_name);
             let exported_path = path.display().to_string();
 
-            tokio::spawn(async move {
+            query_tasks.spawn(async move {
                 let result = exporter
                     .export_cached_result_to_csv(path, columns, values)
                     .await;

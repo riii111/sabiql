@@ -14,6 +14,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
+use crate::cmd::query_task::QueryTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
@@ -68,6 +69,7 @@ pub struct EffectRunner {
     settings: SettingsDeps,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
+    query_tasks: QueryTaskRegistry,
 }
 
 impl EffectRunner {
@@ -90,6 +92,7 @@ impl EffectRunner {
             settings,
             metadata_cache,
             action_tx,
+            query_tasks: QueryTaskRegistry::default(),
         }
     }
 
@@ -214,9 +217,15 @@ impl EffectRunner {
                     &self.query.query_executor,
                     &self.query.query_history_store,
                     &self.query.cached_result_exporter,
+                    &self.query_tasks,
                     state,
                 )
                 .await?;
+                Ok(vec![])
+            }
+
+            Effect::CancelActiveQuery => {
+                self.query_tasks.cancel();
                 Ok(vec![])
             }
 
