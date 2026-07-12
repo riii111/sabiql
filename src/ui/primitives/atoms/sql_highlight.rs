@@ -76,7 +76,7 @@ mod tests {
     use super::*;
     use crate::primitives::atoms::{CursorKind, insert_cursor_span_with_kind};
     use crate::theme::{
-        ComponentTokens, CursorTokens, DEFAULT_THEME, SemanticTokens, SyntaxTokens, ThemePalette,
+        ComponentTokens, CursorTokens, DEFAULT_THEME, SemanticTokens, SyntaxTokens,
     };
 
     fn line_text(line: &Line<'_>) -> String {

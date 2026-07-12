@@ -57,8 +57,6 @@ mod tests {
     use super::*;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::sqlite_diagnostics::MockSqliteDiagnosticsProvider;
-    use std::sync::Arc;
-    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn dispatches_core_snapshot_on_success() {

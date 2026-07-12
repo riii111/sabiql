@@ -171,7 +171,6 @@ mod tests {
 
     mod scrolling {
         use super::*;
-        use crate::update::action::CursorMove;
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
@@ -226,8 +225,6 @@ mod tests {
 
     mod confirming_high {
         use super::*;
-        use crate::policy::write::write_guardrails::AdhocRiskDecision;
-        use crate::update::action::CursorMove;
 
         fn confirming_high_state(content: &str, target: &str) -> AppState {
             let mut state = sql_modal_state();
@@ -784,7 +781,6 @@ mod tests {
 
     mod risk_acknowledge_flow {
         use super::*;
-        use crate::policy::write::sql_risk::AcknowledgeReason;
 
         fn confirming_risk_state(content: &str) -> AppState {
             let mut state = sql_modal_state();
@@ -828,7 +824,6 @@ mod tests {
 
     mod confirmation_flow {
         use super::*;
-        use crate::policy::write::write_guardrails::RiskLevel;
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());

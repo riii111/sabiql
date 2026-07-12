@@ -109,6 +109,8 @@ mod tests {
     use std::time::Instant;
 
     mod row_delete {
+        use crate::test_support;
+
         use super::*;
 
         pub(super) fn base_state(
@@ -140,10 +142,10 @@ mod tests {
                 name: "users".to_string(),
                 columns: vec![Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state
         }
@@ -223,6 +225,8 @@ mod tests {
     }
 
     mod read_only_guard {
+        use crate::test_support;
+
         use super::*;
 
         #[test]
@@ -244,7 +248,7 @@ mod tests {
         fn view_blocks_stage_row_for_delete() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             let mut table = state.session.table_detail().unwrap().clone();
-            table.kind_info = sabiql_test_support::table::view_kind_info();
+            table.kind_info = test_support::table::view_kind_info();
             state.session.set_table_detail_raw(Some(table));
             state.result_interaction.activate_cell(0, 0);
 

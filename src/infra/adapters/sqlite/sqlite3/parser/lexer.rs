@@ -824,7 +824,6 @@ fn statement_emits_result_set(statement: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::DbOperationError;
     use rstest::rstest;
 
     fn sqlite_wrap_mode(query: &str) -> Result<SqliteWrapMode, DbOperationError> {

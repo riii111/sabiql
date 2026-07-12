@@ -190,6 +190,8 @@ fn update_search_matches(state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
@@ -220,12 +222,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                sabiql_test_support::column::test_nullable_column("body", data_type.to_string(), 2),
+                test_support::column::test_nullable_column("body", data_type.to_string(), 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..sabiql_test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }));
         state.result_interaction.activate_cell(0, 1);
         state

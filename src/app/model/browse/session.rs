@@ -445,8 +445,10 @@ impl BrowseSession {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
-    use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
+    use crate::domain::QuerySource;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -464,7 +466,7 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             row_count_estimate: Some(100),
-            ..sabiql_test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 

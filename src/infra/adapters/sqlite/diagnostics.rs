@@ -273,8 +273,10 @@ fn format_database_list_row(row: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use super::*;
-    use crate::domain::{QueryResult, QuerySource};
+    use crate::domain::QuerySource;
 
     fn empty_query_result() -> QueryResult {
         QueryResult::success(String::new(), vec![], vec![], 0, QuerySource::Adhoc)
@@ -282,9 +284,8 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_diagnostics_core_reports_pragmas_without_quick_check() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
         let snapshot = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
@@ -303,9 +304,8 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_quick_check_reports_integrity_summary() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let adapter = SqliteAdapter::new();
 
         let quick_check = adapter.fetch_quick_check(&dsn).await;

@@ -596,6 +596,8 @@ mod tests {
     }
 
     mod table_detail_dispatch {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::Table;
 
@@ -603,7 +605,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }
         }
 

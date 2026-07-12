@@ -1,4 +1,4 @@
-use sabiql_domain::{Table, TableKind, TableKindInfo};
+use crate::domain::{Table, TableKind, TableKindInfo};
 
 #[must_use]
 pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {

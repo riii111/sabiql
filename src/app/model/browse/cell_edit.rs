@@ -84,7 +84,6 @@ impl CellEditState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::cursor::CursorMove;
 
     #[test]
     fn begin_with_value_sets_active_state_with_copied_values() {

@@ -77,6 +77,8 @@ impl DdlGenerator for PostgresAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use crate::adapters::postgres::PostgresAdapter;
     use crate::app::ports::outbound::DdlGenerator;
     use crate::domain::{Column, ColumnAttributes, DatabaseType, Table};
@@ -98,7 +100,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..sabiql_test_support::infra::minimal_table("", "")
+            ..test_support::minimal_table("", "")
         }
     }
 
