@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 
 use crate::domain::{QueryResult, WriteExecutionResult};
@@ -33,6 +35,6 @@ pub trait QueryExecutor: Send + Sync {
         &self,
         dsn: &str,
         query: &str,
-        path: &std::path::Path,
-    ) -> Result<usize, DbOperationError>;
+        file_name: &str,
+    ) -> Result<PathBuf, DbOperationError>;
 }

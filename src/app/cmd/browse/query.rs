@@ -1,6 +1,4 @@
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use color_eyre::eyre::Result;
@@ -14,9 +12,7 @@ use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use crate::domain::sqlite_explain_query_plan_text_from_result;
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{
-    CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryStore,
-};
+use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -73,81 +69,6 @@ fn save_query_history(
             let _ = tx.send(Action::QueryHistoryAppendFailed(e)).await;
         }
     });
-}
-
-fn resolve_export_path(file_name: &str) -> PathBuf {
-    let now_sys = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-    let secs = now_sys.as_secs();
-    let millis = now_sys.subsec_millis();
-    let days = secs / 86400;
-    let time_of_day = secs % 86400;
-    let hours = time_of_day / 3600;
-    let minutes = (time_of_day % 3600) / 60;
-    let seconds = time_of_day % 60;
-    let (y, m, d) = epoch_days_to_ymd(days as i64);
-    let timestamp = format!("{y:04}{m:02}{d:02}_{hours:02}{minutes:02}{seconds:02}_{millis:03}");
-    let file_stem = format!("sabiql_export_{file_name}_{timestamp}.csv");
-    let dir = dirs::download_dir()
-        .or_else(dirs::home_dir)
-        .unwrap_or_else(|| PathBuf::from("."));
-    dir.join(file_stem)
-}
-
-struct ExportTempFile {
-    path: PathBuf,
-    cleanup: bool,
-}
-
-impl ExportTempFile {
-    fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            cleanup: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.cleanup = false;
-    }
-}
-
-impl Drop for ExportTempFile {
-    fn drop(&mut self) {
-        if self.cleanup {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
-fn temporary_export_path(final_path: &Path) -> PathBuf {
-    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
-    let file_name = final_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("export.csv");
-    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
-    final_path.with_file_name(format!(
-        ".{file_name}.{}.{}.part",
-        std::process::id(),
-        sequence
-    ))
-}
-
-async fn export_to_path<F, Fut>(final_path: PathBuf, export: F) -> Result<usize, DbOperationError>
-where
-    F: FnOnce(PathBuf) -> Fut,
-    Fut: Future<Output = Result<usize, DbOperationError>>,
-{
-    let temporary_path = temporary_export_path(&final_path);
-    let mut cleanup = ExportTempFile::new(temporary_path.clone());
-    let row_count = export(temporary_path.clone()).await?;
-    tokio::fs::rename(&temporary_path, &final_path)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    cleanup.disarm();
-    Ok(row_count)
 }
 
 #[allow(
@@ -418,18 +339,14 @@ pub async fn run(
         } => {
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
-            let path = resolve_export_path(&file_name);
             let export_dsn = dsn.clone();
 
             query_tasks.spawn(async move {
-                let result = export_to_path(path.clone(), |temporary_path| async move {
-                    executor
-                        .export_to_csv(&export_dsn, &query, &temporary_path)
-                        .await
-                })
-                .await;
+                let result = executor
+                    .export_to_csv(&export_dsn, &query, &file_name)
+                    .await;
                 match result {
-                    Ok(_) => {
+                    Ok(path) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
                             run_id,
@@ -463,23 +380,18 @@ pub async fn run(
         } => {
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
-            let path = resolve_export_path(&file_name);
-            let exported_path = path.display().to_string();
 
             query_tasks.spawn(async move {
-                let result = export_to_path(path, |temporary_path| async move {
-                    exporter
-                        .export_cached_result_to_csv(temporary_path, columns, values)
-                        .await
-                })
-                .await;
+                let result = exporter
+                    .export_cached_result_to_csv(file_name, columns, values)
+                    .await;
 
                 match result {
-                    Ok(_) => {
+                    Ok(path) => {
                         tx.send(Action::CsvExportSucceeded {
                             dsn,
                             run_id,
-                            path: exported_path,
+                            path: path.display().to_string(),
                             row_count,
                         })
                         .await
@@ -519,113 +431,6 @@ mod tests {
     use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
     use crate::update::action::Action;
-
-    use super::{epoch_days_to_ymd, export_to_path, resolve_export_path};
-
-    mod export_path {
-        use std::path::Path;
-
-        use super::*;
-
-        #[test]
-        fn epoch_days_to_ymd_unix_epoch() {
-            assert_eq!(epoch_days_to_ymd(0), (1970, 1, 1));
-        }
-
-        #[test]
-        fn epoch_days_to_ymd_known_date() {
-            assert_eq!(epoch_days_to_ymd(19723), (2024, 1, 1));
-        }
-
-        #[test]
-        fn epoch_days_to_ymd_leap_year_feb_29() {
-            assert_eq!(epoch_days_to_ymd(19782), (2024, 2, 29));
-        }
-
-        #[test]
-        fn epoch_days_to_ymd_year_end_dec_31() {
-            assert_eq!(epoch_days_to_ymd(19722), (2023, 12, 31));
-        }
-
-        #[test]
-        fn epoch_days_to_ymd_century_leap_year() {
-            assert_eq!(epoch_days_to_ymd(11016), (2000, 2, 29));
-        }
-
-        #[test]
-        fn epoch_days_to_ymd_non_leap_century() {
-            assert_eq!(epoch_days_to_ymd(-25508), (1900, 3, 1));
-        }
-
-        #[test]
-        fn resolve_export_path_contains_file_name() {
-            let path = resolve_export_path("users");
-            let file_name = path.file_name().unwrap().to_str().unwrap();
-            assert!(file_name.starts_with("sabiql_export_users_"));
-            assert!(
-                Path::new(file_name)
-                    .extension()
-                    .is_some_and(|ext: &std::ffi::OsStr| ext.eq_ignore_ascii_case("csv"))
-            );
-        }
-    }
-
-    mod atomic_export {
-        use std::future::pending;
-
-        use crate::ports::outbound::DbOperationError;
-        use tempfile::tempdir;
-        use tokio::sync::oneshot;
-
-        use super::*;
-
-        #[tokio::test]
-        async fn cancellation_removes_partial_temporary_file() {
-            let dir = tempdir().unwrap();
-            let final_path = dir.path().join("export.csv");
-            let (started_tx, started_rx) = oneshot::channel();
-
-            let task = tokio::spawn(export_to_path(
-                final_path.clone(),
-                move |temporary_path| async move {
-                    tokio::fs::write(temporary_path, b"partial,csv\n")
-                        .await
-                        .unwrap();
-                    started_tx.send(()).ok();
-                    pending::<Result<usize, DbOperationError>>().await
-                },
-            ));
-
-            started_rx.await.unwrap();
-            task.abort();
-            task.await.unwrap_err();
-
-            assert!(!final_path.exists());
-            assert_eq!(dir.path().read_dir().unwrap().count(), 0);
-        }
-
-        #[tokio::test]
-        async fn success_renames_temporary_file_atomically() {
-            let dir = tempdir().unwrap();
-            let final_path = dir.path().join("export.csv");
-
-            let row_count = export_to_path(final_path.clone(), |temporary_path| async move {
-                tokio::fs::write(temporary_path, b"complete,csv\n")
-                    .await
-                    .unwrap();
-                Ok(3)
-            })
-            .await
-            .unwrap();
-
-            assert_eq!(row_count, 3);
-            assert_eq!(
-                tokio::fs::read_to_string(&final_path).await.unwrap(),
-                "complete,csv\n"
-            );
-            assert_eq!(dir.path().read_dir().unwrap().count(), 1);
-        }
-    }
 
     mod explain_plan_text {
         use crate::domain::{QueryResult, QuerySource, sqlite_explain_query_plan_text_from_result};
@@ -682,7 +487,6 @@ mod tests {
     }
     mod cached_csv_export_effect {
         use std::cell::RefCell;
-        use std::path::PathBuf;
         use std::sync::Arc;
         use std::time::Duration;
 
@@ -725,10 +529,10 @@ mod tests {
         impl CachedResultExporter for FailingCachedResultExporter {
             async fn export_cached_result_to_csv(
                 &self,
-                _path: PathBuf,
+                _file_name: String,
                 _columns: Vec<String>,
                 _values: Vec<Vec<QueryValue>>,
-            ) -> Result<usize, DbOperationError> {
+            ) -> Result<std::path::PathBuf, DbOperationError> {
                 Err(DbOperationError::QueryFailed("export failed".to_string()))
             }
         }

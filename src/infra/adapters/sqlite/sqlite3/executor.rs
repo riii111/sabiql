@@ -9,6 +9,7 @@ use tokio::time::timeout;
 
 use async_trait::async_trait;
 
+use crate::adapters::csv_export::export_to_downloads;
 use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{
     AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
@@ -210,7 +211,7 @@ impl SqliteCli {
         sql: &str,
         output_path: &std::path::Path,
         read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
         let mut cmd = Command::new("sqlite3");
         Self::apply_session_options(&mut cmd, read_only);
@@ -287,13 +288,7 @@ impl SqliteCli {
             return Err(classify_query_error(&stderr));
         }
 
-        match count_csv_records_async(output_path).await {
-            Ok(row_count) => Ok(row_count),
-            Err(error) => {
-                let _ = tokio::fs::remove_file(output_path).await;
-                Err(error)
-            }
-        }
+        Ok(())
     }
 
     async fn run(
@@ -433,23 +428,6 @@ fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
     } else {
         path
     }
-}
-
-fn count_csv_records(path: &std::path::Path) -> Result<usize, csv::Error> {
-    let mut reader = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_path(path)?;
-    reader
-        .records()
-        .try_fold(0usize, |count, record| record.map(|_| count + 1))
-}
-
-async fn count_csv_records_async(path: &std::path::Path) -> Result<usize, DbOperationError> {
-    let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || count_csv_records(&path))
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
 }
 
 impl SqliteAdapter {
@@ -626,14 +604,18 @@ impl QueryExecutor for SqliteAdapter {
         &self,
         dsn: &str,
         query: &str,
-        path: &std::path::Path,
-    ) -> Result<usize, DbOperationError> {
+        file_name: &str,
+    ) -> Result<std::path::PathBuf, DbOperationError> {
         if !is_sqlite_rerunnable_export_query(query)? {
             return Err(sqlite_export_not_rerunnable_error());
         }
-        self.cli
-            .export_csv(Self::path_from_dsn(dsn)?, query, path, true)
-            .await
+        let database_path = Self::path_from_dsn(dsn)?.to_string();
+        export_to_downloads(file_name, |path| async move {
+            self.cli
+                .export_csv(&database_path, query, &path, true)
+                .await
+        })
+        .await
     }
 }
 
@@ -2399,7 +2381,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn export_to_csv_writes_rows_and_returns_row_count() {
+        async fn export_to_csv_writes_rows() {
             let (dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
@@ -2409,18 +2391,23 @@ mod tests {
             let path = dir.path().join("users.csv");
             let adapter = SqliteAdapter::new();
 
-            let row_count = adapter
-                .export_to_csv(&dsn, "SELECT id, name FROM users ORDER BY id", &path)
+            adapter
+                .cli
+                .export_csv(
+                    SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                    "SELECT id, name FROM users ORDER BY id",
+                    &path,
+                    true,
+                )
                 .await
                 .unwrap();
             let csv = std::fs::read_to_string(path).unwrap();
 
-            assert_eq!(row_count, 2);
             assert_eq!(csv, "id,name\n1,a\n2,b\n");
         }
 
         #[tokio::test]
-        async fn export_to_csv_counts_records_with_embedded_newlines() {
+        async fn export_to_csv_preserves_records_with_embedded_newlines() {
             let (dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(id INTEGER PRIMARY KEY, message TEXT);
@@ -2431,12 +2418,21 @@ world'), (2, 'done');
             let path = dir.path().join("logs.csv");
             let adapter = SqliteAdapter::new();
 
-            let row_count = adapter
-                .export_to_csv(&dsn, "SELECT id, message FROM logs ORDER BY id", &path)
+            adapter
+                .cli
+                .export_csv(
+                    SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                    "SELECT id, message FROM logs ORDER BY id",
+                    &path,
+                    true,
+                )
                 .await
                 .unwrap();
 
-            assert_eq!(row_count, 2);
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                "id,message\n1,\"hello\nworld\"\n2,done\n"
+            );
         }
 
         #[tokio::test]
@@ -2447,7 +2443,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", &path)
+                .export_to_csv(&dsn, "INSERT INTO users(id) VALUES (1)", "write_export")
                 .await;
 
             assert!(matches!(
@@ -2465,7 +2461,7 @@ world'), (2, 'done');
             let adapter = SqliteAdapter::new();
 
             let result = adapter
-                .export_to_csv(&dsn, "SELECT id FROM missing", &path)
+                .export_to_csv(&dsn, "SELECT id FROM missing", "missing_export")
                 .await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));

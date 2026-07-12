@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 
@@ -55,8 +56,13 @@ impl QueryExecutor for PostgresAdapter {
         &self,
         dsn: &str,
         query: &str,
-        path: &std::path::Path,
-    ) -> Result<usize, DbOperationError> {
-        self.export_csv_to_file(dsn, query, path, true).await
+        file_name: &str,
+    ) -> Result<std::path::PathBuf, DbOperationError> {
+        export_to_downloads(file_name, |path| async move {
+            self.export_csv_to_file(dsn, query, &path, true)
+                .await
+                .map(|_| ())
+        })
+        .await
     }
 }

@@ -4,6 +4,7 @@ pub mod cached_result_exporter;
 pub mod clipboard;
 pub mod config_writer;
 pub mod connection_store;
+pub(crate) mod csv_export;
 pub mod er_log_writer;
 pub mod folder_opener;
 pub mod mysql;

@@ -495,7 +495,7 @@ mod tests {
 
     mod query_context_termination {
         use std::future::pending;
-        use std::path::Path;
+        use std::path::PathBuf;
         use std::sync::Mutex;
         use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -574,8 +574,8 @@ mod tests {
                 &self,
                 _dsn: &str,
                 _query: &str,
-                _path: &Path,
-            ) -> Result<usize, DbOperationError> {
+                _file_name: &str,
+            ) -> Result<PathBuf, DbOperationError> {
                 unreachable!("test only starts a preview")
             }
         }
