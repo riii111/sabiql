@@ -32,13 +32,13 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 ### Core
 
 - **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
-- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`; recall previous queries with `Ctrl+O`
+- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; recall previous queries with `Ctrl+O`
 - **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser (PostgreSQL only)
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
 
 ### Editing
 
-- **Inline Cell Editing** (`e` in Result) — Edit cells in-place with a guarded UPDATE preview before committing
+- **Inline Cell Editing** (`i` in Result) — Edit cells in-place with a guarded UPDATE preview before committing
 - **Row Deletion** (`dd` in Result) — DELETE with mandatory preview; risk level color-coded (yellow/orange/red)
 - **Yank** (`y`) — Copy any cell value to clipboard
 - **CSV Export** (`Ctrl+E`) — Export query results to a CSV file
@@ -110,7 +110,7 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 Install the CLI for the database you want to open:
 
 - **PostgreSQL:** `psql` (PostgreSQL client)
-- **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later.
+- **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later. Homebrew and Nix installs provide a compatible runtime automatically.
 
 Optional:
 
