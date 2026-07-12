@@ -47,6 +47,25 @@ impl QueryValue {
             Self::Null | Self::Blob(_) => None,
         }
     }
+
+    #[must_use]
+    pub fn copy_value(&self) -> String {
+        match self {
+            Self::Null => "NULL".to_string(),
+            Self::Text(value) | Self::SqlLiteral(value) => value.clone(),
+            Self::Blob(bytes) => {
+                let hex =
+                    bytes
+                        .iter()
+                        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
+                            use std::fmt::Write as _;
+                            let _ = write!(hex, "{byte:02X}");
+                            hex
+                        });
+                format!("X'{hex}'")
+            }
+        }
+    }
 }
 
 fn escape_display_text(value: &str) -> String {
@@ -92,6 +111,7 @@ pub struct QueryResult {
     values: Vec<Vec<QueryValue>>,
     hidden: HiddenQueryColumns,
     row_count: usize,
+    typed_values: bool,
 }
 
 impl QueryResult {
@@ -115,6 +135,7 @@ impl QueryResult {
             values,
             hidden: HiddenQueryColumns::default(),
             row_count,
+            typed_values: false,
             execution_time_ms,
             source,
             error: None,
@@ -142,6 +163,7 @@ impl QueryResult {
             values,
             hidden: HiddenQueryColumns::default(),
             row_count,
+            typed_values: true,
             execution_time_ms,
             source,
             error: None,
@@ -163,6 +185,7 @@ impl QueryResult {
             values: Vec::new(),
             hidden: HiddenQueryColumns::default(),
             row_count: 0,
+            typed_values: false,
             execution_time_ms,
             source,
             error: Some(error),
@@ -180,6 +203,36 @@ impl QueryResult {
     pub fn with_row_count(mut self, row_count: usize) -> Self {
         self.row_count = row_count;
         self
+    }
+
+    #[must_use]
+    pub fn with_columns_if_empty(mut self, columns: Vec<String>) -> Self {
+        if self.columns.is_empty() {
+            self.columns = columns;
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn without_empty_result_sentinel(mut self) -> Self {
+        self.columns.pop();
+        for (row, values) in self.rows.iter_mut().zip(&mut self.values) {
+            let sentinel = values.pop();
+            row.pop();
+            if sentinel == Some(QueryValue::Null) {
+                values.clear();
+                row.clear();
+            }
+        }
+        self.rows.retain(|row| row.len() == self.columns.len());
+        self.values.retain(|row| row.len() == self.columns.len());
+        self.row_count = self.values.len();
+        self
+    }
+
+    #[must_use]
+    pub fn has_typed_values(&self) -> bool {
+        self.typed_values
     }
 
     #[must_use]

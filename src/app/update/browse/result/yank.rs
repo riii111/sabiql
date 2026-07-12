@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -22,12 +23,19 @@ pub fn reduce_yank(
                 state.result_interaction.selection().row(),
                 state.result_interaction.selection().cell(),
             ) {
-                let content = state
-                    .query
-                    .visible_result()
-                    .and_then(|r| r.rows().get(row_idx))
-                    .and_then(|row| row.get(col_idx))
-                    .cloned();
+                let content = state.query.visible_result().and_then(|result| {
+                    if result.has_typed_values() {
+                        result
+                            .value_at(row_idx, col_idx)
+                            .map(QueryValue::copy_value)
+                    } else {
+                        result
+                            .rows()
+                            .get(row_idx)
+                            .and_then(|row| row.get(col_idx))
+                            .cloned()
+                    }
+                });
                 if let Some(value) = content {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
@@ -71,7 +79,15 @@ pub fn reduce_yank(
                 let content = state
                     .query
                     .visible_result()
-                    .and_then(|r| r.rows().get(row_idx))
+                    .and_then(|result| {
+                        if result.has_typed_values() {
+                            result.values().get(row_idx).map(|row| {
+                                row.iter().map(QueryValue::copy_value).collect::<Vec<_>>()
+                            })
+                        } else {
+                            result.rows().get(row_idx).cloned()
+                        }
+                    })
                     .map(|row| {
                         row.iter()
                             .map(|v| {

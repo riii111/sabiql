@@ -562,6 +562,7 @@ impl QueryExecutor for SqliteAdapter {
         let result = self
             .execute_quoted_query(path, &query, QuerySource::Preview, true)
             .await?;
+        let result = result.with_columns_if_empty(columns);
         Ok(match rowid_alias {
             Some(alias) => result.with_first_column_hidden(alias.to_string()),
             None => result,
@@ -615,6 +616,13 @@ impl QueryExecutor for SqliteAdapter {
         }
 
         let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        if result
+            .columns
+            .last()
+            .is_some_and(|column| column.ends_with("_empty"))
+        {
+            result = result.without_empty_result_sentinel();
+        }
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
         } else if statements
@@ -1408,7 +1416,7 @@ mod tests {
             }
 
             #[tokio::test]
-            async fn multi_select_empty_trailing_result_returns_empty_result() {
+            async fn multi_select_empty_trailing_result_preserves_projection_columns() {
                 let (_dir, dsn) = test_support::make_sqlite_db("");
                 let adapter = SqliteAdapter::new();
 
@@ -1421,7 +1429,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert!(result.columns.is_empty());
+                assert_eq!(result.columns, vec!["b"]);
                 assert!(result.rows().is_empty());
                 assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
             }

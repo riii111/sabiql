@@ -1,3 +1,4 @@
+use crate::domain::QueryValue;
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
@@ -36,6 +37,22 @@ impl RowDetailState {
             horizontal_offset: 0,
             active: true,
         }
+    }
+
+    pub fn open_with_values(columns: &[String], values: &[QueryValue]) -> Self {
+        let cells = values
+            .iter()
+            .map(QueryValue::display_value)
+            .collect::<Vec<_>>();
+        let mut state = Self::open(columns, &cells);
+        let object = columns
+            .iter()
+            .zip(values)
+            .map(|(column, value)| (column.clone(), sqlite_json_value(value)))
+            .collect();
+        state.json_text = serde_json::to_string_pretty(&Value::Object(object))
+            .unwrap_or_else(|_| "{}".to_string());
+        state
     }
 
     pub fn close(&mut self) {
@@ -117,6 +134,17 @@ impl RowDetailState {
 
     pub fn json_for_yank(&self) -> String {
         self.json_text.clone()
+    }
+}
+
+fn sqlite_json_value(value: &QueryValue) -> Value {
+    match value {
+        QueryValue::Null => Value::Null,
+        QueryValue::Text(value) => Value::String(value.clone()),
+        QueryValue::Blob(_) => Value::String(value.copy_value()),
+        QueryValue::SqlLiteral(value) => {
+            serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.clone()))
+        }
     }
 }
 

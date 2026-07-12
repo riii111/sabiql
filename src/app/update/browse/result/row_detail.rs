@@ -25,7 +25,14 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 return DispatchResult::handled();
             };
 
-            state.row_detail = RowDetailState::open(&result.columns, cells);
+            state.row_detail = if result.has_typed_values() {
+                let Some(values) = result.values().get(row_idx) else {
+                    return DispatchResult::handled();
+                };
+                RowDetailState::open_with_values(&result.columns, values)
+            } else {
+                RowDetailState::open(&result.columns, cells)
+            };
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()
         }
