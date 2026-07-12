@@ -586,7 +586,7 @@ impl SqliteAdapter {
                 let is_generated = column.hidden == 2 || column.hidden == 3;
                 let is_read_only = is_hidden || is_generated;
                 let mut attributes = ColumnAttributes::from_parts(
-                    column.notnull == 0 && !is_pk,
+                    column.notnull == 0,
                     is_pk,
                     unique_single_columns.contains(column.name.as_str()),
                 );
@@ -1242,6 +1242,42 @@ mod tests {
 
             assert_eq!(detail.primary_key, None);
             assert_eq!(detail.columns.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn primary_key_nullability_matches_sqlite_metadata() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+            CREATE TABLE regular(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE without_rowid(key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let regular = adapter
+                .fetch_table_detail(&dsn, "main", "regular")
+                .await
+                .unwrap();
+            let without_rowid = adapter
+                .fetch_table_detail(&dsn, "main", "without_rowid")
+                .await
+                .unwrap();
+
+            let regular_key = regular
+                .columns
+                .iter()
+                .find(|column| column.name == "key")
+                .unwrap();
+            let without_rowid_key = without_rowid
+                .columns
+                .iter()
+                .find(|column| column.name == "key")
+                .unwrap();
+
+            assert!(regular_key.is_primary_key());
+            assert!(regular_key.is_nullable());
+            assert!(without_rowid_key.is_primary_key());
+            assert!(!without_rowid_key.is_nullable());
         }
 
         #[tokio::test]
