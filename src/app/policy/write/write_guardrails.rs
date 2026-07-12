@@ -96,9 +96,6 @@ pub fn preview_writeability(database_type: DatabaseType, table: &Table) -> Previ
     if table.kind_info.kind == TableKind::Virtual {
         return PreviewWriteability::ReadOnly("virtual table");
     }
-    if table.kind_info.without_rowid {
-        return PreviewWriteability::ReadOnly("WITHOUT ROWID table");
-    }
     let has_primary_key = table
         .primary_key
         .as_ref()
@@ -350,24 +347,36 @@ mod tests {
         }
 
         #[rstest]
-        #[case(TableKind::View, false, "view")]
-        #[case(TableKind::Virtual, false, "virtual table")]
-        #[case(TableKind::Table, true, "WITHOUT ROWID table")]
+        #[case(TableKind::View, "view")]
+        #[case(TableKind::Virtual, "virtual table")]
         fn readonly_table_kinds_are_not_writable(
             #[case] kind: TableKind,
-            #[case] without_rowid: bool,
             #[case] reason: &'static str,
         ) {
             let mut table = primary_key_table();
             table.kind_info = TableKindInfo {
                 kind,
-                without_rowid,
                 ..TableKindInfo::default()
             };
 
             assert_eq!(
                 preview_writeability(DatabaseType::SQLite, &table),
                 PreviewWriteability::ReadOnly(reason)
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
+        }
+
+        #[test]
+        fn sqlite_without_rowid_table_with_primary_key_is_writable() {
+            let mut table = primary_key_table();
+            table.kind_info.without_rowid = true;
+
+            assert_eq!(
+                preview_writeability(DatabaseType::SQLite, &table),
+                PreviewWriteability::Writable
             );
             assert_eq!(
                 stable_row_identity_for_table(DatabaseType::SQLite, &table),
