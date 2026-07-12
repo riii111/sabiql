@@ -840,208 +840,220 @@ mod tests {
         Ok(append_changes_query_for_plan(&plan))
     }
 
-    #[test]
-    fn split_sqlite_statements_ignores_semicolons_in_literals_and_comments() {
-        let statements = try_split_sqlite_statements(
-            "INSERT INTO logs(message) VALUES ('a;b'); -- ; ignored\nSELECT ';' AS value;",
-        )
-        .unwrap();
+    mod statement_splitting {
+        use super::*;
 
-        assert_eq!(
-            statements,
-            vec![
-                "INSERT INTO logs(message) VALUES ('a;b')",
-                "-- ; ignored\nSELECT ';' AS value"
-            ]
-        );
-    }
+        #[test]
+        fn ignores_semicolons_in_literals_and_comments() {
+            let statements = try_split_sqlite_statements(
+                "INSERT INTO logs(message) VALUES ('a;b'); -- ; ignored\nSELECT ';' AS value;",
+            )
+            .unwrap();
 
-    #[test]
-    fn split_sqlite_statements_rejects_dot_commands() {
-        let error = try_split_sqlite_statements("SELECT 1;\n.shell echo unsafe").unwrap_err();
+            assert_eq!(
+                statements,
+                vec![
+                    "INSERT INTO logs(message) VALUES ('a;b')",
+                    "-- ; ignored\nSELECT ';' AS value"
+                ]
+            );
+        }
 
-        assert!(matches!(error, DbOperationError::UnsupportedOperation(_)));
-    }
+        #[test]
+        fn rejects_dot_commands() {
+            let error = try_split_sqlite_statements("SELECT 1;\n.shell echo unsafe").unwrap_err();
 
-    #[test]
-    fn split_sqlite_statements_allows_dot_at_line_start_inside_literal() {
-        let statements =
-            try_split_sqlite_statements("SELECT '.shell echo safe\n.read file';").unwrap();
+            assert!(matches!(error, DbOperationError::UnsupportedOperation(_)));
+        }
 
-        assert_eq!(statements, vec!["SELECT '.shell echo safe\n.read file'"]);
-    }
+        #[test]
+        fn allows_dot_at_line_start_inside_literal() {
+            let statements =
+                try_split_sqlite_statements("SELECT '.shell echo safe\n.read file';").unwrap();
 
-    #[test]
-    fn split_sqlite_statements_keeps_create_trigger_body_together() {
-        let trigger = "\
+            assert_eq!(statements, vec!["SELECT '.shell echo safe\n.read file'"]);
+        }
+
+        #[test]
+        fn keeps_create_trigger_body_together() {
+            let trigger = "\
 CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
     INSERT INTO agent_messages_fts(rowid, role, content)
     VALUES (new.id, new.role, new.content);
 END";
-        let sql = format!("{trigger}; SELECT 1 AS value;");
+            let sql = format!("{trigger}; SELECT 1 AS value;");
 
-        let statements = try_split_sqlite_statements(&sql).unwrap();
+            let statements = try_split_sqlite_statements(&sql).unwrap();
 
-        assert_eq!(statements.len(), 2);
-        assert_eq!(statements[0], trigger);
-        assert_eq!(statements[1], "SELECT 1 AS value");
-    }
+            assert_eq!(statements.len(), 2);
+            assert_eq!(statements[0], trigger);
+            assert_eq!(statements[1], "SELECT 1 AS value");
+        }
 
-    #[test]
-    fn split_sqlite_statements_keeps_create_trigger_with_dotted_end_reference() {
-        let trigger = "\
+        #[test]
+        fn keeps_create_trigger_with_dotted_end_reference() {
+            let trigger = "\
 CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
     UPDATE counters SET end_value = new.end WHERE id = new.id;
     INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
 END";
-        let sql = format!("{trigger}; SELECT 1 AS value;");
+            let sql = format!("{trigger}; SELECT 1 AS value;");
 
-        let statements = try_split_sqlite_statements(&sql).unwrap();
+            let statements = try_split_sqlite_statements(&sql).unwrap();
 
-        assert_eq!(statements.len(), 2);
-        assert_eq!(statements[0], trigger);
-        assert_eq!(statements[1], "SELECT 1 AS value");
-    }
+            assert_eq!(statements.len(), 2);
+            assert_eq!(statements[0], trigger);
+            assert_eq!(statements[1], "SELECT 1 AS value");
+        }
 
-    #[test]
-    fn split_sqlite_statements_keeps_create_trigger_with_case_end_expression() {
-        let trigger = "\
+        #[test]
+        fn keeps_create_trigger_with_case_end_expression() {
+            let trigger = "\
 CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
     UPDATE counters
     SET end_value = CASE WHEN new.end > 0 THEN new.end ELSE old.end END
     WHERE id = new.id;
     INSERT INTO audit(event_id) VALUES (new.id);
 END";
-        let sql = format!("{trigger}; SELECT 1 AS value;");
+            let sql = format!("{trigger}; SELECT 1 AS value;");
 
-        let statements = try_split_sqlite_statements(&sql).unwrap();
+            let statements = try_split_sqlite_statements(&sql).unwrap();
 
-        assert_eq!(statements.len(), 2);
-        assert_eq!(statements[0], trigger);
-        assert_eq!(statements[1], "SELECT 1 AS value");
+            assert_eq!(statements.len(), 2);
+            assert_eq!(statements[0], trigger);
+            assert_eq!(statements[1], "SELECT 1 AS value");
+        }
+
+        #[test]
+        fn rejects_unclosed_create_trigger_body() {
+            let error = try_split_sqlite_statements(
+                "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
+            )
+            .unwrap_err();
+
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+        }
+
+        #[test]
+        fn rejects_incomplete_create_trigger_without_begin() {
+            let error =
+                try_split_sqlite_statements("CREATE TRIGGER t AFTER INSERT ON users").unwrap_err();
+
+            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+        }
     }
 
-    #[test]
-    fn adhoc_execution_query_does_not_insert_probes_when_trigger_references_new_end() {
-        let trigger = "\
+    mod execution_probes {
+        use super::*;
+
+        #[test]
+        fn do_not_insert_probes_when_trigger_references_new_end() {
+            let trigger = "\
 CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
     UPDATE counters SET end_value = new.end WHERE id = new.id;
     INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
 END";
-        let marker = "probe_marker";
+            let marker = "probe_marker";
 
-        let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
+            let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
 
-        assert!(!execution_query.contains(marker));
-        assert_eq!(execution_query, trigger);
-    }
+            assert!(!execution_query.contains(marker));
+            assert_eq!(execution_query, trigger);
+        }
 
-    #[test]
-    fn split_sqlite_statements_rejects_unclosed_create_trigger_body() {
-        let error = try_split_sqlite_statements(
-            "CREATE TRIGGER t AFTER INSERT ON users BEGIN INSERT INTO logs(id) VALUES (1);",
-        )
-        .unwrap_err();
-
-        assert!(matches!(error, DbOperationError::QueryFailed(_)));
-    }
-
-    #[test]
-    fn split_sqlite_statements_rejects_incomplete_create_trigger_without_begin() {
-        let error =
-            try_split_sqlite_statements("CREATE TRIGGER t AFTER INSERT ON users").unwrap_err();
-
-        assert!(matches!(error, DbOperationError::QueryFailed(_)));
-    }
-
-    #[test]
-    fn adhoc_execution_query_does_not_insert_probes_inside_create_trigger() {
-        let trigger = "\
+        #[test]
+        fn do_not_insert_probes_inside_create_trigger() {
+            let trigger = "\
 CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
     INSERT INTO agent_messages_fts(rowid, role, content)
     VALUES (new.id, new.role, new.content);
 END";
-        let marker = "probe_marker";
+            let marker = "probe_marker";
 
-        let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
+            let execution_query = sqlite_adhoc_execution_query(trigger, marker).unwrap();
 
-        assert!(!execution_query.contains(marker));
-        assert_eq!(execution_query, trigger);
+            assert!(!execution_query.contains(marker));
+            assert_eq!(execution_query, trigger);
+        }
     }
 
-    #[test]
-    fn append_changes_wraps_multi_statement_write_without_explicit_transaction() {
-        let query = "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2);";
+    mod changes_query {
+        use super::*;
 
-        let wrapped = append_changes_query(query).unwrap();
+        #[test]
+        fn wraps_multi_statement_write_without_explicit_transaction() {
+            let query = "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2);";
 
-        assert_eq!(
-            wrapped,
-            "BEGIN;\nINSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
-        );
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "BEGIN;\nINSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
+
+        #[test]
+        fn wraps_multi_statement_replace_without_explicit_transaction() {
+            let query = "REPLACE INTO users(id) VALUES (1); SELECT * FROM missing";
+
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "BEGIN;\nREPLACE INTO users(id) VALUES (1); SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
+
+        #[test]
+        fn wraps_multi_statement_with_write_without_explicit_transaction() {
+            let query = "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing";
+
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "BEGIN;\nWITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
+
+        #[test]
+        fn keeps_transaction_incompatible_statement_outside_auto_transaction() {
+            let query = "INSERT INTO users(id) VALUES (1); VACUUM";
+
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "INSERT INTO users(id) VALUES (1); VACUUM\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
+
+        #[test]
+        fn keeps_explicit_begin_commit_transaction_control() {
+            let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
+
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
+
+        #[test]
+        fn keeps_explicit_begin_end_transaction_control() {
+            let query = "BEGIN; INSERT INTO users(id) VALUES (1); END";
+
+            let wrapped = append_changes_query(query).unwrap();
+
+            assert_eq!(
+                wrapped,
+                "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
+            );
+        }
     }
 
-    #[test]
-    fn append_changes_wraps_multi_statement_replace_without_explicit_transaction() {
-        let query = "REPLACE INTO users(id) VALUES (1); SELECT * FROM missing";
-
-        let wrapped = append_changes_query(query).unwrap();
-
-        assert_eq!(
-            wrapped,
-            "BEGIN;\nREPLACE INTO users(id) VALUES (1); SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
-        );
-    }
-
-    #[test]
-    fn append_changes_wraps_multi_statement_with_write_without_explicit_transaction() {
-        let query = "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing";
-
-        let wrapped = append_changes_query(query).unwrap();
-
-        assert_eq!(
-            wrapped,
-            "BEGIN;\nWITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload; SELECT * FROM missing\n;\nCOMMIT\n;\nSELECT changes() AS affected_rows;"
-        );
-    }
-
-    #[test]
-    fn append_changes_keeps_transaction_incompatible_statement_outside_auto_transaction() {
-        let query = "INSERT INTO users(id) VALUES (1); VACUUM";
-
-        let wrapped = append_changes_query(query).unwrap();
-
-        assert_eq!(
-            wrapped,
-            "INSERT INTO users(id) VALUES (1); VACUUM\n;\nSELECT changes() AS affected_rows;"
-        );
-    }
-
-    #[test]
-    fn append_changes_keeps_explicit_begin_commit_transaction_control() {
-        let query = "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT";
-
-        let wrapped = append_changes_query(query).unwrap();
-
-        assert_eq!(
-            wrapped,
-            "BEGIN; INSERT INTO users(id) VALUES (1); COMMIT\n;\nSELECT changes() AS affected_rows;"
-        );
-    }
-
-    #[test]
-    fn append_changes_keeps_explicit_begin_end_transaction_control() {
-        let query = "BEGIN; INSERT INTO users(id) VALUES (1); END";
-
-        let wrapped = append_changes_query(query).unwrap();
-
-        assert_eq!(
-            wrapped,
-            "BEGIN; INSERT INTO users(id) VALUES (1); END\n;\nSELECT changes() AS affected_rows;"
-        );
-    }
-
-    mod wrap_mode {
+    mod transaction_wrap_mode {
         use super::*;
 
         #[rstest]
@@ -1131,57 +1143,65 @@ END";
         }
     }
 
-    #[test]
-    fn export_guard_rejects_non_rerunnable_sql() {
-        for sql in [
-            "SELECT 1; SELECT 2",
-            "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
-            "PRAGMA foreign_keys=OFF",
-            "PRAGMA journal_mode=WAL",
-            "PRAGMA wal_checkpoint(TRUNCATE)",
-        ] {
-            assert!(!is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
+    mod export_guard {
+        use super::*;
+
+        #[test]
+        fn rejects_non_rerunnable_sql() {
+            for sql in [
+                "SELECT 1; SELECT 2",
+                "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
+                "PRAGMA foreign_keys=OFF",
+                "PRAGMA journal_mode=WAL",
+                "PRAGMA wal_checkpoint(TRUNCATE)",
+            ] {
+                assert!(!is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
+            }
+        }
+
+        #[test]
+        fn allows_read_only_sql() {
+            for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
+                assert!(is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
+            }
         }
     }
 
-    #[test]
-    fn export_guard_allows_read_only_sql() {
-        for sql in ["SELECT 1", "PRAGMA table_info(users)"] {
-            assert!(is_sqlite_rerunnable_export_query(sql).unwrap(), "{sql}");
+    mod virtual_table_parsing {
+        use super::*;
+
+        #[test]
+        fn prefix_requires_keyword_sequence() {
+            assert!(is_create_virtual_table_prefix(
+                "CREATE VIRTUAL TABLE notes_fts USING fts5(body);"
+            ));
+            assert!(!is_create_virtual_table_prefix(
+                "CREATE TABLE docs(body TEXT DEFAULT 'create virtual table');"
+            ));
         }
-    }
 
-    #[test]
-    fn create_virtual_table_prefix_requires_keyword_sequence() {
-        assert!(is_create_virtual_table_prefix(
-            "CREATE VIRTUAL TABLE notes_fts USING fts5(body);"
-        ));
-        assert!(!is_create_virtual_table_prefix(
-            "CREATE TABLE docs(body TEXT DEFAULT 'create virtual table');"
-        ));
-    }
+        #[test]
+        fn module_name_skips_quoted_table_name() {
+            assert_eq!(
+                virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
+                Some("fts5".to_string())
+            );
+        }
 
-    #[test]
-    fn virtual_table_module_name_skips_quoted_table_name() {
-        assert_eq!(
-            virtual_table_module_name(r#"CREATE VIRTUAL TABLE "using" USING fts5(body);"#),
-            Some("fts5".to_string())
-        );
-    }
+        #[test]
+        fn module_name_reads_double_quoted_module() {
+            assert_eq!(
+                virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
+                Some("fts5".to_string())
+            );
+        }
 
-    #[test]
-    fn virtual_table_module_name_reads_double_quoted_module() {
-        assert_eq!(
-            virtual_table_module_name(r#"CREATE VIRTUAL TABLE notes USING "fts5"(body);"#),
-            Some("fts5".to_string())
-        );
-    }
-
-    #[test]
-    fn virtual_table_module_name_rejects_unclosed_bracket_module() {
-        assert_eq!(
-            virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5(body);"),
-            None
-        );
+        #[test]
+        fn module_name_rejects_unclosed_bracket_module() {
+            assert_eq!(
+                virtual_table_module_name("CREATE VIRTUAL TABLE notes USING [fts5(body);"),
+                None
+            );
+        }
     }
 }
