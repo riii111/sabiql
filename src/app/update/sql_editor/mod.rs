@@ -322,6 +322,25 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_incompatible_transaction_enters_non_atomic_acknowledgement() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(
+                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)".to_string(),
+            );
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::NonAtomicTransaction,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
         fn submit_medium_risk_executes_immediately() {
             let mut state = sql_modal_state();
             state

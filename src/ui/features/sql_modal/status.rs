@@ -207,6 +207,11 @@ fn render_confirming_risk_status(
             Style::default().fg(theme.semantic.status.error),
             "Can't identify target name \u{2014} review before executing",
         ),
+        AcknowledgeReason::NonAtomicTransaction => (
+            "\u{26a0} NON-ATOMIC  SQLite transaction".to_string(),
+            Style::default().fg(theme.semantic.status.warning),
+            "SQLite must run this script without an automatic transaction",
+        ),
     };
 
     let line1 = Line::from(Span::styled(badge_text, badge_style));
