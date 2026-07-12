@@ -1126,6 +1126,10 @@ mod tests {
                         .split_whitespace()
                         .any(|token| token == alias.to_string())
             }
+        }
+
+        mod trigger_execution {
+            use super::*;
 
             #[tokio::test]
             async fn create_trigger_with_multi_statement_body_preserves_definition() {
@@ -1232,6 +1236,10 @@ mod tests {
 
                 assert!(matches!(error, DbOperationError::QueryFailed(_)));
             }
+        }
+
+        mod result_set_parsing {
+            use super::*;
 
             #[tokio::test]
             async fn select_preserves_quoted_newline_in_multicolumn_result() {
@@ -1951,7 +1959,7 @@ mod tests {
             }
         }
 
-        mod returning_results {
+        mod dml_command_tags {
             use super::*;
 
             #[tokio::test]
@@ -1976,6 +1984,10 @@ mod tests {
                 assert_eq!(result.row_count(), 1);
                 assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
             }
+        }
+
+        mod returning_results {
+            use super::*;
 
             #[tokio::test]
             async fn dml_returning_preserves_returned_rows() {
@@ -2043,6 +2055,10 @@ mod tests {
                 assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
             }
+        }
+
+        mod identifier_and_ddl_command_tags {
+            use super::*;
 
             #[tokio::test]
             async fn dml_table_name_containing_returning_reports_affected_rows() {

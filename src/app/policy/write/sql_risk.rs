@@ -1367,7 +1367,7 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
             }
         }
 
-        mod sqlite_replace_risk {
+        mod sqlite_high_risk_statements {
             use super::*;
 
             #[rstest]
@@ -1390,6 +1390,10 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
                     ConfirmationType::Acknowledge { ref label, .. } if label == expected_label
                 ));
             }
+        }
+
+        mod sqlite_replace_risk {
+            use super::*;
 
             #[rstest]
             #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
