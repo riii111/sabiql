@@ -440,8 +440,6 @@ mod tests {
         use crate::test_support;
 
         use super::*;
-        use crate::domain::DatabaseType;
-        use crate::domain::connection::ConnectionId;
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
