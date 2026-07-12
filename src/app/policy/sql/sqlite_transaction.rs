@@ -1,4 +1,13 @@
-use crate::policy::sql::statement_classifier::{StatementKind, first_keyword};
+use crate::policy::sql::statement_classifier::{StatementKind, classify, first_keyword};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqliteStatementClassification {
+    ReadOnly,
+    TransactionalWrite,
+    SessionSideEffect,
+    TransactionIncompatible,
+    TransactionControl,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteTransactionPolicy {
@@ -19,31 +28,90 @@ impl SqliteTransactionPolicy {
     }
 }
 
-pub fn sqlite_transaction_policy(
-    statements: &[String],
-    statement_kinds: &[StatementKind],
-    has_write: bool,
+pub fn sqlite_transaction_policy(statements: &[String]) -> SqliteTransactionPolicy {
+    let classifications: Vec<_> = statements
+        .iter()
+        .map(|statement| sqlite_statement_classification(statement))
+        .collect();
+    sqlite_transaction_policy_for_classifications(statements.len(), &classifications)
+}
+
+pub fn sqlite_transaction_policy_for_classifications(
+    statement_count: usize,
+    classifications: &[SqliteStatementClassification],
 ) -> SqliteTransactionPolicy {
-    if statements.len() != statement_kinds.len() {
+    if statement_count != classifications.len() {
         return SqliteTransactionPolicy::ClassificationMismatch;
     }
-    if statements.len() < 2 || !has_write {
+    if statement_count < 2
+        || !classifications.iter().any(|classification| {
+            matches!(
+                classification,
+                SqliteStatementClassification::TransactionalWrite
+            )
+        })
+    {
         return SqliteTransactionPolicy::NotNeeded;
     }
-
-    if statement_kinds
-        .iter()
-        .any(|kind| matches!(kind, StatementKind::Transaction))
-    {
+    if classifications.iter().any(|classification| {
+        matches!(
+            classification,
+            SqliteStatementClassification::TransactionControl
+        )
+    }) {
         return SqliteTransactionPolicy::UserManaged;
     }
-    if statements
-        .iter()
-        .any(|statement| is_transaction_incompatible(statement))
-    {
+    if classifications.iter().any(|classification| {
+        matches!(
+            classification,
+            SqliteStatementClassification::SessionSideEffect
+                | SqliteStatementClassification::TransactionIncompatible
+        )
+    }) {
         return SqliteTransactionPolicy::IncompatibleStatement;
     }
     SqliteTransactionPolicy::AutoWrap
+}
+
+pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassification {
+    if matches!(classify(statement), StatementKind::Transaction) {
+        return SqliteStatementClassification::TransactionControl;
+    }
+    if is_transaction_incompatible(statement) {
+        return SqliteStatementClassification::TransactionIncompatible;
+    }
+    if is_transactional_pragma_write(statement) {
+        return SqliteStatementClassification::TransactionalWrite;
+    }
+    if is_session_pragma_side_effect(statement) {
+        return SqliteStatementClassification::SessionSideEffect;
+    }
+    if matches!(
+        first_keyword(statement).as_deref(),
+        Some("ATTACH" | "DETACH")
+    ) {
+        return SqliteStatementClassification::SessionSideEffect;
+    }
+    if matches!(
+        first_keyword(statement).as_deref(),
+        Some("ANALYZE" | "REINDEX" | "REPLACE")
+    ) {
+        return SqliteStatementClassification::TransactionalWrite;
+    }
+    if matches!(
+        classify(statement),
+        StatementKind::Insert
+            | StatementKind::Update { .. }
+            | StatementKind::Delete { .. }
+            | StatementKind::Create
+            | StatementKind::Alter
+            | StatementKind::Drop
+            | StatementKind::Truncate
+    ) {
+        SqliteStatementClassification::TransactionalWrite
+    } else {
+        SqliteStatementClassification::ReadOnly
+    }
 }
 
 pub fn is_transaction_incompatible(statement: &str) -> bool {
@@ -53,7 +121,49 @@ pub fn is_transaction_incompatible(statement: &str) -> bool {
     let Some((name, tail)) = pragma_name_and_tail(statement) else {
         return false;
     };
-    matches!(name.as_str(), "journal_mode" | "foreign_keys") && pragma_has_value(tail)
+    matches!(
+        name.as_str(),
+        "journal_mode" | "foreign_keys" | "synchronous"
+    ) && pragma_has_value(tail)
+}
+
+fn is_transactional_pragma_write(statement: &str) -> bool {
+    let Some((name, tail)) = pragma_name_and_tail(statement) else {
+        return false;
+    };
+    matches!(name.as_str(), "application_id" | "user_version") && pragma_has_value(tail)
+}
+
+fn is_session_pragma_side_effect(statement: &str) -> bool {
+    let Some((name, tail)) = pragma_name_and_tail(statement) else {
+        return false;
+    };
+    (pragma_has_value(tail) && !is_read_only_parameterized_pragma(&name))
+        || matches!(
+            name.as_str(),
+            "optimize" | "incremental_vacuum" | "wal_checkpoint"
+        )
+}
+
+fn is_read_only_parameterized_pragma(name: &str) -> bool {
+    matches!(
+        name,
+        "table_info"
+            | "table_xinfo"
+            | "index_info"
+            | "index_xinfo"
+            | "index_list"
+            | "foreign_key_list"
+            | "database_list"
+            | "table_list"
+            | "pragma_list"
+            | "function_list"
+            | "module_list"
+            | "collation_list"
+            | "integrity_check"
+            | "quick_check"
+            | "column_info"
+    )
 }
 
 fn pragma_has_value(tail: &str) -> bool {
@@ -106,16 +216,11 @@ fn pragma_name_and_tail(statement: &str) -> Option<(String, &str)> {
 mod tests {
     use super::*;
     use crate::domain::DatabaseType;
-    use crate::policy::sql::statement_classifier::classify;
     use crate::policy::write::sql_risk::split_statements_for_database;
 
     fn policy_for(sql: &str) -> SqliteTransactionPolicy {
         let statements = split_statements_for_database(DatabaseType::SQLite, sql);
-        let kinds: Vec<_> = statements
-            .iter()
-            .map(|statement| classify(statement))
-            .collect();
-        sqlite_transaction_policy(&statements, &kinds, true)
+        sqlite_transaction_policy(&statements)
     }
 
     #[test]
@@ -160,10 +265,55 @@ mod tests {
 
     #[test]
     fn classification_mismatch_is_not_treated_as_not_needed() {
-        let statements = vec!["INSERT INTO users(id) VALUES (1)".to_string()];
         assert_eq!(
-            sqlite_transaction_policy(&statements, &[], true),
+            sqlite_transaction_policy_for_classifications(1, &[]),
             SqliteTransactionPolicy::ClassificationMismatch
+        );
+    }
+
+    #[test]
+    fn persistent_pragma_writes_are_transactional() {
+        for sql in ["PRAGMA user_version = 42", "PRAGMA application_id(7)"] {
+            assert_eq!(
+                sqlite_statement_classification(sql),
+                SqliteStatementClassification::TransactionalWrite,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn persistent_pragma_write_enables_auto_wrap_for_multi_statement_sql() {
+        let statements = vec![
+            "PRAGMA user_version = 42".to_string(),
+            "SELECT * FROM missing_table".to_string(),
+        ];
+
+        assert_eq!(
+            sqlite_transaction_policy(&statements),
+            SqliteTransactionPolicy::AutoWrap
+        );
+    }
+
+    #[test]
+    fn session_pragma_changes_are_not_implicitly_atomic() {
+        for sql in [
+            "PRAGMA cache_size = 2000",
+            "PRAGMA locking_mode = EXCLUSIVE",
+        ] {
+            assert_eq!(
+                sqlite_statement_classification(sql),
+                SqliteStatementClassification::SessionSideEffect,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn synchronous_change_is_transaction_incompatible() {
+        assert_eq!(
+            sqlite_statement_classification("PRAGMA synchronous = NORMAL"),
+            SqliteStatementClassification::TransactionIncompatible
         );
     }
 }

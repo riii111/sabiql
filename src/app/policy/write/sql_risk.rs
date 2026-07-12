@@ -1,7 +1,8 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::sqlite_transaction::{
-    SqliteTransactionPolicy, is_transaction_incompatible, sqlite_transaction_policy,
+    SqliteStatementClassification, SqliteTransactionPolicy, sqlite_statement_classification,
+    sqlite_transaction_policy,
 };
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
@@ -512,13 +513,12 @@ pub fn evaluate_multi_statement_for_database(
         .collect();
     let has_acknowledge = !ack_reasons.is_empty();
     let mixed_ack_reasons = ack_reasons.windows(2).any(|w| w[0] != w[1]);
-    let statement_kinds: Vec<_> = decisions.iter().map(|(_, kind, _)| kind.clone()).collect();
+    let sqlite_classifications: Vec<_> = statements
+        .iter()
+        .map(|statement| sqlite_statement_classification(statement))
+        .collect();
     let transaction_policy = if database_type == DatabaseType::SQLite {
-        sqlite_transaction_policy(
-            &statements,
-            &statement_kinds,
-            decisions.iter().any(|(_, _, d)| !d.read_only_allowed),
-        )
+        sqlite_transaction_policy(&statements)
     } else {
         SqliteTransactionPolicy::NotNeeded
     };
@@ -539,7 +539,11 @@ pub fn evaluate_multi_statement_for_database(
             .enumerate()
             .any(|(index, (_, _, decision))| {
                 matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
-                    && !is_transaction_incompatible(&statements[index])
+                    && !matches!(
+                        sqlite_classifications[index],
+                        SqliteStatementClassification::SessionSideEffect
+                            | SqliteStatementClassification::TransactionIncompatible
+                    )
             });
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
@@ -832,10 +836,6 @@ fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
     None
 }
 
-fn top_level_contains_char(sql: &str, target: char) -> bool {
-    top_level_char_index(sql, target).is_some()
-}
-
 fn parenthesized_pragma_value(sql: &str) -> Option<String> {
     let open = top_level_char_index(sql, '(')?;
     let close = sql[open + 1..].find(')')? + open + 1;
@@ -845,45 +845,24 @@ fn parenthesized_pragma_value(sql: &str) -> Option<String> {
         .map(str::to_lowercase)
 }
 
-fn sqlite_read_only_parameterized_pragma(name: &str) -> bool {
-    matches!(
-        name,
-        "table_info"
-            | "table_xinfo"
-            | "index_info"
-            | "index_xinfo"
-            | "index_list"
-            | "foreign_key_list"
-            | "database_list"
-            | "table_list"
-            | "pragma_list"
-            | "function_list"
-            | "module_list"
-            | "collation_list"
-            | "integrity_check"
-            | "quick_check"
-            | "column_info"
-    )
-}
-
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
+    match sqlite_statement_classification(sql) {
+        SqliteStatementClassification::ReadOnly => return Some(low_immediate()),
+        SqliteStatementClassification::TransactionalWrite => {
+            return Some(SqlRiskDecision {
+                risk_level: RiskLevel::Medium,
+                confirmation: ConfirmationType::Immediate,
+                read_only_allowed: false,
+            });
+        }
+        SqliteStatementClassification::SessionSideEffect
+        | SqliteStatementClassification::TransactionIncompatible
+        | SqliteStatementClassification::TransactionControl => {}
+    }
+
     let tokens = top_level_token_lowers(sql);
     let name = tokens.get(1)?;
     let pragma_name = name.rsplit('.').next().unwrap_or(name);
-    let has_assignment = top_level_contains_char(sql, '=') || tokens.len() > 2;
-    let has_parenthesized_value = top_level_contains_char(sql, '(');
-    let is_read_only_parameterized =
-        has_parenthesized_value && sqlite_read_only_parameterized_pragma(pragma_name);
-    let has_side_effect_without_assignment = (has_parenthesized_value
-        && !is_read_only_parameterized)
-        || matches!(
-            pragma_name,
-            "optimize" | "incremental_vacuum" | "wal_checkpoint"
-        );
-
-    if !has_assignment && !has_side_effect_without_assignment {
-        return Some(low_immediate());
-    }
 
     let parenthesized_value = parenthesized_pragma_value(sql);
     let value = tokens

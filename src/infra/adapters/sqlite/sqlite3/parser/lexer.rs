@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::app::policy::sql::sqlite_transaction::is_transaction_incompatible;
+use crate::app::policy::sql::sqlite_transaction::{
+    SqliteStatementClassification, SqliteTransactionPolicy, sqlite_statement_classification,
+    sqlite_transaction_policy_for_classifications,
+};
 use crate::app::ports::outbound::DbOperationError;
 
 fn is_ident_char(byte: u8) -> bool {
@@ -396,41 +399,6 @@ fn contains_sqlite_meta_command(sql: &str) -> bool {
     false
 }
 
-fn is_transaction_control(statement: &str) -> bool {
-    matches!(
-        first_keyword(statement).to_ascii_uppercase().as_str(),
-        "BEGIN" | "COMMIT" | "END" | "ROLLBACK" | "SAVEPOINT" | "RELEASE"
-    )
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SqliteStatementClass {
-    ReadOnly,
-    Dml,
-    Ddl,
-    TransactionControl,
-    TransactionIncompatible,
-}
-
-fn classify_sqlite_statement(statement: &str) -> SqliteStatementClass {
-    if is_transaction_control(statement) {
-        return SqliteStatementClass::TransactionControl;
-    }
-    if is_transaction_incompatible(statement) {
-        return SqliteStatementClass::TransactionIncompatible;
-    }
-    if is_dml_statement(statement) {
-        return SqliteStatementClass::Dml;
-    }
-    if matches!(
-        first_keyword(statement).to_ascii_uppercase().as_str(),
-        "CREATE" | "ALTER" | "DROP" | "TRUNCATE"
-    ) {
-        return SqliteStatementClass::Ddl;
-    }
-    SqliteStatementClass::ReadOnly
-}
-
 pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
     query: &str,
 ) -> Result<bool, DbOperationError> {
@@ -442,76 +410,14 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
 }
 
 fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
-    if matches!(
-        classify_sqlite_statement(statement),
-        SqliteStatementClass::Dml
-            | SqliteStatementClass::Ddl
-            | SqliteStatementClass::TransactionControl
-            | SqliteStatementClass::TransactionIncompatible
-    ) {
+    if sqlite_statement_classification(statement) != SqliteStatementClassification::ReadOnly {
         return false;
     }
     match first_keyword(statement).to_ascii_uppercase().as_str() {
-        "SELECT" | "EXPLAIN" | "VALUES" => true,
+        "SELECT" | "EXPLAIN" | "VALUES" | "PRAGMA" => true,
         "WITH" => !is_dml_statement(statement),
-        "PRAGMA" => is_read_only_sqlite_pragma(statement),
         _ => false,
     }
-}
-
-fn sqlite_pragma_name(statement: &str) -> Option<String> {
-    let (_, pragma_end) = next_keyword_from(statement, 0)?;
-    let tail = statement.get(pragma_end..)?.trim_start();
-    let name: String = tail
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '.')
-        .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(
-            name.rsplit('.')
-                .next()
-                .unwrap_or(name.as_str())
-                .to_ascii_lowercase(),
-        )
-    }
-}
-
-fn is_read_only_parameterized_pragma(name: &str) -> bool {
-    matches!(
-        name,
-        "table_info"
-            | "table_xinfo"
-            | "index_info"
-            | "index_xinfo"
-            | "index_list"
-            | "foreign_key_list"
-            | "database_list"
-            | "table_list"
-            | "pragma_list"
-            | "function_list"
-            | "module_list"
-            | "collation_list"
-            | "integrity_check"
-            | "quick_check"
-            | "column_info"
-    )
-}
-
-fn is_read_only_sqlite_pragma(statement: &str) -> bool {
-    let Some(name) = sqlite_pragma_name(statement) else {
-        return false;
-    };
-    let has_assignment = statement.contains('=');
-    let has_parenthesized_value = statement.contains('(');
-    let side_effect_without_assignment = (has_parenthesized_value
-        && !is_read_only_parameterized_pragma(&name))
-        || matches!(
-            name.as_str(),
-            "optimize" | "incremental_vacuum" | "wal_checkpoint"
-        );
-    !has_assignment && !side_effect_without_assignment
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error() -> DbOperationError
@@ -532,7 +438,6 @@ pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
 pub(in crate::adapters::sqlite::sqlite3) struct SqliteStatementPlan<'a> {
     query: &'a str,
     statements: Vec<&'a str>,
-    classes: Vec<SqliteStatementClass>,
     wrap_mode: SqliteWrapMode,
 }
 
@@ -546,28 +451,12 @@ impl<'a> SqliteStatementPlan<'a> {
     }
 
     pub(in crate::adapters::sqlite::sqlite3) fn is_dml(&self, index: usize) -> bool {
-        self.classes[index] == SqliteStatementClass::Dml
+        is_dml_statement(self.statements[index])
     }
 
     pub(in crate::adapters::sqlite::sqlite3) fn wrap_mode(&self) -> SqliteWrapMode {
         self.wrap_mode
     }
-}
-
-fn is_write_class(class: SqliteStatementClass) -> bool {
-    matches!(class, SqliteStatementClass::Dml | SqliteStatementClass::Ddl)
-}
-
-fn should_auto_wrap_in_transaction(classes: &[SqliteStatementClass]) -> bool {
-    classes.len() > 1
-        && classes.iter().copied().any(is_write_class)
-        && classes.iter().all(|class| {
-            !matches!(
-                class,
-                SqliteStatementClass::TransactionControl
-                    | SqliteStatementClass::TransactionIncompatible
-            )
-        })
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
@@ -576,9 +465,11 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
     let statements = try_split_sqlite_statements(query)?;
     let classes: Vec<_> = statements
         .iter()
-        .map(|statement| classify_sqlite_statement(statement))
+        .map(|statement| sqlite_statement_classification(statement))
         .collect();
-    let wrap_mode = if should_auto_wrap_in_transaction(&classes) {
+    let wrap_mode = if sqlite_transaction_policy_for_classifications(statements.len(), &classes)
+        == SqliteTransactionPolicy::AutoWrap
+    {
         SqliteWrapMode::BeginCommit
     } else {
         SqliteWrapMode::None
@@ -586,7 +477,6 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
     Ok(SqliteStatementPlan {
         query,
         statements,
-        classes,
         wrap_mode,
     })
 }
@@ -1097,48 +987,48 @@ END";
         #[test]
         fn distinguishes_journal_mode_query_from_change() {
             assert_eq!(
-                classify_sqlite_statement("PRAGMA journal_mode"),
-                SqliteStatementClass::ReadOnly
+                sqlite_statement_classification("PRAGMA journal_mode"),
+                SqliteStatementClassification::ReadOnly
             );
             assert_eq!(
-                classify_sqlite_statement("PRAGMA main.journal_mode = WAL"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("PRAGMA main.journal_mode = WAL"),
+                SqliteStatementClassification::TransactionIncompatible
             );
             assert_eq!(
-                classify_sqlite_statement("PRAGMA journal_mode(WAL)"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("PRAGMA journal_mode(WAL)"),
+                SqliteStatementClassification::TransactionIncompatible
             );
             assert_eq!(
-                classify_sqlite_statement("PRAGMA foreign_keys = OFF"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("PRAGMA foreign_keys = OFF"),
+                SqliteStatementClassification::TransactionIncompatible
             );
             assert_eq!(
-                classify_sqlite_statement("PRAGMA foreign_keys"),
-                SqliteStatementClass::ReadOnly
+                sqlite_statement_classification("PRAGMA foreign_keys"),
+                SqliteStatementClassification::ReadOnly
             );
             assert_eq!(
-                classify_sqlite_statement("PRAGMA \"foreign_keys\" = OFF"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("PRAGMA \"foreign_keys\" = OFF"),
+                SqliteStatementClassification::TransactionIncompatible
             );
             assert_eq!(
-                classify_sqlite_statement("/* setup */ PRAGMA [foreign_keys](OFF)"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("/* setup */ PRAGMA [foreign_keys](OFF)"),
+                SqliteStatementClassification::TransactionIncompatible
             );
         }
 
         #[test]
         fn classifies_vacuum_and_writes_for_auto_transaction_policy() {
             assert_eq!(
-                classify_sqlite_statement("VACUUM INTO 'backup.db'"),
-                SqliteStatementClass::TransactionIncompatible
+                sqlite_statement_classification("VACUUM INTO 'backup.db'"),
+                SqliteStatementClassification::TransactionIncompatible
             );
             assert_eq!(
-                classify_sqlite_statement("CREATE TABLE users(id INTEGER PRIMARY KEY)"),
-                SqliteStatementClass::Ddl
+                sqlite_statement_classification("CREATE TABLE users(id INTEGER PRIMARY KEY)"),
+                SqliteStatementClassification::TransactionalWrite
             );
             assert_eq!(
-                classify_sqlite_statement("BEGIN"),
-                SqliteStatementClass::TransactionControl
+                sqlite_statement_classification("BEGIN"),
+                SqliteStatementClassification::TransactionControl
             );
         }
     }
