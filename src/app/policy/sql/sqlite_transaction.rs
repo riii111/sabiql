@@ -192,24 +192,36 @@ fn pragma_name_and_tail(statement: &str) -> Option<(String, &str)> {
         return None;
     }
     let tail = trim_sql_prefix(trimmed.get(6..)?);
-    let (name, rest) = match tail.as_bytes().first()? {
+    let (first_name, rest) = pragma_identifier_and_tail(tail)?;
+    let rest = trim_sql_prefix(rest);
+    let (name, rest) = if let Some(rest) = rest.strip_prefix('.') {
+        let (name, rest) = pragma_identifier_and_tail(trim_sql_prefix(rest))?;
+        (name, rest)
+    } else {
+        (first_name, rest)
+    };
+    Some((name.to_ascii_lowercase(), rest))
+}
+
+fn pragma_identifier_and_tail(sql: &str) -> Option<(&str, &str)> {
+    let (name, rest) = match sql.as_bytes().first()? {
         b'"' | b'\'' | b'`' => {
-            let quote = tail.as_bytes()[0] as char;
-            let end = tail[1..].find(quote)? + 1;
-            (tail.get(1..end)?, tail.get(end + 1..)?)
+            let quote = sql.as_bytes()[0] as char;
+            let end = sql[1..].find(quote)? + 1;
+            (sql.get(1..end)?, sql.get(end + 1..)?)
         }
         b'[' => {
-            let end = tail.find(']')?;
-            (tail.get(1..end)?, tail.get(end + 1..)?)
+            let end = sql.find(']')?;
+            (sql.get(1..end)?, sql.get(end + 1..)?)
         }
         _ => {
-            let end = tail
-                .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
-                .unwrap_or(tail.len());
-            (tail.get(..end)?, tail.get(end..)?)
+            let end = sql
+                .find(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+                .unwrap_or(sql.len());
+            (sql.get(..end)?, sql.get(end..)?)
         }
     };
-    Some((name.rsplit('.').next()?.to_ascii_lowercase(), rest))
+    (!name.is_empty()).then_some((name, rest))
 }
 
 #[cfg(test)]
@@ -273,7 +285,12 @@ mod tests {
 
     #[test]
     fn persistent_pragma_writes_are_transactional() {
-        for sql in ["PRAGMA user_version = 42", "PRAGMA application_id(7)"] {
+        for sql in [
+            "PRAGMA user_version = 42",
+            "PRAGMA application_id(7)",
+            "PRAGMA \"main\".\"user_version\" = 42",
+            "PRAGMA [main].[application_id](7)",
+        ] {
             assert_eq!(
                 sqlite_statement_classification(sql),
                 SqliteStatementClassification::TransactionalWrite,
