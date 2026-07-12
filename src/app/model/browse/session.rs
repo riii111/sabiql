@@ -85,6 +85,7 @@ impl BrowseSession {
     #[must_use]
     pub fn select_table(&mut self, schema: &str, table: &str, query: &mut QueryExecution) -> u64 {
         query.reset_for_context_change();
+        query.clear_current_result();
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
@@ -104,6 +105,7 @@ impl BrowseSession {
 
     pub fn clear_table_selection(&mut self, query: &mut QueryExecution) {
         query.reset_for_context_change();
+        query.clear_current_result();
         self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
@@ -545,6 +547,17 @@ mod tests {
             assert!(!query.is_running());
             assert!(!query.is_current_run(run_id));
         }
+
+        #[test]
+        fn clears_previous_query_result() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            query.set_current_result(make_query_result());
+
+            let _ = session.select_table("public", "users", &mut query);
+
+            assert!(query.current_result().is_none());
+        }
     }
 
     // ── set_table_detail ─────────────────────────────────────────────
@@ -586,11 +599,13 @@ mod tests {
         let mut query = QueryExecution::default();
         let _ = session.select_table("public", "users", &mut query);
         let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
+        query.set_current_result(make_query_result());
 
         session.clear_table_selection(&mut query);
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
+        assert!(query.current_result().is_none());
         assert_eq!(query.pagination.current_page(), 0);
     }
 
