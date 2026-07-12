@@ -22,7 +22,7 @@ impl SqlitePathValidator for FsSqlitePathValidator {
     }
 }
 
-fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError> {
+pub(super) fn validate_sqlite_database_path(path: &Path) -> Result<(), SqlitePathError> {
     let display = path.display().to_string();
     let metadata = match std::fs::metadata(path) {
         Ok(metadata) => metadata,

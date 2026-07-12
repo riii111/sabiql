@@ -147,6 +147,28 @@ fn sql_modal_high_risk_without_target_acknowledge() {
 }
 
 #[test]
+fn sql_modal_non_atomic_transaction_acknowledge() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)".to_string());
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingRisk {
+            reason: AcknowledgeReason::NonAtomicTransaction,
+            label: "SQLite transaction".to_string(),
+        });
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_analyze_unknown_risk_acknowledge() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();

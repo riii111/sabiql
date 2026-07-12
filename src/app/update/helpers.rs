@@ -557,7 +557,6 @@ mod tests {
 
     mod validate_sqlite_path {
         use super::*;
-        use crate::domain::connection::DatabaseType;
 
         #[test]
         fn empty_path_sets_required_error() {
@@ -777,6 +776,8 @@ mod tests {
     }
 
     mod bulk_delete_preview {
+        use crate::test_support;
+
         use super::*;
 
         fn editable_state(database_type: DatabaseType) -> AppState {
@@ -806,12 +807,12 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY,
-                        ..sabiql_test_support::column::test_nullable_column("id", "INTEGER", 1)
+                        ..test_support::column::test_nullable_column("id", "INTEGER", 1)
                     },
-                    sabiql_test_support::column::test_nullable_column("name", "TEXT", 2),
+                    test_support::column::test_nullable_column("name", "TEXT", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "users");
             state.result_interaction.stage_row(0);
@@ -842,11 +843,11 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "main".to_string(),
                 name: "logs".to_string(),
-                columns: vec![sabiql_test_support::column::test_nullable_column(
+                columns: vec![test_support::column::test_nullable_column(
                     "message", "TEXT", 1,
                 )],
                 primary_key: None,
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "logs");
             state.result_interaction.stage_row(0);

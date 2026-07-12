@@ -74,7 +74,6 @@ fn dispatch_cached_csv_export(
 }
 
 fn dispatch_rerunnable_csv_export(
-    state: &AppState,
     dsn: String,
     run_id: u64,
     export_query: String,
@@ -88,7 +87,6 @@ fn dispatch_rerunnable_csv_export(
         count_query,
         export_query,
         file_name,
-        read_only: state.session.is_read_only(),
     }])
 }
 
@@ -115,16 +113,14 @@ pub fn reduce_pagination(
             let row_count = result.row_count();
 
             if state.session.active_database_type() == Some(DatabaseType::SQLite) {
-                match sqlite_export_plan(&export_query, &result.columns, row_count) {
+                match sqlite_export_plan(result.source, &export_query, &result.columns, row_count) {
                     SqliteExportPlan::NotExportable { reason } => {
                         state.messages.set_error_at(reason, now);
                         return DispatchResult::handled();
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
                         let run_id = state.query.begin_running(now);
-                        return dispatch_rerunnable_csv_export(
-                            state, dsn, run_id, query, file_name,
-                        );
+                        return dispatch_rerunnable_csv_export(dsn, run_id, query, file_name);
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
                         let columns = result.columns.clone();
@@ -144,7 +140,7 @@ pub fn reduce_pagination(
             }
 
             let run_id = state.query.begin_running(now);
-            dispatch_rerunnable_csv_export(state, dsn, run_id, export_query, file_name)
+            dispatch_rerunnable_csv_export(dsn, run_id, export_query, file_name)
         }
 
         Action::CsvExportRowsCounted {
@@ -188,7 +184,6 @@ pub fn reduce_pagination(
                     query: export_query.clone(),
                     file_name: file_name.clone(),
                     row_count: *row_count,
-                    read_only: state.session.is_read_only(),
                 }])
             }
         }
@@ -210,7 +205,6 @@ pub fn reduce_pagination(
                 query: export_query.clone(),
                 file_name: file_name.clone(),
                 row_count: *row_count,
-                read_only: state.session.is_read_only(),
             }])
         }
 
@@ -579,7 +573,6 @@ mod tests {
     mod csv_export {
         use super::*;
         use crate::domain::QueryResult;
-        use crate::ports::outbound::DbOperationError;
         use rstest::rstest;
 
         fn export_test_state() -> AppState {
@@ -907,6 +900,37 @@ mod tests {
 
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::CountRowsForExport { .. }));
+            }
+
+            #[test]
+            fn preview_exports_visible_typed_values_from_cache() {
+                let mut state = sqlite_state();
+                state.query.set_current_result(Arc::new(
+                    QueryResult::success_with_values(
+                        "SELECT \"_rowid_\" AS \"__sabiql_rowid\", CASE WHEN typeof(\"message\") = 'text' THEN hex(\"message\") END AS \"message\" FROM \"logs\"".to_string(),
+                        vec!["message".to_string()],
+                        vec![vec![QueryValue::text("a\0bc")]],
+                        1,
+                        QuerySource::Preview,
+                    ),
+                ));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::ExportCsvFromCache {
+                    columns, values, ..
+                } = &effects[0]
+                else {
+                    panic!("expected cached CSV export effect");
+                };
+                assert_eq!(columns, &["message"]);
+                assert_eq!(values, &vec![vec![QueryValue::text("a\0bc")]]);
             }
         }
     }

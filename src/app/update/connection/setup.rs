@@ -167,6 +167,9 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::ConnectionSetupSave => {
+            if state.session.connection_state().is_connecting() {
+                return DispatchResult::handled();
+            }
             state.connection_setup.confirm_dropdown();
             validate_all(&mut state.connection_setup);
             if state.connection_setup.has_validation_errors() {
@@ -284,7 +287,6 @@ mod tests {
 
     mod paste {
         use super::*;
-        use crate::model::connection::setup::ConnectionField;
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -468,8 +470,6 @@ mod tests {
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
-        use crate::model::connection::state::ConnectionState;
-        use crate::update::action::ConnectionTarget;
 
         fn fill_valid_form(state: &mut AppState) {
             state
@@ -559,6 +559,23 @@ mod tests {
                 effects.as_slice(),
                 [Effect::CancelActiveQuery, Effect::SaveAndConnect { .. }]
             ));
+        }
+
+        #[test]
+        fn repeated_save_while_connecting_does_not_emit_duplicate_effect() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+
+            let first_effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            assert!(first_effects.is_some_and(|effects| matches!(
+                effects.as_slice(),
+                [Effect::CancelActiveQuery, Effect::SaveAndConnect { .. }]
+            )));
+
+            let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert!(effects.is_some_and(|effects| effects.is_empty()));
+            assert!(state.session.connection_state().is_connecting());
         }
 
         #[test]

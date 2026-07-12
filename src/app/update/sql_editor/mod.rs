@@ -171,7 +171,6 @@ mod tests {
 
     mod scrolling {
         use super::*;
-        use crate::update::action::CursorMove;
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
@@ -226,8 +225,6 @@ mod tests {
 
     mod confirming_high {
         use super::*;
-        use crate::policy::write::write_guardrails::AdhocRiskDecision;
-        use crate::update::action::CursorMove;
 
         fn confirming_high_state(content: &str, target: &str) -> AppState {
             let mut state = sql_modal_state();
@@ -319,6 +316,25 @@ mod tests {
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingRisk {
                     reason: AcknowledgeReason::TargetNameUnavailable,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_enters_non_atomic_acknowledgement() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(
+                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)".to_string(),
+            );
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::NonAtomicTransaction,
                     ..
                 }
             ));
@@ -765,7 +781,6 @@ mod tests {
 
     mod risk_acknowledge_flow {
         use super::*;
-        use crate::policy::write::sql_risk::AcknowledgeReason;
 
         fn confirming_risk_state(content: &str) -> AppState {
             let mut state = sql_modal_state();
@@ -809,7 +824,6 @@ mod tests {
 
     mod confirmation_flow {
         use super::*;
-        use crate::policy::write::write_guardrails::RiskLevel;
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());

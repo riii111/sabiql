@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -62,7 +63,7 @@ pub(super) fn reduce_request(
                 query,
                 source_query: content,
                 is_analyze: false,
-                read_only: true,
+                access_mode: AccessMode::ReadOnly,
             }])
         }
         _ => DispatchResult::pass(),

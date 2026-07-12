@@ -227,6 +227,13 @@ fn build_analyze_acknowledge_lines<'a>(
                 " execute it and data loss may occur.",
             ],
         ),
+        AcknowledgeReason::NonAtomicTransaction => (
+            theme.semantic.status.warning,
+            [
+                " SQLite must run this script without an automatic",
+                " transaction. EXPLAIN ANALYZE will execute it.",
+            ],
+        ),
     };
     let header_style = Style::default()
         .fg(header_color)

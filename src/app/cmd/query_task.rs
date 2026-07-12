@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::sync::Mutex;
 
 use tokio::task::AbortHandle;

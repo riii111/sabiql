@@ -905,9 +905,7 @@ mod tests {
 
     mod response_handlers {
         use super::*;
-        use crate::domain::{
-            DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
-        };
+        use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, QuerySource};
         use crate::model::connection::error::ConnectionErrorInfo;
         use crate::model::connection::state::ConnectionState;
 
@@ -1202,14 +1200,16 @@ mod tests {
     }
 
     mod confirm_selection_safety {
+        use crate::test_support;
+
         use super::*;
-        use crate::domain::{DatabaseMetadata, Table, TableSummary};
+        use crate::domain::{DatabaseMetadata, Table};
 
         fn stale_table_detail() -> Table {
             Table {
                 schema: "public".to_string(),
                 name: "old_table".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -1495,6 +1495,8 @@ mod tests {
     }
 
     mod table_detail_cached {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::Table;
 
@@ -1502,7 +1504,7 @@ mod tests {
             Box::new(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             })
         }
 
@@ -1970,7 +1972,7 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
+        use crate::domain::{DatabaseMetadata, MetadataState};
         use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::state::ConnectionState;
         use crate::model::shared::inspector_tab::InspectorTab;
@@ -2339,7 +2341,7 @@ mod tests {
 
     mod er_table_picker {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::domain::DatabaseMetadata;
         use crate::model::er_state::ErStatus;
 
         fn state_with_metadata() -> AppState {
@@ -2623,9 +2625,8 @@ mod tests {
 
     mod pagination_integration {
         use super::*;
-        use crate::domain::{DatabaseMetadata, QueryResult, QuerySource, TableSummary};
+        use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
         use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
-        use std::sync::Arc;
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();

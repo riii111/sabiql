@@ -4,6 +4,28 @@ use std::sync::Arc;
 
 use crate::policy::password_masking::mask_password;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseCli {
+    Psql,
+    Sqlite3,
+}
+
+impl DatabaseCli {
+    pub const fn not_found_summary(self) -> &'static str {
+        match self {
+            Self::Psql => "Database CLI not found",
+            Self::Sqlite3 => "sqlite3 not found",
+        }
+    }
+
+    pub const fn not_found_hint(self) -> &'static str {
+        match self {
+            Self::Psql => "Install the database client and add it to PATH",
+            Self::Sqlite3 => "Install sqlite3 and add it to PATH",
+        }
+    }
+}
+
 #[derive(Clone, thiserror::Error)]
 // Keep Display summary-only to avoid leaking raw command output.
 pub enum DbOperationError {
@@ -36,7 +58,10 @@ pub enum DbOperationError {
     #[error("Command tag parse failed")]
     CommandTagParseFailed(String),
     #[error("Command not found")]
-    CommandNotFound(String),
+    CommandNotFound {
+        command: DatabaseCli,
+        details: String,
+    },
     #[error("Operation timed out")]
     Timeout(String),
     #[error("Operation canceled")]
@@ -60,7 +85,7 @@ impl DbOperationError {
             Self::EmptyResponse(_) => "Database returned an empty response",
             Self::CsvParse(_) => "Failed to parse database CSV output",
             Self::CommandTagParseFailed(_) => "Failed to parse database command tag",
-            Self::CommandNotFound(_) => "Database CLI not found",
+            Self::CommandNotFound { command, .. } => command.not_found_summary(),
             Self::Timeout(_) => "Operation timed out",
             Self::Canceled(_) => "Operation canceled",
         }
@@ -88,7 +113,7 @@ impl DbOperationError {
             Self::EmptyResponse(_) => "Retry the operation and inspect the command output",
             Self::CsvParse(_) => "Check whether the adapter returned malformed CSV",
             Self::CommandTagParseFailed(_) => "Check whether the command output format changed",
-            Self::CommandNotFound(_) => "Install the database client and add it to PATH",
+            Self::CommandNotFound { command, .. } => command.not_found_hint(),
             Self::Timeout(_) => "Retry the operation or increase the timeout",
             Self::Canceled(_) => "Retry the operation if needed",
         }
@@ -108,9 +133,9 @@ impl DbOperationError {
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
             | Self::CommandTagParseFailed(details)
-            | Self::CommandNotFound(details)
             | Self::Timeout(details)
-            | Self::Canceled(details) => Cow::Borrowed(details.as_str()),
+            | Self::Canceled(details)
+            | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
         }
@@ -200,7 +225,10 @@ mod tests {
             ))))
         )]
         #[case(DbOperationError::CommandTagParseFailed("boom".to_string()))]
-        #[case(DbOperationError::CommandNotFound("boom".to_string()))]
+        #[case(DbOperationError::CommandNotFound {
+            command: DatabaseCli::Psql,
+            details: "boom".to_string(),
+        })]
         #[case(DbOperationError::Timeout("boom".to_string()))]
         #[case(DbOperationError::Canceled("boom".to_string()))]
         fn non_empty(#[case] error: DbOperationError) {
@@ -245,6 +273,17 @@ mod tests {
 
     mod user_messages {
         use super::*;
+
+        #[test]
+        fn sqlite_cli_not_found_has_sqlite_specific_guidance() {
+            let error = DbOperationError::CommandNotFound {
+                command: DatabaseCli::Sqlite3,
+                details: "No such file or directory".to_string(),
+            };
+
+            assert_eq!(error.summary(), "sqlite3 not found");
+            assert_eq!(error.hint(), "Install sqlite3 and add it to PATH");
+        }
 
         #[test]
         fn actionable_message_uses_summary_and_hint() {

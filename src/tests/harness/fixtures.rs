@@ -1,10 +1,10 @@
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableKindInfo, TableSummary, Trigger, TriggerEvent,
-    TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableSummary, Trigger,
+    TriggerEvent, TriggerTiming,
 };
 
-fn minimal_table(schema: &str, name: &str) -> Table {
+pub fn minimal_table(schema: &str, name: &str) -> Table {
     Table {
         schema: schema.to_string(),
         name: name.to_string(),
@@ -19,6 +19,13 @@ fn minimal_table(schema: &str, name: &str) -> Table {
         comment: None,
         source_ddl: None,
         kind_info: TableKindInfo::default(),
+    }
+}
+
+pub fn view_kind_info() -> TableKindInfo {
+    TableKindInfo {
+        kind: TableKind::View,
+        ..TableKindInfo::default()
     }
 }
 

@@ -6,13 +6,19 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
 use crate::cmd::runner::ConnectionDeps;
-use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
+use crate::cmd::sqlite_path_validate::{
+    canonicalize_sqlite_database_path, validate_sqlite_database_path,
+};
 use crate::domain::DatabaseMetadata;
+use crate::domain::SqlitePathError;
 use crate::domain::connection::{
-    ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
+    ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
+    SqliteConnectionConfig,
 };
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{ConnectionStoreError, MetadataProvider, ServiceFileError};
+use crate::ports::outbound::{
+    ConnectionStoreError, MetadataProvider, ServiceFileError, SqlitePathValidator,
+};
 use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
 
 pub(crate) async fn run(
@@ -37,30 +43,29 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            let id = profile.id.clone();
-            let dsn = connection.dsn_builder.build_dsn(&profile);
-            let name = profile.name.as_str().to_string();
-            let database_type = profile.database_type();
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();
 
             if profile.database_type() == DatabaseType::SQLite {
-                let path = profile
-                    .sqlite_config()
-                    .expect("SQLite profile requires SQLite config")
-                    .path()
-                    .to_string();
-                if let Err(error) =
-                    validate_sqlite_database_path(&connection.sqlite_path_validator, path).await
+                let profile = match normalize_sqlite_profile(
+                    profile,
+                    &connection.sqlite_path_validator,
+                )
+                .await
                 {
-                    action_tx
-                        .send(Action::ConnectionSaveFailed(
-                            ConnectionProfileError::SqlitePath(error).into(),
-                        ))
-                        .await
-                        .ok();
-                    return Ok(());
-                }
+                    Ok(profile) => profile,
+                    Err(error) => {
+                        action_tx
+                            .send(Action::ConnectionSaveFailed(error.into()))
+                            .await
+                            .ok();
+                        return Ok(());
+                    }
+                };
+                let id = profile.id.clone();
+                let dsn = connection.dsn_builder.build_dsn(&profile);
+                let name = profile.name.as_str().to_string();
+                let database_type = profile.database_type();
 
                 tokio::task::spawn_blocking(move || match store.save(&profile) {
                     Ok(()) => {
@@ -79,6 +84,11 @@ pub(crate) async fn run(
                 });
                 return Ok(());
             }
+
+            let id = profile.id.clone();
+            let dsn = connection.dsn_builder.build_dsn(&profile);
+            let name = profile.name.as_str().to_string();
+            let database_type = profile.database_type();
 
             let provider = Arc::clone(metadata_provider);
             let cache = metadata_cache.clone();
@@ -218,6 +228,35 @@ pub(crate) async fn run(
     }
 }
 
+async fn normalize_sqlite_profile(
+    profile: ConnectionProfile,
+    validator: &Arc<dyn SqlitePathValidator>,
+) -> Result<ConnectionProfile, ConnectionProfileError> {
+    let path = profile
+        .sqlite_config()
+        .expect("SQLite profile requires SQLite config")
+        .path()
+        .to_string();
+    let canonical_path = canonicalize_sqlite_database_path(validator, path)
+        .await
+        .map_err(ConnectionProfileError::SqlitePath)?;
+    let canonical_path = canonical_path.to_str().ok_or_else(|| {
+        ConnectionProfileError::SqlitePath(SqlitePathError::Io(
+            "SQLite database path is not valid UTF-8".to_string(),
+        ))
+    })?;
+    validate_sqlite_database_path(validator, canonical_path.to_string())
+        .await
+        .map_err(ConnectionProfileError::SqlitePath)?;
+    let config = SqliteConnectionConfig::new(canonical_path.to_string())?;
+
+    ConnectionProfile::with_id_and_config(
+        profile.id.clone(),
+        profile.name.as_str(),
+        ConnectionConfig::SQLite(config),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -271,16 +310,23 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn sqlite_profile_is_saved_before_adapter_metadata_exists() {
+        async fn sqlite_profile_is_canonicalized_before_save() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("app.db");
             fs::write(&path, b"").unwrap();
-            let path_str = path.to_str().unwrap().to_string();
-            let expected_dsn = format!("sqlite://{path_str}");
+            let input_path = dir.path().join("nested").join("..").join("app.db");
+            fs::create_dir(dir.path().join("nested")).unwrap();
+            let input_path = input_path.to_str().unwrap().to_string();
+            let expected_path = fs::canonicalize(&path).unwrap();
+            let expected_dsn = format!("sqlite://{}", expected_path.display());
 
             let mut mock_store = MockConnectionStore::new();
-            mock_store.expect_save().once().returning(|profile| {
+            mock_store.expect_save().once().returning(move |profile| {
                 assert_eq!(profile.database_type(), DatabaseType::SQLite);
+                assert_eq!(
+                    profile.sqlite_config().unwrap().path(),
+                    expected_path.to_str().unwrap()
+                );
                 Ok(())
             });
 
@@ -305,7 +351,7 @@ mod tests {
                         id: None,
                         name: "Local".to_string(),
                         config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new(path_str).unwrap(),
+                            SqliteConnectionConfig::new(input_path).unwrap(),
                         ),
                     }],
                     &mut renderer,

@@ -351,6 +351,8 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     pub use crate::domain::Column;
     use crate::domain::{QueryResult, QuerySource, Table};
@@ -364,12 +366,12 @@ mod tests {
             columns: vec![
                 Column {
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 },
-                sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2),
+                test_support::column::test_nullable_column("settings", "jsonb", 2),
             ],
             primary_key: Some(vec!["id".to_string()]),
-            ..sabiql_test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -561,7 +563,7 @@ mod tests {
     mod edit_lifecycle {
         use super::*;
         use crate::model::browse::jsonb_detail::JsonbDetailMode;
-        use crate::model::shared::key_sequence::{KeySequenceState, Prefix};
+        use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::CursorMove;
         use rstest::rstest;
 
@@ -626,11 +628,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                        ..test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2)
+                        ..test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -654,11 +656,11 @@ mod tests {
                 columns: vec![
                     Column {
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        ..sabiql_test_support::column::test_nullable_column("id", "integer", 1)
+                        ..test_support::column::test_nullable_column("id", "integer", 1)
                     },
                     Column {
                         attributes: ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED,
-                        ..sabiql_test_support::column::test_nullable_column("settings", "jsonb", 2)
+                        ..test_support::column::test_nullable_column("settings", "jsonb", 2)
                     },
                 ],
                 ..jsonb_table()
@@ -854,7 +856,6 @@ mod tests {
 
     mod yank {
         use super::*;
-        use crate::cmd::effect::Effect;
 
         #[test]
         fn copies_all_text_to_clipboard() {
@@ -1049,7 +1050,6 @@ mod tests {
 
     mod reducer_chain {
         use super::*;
-        use crate::cmd::effect::Effect;
         use crate::model::browse::jsonb_detail::JsonbDetailMode;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
         use crate::update::reducer::reduce as reduce_app;

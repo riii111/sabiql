@@ -14,6 +14,7 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
@@ -280,7 +281,7 @@ pub fn reduce_write(
                     dsn,
                     run_id,
                     query: query.clone(),
-                    read_only: state.session.is_read_only(),
+                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }])
             } else {
                 state
@@ -443,6 +444,8 @@ mod tests {
     }
 
     mod write_flow {
+        use crate::test_support;
+
         use super::*;
 
         fn editable_state() -> AppState {
@@ -487,11 +490,11 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "main".to_string(),
                 name: "logs".to_string(),
-                columns: vec![sabiql_test_support::column::test_nullable_column(
+                columns: vec![test_support::column::test_nullable_column(
                     "message", "TEXT", 1,
                 )],
                 primary_key: None,
-                ..sabiql_test_support::table::minimal("", "")
+                ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "logs");
             state.modal.set_mode(InputMode::CellEdit);
@@ -1061,7 +1064,6 @@ mod tests {
 
     mod delete_write_flow {
         use super::*;
-        use crate::ports::outbound::DbOperationError;
 
         fn delete_preview() -> WritePreview {
             WritePreview {

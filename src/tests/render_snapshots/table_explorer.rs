@@ -2,9 +2,8 @@ use super::*;
 use harness::{explorer_selected_state, table_detail_loaded_state, with_current_result};
 use sabiql_app::model::shared::ui_state::FocusMode;
 use sabiql_domain::{
-    ConnectionId, DatabaseMetadata, DatabaseType, Schema, TableKind, TableKindInfo, TableSummary,
+    ConnectionId, DatabaseMetadata, Schema, TableKind, TableKindInfo, TableSummary,
 };
-use std::sync::Arc;
 
 #[test]
 fn table_selection_with_preview() {
@@ -105,7 +104,7 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
                     ..TableKindInfo::default()
                 }),
             TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
-                .with_kind_info(sabiql_test_support::table::view_kind_info()),
+                .with_kind_info(fixtures::view_kind_info()),
             TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
                 .with_kind_info(TableKindInfo {
                     is_strict: true,

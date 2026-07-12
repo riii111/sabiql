@@ -168,7 +168,7 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::update::action::CursorMove;
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -180,7 +180,6 @@ mod tests {
 
     mod jsonb_detail {
         use super::*;
-        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_moves_cursor_down_in_normal_mode() {
@@ -298,7 +297,6 @@ mod tests {
 
     mod jsonb_search {
         use super::*;
-        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {

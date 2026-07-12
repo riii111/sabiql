@@ -2,8 +2,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::app::ports::outbound::{
-    DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor, SqlDialect,
-    SqliteDiagnosticsProvider,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
+    SqlDialect, SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
@@ -127,18 +127,23 @@ impl QueryExecutor for DbAdapterRegistry {
         table: &str,
         limit: usize,
         offset: usize,
-        read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => {
                 self.postgres
-                    .execute_preview(dsn, schema, table, limit, offset, read_only)
+                    .execute_preview(dsn, schema, table, limit, offset)
                     .await
             }
             DatabaseType::SQLite => {
-                self.sqlite
-                    .execute_preview(dsn, schema, table, limit, offset, read_only)
-                    .await
+                QueryExecutor::execute_preview(
+                    self.sqlite.as_ref(),
+                    dsn,
+                    schema,
+                    table,
+                    limit,
+                    offset,
+                )
+                .await
             }
         }
     }
@@ -147,11 +152,13 @@ impl QueryExecutor for DbAdapterRegistry {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, read_only).await,
-            DatabaseType::SQLite => self.sqlite.execute_adhoc(dsn, query, read_only).await,
+            DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, access_mode).await,
+            DatabaseType::SQLite => {
+                QueryExecutor::execute_adhoc(self.sqlite.as_ref(), dsn, query, access_mode).await
+            }
         }
     }
 
@@ -159,23 +166,22 @@ impl QueryExecutor for DbAdapterRegistry {
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, read_only).await,
-            DatabaseType::SQLite => self.sqlite.execute_write(dsn, query, read_only).await,
+            DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, access_mode).await,
+            DatabaseType::SQLite => {
+                QueryExecutor::execute_write(self.sqlite.as_ref(), dsn, query, access_mode).await
+            }
         }
     }
 
-    async fn count_query_rows(
-        &self,
-        dsn: &str,
-        query: &str,
-        read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query, read_only).await,
-            DatabaseType::SQLite => self.sqlite.count_query_rows(dsn, query, read_only).await,
+            DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query).await,
+            DatabaseType::SQLite => {
+                QueryExecutor::count_query_rows(self.sqlite.as_ref(), dsn, query).await
+            }
         }
     }
 
@@ -184,15 +190,12 @@ impl QueryExecutor for DbAdapterRegistry {
         dsn: &str,
         query: &str,
         path: &Path,
-        read_only: bool,
     ) -> Result<usize, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => {
-                self.postgres
-                    .export_to_csv(dsn, query, path, read_only)
-                    .await
+            DatabaseType::PostgreSQL => self.postgres.export_to_csv(dsn, query, path).await,
+            DatabaseType::SQLite => {
+                QueryExecutor::export_to_csv(self.sqlite.as_ref(), dsn, query, path).await
             }
-            DatabaseType::SQLite => self.sqlite.export_to_csv(dsn, query, path, read_only).await,
         }
     }
 }
@@ -278,9 +281,11 @@ impl SqlDialect for DbAdapterRegistry {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use super::*;
     use crate::domain::connection::SslMode;
-    use crate::domain::{Column, ColumnAttributes, QueryValue};
+    use crate::domain::{Column, ColumnAttributes};
 
     fn make_table() -> Table {
         Table {
@@ -295,7 +300,7 @@ mod tests {
                 ordinal_position: 1,
             }],
             primary_key: Some(vec!["id".to_string()]),
-            ..sabiql_test_support::infra::minimal_table("", "")
+            ..test_support::minimal_table("", "")
         }
     }
 
@@ -425,9 +430,8 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_metadata_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
@@ -437,9 +441,8 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
@@ -449,9 +452,8 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_table_detail_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let detail = registry
@@ -465,13 +467,12 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_query_execution_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let result = registry
-            .execute_adhoc(&dsn, "SELECT 1 AS value", true)
+            .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadOnly)
             .await
             .unwrap();
 
@@ -481,9 +482,8 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_columns_request_is_dispatched_to_sqlite_adapter() {
-        let (_dir, dsn) = sabiql_test_support::infra::make_sqlite_db(
-            "CREATE TABLE users(id INTEGER PRIMARY KEY);",
-        );
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let detail = registry
@@ -501,19 +501,18 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
     async fn fetch_diagnostics_core(
         &self,
         dsn: &str,
-        read_only: bool,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
                 "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
             )),
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn, read_only).await,
+            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
         }
     }
 
-    async fn fetch_quick_check(&self, dsn: &str, read_only: bool) -> DiagnosticField {
+    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
         match Self::db_type_from_dsn(dsn) {
-            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn, read_only).await,
+            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
             Ok(DatabaseType::PostgreSQL) | Err(_) => DiagnosticField::err(
                 "SQLite diagnostics are unavailable for non-SQLite connections",
             ),
@@ -530,7 +529,7 @@ mod sqlite_diagnostics_registry {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
         let result = registry
-            .fetch_diagnostics_core("postgres://localhost/db", true)
+            .fetch_diagnostics_core("postgres://localhost/db")
             .await;
 
         assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));

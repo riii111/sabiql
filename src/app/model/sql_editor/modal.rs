@@ -481,7 +481,6 @@ impl SqlModalContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
     fn candidate(text: &str) -> CompletionCandidate {

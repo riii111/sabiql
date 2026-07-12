@@ -292,7 +292,6 @@ fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::ui_state::ResultNavMode;
     use crate::update::input::vim::{
         SearchContinuation, VimCommand, VimSurfaceContext, action_for_command,
     };

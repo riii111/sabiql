@@ -359,6 +359,8 @@ impl AppState {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -407,7 +409,7 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "users".to_string(),
-            ..sabiql_test_support::table::minimal("", "")
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -836,8 +838,7 @@ mod tests {
 
         #[test]
         fn sqlite_rowid_table_can_write_preview_without_primary_key() {
-            let state =
-                sqlite_preview_state_with_table(sabiql_test_support::table::minimal("", ""));
+            let state = sqlite_preview_state_with_table(test_support::table::minimal("", ""));
 
             assert!(state.can_write_visible_preview());
             assert_eq!(state.visible_preview_target_read_only_reason(), None);
@@ -852,7 +853,7 @@ mod tests {
             #[case] without_rowid: bool,
             #[case] reason: &str,
         ) {
-            let mut table = sabiql_test_support::table::minimal("", "");
+            let mut table = test_support::table::minimal("", "");
             table.kind_info = TableKindInfo {
                 kind,
                 without_rowid,
@@ -869,11 +870,11 @@ mod tests {
 
         #[test]
         fn sqlite_table_with_all_rowid_aliases_shadowed_is_read_only() {
-            let mut table = sabiql_test_support::table::minimal("", "");
+            let mut table = test_support::table::minimal("", "");
             table.columns = vec![
-                sabiql_test_support::column::test_nullable_column("rowid", "TEXT", 1),
-                sabiql_test_support::column::test_nullable_column("_rowid_", "TEXT", 2),
-                sabiql_test_support::column::test_nullable_column("oid", "TEXT", 3),
+                test_support::column::test_nullable_column("rowid", "TEXT", 1),
+                test_support::column::test_nullable_column("_rowid_", "TEXT", 2),
+                test_support::column::test_nullable_column("oid", "TEXT", 3),
             ];
             let state = sqlite_preview_state_with_table(table);
 
@@ -886,8 +887,7 @@ mod tests {
 
         #[test]
         fn postgres_table_without_primary_key_does_not_mention_rowid() {
-            let state =
-                postgres_preview_state_with_table(sabiql_test_support::table::minimal("", ""));
+            let state = postgres_preview_state_with_table(test_support::table::minimal("", ""));
 
             assert!(!state.can_write_visible_preview());
             assert_eq!(
@@ -968,8 +968,7 @@ mod tests {
 
     mod connection_catalog {
         use super::*;
-        use crate::domain::connection::{ConnectionProfile, SslMode};
-        use crate::model::connection::list::ConnectionListItem;
+        use crate::domain::connection::SslMode;
 
         fn make_profile(name: &str) -> ConnectionProfile {
             ConnectionProfile::new_postgres(

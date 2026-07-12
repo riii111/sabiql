@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
+    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
     with_current_result,
 };
@@ -13,10 +13,9 @@ use ratatui::style::{Color, Modifier};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::theme_id::ThemeId;
-use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, ColumnAttributes, QueryResult, QuerySource};
+use sabiql_domain::{Column, QueryResult};
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
     SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
