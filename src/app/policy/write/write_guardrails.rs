@@ -60,6 +60,11 @@ impl StableRowIdentity {
     }
 }
 
+/// Resolves the stable identity used to target a row in a write preview.
+///
+/// Callers must validate `preview_writeability` first. This function only
+/// resolves primary-key or SQLite rowid identity; it does not enforce whether
+/// the table itself is writable.
 pub fn stable_row_identity_for_table(
     database_type: DatabaseType,
     table: &Table,
@@ -245,6 +250,8 @@ pub fn evaluate_guardrails(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::TableKindInfo;
+    use crate::test_support;
 
     mod guardrail_evaluation {
         use super::*;
@@ -285,6 +292,87 @@ mod tests {
                 uses_sqlite_rowid: false,
             };
             assert_eq!(target.format_compact(), "public.users (id=42)");
+        }
+    }
+
+    mod row_identity {
+        use super::*;
+
+        fn primary_key_table() -> Table {
+            let mut table = test_support::table::minimal("public", "users");
+            table.primary_key = Some(vec!["id".to_string()]);
+            table
+        }
+
+        #[test]
+        fn postgres_primary_key_uses_primary_key_identity() {
+            let table = primary_key_table();
+
+            assert_eq!(
+                preview_writeability(DatabaseType::PostgreSQL, &table),
+                PreviewWriteability::Writable
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::PostgreSQL, &table),
+                Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
+        }
+
+        #[test]
+        fn sqlite_rowid_table_uses_rowid_identity() {
+            let table = test_support::table::minimal("main", "users");
+
+            assert_eq!(
+                preview_writeability(DatabaseType::SQLite, &table),
+                PreviewWriteability::Writable
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                Some(StableRowIdentity::SqliteRowid {
+                    alias: "rowid".to_string()
+                })
+            );
+        }
+
+        #[test]
+        fn postgres_table_without_primary_key_has_no_stable_identity() {
+            let table = test_support::table::minimal("public", "users");
+
+            assert_eq!(
+                preview_writeability(DatabaseType::PostgreSQL, &table),
+                PreviewWriteability::MissingStableRowIdentity
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::PostgreSQL, &table),
+                None
+            );
+        }
+
+        #[test]
+        fn readonly_table_kinds_are_not_writable() {
+            let cases = [
+                (TableKind::View, false, "view"),
+                (TableKind::Virtual, false, "virtual table"),
+                (TableKind::Table, true, "WITHOUT ROWID table"),
+            ];
+
+            for (kind, without_rowid, reason) in cases {
+                let mut table = primary_key_table();
+                table.kind_info = TableKindInfo {
+                    kind,
+                    without_rowid,
+                    ..TableKindInfo::default()
+                };
+
+                assert_eq!(
+                    preview_writeability(DatabaseType::SQLite, &table),
+                    PreviewWriteability::ReadOnly(reason)
+                );
+                assert_eq!(
+                    stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                    Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+                );
+            }
         }
     }
 
