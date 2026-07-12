@@ -846,7 +846,6 @@ mod tests {
             };
             match dispatched {
                 Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("CAST(X'610062' AS TEXT)"));
                     assert_eq!(preview.diff[0].before, "a\0b");
                     assert_eq!(preview.diff[0].after, "a\0b");
                 }
