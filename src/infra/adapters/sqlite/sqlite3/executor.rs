@@ -1546,23 +1546,26 @@ mod tests {
         mod transaction_execution {
             use super::*;
 
-            #[tokio::test]
-            async fn ddl_and_dml_still_roll_back_as_one_auto_transaction() {
-                let (_dir, dsn) = test_support::make_sqlite_db("");
-                let adapter = SqliteAdapter::new();
+            mod automatic_transactions {
+                use super::*;
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                #[tokio::test]
+                async fn ddl_and_dml_still_roll_back_as_one_auto_transaction() {
+                    let (_dir, dsn) = test_support::make_sqlite_db("");
+                    let adapter = SqliteAdapter::new();
+
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "CREATE TABLE users(id INTEGER PRIMARY KEY);\
                      INSERT INTO users(id) VALUES (1);\
                      INSERT INTO missing(id) VALUES (2)",
-                        AccessMode::ReadWrite,
-                    )
-                    .await;
+                            AccessMode::ReadWrite,
+                        )
+                        .await;
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let tables = adapter
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let tables = adapter
                     .execute_adhoc(
                         &dsn,
                         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'",
@@ -1570,170 +1573,174 @@ mod tests {
                     )
                     .await
                     .unwrap();
-                assert!(tables.rows().is_empty());
-            }
+                    assert!(tables.rows().is_empty());
+                }
 
-            #[tokio::test]
-            async fn vacuum_in_mixed_sql_runs_outside_auto_transaction() {
-                let (_dir, dsn) = test_support::make_sqlite_db("");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn vacuum_in_mixed_sql_runs_outside_auto_transaction() {
+                    let (_dir, dsn) = test_support::make_sqlite_db("");
+                    let adapter = SqliteAdapter::new();
 
-                adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                    adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "CREATE TABLE users(id INTEGER PRIMARY KEY);\
                      INSERT INTO users(id) VALUES (1);\
                      VACUUM;\
                      INSERT INTO users(id) VALUES (2)",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "SELECT id FROM users ORDER BY id",
-                        AccessMode::ReadOnly,
-                    )
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "SELECT id FROM users ORDER BY id",
+                            AccessMode::ReadOnly,
+                        )
+                        .await
+                        .unwrap();
 
-                assert_eq!(
-                    rows.rows(),
-                    vec![vec!["1".to_string()], vec!["2".to_string()]]
-                );
-            }
+                    assert_eq!(
+                        rows.rows(),
+                        vec![vec!["1".to_string()], vec!["2".to_string()]]
+                    );
+                }
 
-            #[tokio::test]
-            async fn journal_mode_change_in_mixed_sql_runs_outside_auto_transaction() {
-                let (_dir, dsn) = test_support::make_sqlite_db("");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn journal_mode_change_in_mixed_sql_runs_outside_auto_transaction() {
+                    let (_dir, dsn) = test_support::make_sqlite_db("");
+                    let adapter = SqliteAdapter::new();
 
-                adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "PRAGMA journal_mode = WAL;\
+                    adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "PRAGMA journal_mode = WAL;\
                      CREATE TABLE users(id INTEGER PRIMARY KEY);\
                      INSERT INTO users(id) VALUES (1)",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
-            }
+                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                }
 
-            #[tokio::test]
-            async fn foreign_keys_change_in_mixed_sql_is_not_a_transaction_noop() {
-                let (_dir, dsn) = test_support::make_sqlite_db("");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn foreign_keys_change_in_mixed_sql_is_not_a_transaction_noop() {
+                    let (_dir, dsn) = test_support::make_sqlite_db("");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "PRAGMA foreign_keys = ON;
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "PRAGMA foreign_keys = ON;
                      CREATE TABLE parent(id INTEGER PRIMARY KEY);
                      PRAGMA foreign_keys",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                }
             }
 
-            #[tokio::test]
-            async fn rolled_back_dml_returns_rollback_tag() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+            mod savepoint_rollbacks {
+                use super::*;
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "BEGIN; INSERT INTO users(id) VALUES (1); ROLLBACK",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                #[tokio::test]
+                async fn rolled_back_dml_returns_rollback_tag() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                assert!(rows.rows().is_empty());
-            }
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "BEGIN; INSERT INTO users(id) VALUES (1); ROLLBACK",
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-            #[tokio::test]
-            async fn full_rollback_inside_savepoint_discards_outer_dml() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                    assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+                    assert!(rows.rows().is_empty());
+                }
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "BEGIN;
+                #[tokio::test]
+                async fn full_rollback_inside_savepoint_discards_outer_dml() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
+
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "BEGIN;
                      INSERT INTO users(id) VALUES (1);
                      SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                assert!(rows.rows().is_empty());
-            }
+                    assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+                    assert!(rows.rows().is_empty());
+                }
 
-            #[tokio::test]
-            async fn savepoint_rollback_discards_inner_dml_only() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn savepoint_rollback_discards_inner_dml_only() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "BEGIN;
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "BEGIN;
                      INSERT INTO users(id) VALUES (1);
                      SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK TO sp;
                      COMMIT",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
-            }
+                    assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                }
 
-            #[tokio::test]
-            async fn rollback_to_keeps_savepoint_for_later_rollback() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn rollback_to_keeps_savepoint_for_later_rollback() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "BEGIN;
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "BEGIN;
                      INSERT INTO users(id) VALUES (1);
                      SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (2);
@@ -1741,29 +1748,29 @@ mod tests {
                      INSERT INTO users(id) VALUES (3);
                      ROLLBACK TO sp;
                      COMMIT",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
-            }
+                    assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                }
 
-            #[tokio::test]
-            async fn rollback_to_named_outer_savepoint_discards_nested_frames() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn rollback_to_named_outer_savepoint_discards_nested_frames() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "BEGIN;
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "BEGIN;
                      INSERT INTO users(id) VALUES (1);
                      SAVEPOINT outer_sp;
                      INSERT INTO users(id) VALUES (2);
@@ -1771,195 +1778,180 @@ mod tests {
                      INSERT INTO users(id) VALUES (3);
                      ROLLBACK TO outer_sp;
                      COMMIT",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
-            }
+                    assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                }
 
-            #[tokio::test]
-            async fn top_level_savepoint_rollback_to_discards_inner_dml_only() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn top_level_savepoint_rollback_to_discards_inner_dml_only() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "SAVEPOINT sp;
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "SAVEPOINT sp;
                      INSERT INTO users(id) VALUES (1);
                      INSERT INTO users(id) VALUES (2);
                      ROLLBACK TO sp;
                      INSERT INTO users(id) VALUES (3);
                      RELEASE sp",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                assert_eq!(rows.rows(), vec![vec!["3".to_string()]]);
-            }
+                    assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+                    assert_eq!(rows.rows(), vec![vec!["3".to_string()]]);
+                }
 
-            #[tokio::test]
-            async fn top_level_savepoint_multi_write_rolls_back_when_later_statement_fails() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn top_level_savepoint_multi_write_rolls_back_when_later_statement_fails() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
+                    let result = adapter
                 .execute_adhoc(
                     &dsn,
                     "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)", AccessMode::ReadWrite)
                 .await;
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
-                assert!(rows.rows().is_empty());
-            }
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
+                    assert!(rows.rows().is_empty());
+                }
 
-            #[tokio::test]
-            async fn top_level_savepoint_without_release_does_not_persist_on_success() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn top_level_savepoint_without_release_does_not_persist_on_success() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
+                    let result = adapter
                 .execute_adhoc(
                     &dsn,
                     "SAVEPOINT sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)", AccessMode::ReadWrite)
                 .await
                 .unwrap();
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
 
-                assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                assert!(rows.rows().is_empty());
+                    assert_eq!(result.command_tag, Some(CommandTag::Rollback));
+                    assert!(rows.rows().is_empty());
+                }
             }
 
-            #[tokio::test]
-            async fn with_insert_reports_affected_rows_command_tag() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+            mod multi_statement_atomicity {
+                use super::*;
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "WITH payload(id) AS (VALUES (1), (2))
-                     INSERT INTO users(id) SELECT id FROM payload",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
+                #[tokio::test]
+                async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                assert_eq!(result.row_count(), 2);
-                assert_eq!(result.command_tag, Some(CommandTag::Insert(2)));
-            }
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
+                            AccessMode::ReadWrite,
+                        )
+                        .await;
 
-            #[tokio::test]
-            async fn multi_statement_dml_rolls_back_when_later_statement_fails() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
+                    assert!(rows.rows().is_empty());
+                }
 
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)",
-                        AccessMode::ReadWrite,
-                    )
-                    .await;
+                #[tokio::test]
+                async fn with_dml_rolls_back_when_later_statement_fails() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
-                assert!(rows.rows().is_empty());
-            }
-
-            #[tokio::test]
-            async fn with_dml_rolls_back_when_later_statement_fails() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
-
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "WITH payload(id) AS (VALUES (1))
+                    let result = adapter
+                        .execute_adhoc(
+                            &dsn,
+                            "WITH payload(id) AS (VALUES (1))
                      INSERT INTO users(id) SELECT id FROM payload;
                      INSERT INTO missing(id) VALUES (2)",
-                        AccessMode::ReadWrite,
-                    )
-                    .await;
+                            AccessMode::ReadWrite,
+                        )
+                        .await;
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
-                assert!(rows.rows().is_empty());
-            }
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
+                    assert!(rows.rows().is_empty());
+                }
 
-            #[tokio::test]
-            async fn returning_dml_rolls_back_when_later_statement_fails() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
-                let query = "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
+                #[tokio::test]
+                async fn returning_dml_rolls_back_when_later_statement_fails() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
+                    let query = "INSERT INTO users(id) VALUES (1) RETURNING id; INSERT INTO missing(id) VALUES (2)";
 
-                let result = adapter
-                    .execute_adhoc(&dsn, query, AccessMode::ReadWrite)
-                    .await;
+                    let result = adapter
+                        .execute_adhoc(&dsn, query, AccessMode::ReadWrite)
+                        .await;
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
-                assert!(rows.rows().is_empty());
-            }
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
+                    assert!(rows.rows().is_empty());
+                }
 
-            #[tokio::test]
-            async fn select_then_dml_rolls_back_when_later_statement_fails() {
-                let (_dir, dsn) =
-                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-                let adapter = SqliteAdapter::new();
+                #[tokio::test]
+                async fn select_then_dml_rolls_back_when_later_statement_fails() {
+                    let (_dir, dsn) =
+                        test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                    let adapter = SqliteAdapter::new();
 
-                let result = adapter
+                    let result = adapter
                 .execute_adhoc(
                     &dsn,
                     "SELECT 1 AS marker; INSERT INTO users(id) VALUES (1); INSERT INTO missing(id) VALUES (2)", AccessMode::ReadWrite)
                 .await;
 
-                assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
-                let rows = adapter
-                    .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
-                    .await
-                    .unwrap();
-                assert!(rows.rows().is_empty());
+                    assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+                    let rows = adapter
+                        .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
+                        .await
+                        .unwrap();
+                    assert!(rows.rows().is_empty());
+                }
             }
         }
 
-        mod dml_command_tags {
+        mod dml_command_tag_comments {
             use super::*;
 
             #[tokio::test]
@@ -2057,8 +2049,28 @@ mod tests {
             }
         }
 
-        mod identifier_and_ddl_command_tags {
+        mod dml_command_tags {
             use super::*;
+
+            #[tokio::test]
+            async fn with_insert_reports_affected_rows_command_tag() {
+                let (_dir, dsn) =
+                    test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "WITH payload(id) AS (VALUES (1), (2))
+                     INSERT INTO users(id) SELECT id FROM payload",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.row_count(), 2);
+                assert_eq!(result.command_tag, Some(CommandTag::Insert(2)));
+            }
 
             #[tokio::test]
             async fn dml_table_name_containing_returning_reports_affected_rows() {
@@ -2119,6 +2131,10 @@ mod tests {
                 assert_eq!(result.row_count(), 1);
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
+        }
+
+        mod ddl_command_tags {
+            use super::*;
 
             #[tokio::test]
             async fn ddl_returns_schema_refresh_command_tag() {
