@@ -16,10 +16,10 @@ repository = "https://github.com/riii111/sabiql"
 
 [workspace.dependencies]
 # When adding third-party dependencies, update `absolute-paths-allowed-crates` in clippy.toml.
-sabiql-domain = { path = "src/domain", version = "1.13.0" }
-sabiql-app = { path = "src/app", version = "1.13.0" }
-sabiql-infra = { path = "src/infra", version = "1.13.0" }
-sabiql-ui = { path = "src/ui", version = "1.13.0" }
+sabiql-domain = { path = "src/domain", version = "1.14.0" }
+sabiql-app = { path = "src/app", version = "1.14.0" }
+sabiql-infra = { path = "src/infra", version = "1.14.0" }
+sabiql-ui = { path = "src/ui", version = "1.14.0" }
 arboard = "3"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
