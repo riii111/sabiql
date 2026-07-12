@@ -297,6 +297,7 @@ mod tests {
 
     mod row_identity {
         use super::*;
+        use rstest::rstest;
 
         fn primary_key_table() -> Table {
             let mut table = test_support::table::minimal("public", "users");
@@ -348,31 +349,30 @@ mod tests {
             );
         }
 
-        #[test]
-        fn readonly_table_kinds_are_not_writable() {
-            let cases = [
-                (TableKind::View, false, "view"),
-                (TableKind::Virtual, false, "virtual table"),
-                (TableKind::Table, true, "WITHOUT ROWID table"),
-            ];
+        #[rstest]
+        #[case(TableKind::View, false, "view")]
+        #[case(TableKind::Virtual, false, "virtual table")]
+        #[case(TableKind::Table, true, "WITHOUT ROWID table")]
+        fn readonly_table_kinds_are_not_writable(
+            #[case] kind: TableKind,
+            #[case] without_rowid: bool,
+            #[case] reason: &'static str,
+        ) {
+            let mut table = primary_key_table();
+            table.kind_info = TableKindInfo {
+                kind,
+                without_rowid,
+                ..TableKindInfo::default()
+            };
 
-            for (kind, without_rowid, reason) in cases {
-                let mut table = primary_key_table();
-                table.kind_info = TableKindInfo {
-                    kind,
-                    without_rowid,
-                    ..TableKindInfo::default()
-                };
-
-                assert_eq!(
-                    preview_writeability(DatabaseType::SQLite, &table),
-                    PreviewWriteability::ReadOnly(reason)
-                );
-                assert_eq!(
-                    stable_row_identity_for_table(DatabaseType::SQLite, &table),
-                    Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
-                );
-            }
+            assert_eq!(
+                preview_writeability(DatabaseType::SQLite, &table),
+                PreviewWriteability::ReadOnly(reason)
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
         }
     }
 
