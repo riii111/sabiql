@@ -96,7 +96,10 @@ impl SqliteCli {
     pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
         &self,
     ) -> Result<(), DbOperationError> {
-        let output = Command::new("sqlite3")
+        let mut cmd = Command::new("sqlite3");
+        Self::apply_initialization_file(&mut cmd);
+        let output = cmd
+            .arg("--safe")
             .arg("--version")
             .output()
             .await
@@ -319,6 +322,7 @@ impl SqliteCli {
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
+        Self::apply_initialization_file(cmd);
         cmd.arg("--safe");
         if read_only {
             cmd.arg("-readonly");
@@ -330,6 +334,10 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-cmd").arg("PRAGMA query_only=ON");
         }
+    }
+
+    fn apply_initialization_file(cmd: &mut Command) {
+        cmd.arg("-init").arg(sqlite_empty_init_file());
     }
 
     async fn collect_output(
@@ -391,6 +399,14 @@ fn safe_mode_required_error(details: &str) -> DbOperationError {
     DbOperationError::UnsupportedOperation(format!(
         "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
     ))
+}
+
+fn sqlite_empty_init_file() -> &'static str {
+    sqlite_empty_init_file_for_platform(cfg!(windows))
+}
+
+const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
+    if is_windows { "NUL" } else { "/dev/null" }
 }
 
 async fn write_sql_to_stdin(
@@ -2547,6 +2563,12 @@ world'), (2, 'done');
         }
 
         #[test]
+        fn empty_initialization_file_uses_platform_null_device() {
+            assert_eq!(sqlite_empty_init_file_for_platform(false), "/dev/null");
+            assert_eq!(sqlite_empty_init_file_for_platform(true), "NUL");
+        }
+
+        #[test]
         fn database_uri_uses_non_creating_access_modes() {
             let read_write = sqlite_database_uri("/tmp/sabiql database?.db", false);
             let read_only = sqlite_database_uri("/tmp/sabiql database?.db", true);
@@ -2616,6 +2638,40 @@ world'), (2, 'done');
 
             let result = result.unwrap();
             assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[cfg(not(windows))]
+        #[tokio::test]
+        async fn initialization_file_cannot_run_dot_commands_or_change_database() {
+            let dir = tempfile::tempdir().unwrap();
+            let database = dir.path().join("database.sqlite");
+            let home = dir.path().join("home");
+            let xdg_config_home = dir.path().join("xdg-config");
+            std::fs::create_dir_all(&home).unwrap();
+            std::fs::create_dir_all(&xdg_config_home).unwrap();
+            std::fs::write(
+                home.join(".sqliterc"),
+                ".headers off\nCREATE TABLE initialization_side_effect(value TEXT);\n",
+            )
+            .unwrap();
+            std::fs::write(&database, []).unwrap();
+
+            let mut cmd = Command::new("sqlite3");
+            SqliteCli::apply_session_options(&mut cmd, false);
+            cmd.arg("-batch").arg("-json").arg(&database);
+            cmd.env("HOME", &home)
+                .env("XDG_CONFIG_HOME", &xdg_config_home);
+
+            let output = SqliteCli::collect_output(
+                &mut cmd,
+                30,
+                "SELECT COUNT(*) AS side_effect_count FROM sqlite_master WHERE name = 'initialization_side_effect';",
+            )
+            .await
+            .unwrap();
+
+            assert!(output.status.success(), "{}", output.stderr);
+            assert_eq!(output.stdout.trim(), r#"[{"side_effect_count":0}]"#);
         }
     }
 }
