@@ -76,6 +76,37 @@ jobs:
       - name: Run psql integration tests (Tier 2)
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
 
+  sqlite-safe-mode:
+    name: SQLite Safe Mode (${{ matrix.sqlite }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlite: [minimum, system]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@c93ccc03e00cd0e08e494f5fd058a6c55a6a1907 # v2
+        with:
+          tool: nextest
+      - name: Install SQLite 3.41.1
+        if: matrix.sqlite == 'minimum'
+        run: |
+          curl --fail --location --retry 3 \
+            https://www.sqlite.org/2023/sqlite-autoconf-3410100.tar.gz \
+            --output sqlite-autoconf-3410100.tar.gz
+          tar -xzf sqlite-autoconf-3410100.tar.gz
+          cd sqlite-autoconf-3410100
+          ./configure --prefix="$HOME/.local"
+          make -j2
+          make install
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Show SQLite version
+        run: sqlite3 --version
+      - name: Run SQLite adapter tests
+        run: cargo nextest run -p sabiql-infra
+
   build:
     name: Build
     runs-on: ubuntu-latest
