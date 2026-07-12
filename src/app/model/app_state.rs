@@ -987,18 +987,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(TableKind::View, false, "view")]
-        #[case(TableKind::Virtual, false, "virtual table")]
-        #[case(TableKind::Table, true, "WITHOUT ROWID table")]
-        fn sqlite_non_rowid_targets_are_read_only(
-            #[case] kind: TableKind,
-            #[case] without_rowid: bool,
-            #[case] reason: &str,
-        ) {
+        #[case(TableKind::View, "view")]
+        #[case(TableKind::Virtual, "virtual table")]
+        fn sqlite_non_rowid_targets_are_read_only(#[case] kind: TableKind, #[case] reason: &str) {
             let mut table = test_support::table::minimal("", "");
             table.kind_info = TableKindInfo {
                 kind,
-                without_rowid,
                 ..TableKindInfo::default()
             };
             let state = sqlite_preview_state_with_table(table);
@@ -1008,6 +1002,17 @@ mod tests {
                 state.visible_preview_target_read_only_reason(),
                 Some(reason)
             );
+        }
+
+        #[test]
+        fn sqlite_without_rowid_table_with_primary_key_can_write_preview() {
+            let mut table = test_support::table::minimal("", "");
+            table.primary_key = Some(vec!["id".to_string()]);
+            table.kind_info.without_rowid = true;
+            let state = sqlite_preview_state_with_table(table);
+
+            assert!(state.can_write_visible_preview());
+            assert_eq!(state.visible_preview_target_read_only_reason(), None);
         }
 
         #[test]
