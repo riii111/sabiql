@@ -160,6 +160,7 @@ pub(super) fn build_preview_query(
     table: &str,
     columns: &[String],
     order_columns: &[String],
+    rowid_order_alias: Option<&str>,
     limit: usize,
     offset: usize,
 ) -> String {
@@ -173,7 +174,9 @@ pub(super) fn build_preview_query(
             .join(", ")
     };
     let order_clause = if order_columns.is_empty() {
-        String::new()
+        rowid_order_alias.map_or_else(String::new, |alias| {
+            format!(" ORDER BY {}", quote_ident(alias))
+        })
     } else {
         let cols = order_columns
             .iter()
@@ -585,6 +588,7 @@ mod tests {
                     "users",
                     &["id".to_string(), "name".to_string()],
                     &["id".to_string()],
+                    None,
                     10,
                     20
                 ),
@@ -601,7 +605,7 @@ mod tests {
         #[test]
         fn falls_back_to_star_without_columns() {
             assert_eq!(
-                build_preview_query("users", &[], &["id".to_string()], 10, 20),
+                build_preview_query("users", &[], &["id".to_string()], None, 10, 20),
                 r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
             );
         }
@@ -609,11 +613,11 @@ mod tests {
         #[test]
         fn primary_keyless_table_does_not_select_or_order_by_rowid() {
             assert_eq!(
-                build_preview_query("logs", &["message".to_string()], &[], 10, 0),
+                build_preview_query("logs", &["message".to_string()], &[], Some("rowid"), 10, 0),
                 concat!(
                     r#"SELECT CASE WHEN typeof("message") = 'text' "#,
                     r#"THEN char(1) || 'SABIQL_HEX:' || hex("message") ELSE "message" END AS "message" "#,
-                    r#"FROM "logs" LIMIT 10 OFFSET 0"#
+                    r#"FROM "logs" ORDER BY "rowid" LIMIT 10 OFFSET 0"#
                 )
             );
         }

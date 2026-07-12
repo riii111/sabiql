@@ -766,6 +766,19 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_stale_duplicate_row_cannot_build_delete_preview_without_primary_key() {
+            let mut state = editable_state(DatabaseType::SQLite);
+            let mut detail = state.session.table_detail().cloned().expect("table detail");
+            detail.primary_key = None;
+            state.session.set_table_detail_raw(Some(detail));
+
+            assert!(matches!(
+                build_bulk_delete_preview(&state, &AppServices::stub()),
+                Err(EditGuardrailError::DeletionRequiresPrimaryKey)
+            ));
+        }
+
+        #[test]
         fn sqlite_without_rowid_table_uses_primary_key_for_delete_preview() {
             let mut state = editable_state(DatabaseType::SQLite);
             let mut detail = state.session.table_detail().cloned().expect("table detail");

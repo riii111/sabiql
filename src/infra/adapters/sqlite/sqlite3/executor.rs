@@ -14,7 +14,7 @@ use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{
     AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
 };
-use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult};
 
 use super::super::{SqliteAdapter, path_validation, sql};
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -480,6 +480,27 @@ fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
 }
 
 impl SqliteAdapter {
+    async fn preview_rowid_order_alias(
+        &self,
+        path: &str,
+        table: &str,
+        visible_columns: &[String],
+        order_columns: &[String],
+    ) -> Option<&'static str> {
+        if !order_columns.is_empty() {
+            return None;
+        }
+        let kind_info = self.table_kind_info(path, table).await.ok().flatten()?;
+        if kind_info.kind != TableKind::Table || kind_info.without_rowid {
+            return None;
+        }
+        ["rowid", "_rowid_", "oid"].into_iter().find(|alias| {
+            !visible_columns
+                .iter()
+                .any(|column| column.eq_ignore_ascii_case(alias))
+        })
+    }
+
     async fn execute_quoted_query(
         &self,
         path: &str,
@@ -534,7 +555,17 @@ impl QueryExecutor for SqliteAdapter {
             .preview_visible_column_names(path, table)
             .await
             .unwrap_or_default();
-        let query = sql::build_preview_query(table, &columns, &order_columns, limit, offset);
+        let rowid_order_alias = self
+            .preview_rowid_order_alias(path, table, &columns, &order_columns)
+            .await;
+        let query = sql::build_preview_query(
+            table,
+            &columns,
+            &order_columns,
+            rowid_order_alias,
+            limit,
+            offset,
+        );
         self.execute_quoted_query(path, &query, QuerySource::Preview, true)
             .await
     }

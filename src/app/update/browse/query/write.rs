@@ -473,6 +473,30 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_stale_duplicate_row_cannot_open_update_preview_without_primary_key() {
+            let mut state = editable_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            let mut detail = state.session.table_detail().cloned().expect("table detail");
+            detail.primary_key = None;
+            state.session.set_table_detail_raw(Some(detail));
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn write_requires_idle_query_status() {
             let mut state = editable_state();
             let _ = state.query.begin_running(Instant::now());
