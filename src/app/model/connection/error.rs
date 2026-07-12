@@ -419,11 +419,12 @@ mod tests {
         fn from_db_operation_error_classifies_sqlite_safe_mode_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::UnsupportedOperation(
-                    "SQLITE_SAFE_MODE_REQUIRED: upgrade sqlite3".to_string(),
+                    "SQLITE_SAFE_MODE_REQUIRED: sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)".to_string(),
                 ),
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
+            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
             assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
         }
 

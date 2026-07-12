@@ -1404,10 +1404,11 @@ mod tests {
         mod session_configuration {
             use super::*;
 
-            fn safe_mode_error(result: Result<QueryResult, DbOperationError>, expected: &str) {
+            fn safe_mode_error(result: Result<QueryResult, DbOperationError>, expected: &[&str]) {
                 assert!(matches!(
                     result,
-                    Err(DbOperationError::QueryFailed(details)) if details.contains(expected)
+                    Err(DbOperationError::QueryFailed(details))
+                        if expected.iter().any(|message| details.contains(message))
                 ));
             }
 
@@ -1463,7 +1464,7 @@ mod tests {
                     adapter
                         .execute_adhoc(&dsn, &writefile, AccessMode::ReadWrite)
                         .await,
-                    "cannot use the writefile() function in safe mode",
+                    &["cannot use the writefile() function in safe mode"],
                 );
                 assert!(!output.exists());
 
@@ -1472,10 +1473,10 @@ mod tests {
                     adapter
                         .execute_adhoc(&dsn, &readfile, AccessMode::ReadWrite)
                         .await,
-                    "cannot use the readfile() function in safe mode",
+                    &["cannot use the readfile() function in safe mode"],
                 );
 
-                assert!(matches!(
+                safe_mode_error(
                     adapter
                         .execute_adhoc(
                             &dsn,
@@ -1483,15 +1484,18 @@ mod tests {
                             AccessMode::ReadWrite,
                         )
                         .await,
-                    Err(DbOperationError::QueryFailed(_))
-                ));
+                    &[
+                        "cannot use the load_extension() function in safe mode",
+                        "no such function: load_extension",
+                    ],
+                );
 
                 let attach = format!("ATTACH DATABASE '{}' AS attached", attached.display());
                 safe_mode_error(
                     adapter
                         .execute_adhoc(&dsn, &attach, AccessMode::ReadWrite)
                         .await,
-                    "cannot run ATTACH in safe mode",
+                    &["cannot run ATTACH in safe mode"],
                 );
             }
         }

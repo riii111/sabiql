@@ -13,6 +13,8 @@ use crate::domain::{
 };
 
 use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
+#[cfg(test)]
+use super::executor::SQLITE_SAFE_MODE_REQUIRED_MARKER;
 
 mod kind_info;
 mod trigger;
@@ -882,6 +884,22 @@ mod tests {
                 empty_result,
                 Err(DbOperationError::ConnectionFailed(_))
             ));
+        }
+
+        #[tokio::test]
+        async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
+            let (_dir, dsn) = test_support::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+            let expects_rejection =
+                std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
+
+            match adapter.fetch_metadata(&dsn).await {
+                Err(DbOperationError::UnsupportedOperation(details)) if expects_rejection => {
+                    assert!(details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER));
+                }
+                Ok(_) if !expects_rejection => {}
+                result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
+            }
         }
 
         #[tokio::test]
