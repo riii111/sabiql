@@ -1,3 +1,4 @@
+pub mod inline_cell_edit;
 pub mod sql_risk;
 pub mod write_guardrails;
 pub mod write_update;

@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+#[cfg(test)]
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
@@ -10,6 +11,7 @@ use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
     normalize_for_write_diff, preview_cell_text_diff_handling, uses_structured_json_diff,
 };
+use crate::policy::write::inline_cell_edit::build_edited_query_value;
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -56,15 +58,13 @@ fn build_update_preview(
         .clone();
 
     ensure_column_writable(state, &column_name, &identity)?;
-    let new_value = match row_values
-        .get(col_idx)
-        .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
-    {
-        QueryValue::Text(_) => QueryValue::text(state.result_interaction.cell_edit().draft_value()),
-        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
-            return Err(EditGuardrailError::NonTextInlineEdit);
-        }
-    };
+    let new_value = build_edited_query_value(
+        state.session.active_database_type_or_default(),
+        row_values
+            .get(col_idx)
+            .ok_or(EditGuardrailError::CellIndexOutOfBounds)?,
+        state.result_interaction.cell_edit().draft_value(),
+    )?;
 
     let identity_pairs = identity.identity_pairs_for_row(result, row_idx);
     if let Some(pairs) = identity_pairs.as_deref() {
@@ -580,12 +580,16 @@ mod tests {
         }
 
         #[rstest]
-        #[case(QueryValue::Null, "NULL")]
-        #[case(QueryValue::Blob(vec![0, 255]), "BLOB (2 bytes) 00 FF")]
-        #[case(QueryValue::SqlLiteral("42".to_string()), "42")]
-        fn submit_rejects_non_text_active_cell_edit(
+        #[case(QueryValue::Null, "NULL", "NULL cells are not editable inline yet")]
+        #[case(
+            QueryValue::Blob(vec![0, 255]),
+            "BLOB (2 bytes) 00 FF",
+            "BLOB cells are not editable inline"
+        )]
+        fn submit_rejects_unsupported_active_cell_edit(
             #[case] cell_value: QueryValue,
             #[case] draft: &str,
+            #[case] expected_error: &str,
         ) {
             let mut state = editable_state();
             state
@@ -614,10 +618,7 @@ mod tests {
                     .expect("reducer should handle action")
                     .is_empty()
             );
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("Only text cells can be edited inline")
-            );
+            assert_eq!(state.messages.last_error.as_deref(), Some(expected_error));
         }
 
         #[test]
@@ -737,6 +738,226 @@ mod tests {
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }
+        }
+
+        #[test]
+        fn sqlite_integer_cell_update_preview_uses_numeric_literal() {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, score FROM users".to_string(),
+                    vec!["id".to_string(), "score".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::SqlLiteral("42".to_string()),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            detail.columns[1].data_type = "INTEGER".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "42".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("7".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert!(preview.sql.contains("SET \"score\" = 7"));
+                    assert!(!preview.sql.contains("SET \"score\" = '7'"));
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_text_cell_with_nul_keeps_raw_value_into_write_preview() {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success_with_values(
+                    "SELECT rowid, message FROM logs".to_string(),
+                    vec!["rowid".to_string(), "message".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("7".to_string()),
+                        QueryValue::text("a\0b"),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_first_column_hidden("rowid".to_string()),
+            ));
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "main".to_string(),
+                name: "logs".to_string(),
+                columns: vec![test_support::column::test_nullable_column(
+                    "message", "TEXT", 1,
+                )],
+                primary_key: None,
+                ..test_support::table::minimal("", "")
+            }));
+            state.query.pagination.reset_for_table("main", "logs");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 0, "a\0b".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert_eq!(preview.diff[0].before, "a\0b");
+                    assert_eq!(preview.diff[0].after, "a\0b");
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_real_cell_integer_like_draft_keeps_real_literal() {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, score FROM users".to_string(),
+                    vec!["id".to_string(), "score".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::SqlLiteral("3.14".to_string()),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            detail.columns[1].data_type = "REAL".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "3.14".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("42".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert!(preview.sql.contains("SET \"score\" = 42.0"));
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_real_cell_rejects_non_finite_draft() {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, score FROM users".to_string(),
+                    vec!["id".to_string(), "score".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::SqlLiteral("3.14".to_string()),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            detail.columns[1].data_type = "REAL".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "3.14".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("1e999".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(
+                effects
+                    .into_effects()
+                    .expect("reducer should handle action")
+                    .is_empty()
+            );
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("REAL value must be finite")
+            );
         }
 
         #[test]

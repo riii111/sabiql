@@ -6,6 +6,7 @@ use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
+use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
     evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
@@ -64,8 +65,8 @@ pub enum EditGuardrailError {
     NoActiveCell,
     #[error("Cell index out of bounds")]
     CellIndexOutOfBounds,
-    #[error("Only text cells can be edited inline")]
-    NonTextInlineEdit,
+    #[error(transparent)]
+    InlineCellEdit(#[from] InlineCellEditError),
     #[error("SQLite writes require non-NULL primary key values")]
     SqliteNullPrimaryKey,
     #[error("{0}")]

@@ -3,13 +3,13 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
-use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
+use crate::policy::write::inline_cell_edit::editable_inline_display_value;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
@@ -59,15 +59,12 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
-    let cell_value = match result
-        .value_at(row_idx, col_idx)
-        .ok_or(EditGuardrailError::CellIndexOutOfBounds)?
-    {
-        QueryValue::Text(value) => value.clone(),
-        QueryValue::Null | QueryValue::Blob(_) | QueryValue::SqlLiteral(_) => {
-            return Err(EditGuardrailError::NonTextInlineEdit);
-        }
-    };
+    let cell_value = editable_inline_display_value(
+        state.session.active_database_type_or_default(),
+        result
+            .value_at(row_idx, col_idx)
+            .ok_or(EditGuardrailError::CellIndexOutOfBounds)?,
+    )?;
 
     Ok((row_idx, col_idx, cell_value))
 }
@@ -147,7 +144,8 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 mod tests {
     use super::*;
     pub use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -230,10 +228,12 @@ mod tests {
         }
 
         #[rstest]
-        #[case(QueryValue::Null)]
-        #[case(QueryValue::Blob(vec![0, 255]))]
-        #[case(QueryValue::SqlLiteral("42".to_string()))]
-        fn non_text_cell_blocks_cell_edit_entry(#[case] cell_value: QueryValue) {
+        #[case(QueryValue::Null, "NULL cells are not editable inline yet")]
+        #[case(QueryValue::Blob(vec![0, 255]), "BLOB cells are not editable inline")]
+        fn unsupported_cell_blocks_cell_edit_entry(
+            #[case] cell_value: QueryValue,
+            #[case] expected_error: &str,
+        ) {
             let mut state = AppState::new("test".to_string());
             state
                 .query
@@ -256,10 +256,72 @@ mod tests {
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(
-                state.messages.last_error(),
-                Some("Only text cells can be edited inline")
+            assert_eq!(state.messages.last_error(), Some(expected_error));
+        }
+
+        #[test]
+        fn sqlite_numeric_literal_enters_inline_edit() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
             );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::SqlLiteral("42".to_string()),
+                    ]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "42");
+        }
+
+        #[test]
+        fn text_with_nul_keeps_raw_draft_on_entry() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::text("a\0b")]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(
+                state.result_interaction.cell_edit().original_value(),
+                "a\0b"
+            );
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "a\0b");
         }
 
         #[test]
@@ -378,8 +440,6 @@ mod tests {
         use crate::test_support;
 
         use super::*;
-        use crate::domain::DatabaseType;
-        use crate::domain::connection::ConnectionId;
 
         fn state_with_jsonb_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();

@@ -769,6 +769,25 @@ mod tests {
                 "UPDATE \"users\"\nSET \"name\" = 'NULL'\nWHERE \"id\" = '1';"
             );
         }
+
+        #[test]
+        fn nul_text_value_uses_cast_literal() {
+            let adapter = SqliteAdapter::new();
+
+            let sql = adapter.build_update_sql(
+                DatabaseType::SQLite,
+                "main",
+                "users",
+                "name",
+                &QueryValue::text("a\0b"),
+                &[("id".into(), QueryValue::text("1"))],
+            );
+
+            assert_eq!(
+                sql,
+                "UPDATE \"users\"\nSET \"name\" = CAST(X'610062' AS TEXT)\nWHERE \"id\" = '1';"
+            );
+        }
     }
 
     mod bulk_delete_sql {

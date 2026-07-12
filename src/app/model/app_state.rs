@@ -26,8 +26,10 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
+use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
+use crate::policy::write::inline_cell_edit::supports_inline_edit;
 use crate::policy::write::write_guardrails::{PreviewWriteability, preview_writeability};
 
 pub struct AppState {
@@ -350,6 +352,53 @@ impl AppState {
             && self.visible_preview_target_read_only_reason().is_none()
     }
 
+    pub fn can_edit_selected_cell(&self) -> bool {
+        let Some(row_idx) = self.result_interaction.selection().row() else {
+            return false;
+        };
+        let Some(col_idx) = self.result_interaction.selection().cell() else {
+            return false;
+        };
+        if !self.can_write_visible_preview() {
+            return false;
+        }
+
+        let Some(result) = self.query.visible_result() else {
+            return false;
+        };
+        if row_idx >= result.values().len() {
+            return false;
+        }
+        let Some(value) = result.value_at(row_idx, col_idx) else {
+            return false;
+        };
+
+        if let Some(table_detail) = self.session.table_detail()
+            && let Some(column) = table_detail.columns.get(col_idx)
+        {
+            if table_detail
+                .primary_key
+                .as_ref()
+                .is_some_and(|pk| pk.iter().any(|name| name == &column.name))
+            {
+                return false;
+            }
+            if column.is_read_only() {
+                return false;
+            }
+
+            let handling = preview_cell_text_diff_handling(
+                self.session.active_database_type_or_default(),
+                column.data_type.as_str(),
+            );
+            if uses_jsonb_detail_modal(handling) {
+                return true;
+            }
+        }
+
+        supports_inline_edit(self.session.active_database_type_or_default(), value)
+    }
+
     /// True when a run-scoped async response no longer belongs to the active
     /// connection and query run, and must be dropped without touching state.
     pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
@@ -366,8 +415,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource, Table, TableKind,
-        TableKindInfo,
+        Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult,
+        QuerySource, QueryValue, Table, TableKind, TableKindInfo,
     };
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
@@ -411,6 +460,99 @@ mod tests {
             name: "users".to_string(),
             ..test_support::table::minimal("", "")
         }
+    }
+
+    #[test]
+    fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
+        let mut state = make_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/app.db",
+        );
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                "SELECT id, score FROM users".to_string(),
+                vec!["id".to_string(), "score".to_string()],
+                vec![vec![
+                    QueryValue::SqlLiteral("1".to_string()),
+                    QueryValue::SqlLiteral("42".to_string()),
+                ]],
+                10,
+                QuerySource::Preview,
+            )));
+        state.query.pagination.reset_for_table("main", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "main".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "score".to_string(),
+                    data_type: "REAL".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::NULLABLE,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 1);
+
+        assert!(state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_rejects_blob_cell() {
+        let mut state = make_state();
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                "SELECT id, payload FROM users".to_string(),
+                vec!["id".to_string(), "payload".to_string()],
+                vec![vec![QueryValue::text("1"), QueryValue::Blob(vec![0, 255])]],
+                10,
+                QuerySource::Preview,
+            )));
+        state.query.pagination.reset_for_table("public", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "payload".to_string(),
+                    data_type: "BLOB".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::NULLABLE,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 1);
+
+        assert!(!state.can_edit_selected_cell());
     }
 
     mod pane_geometry {
