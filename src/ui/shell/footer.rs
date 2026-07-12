@@ -90,6 +90,7 @@ impl Footer {
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
                     let can_write_preview = state.can_write_visible_preview();
+                    let can_edit_selected_cell = state.can_edit_selected_cell();
                     if state.result_interaction.cell_edit().has_pending_draft() {
                         vec![
                             result_active::EDIT.as_hint(),
@@ -100,7 +101,7 @@ impl Footer {
                         ]
                     } else if state.result_interaction.staged_delete_rows().is_empty() {
                         let mut hints = vec![result_active::DETAIL.as_hint()];
-                        if can_write_preview {
+                        if can_edit_selected_cell {
                             hints.push(result_active::EDIT.as_hint());
                         }
                         hints.extend([
