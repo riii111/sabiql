@@ -681,11 +681,6 @@ pub(super) fn is_rollback_to(statement: &str) -> bool {
     rollback_to_target(statement).is_some() || rollback_has_to_clause(statement)
 }
 
-#[cfg(test)]
-fn sqlite_wrap_mode(query: &str) -> Result<SqliteWrapMode, DbOperationError> {
-    Ok(sqlite_statement_plan(query)?.wrap_mode())
-}
-
 fn sqlite_transaction_block(query: &str) -> String {
     let trimmed = query.trim_end().trim_end_matches(';').trim_end();
     format!("BEGIN;\n{trimmed}\n;\nCOMMIT")
@@ -732,12 +727,6 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
 }
 
-#[cfg(test)]
-fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> Result<String, DbOperationError> {
-    let plan = sqlite_statement_plan(query)?;
-    Ok(sqlite_adhoc_execution_query_for_plan(&plan, marker))
-}
-
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
     marker: &str,
@@ -765,12 +754,6 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_pla
         parts.push("COMMIT".to_string());
     }
     parts.join("\n;\n")
-}
-
-#[cfg(test)]
-fn append_changes_query(query: &str) -> Result<String, DbOperationError> {
-    let plan = sqlite_statement_plan(query)?;
-    Ok(append_changes_query_for_plan(&plan))
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query_for_plan(
@@ -842,6 +825,21 @@ fn statement_emits_result_set(statement: &str) -> bool {
 mod tests {
     use super::*;
     use crate::app::ports::outbound::DbOperationError;
+    use rstest::rstest;
+
+    fn sqlite_wrap_mode(query: &str) -> Result<SqliteWrapMode, DbOperationError> {
+        Ok(sqlite_statement_plan(query)?.wrap_mode())
+    }
+
+    fn sqlite_adhoc_execution_query(query: &str, marker: &str) -> Result<String, DbOperationError> {
+        let plan = sqlite_statement_plan(query)?;
+        Ok(sqlite_adhoc_execution_query_for_plan(&plan, marker))
+    }
+
+    fn append_changes_query(query: &str) -> Result<String, DbOperationError> {
+        let plan = sqlite_statement_plan(query)?;
+        Ok(append_changes_query_for_plan(&plan))
+    }
 
     #[test]
     fn split_sqlite_statements_ignores_semicolons_in_literals_and_comments() {
@@ -1047,97 +1045,38 @@ END";
     mod wrap_mode {
         use super::*;
 
-        #[test]
-        fn autocommit_multi_write_uses_begin_commit() {
+        #[rstest]
+        #[case::multi_dml("INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)")]
+        #[case::read_only_pragma_with_writes(
+            "PRAGMA journal_mode; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+        )]
+        #[case::ddl_and_dml(
+            "CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users(id) VALUES (1)"
+        )]
+        fn compatible_write_batches_use_auto_transaction(#[case] query: &str) {
             assert_eq!(
-                sqlite_wrap_mode(
-                    "INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-                )
-                .unwrap(),
+                sqlite_wrap_mode(query).unwrap(),
                 SqliteWrapMode::BeginCommit
             );
         }
 
-        #[test]
-        fn explicit_begin_is_not_wrapped() {
-            assert_eq!(
-                sqlite_wrap_mode("BEGIN; INSERT INTO users(id) VALUES (1); COMMIT").unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn top_level_savepoint_multi_write_is_not_wrapped() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-                )
-                .unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn mid_batch_savepoint_is_not_wrapped() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "INSERT INTO users(id) VALUES (1); SAVEPOINT sp; INSERT INTO users(id) VALUES (2)"
-                )
-                .unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn vacuum_prevents_auto_transaction_wrap() {
-            assert_eq!(
-                sqlite_wrap_mode("INSERT INTO users(id) VALUES (1); VACUUM").unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn journal_mode_change_prevents_auto_transaction_wrap() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "PRAGMA journal_mode = WAL; CREATE TABLE users(id INTEGER PRIMARY KEY)"
-                )
-                .unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn quoted_foreign_keys_change_prevents_auto_transaction_wrap() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "/* setup */ PRAGMA [foreign_keys](OFF); CREATE TABLE users(id INTEGER PRIMARY KEY)"
-                )
-                .unwrap(),
-                SqliteWrapMode::None
-            );
-        }
-
-        #[test]
-        fn journal_mode_query_does_not_prevent_auto_transaction_wrap() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "PRAGMA journal_mode; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
-                )
-                .unwrap(),
-                SqliteWrapMode::BeginCommit
-            );
-        }
-
-        #[test]
-        fn ddl_and_dml_still_use_auto_transaction_wrap() {
-            assert_eq!(
-                sqlite_wrap_mode(
-                    "CREATE TABLE users(id INTEGER PRIMARY KEY); INSERT INTO users(id) VALUES (1)"
-                )
-                .unwrap(),
-                SqliteWrapMode::BeginCommit
-            );
+        #[rstest]
+        #[case::explicit_transaction("BEGIN; INSERT INTO users(id) VALUES (1); COMMIT")]
+        #[case::top_level_savepoint(
+            "SAVEPOINT user_sp; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
+        )]
+        #[case::mid_batch_savepoint(
+            "INSERT INTO users(id) VALUES (1); SAVEPOINT sp; INSERT INTO users(id) VALUES (2)"
+        )]
+        #[case::vacuum("INSERT INTO users(id) VALUES (1); VACUUM")]
+        #[case::journal_mode_change(
+            "PRAGMA journal_mode = WAL; CREATE TABLE users(id INTEGER PRIMARY KEY)"
+        )]
+        #[case::quoted_foreign_keys_change(
+            "/* setup */ PRAGMA [foreign_keys](OFF); CREATE TABLE users(id INTEGER PRIMARY KEY)"
+        )]
+        fn user_managed_or_incompatible_batches_skip_auto_transaction(#[case] query: &str) {
+            assert_eq!(sqlite_wrap_mode(query).unwrap(), SqliteWrapMode::None);
         }
     }
 
