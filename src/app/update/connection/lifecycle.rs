@@ -3,6 +3,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
+use crate::update::query_context::termination_effects;
 
 use crate::update::dispatch_result::DispatchResult;
 
@@ -45,18 +46,24 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
+                DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![Effect::ClearCompletionEngineCache],
+                ))
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
                 let run_id = state.session.begin_connecting(dsn);
-                DispatchResult::handled_with(vec![
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id,
-                    },
-                ])
+                DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![
+                        Effect::ClearCompletionEngineCache,
+                        Effect::FetchMetadata {
+                            dsn: dsn.clone(),
+                            run_id,
+                        },
+                    ],
+                ))
             }
         }
 
@@ -138,6 +145,22 @@ mod tests {
             state.session.active_database_type(),
             Some(DatabaseType::PostgreSQL)
         );
+    }
+
+    #[test]
+    fn cached_switch_terminates_active_query_run() {
+        let mut state = AppState::new("test".to_string());
+        let target_id = ConnectionId::new();
+        state
+            .connection_caches
+            .save(&target_id, ConnectionCache::default());
+        let stale_run_id = state.query.begin_running(std::time::Instant::now());
+
+        let action = create_switch_action(&target_id, "cached_db");
+        reduce(&mut state, &action);
+
+        assert!(!state.query.is_running());
+        assert!(!state.query.is_current_run(stale_run_id));
     }
 
     #[test]

@@ -187,6 +187,12 @@ impl QueryExecution {
         self.run.clear_active();
     }
 
+    pub fn reset_for_context_change(&mut self) {
+        self.mark_idle();
+        self.clear_delete_refresh_target();
+        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
+    }
+
     pub fn is_current_run(&self, run_id: u64) -> bool {
         self.run.is_current(run_id)
     }
@@ -505,6 +511,24 @@ mod tests {
     #[test]
     fn query_status_default_is_idle() {
         assert_eq!(QueryStatus::default(), QueryStatus::Idle);
+    }
+
+    #[test]
+    fn context_reset_clears_query_owned_write_state() {
+        let mut execution = QueryExecution::default();
+        let run_id = execution.begin_running(Instant::now());
+        execution.set_delete_refresh_target(2, Some(3), 1);
+        execution.set_post_delete_selection(PostDeleteRowSelection::Select(4));
+
+        execution.reset_for_context_change();
+
+        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_current_run(run_id));
+        assert!(execution.pending_delete_refresh_target().is_none());
+        assert_eq!(
+            execution.post_delete_row_selection(),
+            PostDeleteRowSelection::Keep
+        );
     }
 
     mod pagination {

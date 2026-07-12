@@ -9,6 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_loading(
     state: &mut AppState,
@@ -64,10 +65,9 @@ pub(super) fn reduce_loading(
                     state
                         .ui
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
-                    state
-                        .session
-                        .clear_table_selection(&mut state.query.pagination);
+                    state.session.clear_table_selection(&mut state.query);
                     state.query.clear_current_result();
+                    effects.extend(termination_effects(&state.query, vec![]));
                 }
             }
 
@@ -103,9 +103,7 @@ pub(super) fn reduce_loading(
             state.session.mark_connection_failed(error.masked_details());
             if !was_connected {
                 state.session.set_metadata(None);
-                state
-                    .session
-                    .clear_table_selection(&mut state.query.pagination);
+                state.session.clear_table_selection(&mut state.query);
                 state.query.clear_current_result();
                 state.ui.set_explorer_selection(None);
                 state.result_interaction.reset_view();
@@ -114,7 +112,11 @@ pub(super) fn reduce_loading(
             if state.er_preparation.status() == ErStatus::Waiting {
                 state.er_preparation.mark_idle();
             }
-            DispatchResult::handled()
+            DispatchResult::handled_with(if was_connected {
+                vec![]
+            } else {
+                termination_effects(&state.query, vec![])
+            })
         }
         Action::LoadMetadata => {
             if let Some(dsn) = state.session.dsn().map(String::from) {

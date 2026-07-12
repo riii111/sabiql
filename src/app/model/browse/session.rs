@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
-use crate::model::browse::query_execution::{PaginationState, QueryExecution};
+use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::origin::ConnectionOrigin;
@@ -83,16 +83,13 @@ impl BrowseSession {
     // ── Table selection ──────────────────────────────────────────────
 
     #[must_use]
-    pub fn select_table(
-        &mut self,
-        schema: &str,
-        table: &str,
-        pagination: &mut PaginationState,
-    ) -> u64 {
+    pub fn select_table(&mut self, schema: &str, table: &str, query: &mut QueryExecution) -> u64 {
+        query.reset_for_context_change();
+        query.clear_current_result();
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
         self.selection_generation += 1;
-        pagination.reset_for_table(schema, table);
+        query.pagination.reset_for_table(schema, table);
         self.selection_generation
     }
 
@@ -106,12 +103,14 @@ impl BrowseSession {
         }
     }
 
-    pub fn clear_table_selection(&mut self, pagination: &mut PaginationState) {
+    pub fn clear_table_selection(&mut self, query: &mut QueryExecution) {
+        query.reset_for_context_change();
+        query.clear_current_result();
         self.selected_table_key = None;
         self.table_detail = None;
         self.selection_generation += 1;
         self.table_detail_run.clear_active();
-        pagination.reset();
+        query.pagination.reset();
     }
 
     #[must_use]
@@ -276,6 +275,7 @@ impl BrowseSession {
     }
 
     fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
+        query.reset_for_context_change();
         self.metadata.clone_from(&cache.metadata);
         self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key
@@ -308,6 +308,7 @@ impl BrowseSession {
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
     pub fn reset(&mut self, query: &mut QueryExecution) {
+        query.reset_for_context_change();
         self.metadata = None;
         self.table_detail = None;
         self.selected_table_key = None;
@@ -488,10 +489,10 @@ mod tests {
         #[test]
         fn increments_generation() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState::default();
+            let mut query = QueryExecution::default();
 
-            let gen1 = session.select_table("public", "users", &mut pagination);
-            let gen2 = session.select_table("public", "posts", &mut pagination);
+            let gen1 = session.select_table("public", "users", &mut query);
+            let gen2 = session.select_table("public", "posts", &mut query);
 
             assert_eq!(gen1, 1);
             assert_eq!(gen2, 2);
@@ -501,9 +502,9 @@ mod tests {
         fn clears_table_detail() {
             let mut session = BrowseSession::default();
             session.set_table_detail_raw(Some(make_table_detail()));
-            let mut pagination = PaginationState::default();
+            let mut query = QueryExecution::default();
 
-            let _ = session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut query);
 
             assert!(session.table_detail().is_none());
         }
@@ -511,9 +512,9 @@ mod tests {
         #[test]
         fn sets_selected_table_key() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState::default();
+            let mut query = QueryExecution::default();
 
-            let _ = session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut query);
 
             assert_eq!(session.selected_table_key(), Some("public.users"));
         }
@@ -521,18 +522,41 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState::default();
-            pagination.reset_for_table("old", "old");
-            pagination.set_total_rows_estimate(Some(10000));
-            pagination.set_page_result(5, true);
+            let mut query = QueryExecution::default();
+            query.pagination.reset_for_table("old", "old");
+            query.pagination.set_total_rows_estimate(Some(10000));
+            query.pagination.set_page_result(5, true);
 
-            let _ = session.select_table("public", "users", &mut pagination);
+            let _ = session.select_table("public", "users", &mut query);
 
-            assert_eq!(pagination.current_page(), 0);
-            assert_eq!(pagination.total_rows_estimate(), None);
-            assert!(!pagination.reached_end());
-            assert_eq!(pagination.schema(), "public");
-            assert_eq!(pagination.table(), "users");
+            assert_eq!(query.pagination.current_page(), 0);
+            assert_eq!(query.pagination.total_rows_estimate(), None);
+            assert!(!query.pagination.reached_end());
+            assert_eq!(query.pagination.schema(), "public");
+            assert_eq!(query.pagination.table(), "users");
+        }
+
+        #[test]
+        fn terminates_active_query_run() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let run_id = query.begin_running(std::time::Instant::now());
+
+            let _ = session.select_table("public", "users", &mut query);
+
+            assert!(!query.is_running());
+            assert!(!query.is_current_run(run_id));
+        }
+
+        #[test]
+        fn clears_previous_query_result() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            query.set_current_result(make_query_result());
+
+            let _ = session.select_table("public", "users", &mut query);
+
+            assert!(query.current_result().is_none());
         }
     }
 
@@ -544,8 +568,8 @@ mod tests {
         #[test]
         fn accepts_matching_generation() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState::default();
-            let generation = session.select_table("public", "users", &mut pagination);
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
 
             let accepted = session.set_table_detail(make_table_detail(), generation);
 
@@ -556,9 +580,9 @@ mod tests {
         #[test]
         fn rejects_stale_generation() {
             let mut session = BrowseSession::default();
-            let mut pagination = PaginationState::default();
-            let old_gen = session.select_table("public", "users", &mut pagination);
-            let _ = session.select_table("public", "posts", &mut pagination);
+            let mut query = QueryExecution::default();
+            let old_gen = session.select_table("public", "users", &mut query);
+            let _ = session.select_table("public", "posts", &mut query);
 
             let accepted = session.set_table_detail(make_table_detail(), old_gen);
 
@@ -572,29 +596,43 @@ mod tests {
     #[test]
     fn clear_table_selection_clears_all() {
         let mut session = BrowseSession::default();
-        let mut pagination = PaginationState::default();
-        let _ = session.select_table("public", "users", &mut pagination);
+        let mut query = QueryExecution::default();
+        let _ = session.select_table("public", "users", &mut query);
         let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
+        query.set_current_result(make_query_result());
 
-        session.clear_table_selection(&mut pagination);
+        session.clear_table_selection(&mut query);
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
-        assert_eq!(pagination.current_page(), 0);
+        assert!(query.current_result().is_none());
+        assert_eq!(query.pagination.current_page(), 0);
     }
 
     #[test]
     fn clear_table_selection_invalidates_pending_detail() {
         let mut session = BrowseSession::default();
-        let mut pagination = PaginationState::default();
-        let pre_clear_gen = session.select_table("public", "users", &mut pagination);
+        let mut query = QueryExecution::default();
+        let pre_clear_gen = session.select_table("public", "users", &mut query);
 
-        session.clear_table_selection(&mut pagination);
+        session.clear_table_selection(&mut query);
 
         // A TableDetailLoaded arriving with the pre-clear generation must be rejected
         let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
         assert!(!accepted);
         assert!(session.table_detail().is_none());
+    }
+
+    #[test]
+    fn clear_table_selection_terminates_active_query_run() {
+        let mut session = BrowseSession::default();
+        let mut query = QueryExecution::default();
+        let run_id = query.begin_running(std::time::Instant::now());
+
+        session.clear_table_selection(&mut query);
+
+        assert!(!query.is_running());
+        assert!(!query.is_current_run(run_id));
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -742,8 +780,8 @@ mod tests {
         fn round_trip_preserves_state() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("round_trip_db"));
-            let mut pagination = PaginationState::default();
-            let _ = session.select_table("public", "users", &mut pagination);
+            let mut query = QueryExecution::default();
+            let _ = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
 
             let result = make_query_result();
@@ -755,6 +793,7 @@ mod tests {
             // Create a fresh session and restore
             let mut new_session = BrowseSession::default();
             let mut query = QueryExecution::default();
+            let stale_run_id = query.begin_running(std::time::Instant::now());
             new_session.restore_from_cache(&cache, &mut query);
 
             assert_eq!(new_session.database_name(), Some("round_trip_db"));
@@ -764,14 +803,16 @@ mod tests {
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
             assert_eq!(query.result_history().len(), 1);
+            assert!(!query.is_running());
+            assert!(!query.is_current_run(stale_run_id));
         }
 
         #[test]
         fn restore_resets_generation_and_reloading() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            let mut pagination = PaginationState::default();
-            let _ = session.select_table("public", "users", &mut pagination);
+            let mut query = QueryExecution::default();
+            let _ = session.select_table("public", "users", &mut query);
             let _ = session.begin_reload();
             assert!(session.selection_generation() > 0);
 
@@ -791,8 +832,8 @@ mod tests {
         fn restore_then_begin_reload_preserves_selection() {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("db"));
-            let mut pagination = PaginationState::default();
-            let generation = session.select_table("public", "users", &mut pagination);
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
             let _ = session.set_table_detail(make_table_detail(), generation);
 
             let cache = session.to_cache(
@@ -832,6 +873,7 @@ mod tests {
             session.enable_read_only();
             let _ = session.begin_reload();
             let mut query = QueryExecution::default();
+            let stale_run_id = query.begin_running(std::time::Instant::now());
             query.set_current_result(make_query_result());
             query.pagination.reset_for_table("public", "users");
             query.pagination.set_total_rows_estimate(Some(1000));
@@ -857,6 +899,8 @@ mod tests {
             assert!(!session.is_reloading());
             assert_eq!(query.pagination.current_page(), 0);
             assert!(query.current_result().is_none());
+            assert!(!query.is_running());
+            assert!(!query.is_current_run(stale_run_id));
         }
 
         #[test]

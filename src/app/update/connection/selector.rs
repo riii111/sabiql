@@ -7,6 +7,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::connection::helpers::reset_active_connection_state;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_connection_selector(
     state: &mut AppState,
@@ -53,7 +54,8 @@ pub(super) fn reduce_connection_selector(
             DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
         Action::ConnectionDeleted(id) => {
-            if state.session.active_connection_id() == Some(id) {
+            let was_active = state.session.active_connection_id() == Some(id);
+            if was_active {
                 reset_active_connection_state(state);
             }
 
@@ -75,7 +77,11 @@ pub(super) fn reduce_connection_selector(
             state
                 .messages
                 .set_success_at("Connection deleted".to_string(), now);
-            DispatchResult::handled()
+            DispatchResult::handled_with(if was_active {
+                termination_effects(&state.query, vec![])
+            } else {
+                vec![]
+            })
         }
         Action::ConnectionDeleteFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);

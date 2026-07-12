@@ -3,6 +3,9 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
+use tokio::io::{AsyncWriteExt, BufWriter};
+
+const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CsvCachedResultExporter;
@@ -15,9 +18,7 @@ impl CachedResultExporter for CsvCachedResultExporter {
         columns: Vec<String>,
         values: Vec<Vec<QueryValue>>,
     ) -> Result<usize, DbOperationError> {
-        tokio::task::spawn_blocking(move || write_cached_result_csv(path, columns, values))
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+        write_cached_result_csv(path, columns, values).await
     }
 }
 
@@ -36,23 +37,78 @@ fn cached_csv_cell(value: &QueryValue) -> String {
     }
 }
 
-fn write_cached_result_csv(
+async fn write_cached_result_csv(
     path: PathBuf,
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
 ) -> Result<usize, DbOperationError> {
-    let file = std::fs::File::create(path)
+    let file = tokio::fs::File::create(path)
+        .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut writer = csv::WriterBuilder::new().from_writer(file);
-    writer.write_record(columns)?;
+    let mut file = BufWriter::new(file);
+    let mut csv_writer =
+        csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD));
+    let mut bytes_since_flush = 0;
+
+    csv_writer = write_csv_record(
+        csv_writer,
+        &mut file,
+        columns.iter(),
+        &mut bytes_since_flush,
+    )
+    .await?;
     for row in &values {
-        let record: Vec<String> = row.iter().map(cached_csv_cell).collect();
-        writer.write_record(&record)?;
+        csv_writer = write_csv_record(
+            csv_writer,
+            &mut file,
+            row.iter().map(cached_csv_cell),
+            &mut bytes_since_flush,
+        )
+        .await?;
     }
-    writer
-        .flush()
+    let encoded = csv_writer
+        .into_inner()
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    file.write_all(&encoded)
+        .await
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    file.flush()
+        .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     Ok(values.len())
+}
+
+async fn write_csv_record<I>(
+    mut csv_writer: csv::Writer<Vec<u8>>,
+    file: &mut BufWriter<tokio::fs::File>,
+    record: I,
+    bytes_since_flush: &mut usize,
+) -> Result<csv::Writer<Vec<u8>>, DbOperationError>
+where
+    I: IntoIterator,
+    I::Item: AsRef<[u8]>,
+{
+    csv_writer.write_record(record)?;
+    csv_writer
+        .flush()
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+
+    *bytes_since_flush = csv_writer.get_ref().len();
+    if *bytes_since_flush >= CSV_FLUSH_THRESHOLD {
+        let mut encoded = csv_writer
+            .into_inner()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        file.write_all(&encoded)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        file.flush()
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        *bytes_since_flush = 0;
+        encoded.clear();
+        csv_writer = csv::WriterBuilder::new().from_writer(encoded);
+    }
+    Ok(csv_writer)
 }
 
 #[cfg(test)]
@@ -129,6 +185,28 @@ mod tests {
                 .unwrap();
 
             assert_eq!(std::fs::read(path).unwrap(), b"payload\na\0bc\n");
+        }
+
+        #[tokio::test]
+        async fn flushes_incrementally_when_data_exceeds_threshold() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("large_export.csv");
+            let big_value = "x".repeat(CSV_FLUSH_THRESHOLD + 1);
+
+            let row_count = CsvCachedResultExporter
+                .export_cached_result_to_csv(
+                    path.clone(),
+                    vec!["data".to_string()],
+                    vec![vec![QueryValue::Text(big_value.clone())]],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(row_count, 1);
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                format!("data\n{big_value}\n")
+            );
         }
 
         #[tokio::test]

@@ -5,13 +5,10 @@ use std::sync::Arc;
 use super::ports::outbound::{DdlGenerator, DsnBuilder, SqlDialect};
 #[cfg(any(test, feature = "test-support"))]
 use crate::domain::{ConnectionProfile, DatabaseType, QueryValue, Table};
-use crate::model::shared::db_capabilities::DbCapabilities;
-
 pub struct AppServices {
     pub ddl_generator: Arc<dyn DdlGenerator>,
     pub sql_dialect: Arc<dyn SqlDialect>,
     pub dsn_builder: Arc<dyn DsnBuilder>,
-    pub db_capabilities: DbCapabilities,
 }
 
 impl AppServices {
@@ -152,7 +149,6 @@ impl AppServices {
             ddl_generator: Arc::new(StubDdlGenerator),
             sql_dialect: Arc::new(StubSqlDialect),
             dsn_builder: Arc::new(StubDsnBuilder),
-            db_capabilities: DbCapabilities::postgres_like(),
         }
     }
 }

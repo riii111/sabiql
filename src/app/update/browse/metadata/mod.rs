@@ -644,7 +644,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state
                 .session
-                .select_table("public", "users", &mut state.query.pagination);
+                .select_table("public", "users", &mut state.query);
 
             let metadata = make_metadata(vec![("public", "orders")]);
             let action = metadata_loaded_action(&mut state, metadata);

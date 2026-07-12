@@ -27,19 +27,21 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
             let Effect::Sequence(seq) = &effects[0] else {
                 panic!("expected Sequence, got {effects:?}");
             };
-            assert_eq!(seq.len(), 3);
-            assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
-            assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
-            assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
+            assert_eq!(seq.len(), 4);
+            assert!(matches!(seq[0], Effect::CancelActiveQuery));
+            assert!(matches!(seq[1], Effect::CacheInvalidate { .. }));
+            assert!(matches!(seq[2], Effect::ClearCompletionEngineCache));
+            assert!(matches!(seq[3], Effect::FetchMetadata { .. }));
         }
         DatabaseType::PostgreSQL => {
             assert_eq!(
                 effects.len(),
-                2,
+                3,
                 "postgres save should preserve prefetched metadata cache"
             );
-            assert!(matches!(effects[0], Effect::ClearCompletionEngineCache));
-            assert!(matches!(effects[1], Effect::FetchMetadata { .. }));
+            assert!(matches!(effects[0], Effect::CancelActiveQuery));
+            assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
+            assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
         }
     }
 }

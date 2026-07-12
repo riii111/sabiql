@@ -80,6 +80,7 @@ pub enum Effect {
         query: String,
         access_mode: AccessMode,
     },
+    CancelActiveQuery,
     CountRowsForExport {
         dsn: String,
         run_id: u64,

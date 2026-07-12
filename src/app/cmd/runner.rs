@@ -14,6 +14,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
+use crate::cmd::query_task::QueryTaskRegistry;
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
@@ -68,6 +69,7 @@ pub struct EffectRunner {
     settings: SettingsDeps,
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
+    query_tasks: QueryTaskRegistry,
 }
 
 impl EffectRunner {
@@ -90,6 +92,7 @@ impl EffectRunner {
             settings,
             metadata_cache,
             action_tx,
+            query_tasks: QueryTaskRegistry::default(),
         }
     }
 
@@ -205,6 +208,7 @@ impl EffectRunner {
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
+            | Effect::CancelActiveQuery
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
@@ -214,6 +218,7 @@ impl EffectRunner {
                     &self.query.query_executor,
                     &self.query.query_history_store,
                     &self.query.cached_result_exporter,
+                    &self.query_tasks,
                     state,
                 )
                 .await?;
@@ -485,6 +490,182 @@ mod tests {
                 result[1],
                 Action::ProcessPrefetchQueue { run_id: 1 }
             ));
+        }
+    }
+
+    mod query_context_termination {
+        use std::future::pending;
+        use std::path::Path;
+        use std::sync::Mutex;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use tokio::sync::oneshot;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::domain::{QueryResult, WriteExecutionResult};
+        use crate::model::connection::cache::ConnectionCache;
+        use crate::ports::outbound::{AccessMode, DbOperationError};
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicBool>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingQueryExecutor {
+            started: Mutex<Option<oneshot::Sender<()>>>,
+            dropped: Arc<AtomicBool>,
+        }
+
+        #[async_trait::async_trait]
+        impl QueryExecutor for PendingQueryExecutor {
+            async fn execute_preview(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+                _limit: usize,
+                _offset: usize,
+            ) -> Result<QueryResult, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .lock()
+                    .expect("started signal lock poisoned")
+                    .take()
+                    .expect("preview should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn execute_adhoc(
+                &self,
+                _dsn: &str,
+                _query: &str,
+                _access_mode: AccessMode,
+            ) -> Result<QueryResult, DbOperationError> {
+                unreachable!("test only starts a preview")
+            }
+
+            async fn execute_write(
+                &self,
+                _dsn: &str,
+                _query: &str,
+                _access_mode: AccessMode,
+            ) -> Result<WriteExecutionResult, DbOperationError> {
+                unreachable!("test only starts a preview")
+            }
+
+            async fn count_query_rows(
+                &self,
+                _dsn: &str,
+                _query: &str,
+            ) -> Result<usize, DbOperationError> {
+                unreachable!("test only starts a preview")
+            }
+
+            async fn export_to_csv(
+                &self,
+                _dsn: &str,
+                _query: &str,
+                _path: &Path,
+            ) -> Result<usize, DbOperationError> {
+                unreachable!("test only starts a preview")
+            }
+        }
+
+        #[tokio::test]
+        async fn connection_switch_drops_pending_query_task() {
+            let (started_tx, started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicBool::new(false));
+            let executor = PendingQueryExecutor {
+                started: Mutex::new(Some(started_tx)),
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+            );
+            let target_id = ConnectionId::new();
+            state
+                .connection_caches
+                .save(&target_id, ConnectionCache::default());
+            let run_id = state.query.begin_running(Instant::now());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ExecutePreview {
+                        dsn: "postgres://localhost/current".to_string(),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        run_id,
+                        limit: 100,
+                        offset: 0,
+                        target_page: 0,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx)
+                .await
+                .expect("pending query should start")
+                .expect("started signal should be sent");
+
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection(ConnectionTarget {
+                    id: target_id,
+                    dsn: "sqlite:///tmp/target.db".to_string(),
+                    name: "target".to_string(),
+                    database_type: DatabaseType::SQLite,
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            runner
+                .run(
+                    effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            timeout(Duration::from_secs(1), async {
+                while !dropped.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("context termination should drop the pending query task");
+            assert!(!state.query.is_current_run(run_id));
         }
     }
 }

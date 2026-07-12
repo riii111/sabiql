@@ -17,6 +17,7 @@ use crate::update::connection::helpers::{
 };
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
+use crate::update::query_context::termination_effects;
 
 pub fn reduce_connection_setup(
     state: &mut AppState,
@@ -188,18 +189,22 @@ pub fn reduce_connection_setup(
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
+            state.query.reset_for_context_change();
             state.session.mark_connecting();
-            DispatchResult::handled_with(vec![Effect::SaveAndConnect {
-                id: state.connection_setup.editing_id().cloned(),
-                name: state
-                    .connection_setup
-                    .input(ConnectionField::Name)
-                    .expect("name is a text input")
-                    .content()
-                    .trim()
-                    .to_string(),
-                config,
-            }])
+            DispatchResult::handled_with(termination_effects(
+                &state.query,
+                vec![Effect::SaveAndConnect {
+                    id: state.connection_setup.editing_id().cloned(),
+                    name: state
+                        .connection_setup
+                        .input(ConnectionField::Name)
+                        .expect("name is a text input")
+                        .content()
+                        .trim()
+                        .to_string(),
+                    config,
+                }],
+            ))
         }
         Action::ConnectionSetupCancel => {
             if state.connection_setup.is_first_run() {
@@ -229,7 +234,12 @@ pub fn reduce_connection_setup(
 
             reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(connection_save_fetch_effects(dsn, run_id, *database_type))
+            DispatchResult::handled_with(connection_save_fetch_effects(
+                state,
+                dsn,
+                run_id,
+                *database_type,
+            ))
         }
         Action::ConnectionSaveFailed(e) => {
             if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = &e {
@@ -515,6 +525,18 @@ mod tests {
         }
 
         #[test]
+        fn save_terminates_active_query_run() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            let stale_run_id = state.query.begin_running(Instant::now());
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+
+            assert!(!state.query.is_running());
+            assert!(!state.query.is_current_run(stale_run_id));
+        }
+
+        #[test]
         fn sqlite_save_enters_connecting_state() {
             let mut state = AppState::new("test".to_string());
             state
@@ -541,7 +563,7 @@ mod tests {
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::SaveAndConnect { .. }]
+                [Effect::CancelActiveQuery, Effect::SaveAndConnect { .. }]
             ));
         }
 
@@ -553,7 +575,7 @@ mod tests {
             let first_effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
             assert!(first_effects.is_some_and(|effects| matches!(
                 effects.as_slice(),
-                [Effect::SaveAndConnect { .. }]
+                [Effect::CancelActiveQuery, Effect::SaveAndConnect { .. }]
             )));
 
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
@@ -583,7 +605,7 @@ mod tests {
             assert!(!state.connection_setup.ssl_dropdown().is_open());
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::SaveAndConnect {
+                [Effect::CancelActiveQuery, Effect::SaveAndConnect {
                     config: ConnectionConfig::PostgreSQL(config),
                     ..
                 }] if config.ssl_mode == SslMode::Require
@@ -621,7 +643,7 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::SaveAndConnect {
+                [Effect::CancelActiveQuery, Effect::SaveAndConnect {
                     name,
                     config: ConnectionConfig::PostgreSQL(config),
                     ..
@@ -666,7 +688,7 @@ mod tests {
             state.ui.set_explorer_selected_raw(3);
             let _ = state
                 .session
-                .select_table("public", "users", &mut state.query.pagination);
+                .select_table("public", "users", &mut state.query);
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(

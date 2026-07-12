@@ -1,5 +1,115 @@
-use crate::domain::QueryValue;
+use crate::domain::{DatabaseType, QueryResult, QueryValue, Table, TableKind};
 use crate::policy::sql::statement_classifier::StatementKind;
+use crate::policy::write::write_update::build_pk_pairs;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StableRowIdentity {
+    PrimaryKey(Vec<String>),
+    SqliteRowid { alias: String },
+}
+
+impl StableRowIdentity {
+    pub fn identity_pairs_for_row(
+        &self,
+        result: &QueryResult,
+        row_idx: usize,
+    ) -> Option<Vec<(String, QueryValue)>> {
+        match self {
+            Self::PrimaryKey(columns) => {
+                let row = result.values().get(row_idx)?;
+                build_pk_pairs(&result.columns, row, columns)
+            }
+            Self::SqliteRowid { alias } => result
+                .hidden_value_at(row_idx, alias)
+                .cloned()
+                .map(|value| vec![(alias.clone(), value)]),
+        }
+    }
+
+    pub fn predicate_pairs_for_row(
+        &self,
+        result: &QueryResult,
+        row_idx: usize,
+    ) -> Option<Vec<(String, QueryValue)>> {
+        match self {
+            Self::PrimaryKey(_) => self.identity_pairs_for_row(result, row_idx),
+            Self::SqliteRowid { alias } => {
+                let rowid = result.hidden_value_at(row_idx, alias)?.clone();
+                let row = result.values().get(row_idx)?;
+                if row.is_empty() || result.columns.is_empty() || row.len() != result.columns.len()
+                {
+                    return None;
+                }
+                let mut pairs = Vec::with_capacity(row.len() + 1);
+                pairs.push((alias.clone(), rowid));
+                pairs.extend(result.columns.iter().cloned().zip(row.iter().cloned()));
+                Some(pairs)
+            }
+        }
+    }
+
+    pub fn is_primary_key_column(&self, column_name: &str) -> bool {
+        match self {
+            Self::PrimaryKey(columns) => columns.iter().any(|pk| pk == column_name),
+            Self::SqliteRowid { alias: _ } => false,
+        }
+    }
+
+    pub fn uses_sqlite_rowid(&self) -> bool {
+        matches!(self, Self::SqliteRowid { .. })
+    }
+}
+
+/// Resolves the stable identity used to target a row in a write preview.
+///
+/// Callers must validate `preview_writeability` first. This function only
+/// resolves primary-key or SQLite rowid identity; it does not enforce whether
+/// the table itself is writable.
+pub fn stable_row_identity_for_table(
+    database_type: DatabaseType,
+    table: &Table,
+) -> Option<StableRowIdentity> {
+    if let Some(pk) = table.primary_key.as_ref().filter(|cols| !cols.is_empty()) {
+        return Some(StableRowIdentity::PrimaryKey(pk.clone()));
+    }
+    if database_type != DatabaseType::SQLite {
+        return None;
+    }
+    table
+        .sqlite_rowid_alias()
+        .map(|alias| StableRowIdentity::SqliteRowid {
+            alias: alias.to_string(),
+        })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewWriteability {
+    Writable,
+    ReadOnly(&'static str),
+    MissingStableRowIdentity,
+}
+
+pub fn preview_writeability(database_type: DatabaseType, table: &Table) -> PreviewWriteability {
+    if table.kind_info.kind == TableKind::View {
+        return PreviewWriteability::ReadOnly("view");
+    }
+    if table.kind_info.kind == TableKind::Virtual {
+        return PreviewWriteability::ReadOnly("virtual table");
+    }
+    if table.kind_info.without_rowid {
+        return PreviewWriteability::ReadOnly("WITHOUT ROWID table");
+    }
+    let has_primary_key = table
+        .primary_key
+        .as_ref()
+        .is_some_and(|columns| !columns.is_empty());
+    let has_sqlite_rowid =
+        database_type == DatabaseType::SQLite && table.sqlite_rowid_alias().is_some();
+    if !has_primary_key && !has_sqlite_rowid {
+        return PreviewWriteability::MissingStableRowIdentity;
+    }
+    PreviewWriteability::Writable
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteOperation {
@@ -140,6 +250,8 @@ pub fn evaluate_guardrails(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::TableKindInfo;
+    use crate::test_support;
 
     mod guardrail_evaluation {
         use super::*;
@@ -180,6 +292,87 @@ mod tests {
                 uses_sqlite_rowid: false,
             };
             assert_eq!(target.format_compact(), "public.users (id=42)");
+        }
+    }
+
+    mod row_identity {
+        use super::*;
+        use rstest::rstest;
+
+        fn primary_key_table() -> Table {
+            let mut table = test_support::table::minimal("public", "users");
+            table.primary_key = Some(vec!["id".to_string()]);
+            table
+        }
+
+        #[test]
+        fn postgres_primary_key_uses_primary_key_identity() {
+            let table = primary_key_table();
+
+            assert_eq!(
+                preview_writeability(DatabaseType::PostgreSQL, &table),
+                PreviewWriteability::Writable
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::PostgreSQL, &table),
+                Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
+        }
+
+        #[test]
+        fn sqlite_rowid_table_uses_rowid_identity() {
+            let table = test_support::table::minimal("main", "users");
+
+            assert_eq!(
+                preview_writeability(DatabaseType::SQLite, &table),
+                PreviewWriteability::Writable
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                Some(StableRowIdentity::SqliteRowid {
+                    alias: "rowid".to_string()
+                })
+            );
+        }
+
+        #[test]
+        fn postgres_table_without_primary_key_has_no_stable_identity() {
+            let table = test_support::table::minimal("public", "users");
+
+            assert_eq!(
+                preview_writeability(DatabaseType::PostgreSQL, &table),
+                PreviewWriteability::MissingStableRowIdentity
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::PostgreSQL, &table),
+                None
+            );
+        }
+
+        #[rstest]
+        #[case(TableKind::View, false, "view")]
+        #[case(TableKind::Virtual, false, "virtual table")]
+        #[case(TableKind::Table, true, "WITHOUT ROWID table")]
+        fn readonly_table_kinds_are_not_writable(
+            #[case] kind: TableKind,
+            #[case] without_rowid: bool,
+            #[case] reason: &'static str,
+        ) {
+            let mut table = primary_key_table();
+            table.kind_info = TableKindInfo {
+                kind,
+                without_rowid,
+                ..TableKindInfo::default()
+            };
+
+            assert_eq!(
+                preview_writeability(DatabaseType::SQLite, &table),
+                PreviewWriteability::ReadOnly(reason)
+            );
+            assert_eq!(
+                stable_row_identity_for_table(DatabaseType::SQLite, &table),
+                Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
         }
     }
 

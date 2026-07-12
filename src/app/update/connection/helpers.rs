@@ -3,6 +3,7 @@ use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::update::action::ConnectionTarget;
+use crate::update::query_context::termination_effects;
 
 fn reset_sql_and_er_state(state: &mut AppState) {
     state.sql_modal.reset_prefetch();
@@ -24,6 +25,7 @@ pub(super) fn reset_for_new_connection(
 }
 
 pub(super) fn connection_save_fetch_effects(
+    state: &AppState,
     dsn: &str,
     run_id: u64,
     database_type: DatabaseType,
@@ -33,15 +35,21 @@ pub(super) fn connection_save_fetch_effects(
         run_id,
     };
     if database_type == DatabaseType::SQLite {
-        vec![Effect::Sequence(vec![
-            Effect::CacheInvalidate {
-                dsn: dsn.to_string(),
-            },
-            Effect::ClearCompletionEngineCache,
-            fetch,
-        ])]
+        vec![Effect::Sequence(termination_effects(
+            &state.query,
+            vec![
+                Effect::CacheInvalidate {
+                    dsn: dsn.to_string(),
+                },
+                Effect::ClearCompletionEngineCache,
+                fetch,
+            ],
+        ))]
     } else {
-        vec![Effect::ClearCompletionEngineCache, fetch]
+        termination_effects(
+            &state.query,
+            vec![Effect::ClearCompletionEngineCache, fetch],
+        )
     }
 }
 
