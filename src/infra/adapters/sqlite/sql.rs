@@ -426,241 +426,269 @@ mod tests {
         }
     }
 
-    #[test]
-    fn quote_ident_escapes_embedded_quotes() {
-        assert_eq!(quote_ident(r#"my"table"#), r#""my""table""#);
+    mod quoting {
+        use super::*;
+
+        #[test]
+        fn identifier_escapes_embedded_quotes() {
+            assert_eq!(quote_ident(r#"my"table"#), r#""my""table""#);
+        }
+
+        #[test]
+        fn literal_escapes_embedded_quotes() {
+            assert_eq!(quote_literal("O'Reilly"), "'O''Reilly'");
+        }
+
+        #[test]
+        fn sql_literal_preserves_typed_values() {
+            assert_eq!(sql_literal(&QueryValue::Null), "NULL");
+            assert_eq!(sql_literal(&QueryValue::text("NULL")), "'NULL'");
+            assert_eq!(sql_literal(&QueryValue::text("null")), "'null'");
+            assert_eq!(sql_literal(&QueryValue::Blob(vec![0, 255])), "X'00FF'");
+            assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
+            assert_eq!(
+                sql_literal(&QueryValue::SqlLiteral("1e999".to_string())),
+                "1e999"
+            );
+        }
     }
 
-    #[test]
-    fn quote_literal_escapes_embedded_quotes() {
-        assert_eq!(quote_literal("O'Reilly"), "'O''Reilly'");
+    mod metadata_queries {
+        use super::*;
+
+        #[test]
+        fn user_tables_uses_table_list_and_includes_views() {
+            assert!(user_tables_query().contains("pragma_table_list()"));
+            assert!(user_tables_query().contains("tl.schema = 'main'"));
+            assert!(user_tables_query().contains("tl.type IN ('table', 'virtual', 'view')"));
+            assert!(user_tables_query().contains("tl.type"));
+            assert!(user_tables_query().contains("tl.wr"));
+            assert!(user_tables_query().contains("tl.strict"));
+            assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+        }
+
+        #[test]
+        fn legacy_user_tables_lists_tables_and_views() {
+            assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
+            assert!(legacy_user_tables_query().contains("type IN ('table', 'view')"));
+            assert!(!legacy_user_tables_query().contains("fts5_tables"));
+            assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+        }
+
+        #[test]
+        fn has_virtual_tables_detects_virtual_table_ddl() {
+            assert!(has_virtual_tables_query().contains("create%virtual%table%"));
+        }
+
+        #[test]
+        fn table_list_required_error_includes_marker_and_upgrade_guidance() {
+            let error = table_list_required_error();
+            let message = error.user_message();
+            assert!(message.contains(TABLE_LIST_REQUIRED_MARKER));
+            assert!(message.contains("3.37.0"));
+        }
+
+        #[test]
+        fn table_list_unavailable_detects_missing_pragma() {
+            assert!(is_table_list_unavailable(
+                "Error: in prepare, no such table: main.pragma_table_list"
+            ));
+            assert!(!is_table_list_unavailable("FOREIGN KEY constraint failed"));
+        }
     }
 
-    #[test]
-    fn sql_literal_preserves_typed_values() {
-        assert_eq!(sql_literal(&QueryValue::Null), "NULL");
-        assert_eq!(sql_literal(&QueryValue::text("NULL")), "'NULL'");
-        assert_eq!(sql_literal(&QueryValue::text("null")), "'null'");
-        assert_eq!(sql_literal(&QueryValue::Blob(vec![0, 255])), "X'00FF'");
-        assert_eq!(sql_literal(&QueryValue::SqlLiteral("42".to_string())), "42");
-        assert_eq!(
-            sql_literal(&QueryValue::SqlLiteral("1e999".to_string())),
-            "1e999"
-        );
+    mod explain_queries {
+        use super::*;
+
+        #[test]
+        fn wraps_select_with_query_plan() {
+            let adapter = SqliteAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
+                Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
+            );
+            assert_eq!(
+                adapter.build_explain_sql(
+                    DatabaseType::SQLite,
+                    "WITH cte AS (SELECT 1 AS n) SELECT * FROM cte"
+                ),
+                Some(
+                    "EXPLAIN QUERY PLAN WITH cte AS (SELECT 1 AS n) SELECT * FROM cte".to_string()
+                )
+            );
+        }
+
+        #[test]
+        fn wraps_dml_with_query_plan() {
+            let adapter = SqliteAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
+                Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
+            );
+            assert_eq!(
+                adapter.build_explain_sql(
+                    DatabaseType::SQLite,
+                    "UPDATE users SET name = 'a' WHERE id = 1"
+                ),
+                Some("EXPLAIN QUERY PLAN UPDATE users SET name = 'a' WHERE id = 1".to_string())
+            );
+            assert_eq!(
+                adapter.build_explain_sql(
+                    DatabaseType::SQLite,
+                    "INSERT INTO users(name) SELECT name FROM old_users"
+                ),
+                Some(
+                    "EXPLAIN QUERY PLAN INSERT INTO users(name) SELECT name FROM old_users"
+                        .to_string()
+                )
+            );
+            assert_eq!(
+                adapter
+                    .build_explain_sql(DatabaseType::SQLite, "REPLACE INTO users(id) VALUES (1)"),
+                Some("EXPLAIN QUERY PLAN REPLACE INTO users(id) VALUES (1)".to_string())
+            );
+        }
+
+        #[test]
+        fn rejects_prefixed_explain_and_analyze() {
+            let adapter = SqliteAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::SQLite, "EXPLAIN SELECT 1"),
+                None
+            );
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::SQLite, "CREATE TABLE users(id INTEGER)"),
+                None
+            );
+            assert_eq!(
+                adapter.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
+                None
+            );
+        }
+
+        #[test]
+        fn passes_through_existing_query_plan_prefix() {
+            let adapter = SqliteAdapter::new();
+
+            assert_eq!(
+                adapter.build_explain_sql(
+                    DatabaseType::SQLite,
+                    "EXPLAIN QUERY PLAN SELECT * FROM users"
+                ),
+                Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
+            );
+        }
     }
 
-    #[test]
-    fn user_tables_query_uses_table_list_and_includes_views() {
-        assert!(user_tables_query().contains("pragma_table_list()"));
-        assert!(user_tables_query().contains("tl.schema = 'main'"));
-        assert!(user_tables_query().contains("tl.type IN ('table', 'virtual', 'view')"));
-        assert!(user_tables_query().contains("tl.type"));
-        assert!(user_tables_query().contains("tl.wr"));
-        assert!(user_tables_query().contains("tl.strict"));
-        assert!(user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    mod preview_queries {
+        use super::*;
+
+        #[test]
+        fn row_count_quotes_table_name() {
+            assert_eq!(
+                row_count_query(r#"my"table"#),
+                r#"SELECT COUNT(*) AS count FROM "my""table""#
+            );
+        }
+
+        #[test]
+        fn orders_by_primary_key_columns_when_available() {
+            assert_eq!(
+                build_preview_query(
+                    "users",
+                    &["id".to_string(), "name".to_string()],
+                    &["id".to_string()],
+                    None,
+                    10,
+                    20
+                ),
+                concat!(
+                    r#"SELECT CASE WHEN typeof("id") = 'text' "#,
+                    r#"THEN char(1) || 'SABIQL_HEX:' || hex("id") ELSE "id" END AS "id", "#,
+                    r#"CASE WHEN typeof("name") = 'text' "#,
+                    r#"THEN char(1) || 'SABIQL_HEX:' || hex("name") ELSE "name" END AS "name" "#,
+                    r#"FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
+                )
+            );
+        }
+
+        #[test]
+        fn falls_back_to_star_without_columns() {
+            assert_eq!(
+                build_preview_query("users", &[], &["id".to_string()], None, 10, 20),
+                r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
+            );
+        }
+
+        #[test]
+        fn selects_hidden_rowid_when_available() {
+            assert_eq!(
+                build_preview_query(
+                    "logs",
+                    &["message".to_string()],
+                    &[],
+                    Some("_rowid_"),
+                    10,
+                    0
+                ),
+                concat!(
+                    r#"SELECT "_rowid_" AS "__sabiql_rowid", "#,
+                    r#"CASE WHEN typeof("message") = 'text' "#,
+                    r#"THEN char(1) || 'SABIQL_HEX:' || hex("message") ELSE "message" END AS "message" "#,
+                    r#"FROM "logs" ORDER BY "_rowid_" LIMIT 10 OFFSET 0"#
+                )
+            );
+        }
     }
 
-    #[test]
-    fn legacy_user_tables_query_lists_tables_and_views() {
-        assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
-        assert!(legacy_user_tables_query().contains("type IN ('table', 'view')"));
-        assert!(!legacy_user_tables_query().contains("fts5_tables"));
-        assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
+    mod text_literal_encoding {
+        use super::*;
+
+        #[test]
+        fn uses_cast_for_embedded_nul_byte() {
+            assert_eq!(
+                sql_literal(&QueryValue::text("a\0bc")),
+                "CAST(X'61006263' AS TEXT)"
+            );
+        }
     }
 
-    #[test]
-    fn has_virtual_tables_query_detects_virtual_table_ddl() {
-        assert!(has_virtual_tables_query().contains("create%virtual%table%"));
+    mod pragma_queries {
+        use super::*;
+
+        #[test]
+        fn quote_identifiers() {
+            assert_eq!(
+                table_xinfo_query(r#"my"table"#),
+                r#"PRAGMA table_xinfo("my""table")"#
+            );
+            assert_eq!(
+                table_info_query(r#"my"table"#),
+                r#"PRAGMA table_info("my""table")"#
+            );
+            assert_eq!(
+                index_list_query(r#"my"table"#),
+                r#"PRAGMA index_list("my""table")"#
+            );
+            assert_eq!(
+                foreign_key_list_query(r#"my"table"#),
+                r#"PRAGMA foreign_key_list("my""table")"#
+            );
+            assert_eq!(
+                trigger_list_query("users"),
+                "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users' ORDER BY name"
+            );
+            assert_eq!(
+                index_xinfo_query(r#"my"index"#),
+                r#"PRAGMA index_xinfo("my""index")"#
+            );
+        }
     }
 
-    #[test]
-    fn table_list_required_error_includes_marker_and_upgrade_guidance() {
-        let error = table_list_required_error();
-        let message = error.user_message();
-        assert!(message.contains(TABLE_LIST_REQUIRED_MARKER));
-        assert!(message.contains("3.37.0"));
-    }
-
-    #[test]
-    fn is_table_list_unavailable_detects_missing_pragma() {
-        assert!(is_table_list_unavailable(
-            "Error: in prepare, no such table: main.pragma_table_list"
-        ));
-        assert!(!is_table_list_unavailable("FOREIGN KEY constraint failed"));
-    }
-
-    #[test]
-    fn explain_generation_wraps_select_with_query_plan() {
-        let adapter = SqliteAdapter::new();
-
-        assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
-            Some("EXPLAIN QUERY PLAN SELECT 1".to_string())
-        );
-        assert_eq!(
-            adapter.build_explain_sql(
-                DatabaseType::SQLite,
-                "WITH cte AS (SELECT 1 AS n) SELECT * FROM cte"
-            ),
-            Some("EXPLAIN QUERY PLAN WITH cte AS (SELECT 1 AS n) SELECT * FROM cte".to_string())
-        );
-    }
-
-    #[test]
-    fn explain_generation_wraps_dml_with_query_plan() {
-        let adapter = SqliteAdapter::new();
-
-        assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "DELETE FROM users"),
-            Some("EXPLAIN QUERY PLAN DELETE FROM users".to_string())
-        );
-        assert_eq!(
-            adapter.build_explain_sql(
-                DatabaseType::SQLite,
-                "UPDATE users SET name = 'a' WHERE id = 1"
-            ),
-            Some("EXPLAIN QUERY PLAN UPDATE users SET name = 'a' WHERE id = 1".to_string())
-        );
-        assert_eq!(
-            adapter.build_explain_sql(
-                DatabaseType::SQLite,
-                "INSERT INTO users(name) SELECT name FROM old_users"
-            ),
-            Some(
-                "EXPLAIN QUERY PLAN INSERT INTO users(name) SELECT name FROM old_users".to_string()
-            )
-        );
-        assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "REPLACE INTO users(id) VALUES (1)"),
-            Some("EXPLAIN QUERY PLAN REPLACE INTO users(id) VALUES (1)".to_string())
-        );
-    }
-
-    #[test]
-    fn explain_generation_rejects_prefixed_explain_and_analyze() {
-        let adapter = SqliteAdapter::new();
-
-        assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "EXPLAIN SELECT 1"),
-            None
-        );
-        assert_eq!(
-            adapter.build_explain_sql(DatabaseType::SQLite, "CREATE TABLE users(id INTEGER)"),
-            None
-        );
-        assert_eq!(
-            adapter.build_explain_analyze_sql(DatabaseType::SQLite, "SELECT 1"),
-            None
-        );
-    }
-
-    #[test]
-    fn explain_generation_passes_through_existing_query_plan_prefix() {
-        let adapter = SqliteAdapter::new();
-
-        assert_eq!(
-            adapter.build_explain_sql(
-                DatabaseType::SQLite,
-                "EXPLAIN QUERY PLAN SELECT * FROM users"
-            ),
-            Some("EXPLAIN QUERY PLAN SELECT * FROM users".to_string())
-        );
-    }
-
-    #[test]
-    fn row_count_query_quotes_table_name() {
-        assert_eq!(
-            row_count_query(r#"my"table"#),
-            r#"SELECT COUNT(*) AS count FROM "my""table""#
-        );
-    }
-
-    #[test]
-    fn build_preview_query_orders_by_primary_key_columns_when_available() {
-        assert_eq!(
-            build_preview_query(
-                "users",
-                &["id".to_string(), "name".to_string()],
-                &["id".to_string()],
-                None,
-                10,
-                20
-            ),
-            concat!(
-                r#"SELECT CASE WHEN typeof("id") = 'text' "#,
-                r#"THEN char(1) || 'SABIQL_HEX:' || hex("id") ELSE "id" END AS "id", "#,
-                r#"CASE WHEN typeof("name") = 'text' "#,
-                r#"THEN char(1) || 'SABIQL_HEX:' || hex("name") ELSE "name" END AS "name" "#,
-                r#"FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
-            )
-        );
-    }
-
-    #[test]
-    fn build_preview_query_falls_back_to_star_without_columns() {
-        assert_eq!(
-            build_preview_query("users", &[], &["id".to_string()], None, 10, 20),
-            r#"SELECT * FROM "users" ORDER BY "id" LIMIT 10 OFFSET 20"#
-        );
-    }
-
-    #[test]
-    fn build_preview_query_selects_hidden_rowid_when_available() {
-        assert_eq!(
-            build_preview_query(
-                "logs",
-                &["message".to_string()],
-                &[],
-                Some("_rowid_"),
-                10,
-                0
-            ),
-            concat!(
-                r#"SELECT "_rowid_" AS "__sabiql_rowid", "#,
-                r#"CASE WHEN typeof("message") = 'text' "#,
-                r#"THEN char(1) || 'SABIQL_HEX:' || hex("message") ELSE "message" END AS "message" "#,
-                r#"FROM "logs" ORDER BY "_rowid_" LIMIT 10 OFFSET 0"#
-            )
-        );
-    }
-
-    #[test]
-    fn text_sql_literal_uses_cast_for_embedded_nul_byte() {
-        assert_eq!(
-            sql_literal(&QueryValue::text("a\0bc")),
-            "CAST(X'61006263' AS TEXT)"
-        );
-    }
-
-    #[test]
-    fn pragma_queries_quote_identifiers() {
-        assert_eq!(
-            table_xinfo_query(r#"my"table"#),
-            r#"PRAGMA table_xinfo("my""table")"#
-        );
-        assert_eq!(
-            table_info_query(r#"my"table"#),
-            r#"PRAGMA table_info("my""table")"#
-        );
-        assert_eq!(
-            index_list_query(r#"my"table"#),
-            r#"PRAGMA index_list("my""table")"#
-        );
-        assert_eq!(
-            foreign_key_list_query(r#"my"table"#),
-            r#"PRAGMA foreign_key_list("my""table")"#
-        );
-        assert_eq!(
-            trigger_list_query("users"),
-            "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users' ORDER BY name"
-        );
-        assert_eq!(
-            index_xinfo_query(r#"my"index"#),
-            r#"PRAGMA index_xinfo("my""index")"#
-        );
-    }
-
-    mod sql_dialect_update {
+    mod update_sql {
         use super::*;
 
         #[test]
@@ -743,7 +771,7 @@ mod tests {
         }
     }
 
-    mod sql_dialect_bulk_delete {
+    mod bulk_delete_sql {
         use super::*;
 
         #[test]
