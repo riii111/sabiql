@@ -749,7 +749,10 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_pla
         parts.push("BEGIN".to_string());
     }
     for (index, statement) in statements.iter().enumerate() {
-        if first_keyword(statement).eq_ignore_ascii_case("SELECT") {
+        if first_keyword(statement).eq_ignore_ascii_case("SELECT")
+            || (first_keyword(statement).eq_ignore_ascii_case("WITH")
+                && !is_dml_statement(statement))
+        {
             parts.push(sqlite_empty_result_frame(statement, marker));
         } else {
             parts.push((*statement).to_string());

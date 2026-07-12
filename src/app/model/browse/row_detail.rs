@@ -251,4 +251,25 @@ mod tests {
 
         assert_eq!(state.content_for_yank(), content);
     }
+
+    #[test]
+    fn typed_values_preserve_sqlite_storage_classes_in_json() {
+        let state = RowDetailState::open_with_values(
+            &[
+                "empty".to_string(),
+                "number_text".to_string(),
+                "blob".to_string(),
+            ],
+            &[
+                QueryValue::Text(String::new()),
+                QueryValue::Text("42".to_string()),
+                QueryValue::Blob(vec![0xAB, 0xCD]),
+            ],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "{\n  \"blob\": \"X'ABCD'\",\n  \"empty\": \"\",\n  \"number_text\": \"42\"\n}"
+        );
+    }
 }

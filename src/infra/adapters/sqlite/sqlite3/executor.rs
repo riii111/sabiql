@@ -564,8 +564,10 @@ impl QueryExecutor for SqliteAdapter {
             .await?;
         let result = result.with_columns_if_empty(columns);
         Ok(match rowid_alias {
-            Some(alias) => result.with_first_column_hidden(alias.to_string()),
-            None => result,
+            Some(alias) if !result.rows().is_empty() => {
+                result.with_first_column_hidden(alias.to_string())
+            }
+            _ => result,
         })
     }
 
@@ -1020,6 +1022,22 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn empty_rowid_table_preview_keeps_all_visible_columns() {
+            let (_dir, dsn) =
+                test_support::make_sqlite_db("CREATE TABLE users(name TEXT, email TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0)
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["name", "email"]);
+            assert!(result.rows().is_empty());
+            assert_eq!(result.row_count(), 0);
+        }
+
+        #[tokio::test]
         async fn preserves_distinct_c0_text_values_in_preview() {
             let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
@@ -1430,6 +1448,25 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["b"]);
+                assert!(result.rows().is_empty());
+                assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
+            }
+
+            #[tokio::test]
+            async fn empty_cte_select_preserves_projection_columns() {
+                let (_dir, dsn) = test_support::make_sqlite_db("");
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "WITH q(value) AS (VALUES (1)) SELECT value FROM q WHERE false",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.columns, vec!["value"]);
                 assert!(result.rows().is_empty());
                 assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
             }

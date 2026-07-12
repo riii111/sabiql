@@ -172,6 +172,24 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn writes_header_for_empty_cached_result() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+
+            let row_count = CsvCachedResultExporter
+                .export_cached_result_to_csv(
+                    path.clone(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(row_count, 0);
+            assert_eq!(std::fs::read_to_string(path).unwrap(), "id,payload\n");
+        }
+
+        #[tokio::test]
         async fn writes_embedded_nul_text_without_display_escaping() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
