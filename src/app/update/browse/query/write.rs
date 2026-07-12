@@ -75,7 +75,6 @@ fn build_update_preview(
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: identity_pairs.clone().unwrap_or_default(),
-        uses_sqlite_rowid: identity.uses_sqlite_rowid(),
     };
     let has_where = predicate_pairs
         .as_ref()
@@ -139,13 +138,6 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
     }
     match preview.operation {
         WriteOperation::Update => {
-            if preview.target_summary.uses_sqlite_rowid {
-                lines.push(format!(
-                    "Target: {} via {}",
-                    preview.target_summary.format_compact(),
-                    preview.target_summary.identity_label()
-                ));
-            }
             lines.push(preview.diff.first().map_or_else(
                 || "(no changes)".to_string(),
                 |d| {
@@ -160,14 +152,7 @@ fn build_write_preview_fallback_message(preview: &WritePreview) -> String {
         }
         WriteOperation::Delete => {
             let target = preview.target_summary.format_compact();
-            if preview.target_summary.uses_sqlite_rowid {
-                lines.push(format!(
-                    "Target: {target} via {}",
-                    preview.target_summary.identity_label()
-                ));
-            } else {
-                lines.push(format!("Target: {target}"));
-            }
+            lines.push(format!("Target: {target}"));
         }
     }
     lines.join("\n")
@@ -412,7 +397,7 @@ mod tests {
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource};
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -444,8 +429,6 @@ mod tests {
     }
 
     mod write_flow {
-        use crate::test_support;
-
         use super::*;
 
         fn editable_state() -> AppState {
@@ -463,47 +446,6 @@ mod tests {
             state
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
-            state
-        }
-
-        fn sqlite_rowid_editable_state() -> AppState {
-            let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
-                &ConnectionId::from_string("sqlite-test"),
-                "sqlite",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
-            state.query.set_current_result(Arc::new(
-                QueryResult::success_with_values(
-                    "SELECT rowid, message FROM logs".to_string(),
-                    vec!["rowid".to_string(), "message".to_string()],
-                    vec![vec![
-                        QueryValue::SqlLiteral("7".to_string()),
-                        QueryValue::text("old"),
-                    ]],
-                    10,
-                    QuerySource::Preview,
-                )
-                .with_first_column_hidden("rowid".to_string()),
-            ));
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "main".to_string(),
-                name: "logs".to_string(),
-                columns: vec![test_support::column::test_nullable_column(
-                    "message", "TEXT", 1,
-                )],
-                primary_key: None,
-                ..test_support::table::minimal("", "")
-            }));
-            state.query.pagination.reset_for_table("main", "logs");
-            state.modal.set_mode(InputMode::CellEdit);
-            state
-                .result_interaction
-                .begin_cell_edit(0, 0, "old".to_string());
-            state
-                .result_interaction
-                .replace_cell_edit_draft("new".to_string());
             state
         }
 
@@ -750,35 +692,6 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_rowid_table_uses_hidden_rowid_for_update_preview() {
-            let mut state = sqlite_rowid_editable_state();
-
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(
-                        preview.sql,
-                        "UPDATE \"logs\" SET \"message\" = 'new' WHERE \"rowid\" = 7 AND \"message\" = 'old'"
-                    );
-                    assert!(preview.target_summary.uses_sqlite_rowid);
-                    assert_eq!(preview.target_summary.identity_label(), "SQLite rowid");
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
-        }
-
-        #[test]
         fn sqlite_integer_cell_update_preview_uses_numeric_literal() {
             let mut state = AppState::new("test_project".to_string());
             state.session.activate_connection_with_dsn(
@@ -842,33 +755,27 @@ mod tests {
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
             );
-            state.query.set_current_result(Arc::new(
-                QueryResult::success_with_values(
-                    "SELECT rowid, message FROM logs".to_string(),
-                    vec!["rowid".to_string(), "message".to_string()],
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, message FROM logs".to_string(),
+                    vec!["id".to_string(), "message".to_string()],
                     vec![vec![
-                        QueryValue::SqlLiteral("7".to_string()),
+                        QueryValue::SqlLiteral("1".to_string()),
                         QueryValue::text("a\0b"),
                     ]],
                     10,
                     QuerySource::Preview,
-                )
-                .with_first_column_hidden("rowid".to_string()),
-            ));
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "main".to_string(),
-                name: "logs".to_string(),
-                columns: vec![test_support::column::test_nullable_column(
-                    "message", "TEXT", 1,
-                )],
-                primary_key: None,
-                ..test_support::table::minimal("", "")
-            }));
+                )));
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            detail.name = "logs".to_string();
+            state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "logs");
             state.modal.set_mode(InputMode::CellEdit);
             state
                 .result_interaction
-                .begin_cell_edit(0, 0, "a\0b".to_string());
+                .begin_cell_edit(0, 1, "a\0b".to_string());
 
             let effects = dispatch_query(
                 &mut state,
@@ -1332,7 +1239,6 @@ mod tests {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     key_values: vec![("id".to_string(), QueryValue::text("2"))],
-                    uses_sqlite_rowid: false,
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {

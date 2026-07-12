@@ -257,7 +257,7 @@ mod tests {
         fn preview_uses_cached_result() {
             let plan = sqlite_export_plan(
                 QuerySource::Preview,
-                "SELECT __sabiql_rowid, CASE WHEN typeof(message) = 'text' THEN hex(message) END",
+                "SELECT CASE WHEN typeof(message) = 'text' THEN hex(message) END",
                 &["message".to_string()],
                 2,
             );

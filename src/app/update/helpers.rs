@@ -29,12 +29,8 @@ pub enum EditGuardrailError {
     ReadOnlyPreviewTarget(&'static str),
     #[error("Editing requires a PRIMARY KEY.")]
     EditingRequiresPrimaryKey,
-    #[error("Editing requires a PRIMARY KEY or SQLite rowid.")]
-    EditingRequiresStableRowIdentity,
     #[error("Deletion requires a PRIMARY KEY.")]
     DeletionRequiresPrimaryKey,
-    #[error("Deletion requires a PRIMARY KEY or SQLite rowid.")]
-    DeletionRequiresStableRowIdentity,
     #[error("No rows staged for deletion")]
     NoRowsStagedForDeletion,
     #[error("No active connection")]
@@ -119,27 +115,17 @@ pub fn editable_preview_base(
     if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
-    let database_type = state.session.active_database_type_or_default();
-    match preview_writeability(database_type, table_detail) {
+    match preview_writeability(table_detail) {
         PreviewWriteability::Writable => {}
         PreviewWriteability::ReadOnly(reason) => {
             return Err(EditGuardrailError::ReadOnlyPreviewTarget(reason));
         }
         PreviewWriteability::MissingStableRowIdentity => {
-            return Err(if database_type == DatabaseType::SQLite {
-                EditGuardrailError::EditingRequiresStableRowIdentity
-            } else {
-                EditGuardrailError::EditingRequiresPrimaryKey
-            });
+            return Err(EditGuardrailError::EditingRequiresPrimaryKey);
         }
     }
-    let identity = stable_row_identity_for_table(database_type, table_detail).ok_or_else(|| {
-        if database_type == DatabaseType::SQLite {
-            EditGuardrailError::EditingRequiresStableRowIdentity
-        } else {
-            EditGuardrailError::EditingRequiresPrimaryKey
-        }
-    })?;
+    let identity = stable_row_identity_for_table(table_detail)
+        .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, identity))
 }
@@ -186,9 +172,6 @@ pub fn build_bulk_delete_preview(
     let (result, identity) = editable_preview_base(state).map_err(|err| match err {
         EditGuardrailError::EditingRequiresPrimaryKey => {
             EditGuardrailError::DeletionRequiresPrimaryKey
-        }
-        EditGuardrailError::EditingRequiresStableRowIdentity => {
-            EditGuardrailError::DeletionRequiresStableRowIdentity
         }
         other => other,
     })?;
@@ -240,7 +223,6 @@ pub fn build_bulk_delete_preview(
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: target_pairs,
-        uses_sqlite_rowid: identity.uses_sqlite_rowid(),
     };
     let guardrail = evaluate_guardrails(true, true, Some(target.clone()));
 
@@ -727,55 +709,6 @@ mod tests {
         }
     }
 
-    mod stable_row_identity {
-        use super::*;
-
-        #[test]
-        fn sqlite_rowid_predicate_rejects_empty_visible_values() {
-            let result = QueryResult::success_with_values(
-                "SELECT rowid FROM logs".to_string(),
-                vec!["rowid".to_string()],
-                vec![vec![QueryValue::SqlLiteral("7".to_string())]],
-                1,
-                QuerySource::Preview,
-            )
-            .with_first_column_hidden("rowid".to_string());
-            let identity = StableRowIdentity::SqliteRowid {
-                alias: "rowid".to_string(),
-            };
-
-            assert_eq!(
-                identity.identity_pairs_for_row(&result, 0),
-                Some(vec![(
-                    "rowid".to_string(),
-                    QueryValue::SqlLiteral("7".to_string())
-                )])
-            );
-            assert_eq!(identity.predicate_pairs_for_row(&result, 0), None);
-        }
-
-        #[test]
-        fn sqlite_rowid_predicate_rejects_mismatched_visible_values() {
-            let result = QueryResult::success_with_values(
-                "SELECT rowid, message FROM logs".to_string(),
-                vec!["rowid".to_string(), "message".to_string()],
-                vec![vec![
-                    QueryValue::SqlLiteral("7".to_string()),
-                    QueryValue::text("hello"),
-                    QueryValue::text("extra"),
-                ]],
-                1,
-                QuerySource::Preview,
-            )
-            .with_first_column_hidden("rowid".to_string());
-            let identity = StableRowIdentity::SqliteRowid {
-                alias: "rowid".to_string(),
-            };
-
-            assert_eq!(identity.predicate_pairs_for_row(&result, 0), None);
-        }
-    }
-
     mod bulk_delete_preview {
         use crate::test_support;
 
@@ -816,41 +749,6 @@ mod tests {
                 ..test_support::table::minimal("", "")
             }));
             state.query.pagination.reset_for_table("main", "users");
-            state.result_interaction.stage_row(0);
-            state
-        }
-
-        fn sqlite_rowid_state() -> AppState {
-            let mut state = AppState::new("test_project".to_string());
-            state.session.activate_connection_with_dsn(
-                &ConnectionId::from_string("test-connection"),
-                "test",
-                DatabaseType::SQLite,
-                "sqlite:///tmp/app.db",
-            );
-            state.query.set_current_result(Arc::new(
-                QueryResult::success_with_values(
-                    "SELECT rowid, message FROM logs".to_string(),
-                    vec!["rowid".to_string(), "message".to_string()],
-                    vec![vec![
-                        QueryValue::SqlLiteral("7".to_string()),
-                        QueryValue::text("hello"),
-                    ]],
-                    10,
-                    QuerySource::Preview,
-                )
-                .with_first_column_hidden("rowid".to_string()),
-            ));
-            state.session.set_table_detail_raw(Some(Table {
-                schema: "main".to_string(),
-                name: "logs".to_string(),
-                columns: vec![test_support::column::test_nullable_column(
-                    "message", "TEXT", 1,
-                )],
-                primary_key: None,
-                ..test_support::table::minimal("", "")
-            }));
-            state.query.pagination.reset_for_table("main", "logs");
             state.result_interaction.stage_row(0);
             state
         }
@@ -901,19 +799,6 @@ mod tests {
                 result,
                 Err(EditGuardrailError::SqliteNullPrimaryKey)
             ));
-        }
-
-        #[test]
-        fn sqlite_rowid_table_uses_hidden_rowid_for_delete_preview() {
-            let state = sqlite_rowid_state();
-
-            let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
-
-            assert_eq!(
-                result.preview.sql,
-                "DELETE FROM \"logs\" WHERE \"rowid\" = 7 AND \"message\" = 'hello'"
-            );
-            assert!(result.preview.target_summary.uses_sqlite_rowid);
         }
     }
 }
