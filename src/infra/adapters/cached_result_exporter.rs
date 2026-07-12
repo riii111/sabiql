@@ -115,6 +115,23 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn writes_embedded_nul_text_without_display_escaping() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+
+            CsvCachedResultExporter
+                .export_cached_result_to_csv(
+                    path.clone(),
+                    vec!["payload".to_string()],
+                    vec![vec![QueryValue::text("a\0bc")]],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(std::fs::read(path).unwrap(), b"payload\na\0bc\n");
+        }
+
+        #[tokio::test]
         async fn returns_error_when_file_cannot_be_created() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing").join("export.csv");

@@ -791,7 +791,7 @@ impl MetadataProvider for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::{DdlGenerator, QueryExecutor};
+    use crate::app::ports::outbound::{AccessMode, DdlGenerator, QueryExecutor};
     use crate::domain::{
         DatabaseType, FkAction, IndexType, Schema, TriggerEvent, TriggerTiming,
         UNRESOLVED_FK_COLUMN,
@@ -892,7 +892,11 @@ mod tests {
 
             let result = adapter.fetch_metadata(&dsn).await;
 
-            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ConnectionFailed(details))
+                    if details.contains("SQLite database file not found")
+            ));
             assert!(!path.exists());
         }
 
@@ -1840,7 +1844,10 @@ mod tests {
                 .signature
                 .clone();
 
-            adapter.execute_adhoc(&dsn, trigger, false).await.unwrap();
+            adapter
+                .execute_adhoc(&dsn, trigger, AccessMode::ReadWrite)
+                .await
+                .unwrap();
 
             let after = adapter.fetch_table_signatures(&dsn).await.unwrap();
             let after_signature = &after

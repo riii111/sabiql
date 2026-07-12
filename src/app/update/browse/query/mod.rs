@@ -47,7 +47,6 @@ pub(super) fn preview_effect_for_current_table(
         limit: PREVIEW_PAGE_SIZE,
         offset: target_page * PREVIEW_PAGE_SIZE,
         target_page,
-        read_only: state.session.is_read_only(),
     })
 }
 

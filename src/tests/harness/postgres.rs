@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use sabiql_app::ports::outbound::{DbOperationError, QueryExecutor};
+use sabiql_app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use sabiql_infra::adapters::postgres::PostgresAdapter;
 
 const DEFAULT_TEST_DSN: &str = "postgres://dev:dev@localhost:5433/testdb";
@@ -48,7 +48,7 @@ impl PostgresTestDb {
             .execute_adhoc(
                 &self.dsn,
                 &format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", self.schema),
-                false,
+                AccessMode::ReadWrite,
             )
             .await
             .map(|_| ())
@@ -68,7 +68,7 @@ impl PostgresTestDb {
             "#
         );
         self.adapter
-            .execute_adhoc(&self.dsn, &sql, false)
+            .execute_adhoc(&self.dsn, &sql, AccessMode::ReadWrite)
             .await
             .map(|_| ())
     }

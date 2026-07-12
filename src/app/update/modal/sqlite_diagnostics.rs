@@ -25,11 +25,7 @@ pub(super) fn reduce_sqlite_diagnostics(
             };
             let run_id = state.sqlite_diagnostics.begin_fetch();
             state.modal.set_mode(InputMode::SqliteDiagnostics);
-            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore {
-                dsn,
-                run_id,
-                read_only: true,
-            }])
+            DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }])
         }
         Action::RunSqliteDiagnosticsQuickCheck => {
             let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -41,7 +37,6 @@ pub(super) fn reduce_sqlite_diagnostics(
             DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsQuickCheck {
                 dsn,
                 run_id,
-                read_only: true,
             }])
         }
         Action::CloseModal(ModalKind::SqliteDiagnostics) => {
@@ -120,10 +115,7 @@ mod tests {
         assert_eq!(effects.len(), 1);
         assert!(matches!(
             effects[0],
-            Effect::FetchSqliteDiagnosticsCore {
-                read_only: true,
-                ..
-            }
+            Effect::FetchSqliteDiagnosticsCore { .. }
         ));
     }
 
@@ -150,10 +142,7 @@ mod tests {
         assert!(state.sqlite_diagnostics.is_quick_check_running());
         assert!(matches!(
             effects.as_slice(),
-            [Effect::FetchSqliteDiagnosticsQuickCheck {
-                read_only: true,
-                ..
-            }]
+            [Effect::FetchSqliteDiagnosticsQuickCheck { .. }]
         ));
     }
 

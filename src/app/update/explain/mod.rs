@@ -36,6 +36,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+    use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
     use crate::update::test_fixtures;
@@ -138,7 +139,7 @@ mod tests {
                 Effect::ExecuteExplain {
                     query,
                     is_analyze: false,
-                    read_only: true,
+                    access_mode: AccessMode::ReadOnly,
                     ..
                 } if query == "EXPLAIN QUERY PLAN SELECT 1"
             ));
@@ -168,7 +169,7 @@ mod tests {
                 Effect::ExecuteExplain {
                     query,
                     is_analyze: false,
-                    read_only: true,
+                    access_mode: AccessMode::ReadOnly,
                     ..
                 } if query == "EXPLAIN QUERY PLAN DELETE FROM users"
             ));
@@ -312,7 +313,7 @@ mod tests {
                 Effect::ExecuteExplain {
                     query,
                     is_analyze: false,
-                    read_only: true,
+                    access_mode: AccessMode::ReadOnly,
                     ..
                 } if query == "EXPLAIN SELECT 1"
             ));

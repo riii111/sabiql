@@ -1,6 +1,6 @@
 use crate::domain::connection::{ConnectionConfig, ConnectionId};
 use crate::domain::{QueryValue, Table};
-use crate::ports::outbound::AppSettings;
+use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
@@ -59,13 +59,12 @@ pub enum Effect {
         limit: usize,
         offset: usize,
         target_page: usize,
-        read_only: bool,
     },
     ExecuteAdhoc {
         dsn: String,
         run_id: u64,
         query: String,
-        read_only: bool,
+        access_mode: AccessMode,
     },
     ExecuteExplain {
         dsn: String,
@@ -73,13 +72,13 @@ pub enum Effect {
         query: String,
         source_query: String,
         is_analyze: bool,
-        read_only: bool,
+        access_mode: AccessMode,
     },
     ExecuteWrite {
         dsn: String,
         run_id: u64,
         query: String,
-        read_only: bool,
+        access_mode: AccessMode,
     },
     CountRowsForExport {
         dsn: String,
@@ -87,7 +86,6 @@ pub enum Effect {
         count_query: String,
         export_query: String,
         file_name: String,
-        read_only: bool,
     },
     ExportCsv {
         dsn: String,
@@ -95,7 +93,6 @@ pub enum Effect {
         query: String,
         file_name: String,
         row_count: Option<usize>,
-        read_only: bool,
     },
     ExportCsvFromCache {
         dsn: String,
@@ -156,13 +153,11 @@ pub enum Effect {
     FetchSqliteDiagnosticsCore {
         dsn: String,
         run_id: u64,
-        read_only: bool,
     },
 
     FetchSqliteDiagnosticsQuickCheck {
         dsn: String,
         run_id: u64,
-        read_only: bool,
     },
 
     // Executes effects in order (each awaits before the next),

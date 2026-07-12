@@ -14,6 +14,7 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
@@ -280,7 +281,7 @@ pub fn reduce_write(
                     dsn,
                     run_id,
                     query: query.clone(),
-                    read_only: state.session.is_read_only(),
+                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }])
             } else {
                 state

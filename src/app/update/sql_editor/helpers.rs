@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::ports::outbound::AccessMode;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn start_adhoc_if_connected(
@@ -22,6 +23,6 @@ pub(super) fn start_adhoc_if_connected(
         dsn,
         run_id,
         query,
-        read_only: state.session.is_read_only(),
+        access_mode: AccessMode::from_read_only(state.session.is_read_only()),
     }])
 }

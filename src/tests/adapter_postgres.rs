@@ -8,7 +8,7 @@
 //! Default: `postgres://dev:dev@localhost:5433/testdb` (matches compose.yml)
 //! The database user must be able to create and drop schemas.
 
-use sabiql_app::ports::outbound::{DbOperationError, MetadataProvider, QueryExecutor};
+use sabiql_app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider, QueryExecutor};
 use sabiql_infra::adapters::postgres::PostgresAdapter;
 
 use crate::tests::harness::postgres::{
@@ -83,7 +83,7 @@ mod query_execution {
             Box::pin(async move {
                 let result = db
                     .adapter()
-                    .execute_preview(db.dsn(), db.schema(), db.table(), 10, 0, false)
+                    .execute_preview(db.dsn(), db.schema(), db.table(), 10, 0)
                     .await
                     .map_err(|err| err.to_string())?;
 
@@ -103,7 +103,7 @@ mod query_execution {
         let dsn = postgres_integration_dsn();
 
         let result = adapter
-            .execute_adhoc(&dsn, "SELECT 1 AS value", false)
+            .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadWrite)
             .await
             .unwrap();
 
@@ -124,7 +124,11 @@ mod multi_statement_boundaries {
         let dsn = postgres_integration_dsn();
 
         let result = adapter
-            .execute_adhoc(&dsn, "SELECT 1 AS a; SELECT 2 AS b, 3 AS c", false)
+            .execute_adhoc(
+                &dsn,
+                "SELECT 1 AS a; SELECT 2 AS b, 3 AS c",
+                AccessMode::ReadWrite,
+            )
             .await
             .unwrap();
 
@@ -140,7 +144,10 @@ mod multi_statement_boundaries {
 
         let sql = "SELECT 1 AS id, 'Alice' AS name; \
                    SELECT 'id' AS id, 'name' AS name";
-        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+        let result = adapter
+            .execute_adhoc(&dsn, sql, AccessMode::ReadWrite)
+            .await
+            .unwrap();
 
         assert_eq!(result.columns, vec!["id", "name"]);
         assert_eq!(result.rows(), vec![vec!["id", "name"]]);
@@ -153,7 +160,10 @@ mod multi_statement_boundaries {
         let dsn = postgres_integration_dsn();
 
         let sql = "SELECT 1 AS a WHERE false; SELECT 2 AS b";
-        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+        let result = adapter
+            .execute_adhoc(&dsn, sql, AccessMode::ReadWrite)
+            .await
+            .unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
         assert_eq!(result.rows(), vec![vec!["2"]]);
@@ -166,7 +176,10 @@ mod multi_statement_boundaries {
         let dsn = postgres_integration_dsn();
 
         let sql = "SELECT 1 AS a; SELECT 2 AS b WHERE false";
-        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+        let result = adapter
+            .execute_adhoc(&dsn, sql, AccessMode::ReadWrite)
+            .await
+            .unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
         assert!(result.rows().is_empty());
@@ -183,7 +196,10 @@ mod multi_statement_boundaries {
         let sql = "CREATE TEMP TABLE boundary_probe(v int); \
                    INSERT INTO boundary_probe VALUES (7); \
                    SELECT v FROM boundary_probe";
-        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+        let result = adapter
+            .execute_adhoc(&dsn, sql, AccessMode::ReadWrite)
+            .await
+            .unwrap();
 
         assert_eq!(result.columns, vec!["v"]);
         assert_eq!(result.rows(), vec![vec!["7"]]);
@@ -197,7 +213,10 @@ mod multi_statement_boundaries {
 
         let sql = "CREATE TEMP TABLE tag_probe(v int); \
                    INSERT INTO tag_probe VALUES (1), (2)";
-        let result = adapter.execute_adhoc(&dsn, sql, false).await.unwrap();
+        let result = adapter
+            .execute_adhoc(&dsn, sql, AccessMode::ReadWrite)
+            .await
+            .unwrap();
 
         assert!(result.rows().is_empty());
         assert_eq!(
@@ -215,7 +234,10 @@ mod multi_statement_boundaries {
                     "CREATE TABLE \"{}\".boundary_rollback_probe(v int); SELECT no_such_column",
                     db.schema()
                 );
-                let result = db.adapter().execute_adhoc(db.dsn(), &failing, false).await;
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), &failing, AccessMode::ReadWrite)
+                    .await;
                 if result.is_ok() {
                     return Err("expected mid-script error".to_string());
                 }
@@ -228,7 +250,7 @@ mod multi_statement_boundaries {
                             "SELECT to_regclass('{}.boundary_rollback_probe') IS NULL AS rolled_back",
                             db.schema()
                         ),
-                        false,
+                        AccessMode::ReadWrite,
                     )
                     .await
                     .map_err(|err| err.to_string())?;
@@ -262,7 +284,7 @@ mod error_paths {
         let dsn = postgres_integration_dsn();
 
         let result = adapter
-            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", false)
+            .execute_adhoc(&dsn, "SELECT pg_sleep(5)", AccessMode::ReadWrite)
             .await;
 
         assert!(
