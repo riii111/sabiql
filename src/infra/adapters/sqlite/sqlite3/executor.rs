@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
+#[cfg(test)]
+use std::{ffi::OsString, path::PathBuf};
 
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -36,6 +38,8 @@ const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1)
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
+    #[cfg(test)]
+    environment: Vec<(OsString, OsString)>,
 }
 
 struct SqliteOutput {
@@ -74,7 +78,17 @@ impl SqliteVersion {
 
 impl SqliteCli {
     pub(in crate::adapters::sqlite) fn new() -> Self {
-        Self { timeout_secs: 30 }
+        Self {
+            timeout_secs: 30,
+            #[cfg(test)]
+            environment: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
+        self.environment = environment;
+        self
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -96,7 +110,7 @@ impl SqliteCli {
     pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
         &self,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = Command::new("sqlite3");
+        let mut cmd = self.command();
         Self::apply_initialization_file(&mut cmd);
         let output = cmd
             .arg("--safe")
@@ -215,7 +229,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         Self::ensure_database_path(path)?;
-        let mut cmd = Command::new("sqlite3");
+        let mut cmd = self.command();
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
@@ -307,7 +321,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
-        let mut cmd = Command::new("sqlite3");
+        let mut cmd = self.command();
         Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
@@ -338,6 +352,20 @@ impl SqliteCli {
 
     fn apply_initialization_file(cmd: &mut Command) {
         cmd.arg("-init").arg(sqlite_empty_init_file());
+    }
+
+    fn command(&self) -> Command {
+        #[cfg(test)]
+        let command = {
+            let mut cmd = Command::new("sqlite3");
+            for (key, value) in &self.environment {
+                cmd.env(key, value);
+            }
+            cmd
+        };
+        #[cfg(not(test))]
+        let command = Command::new("sqlite3");
+        command
     }
 
     async fn collect_output(
@@ -2569,6 +2597,33 @@ world'), (2, 'done');
         }
 
         #[test]
+        fn initialization_precedes_safe_read_only_and_session_options() {
+            let mut cmd = Command::new("sqlite3");
+            SqliteCli::apply_session_options(&mut cmd, true);
+            let args = cmd
+                .as_std()
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                args,
+                vec![
+                    "-init",
+                    sqlite_empty_init_file(),
+                    "--safe",
+                    "-readonly",
+                    "-cmd",
+                    &format!(".timeout {BUSY_TIMEOUT_MS}"),
+                    "-cmd",
+                    "PRAGMA foreign_keys=ON",
+                    "-cmd",
+                    "PRAGMA query_only=ON",
+                ]
+            );
+        }
+
+        #[test]
         fn database_uri_uses_non_creating_access_modes() {
             let read_write = sqlite_database_uri("/tmp/sabiql database?.db", false);
             let read_only = sqlite_database_uri("/tmp/sabiql database?.db", true);
@@ -2641,37 +2696,122 @@ world'), (2, 'done');
         }
 
         #[cfg(not(windows))]
-        #[tokio::test]
-        async fn initialization_file_cannot_run_dot_commands_or_change_database() {
-            let dir = tempfile::tempdir().unwrap();
-            let database = dir.path().join("database.sqlite");
-            let home = dir.path().join("home");
-            let xdg_config_home = dir.path().join("xdg-config");
-            std::fs::create_dir_all(&home).unwrap();
-            std::fs::create_dir_all(&xdg_config_home).unwrap();
-            std::fs::write(
-                home.join(".sqliterc"),
-                ".headers off\nCREATE TABLE initialization_side_effect(value TEXT);\n",
-            )
-            .unwrap();
-            std::fs::write(&database, []).unwrap();
+        mod initialization_isolation {
+            use crate::adapters::test_support;
+            use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
-            let mut cmd = Command::new("sqlite3");
-            SqliteCli::apply_session_options(&mut cmd, false);
-            cmd.arg("-batch").arg("-json").arg(&database);
-            cmd.env("HOME", &home)
-                .env("XDG_CONFIG_HOME", &xdg_config_home);
+            use super::*;
 
-            let output = SqliteCli::collect_output(
-                &mut cmd,
-                30,
-                "SELECT COUNT(*) AS side_effect_count FROM sqlite_master WHERE name = 'initialization_side_effect';",
-            )
-            .await
-            .unwrap();
+            struct InitializationArtifacts {
+                redirected_database: PathBuf,
+                redirected_output: PathBuf,
+            }
 
-            assert!(output.status.success(), "{}", output.stderr);
-            assert_eq!(output.stdout.trim(), r#"[{"side_effect_count":0}]"#);
+            fn adapter_with_malicious_initialization(
+                dir: &tempfile::TempDir,
+            ) -> (SqliteAdapter, InitializationArtifacts) {
+                let home = dir.path().join("home");
+                let xdg_config_home = dir.path().join("xdg-config");
+                let redirected_database = dir.path().join("redirected.sqlite");
+                let redirected_output = dir.path().join("redirected.csv");
+                std::fs::create_dir_all(&home).unwrap();
+                std::fs::create_dir_all(&xdg_config_home).unwrap();
+                std::fs::write(
+                    home.join(".sqliterc"),
+                    format!(
+                        ".output {}\n.mode csv\n.open {}\nCREATE TABLE initialization_side_effect(value TEXT);\n.exit\n",
+                        redirected_output.display(),
+                        redirected_database.display(),
+                    ),
+                )
+                .unwrap();
+
+                let mut adapter = SqliteAdapter::new();
+                adapter.cli = SqliteCli::new().with_environment(vec![
+                    (OsString::from("HOME"), home.into_os_string()),
+                    (
+                        OsString::from("XDG_CONFIG_HOME"),
+                        xdg_config_home.into_os_string(),
+                    ),
+                ]);
+                (
+                    adapter,
+                    InitializationArtifacts {
+                        redirected_database,
+                        redirected_output,
+                    },
+                )
+            }
+
+            fn assert_initialization_was_not_loaded(artifacts: &InitializationArtifacts) {
+                assert!(!artifacts.redirected_database.exists());
+                assert!(!artifacts.redirected_output.exists());
+            }
+
+            #[tokio::test]
+            async fn public_adapter_operations_preserve_query_metadata_preview_and_diagnostics() {
+                let (dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
+                );
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+
+                let write = adapter
+                    .execute_write(
+                        &dsn,
+                        "INSERT INTO users VALUES (2, 'Grace')",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "SELECT name FROM users WHERE id = 2",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .unwrap();
+                let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+                let preview = adapter
+                    .execute_preview(&dsn, "main", "users", 10, 0)
+                    .await
+                    .unwrap();
+                let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
+
+                assert_eq!(write.affected_rows, 1);
+                assert_eq!(result.rows(), vec![vec!["Grace".to_string()]]);
+                assert_eq!(metadata.table_summaries.len(), 1);
+                assert_eq!(
+                    preview.rows(),
+                    vec![
+                        vec!["1".to_string(), "Ada".to_string()],
+                        vec!["2".to_string(), "Grace".to_string()]
+                    ]
+                );
+                assert!(diagnostics.sqlite_version.is_ok());
+                assert_initialization_was_not_loaded(&artifacts);
+            }
+
+            #[tokio::test]
+            async fn export_preserves_csv_protocol() {
+                let (dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
+                );
+                let export_path = dir.path().join("users.csv");
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+
+                let row_count = adapter
+                    .export_to_csv(&dsn, "SELECT id, name FROM users", &export_path)
+                    .await
+                    .unwrap();
+
+                assert_eq!(row_count, 1);
+                assert_eq!(
+                    std::fs::read_to_string(export_path).unwrap(),
+                    "id,name\n1,Ada\n"
+                );
+                assert_initialization_was_not_loaded(&artifacts);
+            }
         }
     }
 }
