@@ -1136,869 +1136,931 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
     mod evaluate_sql_risk_tests {
         use super::*;
 
-        #[rstest]
-        #[case::select(StatementKind::Select, "SELECT 1", RiskLevel::Low)]
-        #[case::transaction(StatementKind::Transaction, "BEGIN", RiskLevel::Low)]
-        #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)", RiskLevel::Low)]
-        #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)", RiskLevel::Low)]
-        fn low_risk_returns_immediate(
-            #[case] kind: StatementKind,
-            #[case] sql: &str,
-            #[case] expected_risk: RiskLevel,
-        ) {
-            let result = evaluate_sql_risk(&kind, sql);
-            assert_eq!(result.risk_level, expected_risk);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+        mod generic_risk {
+            use super::*;
+
+            #[rstest]
+            #[case::select(StatementKind::Select, "SELECT 1", RiskLevel::Low)]
+            #[case::transaction(StatementKind::Transaction, "BEGIN", RiskLevel::Low)]
+            #[case::insert(StatementKind::Insert, "INSERT INTO users VALUES (1)", RiskLevel::Low)]
+            #[case::create(StatementKind::Create, "CREATE TABLE t (id INT)", RiskLevel::Low)]
+            fn low_risk_returns_immediate(
+                #[case] kind: StatementKind,
+                #[case] sql: &str,
+                #[case] expected_risk: RiskLevel,
+            ) {
+                let result = evaluate_sql_risk(&kind, sql);
+                assert_eq!(result.risk_level, expected_risk);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[rstest]
+            #[case::grant(StatementKind::Unsupported, "GRANT SELECT ON users TO role1", "GRANT")]
+            #[case::do_block(
+                StatementKind::Unsupported,
+                "DO $$ BEGIN DELETE FROM users; END $$",
+                "DO"
+            )]
+            #[case::copy(StatementKind::Unsupported, "COPY users FROM '/tmp/data.csv'", "COPY")]
+            #[case::cte_unsupported(
+                StatementKind::Unsupported,
+                "WITH c AS (SELECT 1) CALL refresh()",
+                "CALL"
+            )]
+            #[case::select_into(StatementKind::Other, "SELECT * INTO backup FROM users", "SELECT")]
+            #[case::unparseable(StatementKind::Other, "??? invalid", "INVALID")]
+            fn unassessable_requires_acknowledgment(
+                #[case] kind: StatementKind,
+                #[case] sql: &str,
+                #[case] expected_label: &str,
+            ) {
+                let result = evaluate_sql_risk(&kind, sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::UnknownRisk,
+                        ref label,
+                    } if label == expected_label
+                ));
+            }
+
+            #[rstest]
+            #[case::empty("")]
+            #[case::whitespace_only("   ")]
+            #[case::comment_only("-- just a comment")]
+            #[case::block_comment_only("/* nothing */")]
+            fn empty_or_comment_only_other_returns_immediate(#[case] sql: &str) {
+                let result = evaluate_sql_risk(&StatementKind::Other, sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[rstest]
+            #[case::drop_multiple(StatementKind::Drop, "DROP TABLE a, b", "DROP")]
+            #[case::truncate_multiple(StatementKind::Truncate, "TRUNCATE a, b", "TRUNCATE")]
+            fn high_without_target_requires_acknowledgment(
+                #[case] kind: StatementKind,
+                #[case] sql: &str,
+                #[case] expected_label: &str,
+            ) {
+                let result = evaluate_sql_risk(&kind, sql);
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::TargetNameUnavailable,
+                        ref label,
+                    } if label == expected_label
+                ));
+            }
+
+            #[test]
+            fn data_modifying_cte_blocks_read_only() {
+                let sql = "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x";
+                let result = evaluate_sql_risk(&classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::TargetNameUnavailable,
+                        ref label,
+                    } if label == "UPDATE (no WHERE)"
+                ));
+            }
+
+            #[rstest]
+            #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
+            #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
+            #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
+            fn medium_risk_returns_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
+                let result = evaluate_sql_risk(&kind, sql);
+                assert_eq!(result.risk_level, RiskLevel::Medium);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[rstest]
+            #[case::update_no_where(StatementKind::Update { has_where: false }, "UPDATE users SET x=1")]
+            #[case::delete_no_where(StatementKind::Delete { has_where: false }, "DELETE FROM users")]
+            #[case::drop(StatementKind::Drop, "DROP TABLE users")]
+            #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
+            fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
+                let result = evaluate_sql_risk(&kind, sql);
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::TableNameInput { .. }
+                ));
+            }
+
+            #[test]
+            fn drop_database_returns_high_table_name_input() {
+                let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::TableNameInput { .. }
+                ));
+            }
+
+            #[test]
+            fn drop_table_with_leading_comment_returns_high() {
+                let result =
+                    evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::TableNameInput { .. }
+                ));
+            }
+
+            #[rstest]
+            #[case::drop_index("DROP INDEX my_index")]
+            #[case::drop_policy("DROP POLICY p ON t")]
+            #[case::drop_view("DROP VIEW v")]
+            #[case::drop_schema("DROP SCHEMA s")]
+            #[case::drop_owned_by("DROP OWNED BY role")]
+            #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
+            fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
+                let result = evaluate_sql_risk(&StatementKind::Drop, sql);
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
         }
 
-        #[rstest]
-        #[case::grant(StatementKind::Unsupported, "GRANT SELECT ON users TO role1", "GRANT")]
-        #[case::do_block(
-            StatementKind::Unsupported,
-            "DO $$ BEGIN DELETE FROM users; END $$",
-            "DO"
-        )]
-        #[case::copy(StatementKind::Unsupported, "COPY users FROM '/tmp/data.csv'", "COPY")]
-        #[case::cte_unsupported(
-            StatementKind::Unsupported,
-            "WITH c AS (SELECT 1) CALL refresh()",
-            "CALL"
-        )]
-        #[case::select_into(StatementKind::Other, "SELECT * INTO backup FROM users", "SELECT")]
-        #[case::unparseable(StatementKind::Other, "??? invalid", "INVALID")]
-        fn unassessable_requires_acknowledgment(
-            #[case] kind: StatementKind,
-            #[case] sql: &str,
-            #[case] expected_label: &str,
-        ) {
-            let result = evaluate_sql_risk(&kind, sql);
+        mod sqlite_pragma_risk {
+            use super::*;
 
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::UnknownRisk,
-                    ref label,
-                } if label == expected_label
-            ));
+            #[test]
+            fn sqlite_read_only_pragma_returns_low_immediate() {
+                let sql = "PRAGMA table_info(users)";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[test]
+            fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
+                let sql = "PRAGMA index_info(users_name_idx)";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[rstest]
+            #[case::writable_schema("PRAGMA writable_schema = ON")]
+            #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
+            #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
+            #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
+            #[case::journal_mode("PRAGMA journal_mode = WAL")]
+            #[case::journal_mode_call("PRAGMA journal_mode(WAL)")]
+            #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
+            #[case::optimize("PRAGMA optimize")]
+            #[case::incremental_vacuum("PRAGMA incremental_vacuum")]
+            #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
+            fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::TargetNameUnavailable,
+                        ref label,
+                    } if label == "PRAGMA"
+                ));
+            }
+
+            #[test]
+            fn sqlite_non_dangerous_pragma_assignment_is_medium_write() {
+                let sql = "PRAGMA user_version = 3";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Medium);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
+
+            #[test]
+            fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
+                let sql = "PRAGMA user_version(3)";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::Medium);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
         }
 
-        #[rstest]
-        #[case::empty("")]
-        #[case::whitespace_only("   ")]
-        #[case::comment_only("-- just a comment")]
-        #[case::block_comment_only("/* nothing */")]
-        fn empty_or_comment_only_other_returns_immediate(#[case] sql: &str) {
-            let result = evaluate_sql_risk(&StatementKind::Other, sql);
+        mod sqlite_replace_risk {
+            use super::*;
 
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            #[rstest]
+            #[case::attach("ATTACH DATABASE 'other.db' AS other", "ATTACH")]
+            #[case::detach("DETACH DATABASE other", "DETACH")]
+            #[case::vacuum("VACUUM INTO 'copy.db'", "VACUUM")]
+            #[case::reindex("REINDEX users_name_idx", "REINDEX")]
+            #[case::analyze("ANALYZE users", "ANALYZE")]
+            fn sqlite_high_risk_statements_require_acknowledgment(
+                #[case] sql: &str,
+                #[case] expected_label: &str,
+            ) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge { ref label, .. } if label == expected_label
+                ));
+            }
+
+            #[rstest]
+            #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
+            #[case::with_insert_or_replace(
+                "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+                "users"
+            )]
+            #[case::with_recursive_insert_or_replace(
+                "WITH RECURSIVE payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+                "users"
+            )]
+            #[case::with_materialized_insert_or_replace(
+                "WITH payload(id) AS MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+                "users"
+            )]
+            #[case::with_not_materialized_insert_or_replace(
+                "WITH payload(id) AS NOT MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
+                "users"
+            )]
+            #[case::with_multiple_ctes_insert_or_replace(
+                "WITH a(id) AS (VALUES (1)), b(id) AS (VALUES (2)) INSERT OR REPLACE INTO users(id) SELECT id FROM a",
+                "users"
+            )]
+            #[case::replace("REPLACE INTO users(id) VALUES (1)", "users")]
+            #[case::with_replace(
+                "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
+                "users"
+            )]
+            #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
+            #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
+            #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
+            #[case::double_quoted_escaped(
+                r#"REPLACE INTO "my""table"(id) VALUES (1)"#,
+                r#"my"table"#
+            )]
+            #[case::backtick_quoted_escaped("REPLACE INTO `my``table`(id) VALUES (1)", "my`table")]
+            #[case::bracket_doubled_close_is_not_escape(
+                "REPLACE INTO [my]]table](id) VALUES (1)",
+                "my"
+            )]
+            #[case::schema_qualified(
+                "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
+                "main.my table"
+            )]
+            fn sqlite_replace_requires_table_name_input(
+                #[case] sql: &str,
+                #[case] expected_target: &str,
+            ) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                ));
+            }
+
+            #[test]
+            fn sqlite_specific_label_detects_commented_insert_or_replace() {
+                let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
+
+                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
+            }
+
+            #[test]
+            fn sqlite_specific_label_detects_with_insert_or_replace() {
+                let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
+
+                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
+            }
         }
 
-        #[rstest]
-        #[case::drop_multiple(StatementKind::Drop, "DROP TABLE a, b", "DROP")]
-        #[case::truncate_multiple(StatementKind::Truncate, "TRUNCATE a, b", "TRUNCATE")]
-        fn high_without_target_requires_acknowledgment(
-            #[case] kind: StatementKind,
-            #[case] sql: &str,
-            #[case] expected_label: &str,
-        ) {
-            let result = evaluate_sql_risk(&kind, sql);
+        mod sqlite_drop_risk {
+            use super::*;
 
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::TargetNameUnavailable,
-                    ref label,
-                } if label == expected_label
-            ));
-        }
+            #[rstest]
+            #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
+            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
+            #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
+            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
+            #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
+            #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
+            fn sqlite_specific_label_detects_dangerous_drops(
+                #[case] sql: &str,
+                #[case] expected: &str,
+            ) {
+                assert_eq!(sqlite_specific_label(sql), Some(expected));
+            }
 
-        #[test]
-        fn data_modifying_cte_blocks_read_only() {
-            let sql = "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x";
-            let result = evaluate_sql_risk(&classify(sql), sql);
+            #[rstest]
+            #[case::drop_index("DROP INDEX my_index", "my_index")]
+            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
+            #[case::drop_view("DROP VIEW my_view", "my_view")]
+            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
+            #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
+            #[case::drop_trigger_if_exists(
+                "DROP TRIGGER IF EXISTS main.my_trigger",
+                "main.my_trigger"
+            )]
+            #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
+            #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
+            #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
+            fn sqlite_dangerous_drop_requires_table_name_input(
+                #[case] sql: &str,
+                #[case] expected_target: &str,
+            ) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::TargetNameUnavailable,
-                    ref label,
-                } if label == "UPDATE (no WHERE)"
-            ));
-        }
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                ));
+            }
 
-        #[rstest]
-        #[case::update_where(StatementKind::Update { has_where: true }, "UPDATE users SET x=1 WHERE id=1")]
-        #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
-        #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
-        fn medium_risk_returns_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_sql_risk(&kind, sql);
-            assert_eq!(result.risk_level, RiskLevel::Medium);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
+            #[rstest]
+            #[case::drop_policy("DROP POLICY p ON t")]
+            #[case::drop_schema("DROP SCHEMA s")]
+            fn sqlite_unhandled_drop_subtypes_fall_back_to_generic_low_immediate(
+                #[case] sql: &str,
+            ) {
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
-        #[rstest]
-        #[case::update_no_where(StatementKind::Update { has_where: false }, "UPDATE users SET x=1")]
-        #[case::delete_no_where(StatementKind::Delete { has_where: false }, "DELETE FROM users")]
-        #[case::drop(StatementKind::Drop, "DROP TABLE users")]
-        #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
-        fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
-            let result = evaluate_sql_risk(&kind, sql);
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::TableNameInput { .. }
-            ));
-        }
+                assert_eq!(result.risk_level, RiskLevel::Low);
+                assert!(matches!(result.confirmation, ConfirmationType::Immediate));
+            }
 
-        #[test]
-        fn drop_database_returns_high_table_name_input() {
-            let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::TableNameInput { .. }
-            ));
-        }
+            #[test]
+            fn sqlite_drop_multiple_index_requires_acknowledgment() {
+                let sql = "DROP INDEX a, b";
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
-        #[test]
-        fn drop_table_with_leading_comment_returns_high() {
-            let result =
-                evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::TableNameInput { .. }
-            ));
-        }
-
-        #[rstest]
-        #[case::drop_index("DROP INDEX my_index")]
-        #[case::drop_policy("DROP POLICY p ON t")]
-        #[case::drop_view("DROP VIEW v")]
-        #[case::drop_schema("DROP SCHEMA s")]
-        #[case::drop_owned_by("DROP OWNED BY role")]
-        #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
-        fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
-            let result = evaluate_sql_risk(&StatementKind::Drop, sql);
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[test]
-        fn sqlite_read_only_pragma_returns_low_immediate() {
-            let sql = "PRAGMA table_info(users)";
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(result.read_only_allowed);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[test]
-        fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
-            let sql = "PRAGMA index_info(users_name_idx)";
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(result.read_only_allowed);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[rstest]
-        #[case::writable_schema("PRAGMA writable_schema = ON")]
-        #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
-        #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
-        #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
-        #[case::journal_mode("PRAGMA journal_mode = WAL")]
-        #[case::journal_mode_call("PRAGMA journal_mode(WAL)")]
-        #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
-        #[case::optimize("PRAGMA optimize")]
-        #[case::incremental_vacuum("PRAGMA incremental_vacuum")]
-        #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
-        fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::TargetNameUnavailable,
-                    ref label,
-                } if label == "PRAGMA"
-            ));
-        }
-
-        #[test]
-        fn sqlite_non_dangerous_pragma_assignment_is_medium_write() {
-            let sql = "PRAGMA user_version = 3";
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::Medium);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[test]
-        fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
-            let sql = "PRAGMA user_version(3)";
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::Medium);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[rstest]
-        #[case::attach("ATTACH DATABASE 'other.db' AS other", "ATTACH")]
-        #[case::detach("DETACH DATABASE other", "DETACH")]
-        #[case::vacuum("VACUUM INTO 'copy.db'", "VACUUM")]
-        #[case::reindex("REINDEX users_name_idx", "REINDEX")]
-        #[case::analyze("ANALYZE users", "ANALYZE")]
-        fn sqlite_high_risk_statements_require_acknowledgment(
-            #[case] sql: &str,
-            #[case] expected_label: &str,
-        ) {
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge { ref label, .. } if label == expected_label
-            ));
-        }
-
-        #[rstest]
-        #[case::insert_or_replace("INSERT OR REPLACE INTO users(id) VALUES (1)", "users")]
-        #[case::with_insert_or_replace(
-            "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
-            "users"
-        )]
-        #[case::with_recursive_insert_or_replace(
-            "WITH RECURSIVE payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
-            "users"
-        )]
-        #[case::with_materialized_insert_or_replace(
-            "WITH payload(id) AS MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
-            "users"
-        )]
-        #[case::with_not_materialized_insert_or_replace(
-            "WITH payload(id) AS NOT MATERIALIZED (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload",
-            "users"
-        )]
-        #[case::with_multiple_ctes_insert_or_replace(
-            "WITH a(id) AS (VALUES (1)), b(id) AS (VALUES (2)) INSERT OR REPLACE INTO users(id) SELECT id FROM a",
-            "users"
-        )]
-        #[case::replace("REPLACE INTO users(id) VALUES (1)", "users")]
-        #[case::with_replace(
-            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
-            "users"
-        )]
-        #[case::bracket_quoted("REPLACE INTO [my table](id) VALUES (1)", "my table")]
-        #[case::backtick_quoted("REPLACE INTO `my table`(id) VALUES (1)", "my table")]
-        #[case::double_quoted(r#"REPLACE INTO "my table"(id) VALUES (1)"#, "my table")]
-        #[case::double_quoted_escaped(r#"REPLACE INTO "my""table"(id) VALUES (1)"#, r#"my"table"#)]
-        #[case::backtick_quoted_escaped("REPLACE INTO `my``table`(id) VALUES (1)", "my`table")]
-        #[case::bracket_doubled_close_is_not_escape(
-            "REPLACE INTO [my]]table](id) VALUES (1)",
-            "my"
-        )]
-        #[case::schema_qualified(
-            "INSERT OR REPLACE INTO main.[my table](id) VALUES (1)",
-            "main.my table"
-        )]
-        fn sqlite_replace_requires_table_name_input(
-            #[case] sql: &str,
-            #[case] expected_target: &str,
-        ) {
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::TableNameInput { ref target } if target == expected_target
-            ));
-        }
-
-        #[test]
-        fn sqlite_specific_label_detects_commented_insert_or_replace() {
-            let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
-
-            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
-        }
-
-        #[test]
-        fn sqlite_specific_label_detects_with_insert_or_replace() {
-            let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
-
-            assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
-        }
-
-        #[rstest]
-        #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
-        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
-        #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
-        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
-        #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
-        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
-        fn sqlite_specific_label_detects_dangerous_drops(
-            #[case] sql: &str,
-            #[case] expected: &str,
-        ) {
-            assert_eq!(sqlite_specific_label(sql), Some(expected));
-        }
-
-        #[rstest]
-        #[case::drop_index("DROP INDEX my_index", "my_index")]
-        #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
-        #[case::drop_view("DROP VIEW my_view", "my_view")]
-        #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
-        #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
-        #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS main.my_trigger", "main.my_trigger")]
-        #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
-        #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
-        #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
-        fn sqlite_dangerous_drop_requires_table_name_input(
-            #[case] sql: &str,
-            #[case] expected_target: &str,
-        ) {
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::TableNameInput { ref target } if target == expected_target
-            ));
-        }
-
-        #[rstest]
-        #[case::drop_policy("DROP POLICY p ON t")]
-        #[case::drop_schema("DROP SCHEMA s")]
-        fn sqlite_unhandled_drop_subtypes_fall_back_to_generic_low_immediate(#[case] sql: &str) {
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::Low);
-            assert!(matches!(result.confirmation, ConfirmationType::Immediate));
-        }
-
-        #[test]
-        fn sqlite_drop_multiple_index_requires_acknowledgment() {
-            let sql = "DROP INDEX a, b";
-            let result = evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
-
-            assert_eq!(result.risk_level, RiskLevel::High);
-            assert!(!result.read_only_allowed);
-            assert!(matches!(
-                result.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::TargetNameUnavailable,
-                    ref label,
-                } if label == "DROP INDEX"
-            ));
+                assert_eq!(result.risk_level, RiskLevel::High);
+                assert!(!result.read_only_allowed);
+                assert!(matches!(
+                    result.confirmation,
+                    ConfirmationType::Acknowledge {
+                        reason: AcknowledgeReason::TargetNameUnavailable,
+                        ref label,
+                    } if label == "DROP INDEX"
+                ));
+            }
         }
     }
 
     mod evaluate_multi_statement_tests {
         use super::*;
 
-        #[test]
-        fn single_select_passthrough() {
-            let result = evaluate_multi_statement("SELECT 1");
-            match result {
-                MultiStatementDecision::Allow { statements, risk } => {
-                    assert_eq!(statements, vec!["SELECT 1"]);
-                    assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+        mod generic_aggregation {
+            use super::*;
+
+            #[test]
+            fn single_select_passthrough() {
+                let result = evaluate_multi_statement("SELECT 1");
+                match result {
+                    MultiStatementDecision::Allow { statements, risk } => {
+                        assert_eq!(statements, vec!["SELECT 1"]);
+                        assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
+            }
+
+            #[test]
+            fn single_insert_passthrough() {
+                let result = evaluate_multi_statement("INSERT INTO users VALUES (1)");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn single_drop_passthrough() {
+                let result = evaluate_multi_statement("DROP TABLE users");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { .. }
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn tcl_only_multi_returns_immediate() {
+                let result = evaluate_multi_statement("BEGIN; COMMIT");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn multiple_high_uses_first_target() {
+                let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { ref target } if target == "a"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn select_into_requires_acknowledgment() {
+                let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::UnknownRisk,
+                                ..
+                            }
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn risk_aggregation_select_insert() {
+                let result = evaluate_multi_statement("SELECT 1; INSERT INTO users VALUES (1)");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    }
+                    _ => panic!("expected Allow"),
+                }
             }
         }
 
-        #[test]
-        fn single_insert_passthrough() {
-            let result = evaluate_multi_statement("INSERT INTO users VALUES (1)");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+        mod sqlite_transaction_policy {
+            use super::*;
+
+            #[test]
+            fn sqlite_incompatible_transaction_requires_non_atomic_acknowledgement() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::NonAtomicTransaction,
+                                ref label,
+                            } if label == "SQLite transaction"
+                        ));
+                        assert!(!risk.read_only_allowed);
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
+            }
+
+            #[test]
+            fn sqlite_incompatible_transaction_preserves_high_risk_acknowledgement() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::TargetNameUnavailable,
+                                ref label,
+                            } if label == "PRAGMA"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn sqlite_incompatible_transaction_and_typed_drop_are_blocked_together() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = OFF; DROP TABLE users",
+                );
+
+                assert!(matches!(result, MultiStatementDecision::Block { .. }));
+            }
+
+            #[test]
+            fn sqlite_incompatible_transaction_and_typed_drop_with_non_dangerous_pragma_are_blocked()
+             {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = ON; DROP TABLE users",
+                );
+
+                assert!(matches!(result, MultiStatementDecision::Block { .. }));
             }
         }
 
-        #[test]
-        fn single_drop_passthrough() {
-            let result = evaluate_multi_statement("DROP TABLE users");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { .. }
-                    ));
+        mod input_validation {
+            use super::*;
+
+            #[test]
+            fn risk_aggregation_select_update_where() {
+                let result =
+                    evaluate_multi_statement("SELECT 1; UPDATE users SET x = 1 WHERE id = 1");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Medium);
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
+            }
+
+            #[test]
+            fn empty_input_blocked() {
+                let result = evaluate_multi_statement("");
+                assert!(matches!(result, MultiStatementDecision::Block { .. }));
+            }
+
+            #[rstest]
+            #[case::sqlite_shell(".shell echo injected")]
+            #[case::sqlite_open_after_select("SELECT 1;\n.open writable.db")]
+            #[case::psql_shell("\\! echo injected")]
+            #[case::indented_meta_command("  .output /tmp/out.csv")]
+            #[case::psql_backslash_inside_bracket_identifier("SELECT [\n\\! echo injected\n]")]
+            #[case::psql_backslash_inside_backtick_identifier("SELECT `\n\\! echo injected\n`")]
+            fn cli_meta_commands_are_blocked(#[case] sql: &str) {
+                let result = evaluate_multi_statement(sql);
+
+                assert!(matches!(
+                    result,
+                    MultiStatementDecision::Block { reason }
+                        if reason == "CLI meta-commands are not supported in SQL input"
+                ));
+            }
+
+            #[rstest]
+            #[case::dot_inside_string("SELECT '.shell echo ok'")]
+            #[case::backslash_inside_string("SELECT '\\\\! echo ok'")]
+            #[case::dot_inside_comment("-- .shell ignored\nSELECT 1")]
+            #[case::backslash_inside_block_comment("SELECT /* \\! ignored */ 1")]
+            #[case::backslash_inside_quoted_identifier(
+                r#"SELECT "table\!name" FROM "table\!name""#
+            )]
+            #[case::dot_inside_dollar_quote("SELECT $tag$\n.shell ignored\n$tag$")]
+            fn cli_meta_command_like_text_is_allowed(#[case] sql: &str) {
+                let result = evaluate_multi_statement(sql);
+
+                assert!(matches!(result, MultiStatementDecision::Allow { .. }));
+            }
+
+            #[rstest]
+            #[case::dot_inside_bracket_identifier("SELECT [\n.shell ignored] FROM t")]
+            #[case::backslash_inside_backtick_identifier("SELECT `\n\\! ignored` FROM t")]
+            fn sqlite_cli_meta_command_like_identifier_text_is_allowed(#[case] sql: &str) {
+                let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+                assert!(matches!(result, MultiStatementDecision::Allow { .. }));
             }
         }
 
-        #[test]
-        fn tcl_only_multi_returns_immediate() {
-            let result = evaluate_multi_statement("BEGIN; COMMIT");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.confirmation, ConfirmationType::Immediate);
+        mod quoted_identifiers {
+            use super::*;
+
+            #[rstest]
+            #[case::bracket_contains_drop("SELECT [1; DROP TABLE users]", "users")]
+            #[case::backtick_contains_drop("SELECT `1; DROP TABLE users`", "users")]
+            fn postgres_brackets_and_backticks_do_not_hide_dangerous_statements(
+                #[case] sql: &str,
+                #[case] expected_target: &str,
+            ) {
+                let result = evaluate_multi_statement(sql);
+
+                match result {
+                    MultiStatementDecision::Allow { statements, risk } => {
+                        assert_eq!(statements.len(), 2);
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
+            }
+
+            #[rstest]
+            #[case::update_backtick_where_identifier("UPDATE `where` SET x = 1", "where")]
+            #[case::delete_bracket_quoted_dot("DELETE FROM [main.users]", "main.users")]
+            #[case::drop_table_backtick_qualified("DROP TABLE main.`my.table`", "main.my.table")]
+            #[case::drop_table_bracket_reserved_word("DROP TABLE [select]", "select")]
+            fn sqlite_quoted_targets_require_table_name_input(
+                #[case] sql: &str,
+                #[case] expected_target: &str,
+            ) {
+                let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
+                }
             }
         }
 
-        #[test]
-        fn multiple_high_uses_first_target() {
-            let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == "a"
-                    ));
+        mod confirmation_aggregation {
+            use super::*;
+
+            #[test]
+            fn do_block_requires_acknowledgment() {
+                let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::UnknownRisk,
+                                ref label,
+                            } if label == "DO"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn select_into_requires_acknowledgment() {
-            let result = evaluate_multi_statement("SELECT * INTO backup FROM users");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::UnknownRisk,
-                            ..
-                        }
-                    ));
+            #[test]
+            fn copy_requires_acknowledgment() {
+                let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::UnknownRisk,
+                                ref label,
+                            } if label == "COPY"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn risk_aggregation_select_insert() {
-            let result = evaluate_multi_statement("SELECT 1; INSERT INTO users VALUES (1)");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+            #[test]
+            fn do_block_after_select_requires_acknowledgment() {
+                let result =
+                    evaluate_multi_statement("SELECT 1; DO $$ BEGIN DELETE FROM users; END $$");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::UnknownRisk,
+                                ..
+                            }
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn sqlite_incompatible_transaction_requires_non_atomic_acknowledgement() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)",
-            );
+            #[rstest]
+            #[case::do_block_with_drop("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users")]
+            #[case::drop_with_unextractable_drop("DROP TABLE users; DROP TABLE a, b")]
+            #[case::mixed_acknowledge_reasons(
+                "DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b"
+            )]
+            fn mixed_confirmations_are_blocked(#[case] sql: &str) {
+                let result = evaluate_multi_statement(sql);
 
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::NonAtomicTransaction,
-                            ref label,
-                        } if label == "SQLite transaction"
-                    ));
-                    assert!(!risk.read_only_allowed);
-                }
-                _ => panic!("expected Allow"),
+                assert!(matches!(result, MultiStatementDecision::Block { .. }));
             }
-        }
 
-        #[test]
-        fn sqlite_incompatible_transaction_preserves_high_risk_acknowledgement() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)",
-            );
+            #[rstest]
+            #[case::unknown_risk(
+                "COPY users FROM '/tmp/a.csv'; CALL refresh()",
+                RiskLevel::Low,
+                AcknowledgeReason::UnknownRisk,
+                "COPY"
+            )]
+            #[case::target_name_unavailable(
+                "DROP TABLE a, b; TRUNCATE c, d",
+                RiskLevel::High,
+                AcknowledgeReason::TargetNameUnavailable,
+                "DROP"
+            )]
+            fn same_reason_acknowledgments_aggregate_with_first_label(
+                #[case] sql: &str,
+                #[case] expected_risk: RiskLevel,
+                #[case] expected_reason: AcknowledgeReason,
+                #[case] expected_label: &str,
+            ) {
+                let result = evaluate_multi_statement(sql);
 
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::TargetNameUnavailable,
-                            ref label,
-                        } if label == "PRAGMA"
-                    ));
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, expected_risk);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                ref reason,
+                                ref label,
+                            } if *reason == expected_reason && label == expected_label
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn sqlite_incompatible_transaction_and_typed_drop_are_blocked_together() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "PRAGMA foreign_keys = OFF; DROP TABLE users",
-            );
-
-            assert!(matches!(result, MultiStatementDecision::Block { .. }));
-        }
-
-        #[test]
-        fn sqlite_incompatible_transaction_and_typed_drop_with_non_dangerous_pragma_are_blocked() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "PRAGMA foreign_keys = ON; DROP TABLE users",
-            );
-
-            assert!(matches!(result, MultiStatementDecision::Block { .. }));
-        }
-
-        #[test]
-        fn risk_aggregation_select_update_where() {
-            let result = evaluate_multi_statement("SELECT 1; UPDATE users SET x = 1 WHERE id = 1");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Medium);
+            #[test]
+            fn drop_multiple_targets_requires_acknowledgment() {
+                let result = evaluate_multi_statement("DROP TABLE a, b");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::Acknowledge {
+                                reason: AcknowledgeReason::TargetNameUnavailable,
+                                ..
+                            }
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn empty_input_blocked() {
-            let result = evaluate_multi_statement("");
-            assert!(matches!(result, MultiStatementDecision::Block { .. }));
-        }
-
-        #[rstest]
-        #[case::sqlite_shell(".shell echo injected")]
-        #[case::sqlite_open_after_select("SELECT 1;\n.open writable.db")]
-        #[case::psql_shell("\\! echo injected")]
-        #[case::indented_meta_command("  .output /tmp/out.csv")]
-        #[case::psql_backslash_inside_bracket_identifier("SELECT [\n\\! echo injected\n]")]
-        #[case::psql_backslash_inside_backtick_identifier("SELECT `\n\\! echo injected\n`")]
-        fn cli_meta_commands_are_blocked(#[case] sql: &str) {
-            let result = evaluate_multi_statement(sql);
-
-            assert!(matches!(
-                result,
-                MultiStatementDecision::Block { reason }
-                    if reason == "CLI meta-commands are not supported in SQL input"
-            ));
-        }
-
-        #[rstest]
-        #[case::dot_inside_string("SELECT '.shell echo ok'")]
-        #[case::backslash_inside_string("SELECT '\\\\! echo ok'")]
-        #[case::dot_inside_comment("-- .shell ignored\nSELECT 1")]
-        #[case::backslash_inside_block_comment("SELECT /* \\! ignored */ 1")]
-        #[case::backslash_inside_quoted_identifier(r#"SELECT "table\!name" FROM "table\!name""#)]
-        #[case::dot_inside_dollar_quote("SELECT $tag$\n.shell ignored\n$tag$")]
-        fn cli_meta_command_like_text_is_allowed(#[case] sql: &str) {
-            let result = evaluate_multi_statement(sql);
-
-            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
-        }
-
-        #[rstest]
-        #[case::dot_inside_bracket_identifier("SELECT [\n.shell ignored] FROM t")]
-        #[case::backslash_inside_backtick_identifier("SELECT `\n\\! ignored` FROM t")]
-        fn sqlite_cli_meta_command_like_identifier_text_is_allowed(#[case] sql: &str) {
-            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
-
-            assert!(matches!(result, MultiStatementDecision::Allow { .. }));
-        }
-
-        #[rstest]
-        #[case::bracket_contains_drop("SELECT [1; DROP TABLE users]", "users")]
-        #[case::backtick_contains_drop("SELECT `1; DROP TABLE users`", "users")]
-        fn postgres_brackets_and_backticks_do_not_hide_dangerous_statements(
-            #[case] sql: &str,
-            #[case] expected_target: &str,
-        ) {
-            let result = evaluate_multi_statement(sql);
-
-            match result {
-                MultiStatementDecision::Allow { statements, risk } => {
-                    assert_eq!(statements.len(), 2);
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == expected_target
-                    ));
+            #[test]
+            fn insert_then_select_returns_immediate() {
+                let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[rstest]
-        #[case::update_backtick_where_identifier("UPDATE `where` SET x = 1", "where")]
-        #[case::delete_bracket_quoted_dot("DELETE FROM [main.users]", "main.users")]
-        #[case::drop_table_backtick_qualified("DROP TABLE main.`my.table`", "main.my.table")]
-        #[case::drop_table_bracket_reserved_word("DROP TABLE [select]", "select")]
-        fn sqlite_quoted_targets_require_table_name_input(
-            #[case] sql: &str,
-            #[case] expected_target: &str,
-        ) {
-            let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
-
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == expected_target
-                    ));
+            #[test]
+            fn drop_index_returns_low_immediate_for_postgres() {
+                let result = evaluate_multi_statement("DROP INDEX my_index");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn do_block_requires_acknowledgment() {
-            let result = evaluate_multi_statement("DO $$ BEGIN RAISE NOTICE 'hi'; END $$");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::UnknownRisk,
-                            ref label,
-                        } if label == "DO"
-                    ));
+            #[test]
+            fn sqlite_multiple_high_drops_use_first_target() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "DROP INDEX my_index; DROP VIEW my_view",
+                );
+                match result {
+                    MultiStatementDecision::Allow { statements, risk } => {
+                        assert_eq!(statements, vec!["DROP INDEX my_index", "DROP VIEW my_view"]);
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(!risk.read_only_allowed);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn copy_requires_acknowledgment() {
-            let result = evaluate_multi_statement("COPY users FROM '/tmp/data.csv'");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::UnknownRisk,
-                            ref label,
-                        } if label == "COPY"
-                    ));
-                }
-                _ => panic!("expected Allow"),
+            #[test]
+            fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
+                let sql = "DROP INDEX my_index; DROP VIEW my_view";
+                assert_eq!(
+                    adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
+                    Some("DROP INDEX")
+                );
             }
-        }
 
-        #[test]
-        fn do_block_after_select_requires_acknowledgment() {
-            let result =
-                evaluate_multi_statement("SELECT 1; DO $$ BEGIN DELETE FROM users; END $$");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::UnknownRisk,
-                            ..
-                        }
-                    ));
+            #[test]
+            fn sqlite_drop_index_requires_table_name_input() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "DROP INDEX IF EXISTS my_index",
+                );
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(!risk.read_only_allowed);
+                        assert!(matches!(
+                            risk.confirmation,
+                            ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                        ));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[rstest]
-        #[case::do_block_with_drop("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE users")]
-        #[case::drop_with_unextractable_drop("DROP TABLE users; DROP TABLE a, b")]
-        #[case::mixed_acknowledge_reasons("DO $$ BEGIN RAISE NOTICE 'hi'; END $$; DROP TABLE a, b")]
-        fn mixed_confirmations_are_blocked(#[case] sql: &str) {
-            let result = evaluate_multi_statement(sql);
-
-            assert!(matches!(result, MultiStatementDecision::Block { .. }));
-        }
-
-        #[rstest]
-        #[case::unknown_risk(
-            "COPY users FROM '/tmp/a.csv'; CALL refresh()",
-            RiskLevel::Low,
-            AcknowledgeReason::UnknownRisk,
-            "COPY"
-        )]
-        #[case::target_name_unavailable(
-            "DROP TABLE a, b; TRUNCATE c, d",
-            RiskLevel::High,
-            AcknowledgeReason::TargetNameUnavailable,
-            "DROP"
-        )]
-        fn same_reason_acknowledgments_aggregate_with_first_label(
-            #[case] sql: &str,
-            #[case] expected_risk: RiskLevel,
-            #[case] expected_reason: AcknowledgeReason,
-            #[case] expected_label: &str,
-        ) {
-            let result = evaluate_multi_statement(sql);
-
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, expected_risk);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            ref reason,
-                            ref label,
-                        } if *reason == expected_reason && label == expected_label
-                    ));
+            #[test]
+            fn drop_owned_by_returns_low_immediate() {
+                let result = evaluate_multi_statement("DROP OWNED BY role");
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn drop_multiple_targets_requires_acknowledgment() {
-            let result = evaluate_multi_statement("DROP TABLE a, b");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::Acknowledge {
-                            reason: AcknowledgeReason::TargetNameUnavailable,
-                            ..
-                        }
-                    ));
+            #[test]
+            fn sqlite_safe_pragma_is_read_only_allowed() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA table_info(t)",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::Low);
+                        assert!(risk.read_only_allowed);
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
             }
-        }
 
-        #[test]
-        fn insert_then_select_returns_immediate() {
-            let result = evaluate_multi_statement("INSERT INTO users VALUES (1); SELECT 1");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
+            #[test]
+            fn sqlite_dangerous_pragma_blocks_read_only() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "PRAGMA foreign_keys = OFF",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(!risk.read_only_allowed);
+                    }
+                    _ => panic!("expected Allow"),
                 }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn drop_index_returns_low_immediate_for_postgres() {
-            let result = evaluate_multi_statement("DROP INDEX my_index");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
-                }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn sqlite_multiple_high_drops_use_first_target() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "DROP INDEX my_index; DROP VIEW my_view",
-            );
-            match result {
-                MultiStatementDecision::Allow { statements, risk } => {
-                    assert_eq!(statements, vec!["DROP INDEX my_index", "DROP VIEW my_view"]);
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(!risk.read_only_allowed);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
-                    ));
-                }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
-            let sql = "DROP INDEX my_index; DROP VIEW my_view";
-            assert_eq!(
-                adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
-                Some("DROP INDEX")
-            );
-        }
-
-        #[test]
-        fn sqlite_drop_index_requires_table_name_input() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "DROP INDEX IF EXISTS my_index",
-            );
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(!risk.read_only_allowed);
-                    assert!(matches!(
-                        risk.confirmation,
-                        ConfirmationType::TableNameInput { ref target } if target == "my_index"
-                    ));
-                }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn drop_owned_by_returns_low_immediate() {
-            let result = evaluate_multi_statement("DROP OWNED BY role");
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(matches!(risk.confirmation, ConfirmationType::Immediate));
-                }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn sqlite_safe_pragma_is_read_only_allowed() {
-            let result =
-                evaluate_multi_statement_for_database(DatabaseType::SQLite, "PRAGMA table_info(t)");
-
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::Low);
-                    assert!(risk.read_only_allowed);
-                }
-                _ => panic!("expected Allow"),
-            }
-        }
-
-        #[test]
-        fn sqlite_dangerous_pragma_blocks_read_only() {
-            let result = evaluate_multi_statement_for_database(
-                DatabaseType::SQLite,
-                "PRAGMA foreign_keys = OFF",
-            );
-
-            match result {
-                MultiStatementDecision::Allow { risk, .. } => {
-                    assert_eq!(risk.risk_level, RiskLevel::High);
-                    assert!(!risk.read_only_allowed);
-                }
-                _ => panic!("expected Allow"),
             }
         }
     }
