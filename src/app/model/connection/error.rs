@@ -1,5 +1,8 @@
 use crate::policy::password_masking::mask_password;
-use crate::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::ports::outbound::{
+    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+    SQLITE_TABLE_LIST_REQUIRED_MARKER,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -157,8 +160,8 @@ impl ConnectionErrorInfo {
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
             DbOperationError::UnsupportedOperation(details)
-                if details.contains("SQLITE_TABLE_LIST_REQUIRED")
-                    || details.contains("SQLITE_SAFE_MODE_REQUIRED") =>
+                if details.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER)
+                    || details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER) =>
             {
                 ConnectionErrorKind::SqliteVersionTooOld
             }
@@ -406,9 +409,9 @@ mod tests {
         #[test]
         fn from_db_operation_error_classifies_sqlite_table_list_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperation(
-                    "SQLITE_TABLE_LIST_REQUIRED: upgrade sqlite3".to_string(),
-                ),
+                &DbOperationError::UnsupportedOperation(format!(
+                    "{SQLITE_TABLE_LIST_REQUIRED_MARKER}: upgrade sqlite3"
+                )),
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
@@ -418,9 +421,9 @@ mod tests {
         #[test]
         fn from_db_operation_error_classifies_sqlite_safe_mode_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperation(
-                    "SQLITE_SAFE_MODE_REQUIRED: sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)".to_string(),
-                ),
+                &DbOperationError::UnsupportedOperation(format!(
+                    "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+                )),
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);

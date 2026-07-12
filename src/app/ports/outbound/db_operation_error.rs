@@ -4,6 +4,9 @@ use std::sync::Arc;
 
 use crate::policy::password_masking::mask_password;
 
+pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
+pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseCli {
     Psql,

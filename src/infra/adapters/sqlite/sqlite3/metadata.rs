@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use serde::Deserialize;
 
+#[cfg(test)]
+use crate::app::ports::outbound::SQLITE_SAFE_MODE_REQUIRED_MARKER;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 #[cfg(test)]
 use crate::domain::TableKind;
@@ -13,8 +15,6 @@ use crate::domain::{
 };
 
 use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
-#[cfg(test)]
-use super::executor::SQLITE_SAFE_MODE_REQUIRED_MARKER;
 
 mod kind_info;
 mod trigger;

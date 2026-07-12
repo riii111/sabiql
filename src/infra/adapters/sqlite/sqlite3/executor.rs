@@ -10,7 +10,9 @@ use tokio::time::timeout;
 use async_trait::async_trait;
 
 use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
-use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{
+    AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult,
     available_sqlite_rowid_alias,
@@ -28,8 +30,6 @@ use super::parser::{
 };
 
 pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
-pub(in crate::adapters::sqlite) const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str =
-    "SQLITE_SAFE_MODE_REQUIRED";
 
 const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1);
 
@@ -1451,52 +1451,52 @@ mod tests {
                 assert_eq!(result.rows(), vec![vec![BUSY_TIMEOUT_MS.to_string()]]);
             }
 
+            #[rstest::rstest]
+            #[case::writefile(
+                "writefile",
+                &["cannot use the writefile() function in safe mode"],
+            )]
+            #[case::readfile(
+                "readfile",
+                &["cannot use the readfile() function in safe mode"],
+            )]
+            #[case::load_extension(
+                "load_extension",
+                &[
+                    "cannot use the load_extension() function in safe mode",
+                    "no such function: load_extension",
+                ],
+            )]
+            #[case::attach("attach", &["cannot run ATTACH in safe mode"])]
             #[tokio::test]
-            async fn safe_mode_rejects_host_side_effects_in_read_write_sessions() {
+            async fn safe_mode_rejects_host_side_effects_in_read_write_sessions(
+                #[case] side_effect: &str,
+                #[case] expected: &[&str],
+            ) {
                 let (dir, dsn) = test_support::make_sqlite_db("");
                 let attached = dir.path().join("attached.db");
                 let output = dir.path().join("output.txt");
                 std::fs::write(&attached, []).unwrap();
                 let adapter = SqliteAdapter::new();
 
-                let writefile = format!("SELECT writefile('{}', 'hello')", output.display());
+                let sql = match side_effect {
+                    "writefile" => format!("SELECT writefile('{}', 'hello')", output.display()),
+                    "readfile" => format!("SELECT readfile('{}')", attached.display()),
+                    "load_extension" => {
+                        "SELECT load_extension('/tmp/sabiql-extension')".to_string()
+                    }
+                    "attach" => format!("ATTACH DATABASE '{}' AS attached", attached.display()),
+                    _ => unreachable!(),
+                };
                 safe_mode_error(
                     adapter
-                        .execute_adhoc(&dsn, &writefile, AccessMode::ReadWrite)
+                        .execute_adhoc(&dsn, &sql, AccessMode::ReadWrite)
                         .await,
-                    &["cannot use the writefile() function in safe mode"],
+                    expected,
                 );
-                assert!(!output.exists());
-
-                let readfile = format!("SELECT readfile('{}')", attached.display());
-                safe_mode_error(
-                    adapter
-                        .execute_adhoc(&dsn, &readfile, AccessMode::ReadWrite)
-                        .await,
-                    &["cannot use the readfile() function in safe mode"],
-                );
-
-                safe_mode_error(
-                    adapter
-                        .execute_adhoc(
-                            &dsn,
-                            "SELECT load_extension('/tmp/sabiql-extension')",
-                            AccessMode::ReadWrite,
-                        )
-                        .await,
-                    &[
-                        "cannot use the load_extension() function in safe mode",
-                        "no such function: load_extension",
-                    ],
-                );
-
-                let attach = format!("ATTACH DATABASE '{}' AS attached", attached.display());
-                safe_mode_error(
-                    adapter
-                        .execute_adhoc(&dsn, &attach, AccessMode::ReadWrite)
-                        .await,
-                    &["cannot run ATTACH in safe mode"],
-                );
+                if side_effect == "writefile" {
+                    assert!(!output.exists());
+                }
             }
         }
 
@@ -1700,6 +1700,7 @@ mod tests {
                         .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
                         .await;
 
+                    // VACUUM internally attaches a temporary database, so safe mode reports ATTACH.
                     assert!(matches!(
                         result,
                         Err(DbOperationError::QueryFailed(details))
