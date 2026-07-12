@@ -7,6 +7,7 @@ pub mod explain;
 pub mod helpers;
 pub mod input;
 pub mod modal;
+mod query_context;
 pub mod reducer;
 pub mod sql_editor;
 #[cfg(test)]

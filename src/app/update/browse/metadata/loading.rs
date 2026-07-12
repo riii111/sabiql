@@ -9,6 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_loading(
     state: &mut AppState,
@@ -66,7 +67,7 @@ pub(super) fn reduce_loading(
                         .set_explorer_selection(if has_tables { Some(0) } else { None });
                     state.session.clear_table_selection(&mut state.query);
                     state.query.clear_current_result();
-                    effects.push(Effect::CancelActiveQuery);
+                    effects.extend(termination_effects(&state.query, vec![]));
                 }
             }
 
@@ -114,7 +115,7 @@ pub(super) fn reduce_loading(
             DispatchResult::handled_with(if was_connected {
                 vec![]
             } else {
-                vec![Effect::CancelActiveQuery]
+                termination_effects(&state.query, vec![])
             })
         }
         Action::LoadMetadata => {

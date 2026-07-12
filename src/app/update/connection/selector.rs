@@ -7,6 +7,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::connection::helpers::reset_active_connection_state;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_connection_selector(
     state: &mut AppState,
@@ -77,7 +78,7 @@ pub(super) fn reduce_connection_selector(
                 .messages
                 .set_success_at("Connection deleted".to_string(), now);
             DispatchResult::handled_with(if was_active {
-                vec![Effect::CancelActiveQuery]
+                termination_effects(&state.query, vec![])
             } else {
                 vec![]
             })

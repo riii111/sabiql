@@ -19,6 +19,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
+use crate::update::query_context::termination_effects;
 
 pub fn reduce(
     state: &mut AppState,
@@ -159,7 +160,7 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let schema = table.schema.clone();
     let table_name = table.name.clone();
 
-    let mut effects = vec![Effect::CancelActiveQuery];
+    let mut effects = termination_effects(&state.query, vec![]);
     if let Some(dsn) = state.session.dsn().map(String::from) {
         let run_id = state.session.begin_table_detail_run();
         effects.push(Effect::FetchTableDetail {

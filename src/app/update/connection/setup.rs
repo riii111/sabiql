@@ -17,6 +17,7 @@ use crate::update::connection::helpers::{
 };
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
+use crate::update::query_context::termination_effects;
 
 pub fn reduce_connection_setup(
     state: &mut AppState,
@@ -190,9 +191,9 @@ pub fn reduce_connection_setup(
             }
             state.query.reset_for_context_change();
             state.session.mark_connecting();
-            DispatchResult::handled_with(vec![
-                Effect::CancelActiveQuery,
-                Effect::SaveAndConnect {
+            DispatchResult::handled_with(termination_effects(
+                &state.query,
+                vec![Effect::SaveAndConnect {
                     id: state.connection_setup.editing_id().cloned(),
                     name: state
                         .connection_setup
@@ -202,8 +203,8 @@ pub fn reduce_connection_setup(
                         .trim()
                         .to_string(),
                     config,
-                },
-            ])
+                }],
+            ))
         }
         Action::ConnectionSetupCancel => {
             if state.connection_setup.is_first_run() {
@@ -233,7 +234,12 @@ pub fn reduce_connection_setup(
 
             reset_for_new_connection(state, id, dsn, name, *database_type);
             let run_id = state.session.begin_connecting(dsn);
-            DispatchResult::handled_with(connection_save_fetch_effects(dsn, run_id, *database_type))
+            DispatchResult::handled_with(connection_save_fetch_effects(
+                state,
+                dsn,
+                run_id,
+                *database_type,
+            ))
         }
         Action::ConnectionSaveFailed(e) => {
             if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = &e {

@@ -3,6 +3,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
+use crate::update::query_context::termination_effects;
 
 use crate::update::dispatch_result::DispatchResult;
 
@@ -45,22 +46,24 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                DispatchResult::handled_with(vec![
-                    Effect::CancelActiveQuery,
-                    Effect::ClearCompletionEngineCache,
-                ])
+                DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![Effect::ClearCompletionEngineCache],
+                ))
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
                 let run_id = state.session.begin_connecting(dsn);
-                DispatchResult::handled_with(vec![
-                    Effect::CancelActiveQuery,
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id,
-                    },
-                ])
+                DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![
+                        Effect::ClearCompletionEngineCache,
+                        Effect::FetchMetadata {
+                            dsn: dsn.clone(),
+                            run_id,
+                        },
+                    ],
+                ))
             }
         }
 
