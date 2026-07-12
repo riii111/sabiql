@@ -8,6 +8,10 @@ pub struct QueryTaskRegistry {
 }
 
 impl QueryTaskRegistry {
+    /// Starts a task after cancelling any currently active query task.
+    ///
+    /// The registry is shared by query effects, so it intentionally permits
+    /// only one active task at a time.
     pub fn spawn<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
