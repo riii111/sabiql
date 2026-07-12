@@ -1,8 +1,6 @@
 use std::time::Instant;
 
-use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::prelude::*;
-use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::theme::ThemePalette;

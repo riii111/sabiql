@@ -75,7 +75,7 @@ pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

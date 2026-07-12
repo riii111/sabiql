@@ -25,8 +25,6 @@ pub(crate) async fn run(
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use tokio::sync::mpsc;
-
     use super::*;
     use crate::model::shared::settings::KeymapPreset;
     use crate::model::shared::theme_id::ThemeId;

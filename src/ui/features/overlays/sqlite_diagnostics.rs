@@ -220,7 +220,7 @@ fn field_style(
 mod tests {
     use super::*;
     use crate::app::model::shared::theme_id::ThemeId;
-    use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+    use crate::domain::DiagnosticField;
     use crate::theme::palette_for;
 
     #[test]

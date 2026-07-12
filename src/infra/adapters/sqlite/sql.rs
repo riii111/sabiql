@@ -400,6 +400,8 @@ impl SqlDialect for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
+
     use super::*;
     use crate::domain::{Column, ColumnAttributes, Trigger, TriggerEvent, TriggerTiming};
 
@@ -420,7 +422,7 @@ mod tests {
             name: "test_table".to_string(),
             columns,
             primary_key,
-            ..sabiql_test_support::infra::minimal_table("", "")
+            ..test_support::minimal_table("", "")
         }
     }
 

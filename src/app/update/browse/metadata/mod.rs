@@ -50,6 +50,8 @@ pub fn dispatch_metadata(state: &mut AppState, action: &Action, now: Instant) ->
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, Table};
@@ -71,7 +73,7 @@ mod tests {
     }
 
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
-        Box::new(sabiql_test_support::table::minimal(schema, name))
+        Box::new(test_support::table::minimal(schema, name))
     }
 
     mod freshness_guards {
@@ -155,7 +157,6 @@ mod tests {
     mod prefetch_table_detail {
         use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn backoff_table_requeued_at_tail_with_process_effect() {
@@ -879,7 +880,6 @@ mod tests {
     mod fk_neighbors_discovered {
         use super::prefetch::MAX_PREFETCH_RETRIES;
         use super::*;
-        use crate::model::er_state::ErStatus;
 
         #[test]
         fn empty_neighbors_dispatches_generate() {

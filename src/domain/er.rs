@@ -178,7 +178,7 @@ mod tests {
 
     mod from_table {
         use super::*;
-        use crate::{FkAction, ForeignKey, Table, TableKindInfo};
+        use crate::{FkAction, ForeignKey, TableKindInfo};
 
         fn make_table(name: &str, foreign_keys: Vec<ForeignKey>) -> Table {
             Table {

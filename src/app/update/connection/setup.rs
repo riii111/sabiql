@@ -283,7 +283,6 @@ mod tests {
 
     mod paste {
         use super::*;
-        use crate::model::connection::setup::ConnectionField;
 
         fn setup_state_with_field(field: ConnectionField) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -467,8 +466,6 @@ mod tests {
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
-        use crate::model::connection::state::ConnectionState;
-        use crate::update::action::ConnectionTarget;
 
         fn fill_valid_form(state: &mut AppState) {
             state
