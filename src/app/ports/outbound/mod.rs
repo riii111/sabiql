@@ -29,7 +29,10 @@ pub use cached_result_exporter::CachedResultExporter;
 pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
-pub use db_operation_error::{DatabaseCli, DbOperationError};
+pub use db_operation_error::{
+    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+    SQLITE_TABLE_LIST_REQUIRED_MARKER,
+};
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
 pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};

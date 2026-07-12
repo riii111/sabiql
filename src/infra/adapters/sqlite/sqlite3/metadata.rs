@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use serde::Deserialize;
 
+#[cfg(test)]
+use crate::app::ports::outbound::SQLITE_SAFE_MODE_REQUIRED_MARKER;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 #[cfg(test)]
 use crate::domain::TableKind;
@@ -736,6 +738,7 @@ fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+        self.cli.ensure_safe_mode_supported().await?;
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.list_tables(path).await?;
         let mut metadata = DatabaseMetadata::new(Self::database_name(path));
@@ -881,6 +884,22 @@ mod tests {
                 empty_result,
                 Err(DbOperationError::ConnectionFailed(_))
             ));
+        }
+
+        #[tokio::test]
+        async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
+            let (_dir, dsn) = test_support::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+            let expects_rejection =
+                std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
+
+            match adapter.fetch_metadata(&dsn).await {
+                Err(DbOperationError::UnsupportedOperation(details)) if expects_rejection => {
+                    assert!(details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER));
+                }
+                Ok(_) if !expects_rejection => {}
+                result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
+            }
         }
 
         #[tokio::test]
