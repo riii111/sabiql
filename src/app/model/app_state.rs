@@ -396,7 +396,7 @@ impl AppState {
             }
         }
 
-        supports_inline_edit(value)
+        supports_inline_edit(self.session.active_database_type_or_default(), value)
     }
 
     /// True when a run-scoped async response no longer belongs to the active

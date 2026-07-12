@@ -59,6 +59,7 @@ fn build_update_preview(
 
     ensure_column_writable(state, &column_name, &identity)?;
     let new_value = build_edited_query_value(
+        state.session.active_database_type_or_default(),
         row_values
             .get(col_idx)
             .ok_or(EditGuardrailError::CellIndexOutOfBounds)?,
@@ -789,6 +790,65 @@ mod tests {
                 Action::OpenWritePreviewConfirm(preview) => {
                     assert!(preview.sql.contains("SET \"score\" = 7"));
                     assert!(!preview.sql.contains("SET \"score\" = '7'"));
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn sqlite_text_cell_with_nul_keeps_raw_value_into_write_preview() {
+            let mut state = AppState::new("test_project".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success_with_values(
+                    "SELECT rowid, message FROM logs".to_string(),
+                    vec!["rowid".to_string(), "message".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("7".to_string()),
+                        QueryValue::text("a\0b"),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_first_column_hidden("rowid".to_string()),
+            ));
+            state.session.set_table_detail_raw(Some(Table {
+                schema: "main".to_string(),
+                name: "logs".to_string(),
+                columns: vec![test_support::column::test_nullable_column(
+                    "message", "TEXT", 1,
+                )],
+                primary_key: None,
+                ..test_support::table::minimal("", "")
+            }));
+            state.query.pagination.reset_for_table("main", "logs");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 0, "a\0b".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert!(preview.sql.contains("CAST(X'610062' AS TEXT)"));
+                    assert_eq!(preview.diff[0].before, "a\0b");
+                    assert_eq!(preview.diff[0].after, "a\0b");
                 }
                 other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
             }

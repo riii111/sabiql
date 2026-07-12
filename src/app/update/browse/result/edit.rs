@@ -60,6 +60,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     }
 
     let cell_value = editable_inline_display_value(
+        state.session.active_database_type_or_default(),
         result
             .value_at(row_idx, col_idx)
             .ok_or(EditGuardrailError::CellIndexOutOfBounds)?,
@@ -143,7 +144,8 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 mod tests {
     use super::*;
     pub use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, QueryValue, Table};
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::CursorMove;
     use rstest::rstest;
     use std::sync::Arc;
@@ -260,6 +262,12 @@ mod tests {
         #[test]
         fn sqlite_numeric_literal_enters_inline_edit() {
             let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success_with_values(
@@ -284,6 +292,36 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "42");
+        }
+
+        #[test]
+        fn text_with_nul_keeps_raw_draft_on_entry() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::text("a\0b")]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+            state.result_interaction.activate_cell(0, 1);
+            state
+                .session
+                .set_table_detail_raw(Some(minimal_users_table()));
+
+            reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(
+                state.result_interaction.cell_edit().original_value(),
+                "a\0b"
+            );
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "a\0b");
         }
 
         #[test]

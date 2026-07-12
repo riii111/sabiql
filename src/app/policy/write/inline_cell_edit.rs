@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::num::IntErrorKind;
 
-use crate::domain::QueryValue;
+use crate::domain::{DatabaseType, QueryValue};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum InlineCellEditError {
@@ -28,20 +28,31 @@ enum InlineCellEditKind {
     SqliteReal,
 }
 
-pub fn supports_inline_edit(value: &QueryValue) -> bool {
-    classify_inline_cell_edit(value).is_ok()
+pub fn supports_inline_edit(database_type: DatabaseType, value: &QueryValue) -> bool {
+    classify_inline_cell_edit(database_type, value).is_ok()
 }
 
-pub fn editable_inline_display_value(value: &QueryValue) -> Result<String, InlineCellEditError> {
-    classify_inline_cell_edit(value)?;
-    Ok(value.display_value())
+pub fn editable_inline_display_value(
+    database_type: DatabaseType,
+    value: &QueryValue,
+) -> Result<String, InlineCellEditError> {
+    match classify_inline_cell_edit(database_type, value)? {
+        InlineCellEditKind::Text => match value {
+            QueryValue::Text(value) => Ok(value.clone()),
+            _ => unreachable!("text edit kind must carry text value"),
+        },
+        InlineCellEditKind::SqliteInteger | InlineCellEditKind::SqliteReal => {
+            Ok(value.display_value())
+        }
+    }
 }
 
 pub fn build_edited_query_value(
+    database_type: DatabaseType,
     original: &QueryValue,
     draft: &str,
 ) -> Result<QueryValue, InlineCellEditError> {
-    match classify_inline_cell_edit(original)? {
+    match classify_inline_cell_edit(database_type, original)? {
         InlineCellEditKind::Text => Ok(QueryValue::text(draft)),
         InlineCellEditKind::SqliteInteger => parse_sqlite_integer_draft(draft),
         InlineCellEditKind::SqliteReal => parse_sqlite_real_draft(draft),
@@ -49,13 +60,14 @@ pub fn build_edited_query_value(
 }
 
 fn classify_inline_cell_edit(
+    database_type: DatabaseType,
     value: &QueryValue,
 ) -> Result<InlineCellEditKind, InlineCellEditError> {
     match value {
         QueryValue::Text(_) => Ok(InlineCellEditKind::Text),
         QueryValue::Null => Err(InlineCellEditError::NullUnsupported),
         QueryValue::Blob(_) => Err(InlineCellEditError::BlobUnsupported),
-        QueryValue::SqlLiteral(value) => {
+        QueryValue::SqlLiteral(value) if database_type == DatabaseType::SQLite => {
             if value.parse::<i64>().is_ok() {
                 Ok(InlineCellEditKind::SqliteInteger)
             } else if matches_sqlite_numeric_lexeme(value) {
@@ -64,6 +76,7 @@ fn classify_inline_cell_edit(
                 Err(InlineCellEditError::UnsupportedCellType)
             }
         }
+        QueryValue::SqlLiteral(_) => Err(InlineCellEditError::UnsupportedCellType),
     }
 }
 
@@ -179,23 +192,43 @@ mod tests {
     #[test]
     fn sql_literal_integer_is_inline_editable() {
         assert_eq!(
-            editable_inline_display_value(&QueryValue::SqlLiteral("42".to_string())).unwrap(),
+            editable_inline_display_value(
+                DatabaseType::SQLite,
+                &QueryValue::SqlLiteral("42".to_string()),
+            )
+            .unwrap(),
             "42"
         );
     }
 
     #[test]
+    fn text_with_nul_keeps_raw_value_for_editing() {
+        assert_eq!(
+            editable_inline_display_value(DatabaseType::SQLite, &QueryValue::text("a\0b")).unwrap(),
+            "a\0b"
+        );
+    }
+
+    #[test]
     fn sql_literal_real_accepts_integer_like_draft_and_keeps_real_literal() {
-        let value =
-            build_edited_query_value(&QueryValue::SqlLiteral("3.14".to_string()), "42").unwrap();
+        let value = build_edited_query_value(
+            DatabaseType::SQLite,
+            &QueryValue::SqlLiteral("3.14".to_string()),
+            "42",
+        )
+        .unwrap();
 
         assert_eq!(value, QueryValue::SqlLiteral("42.0".to_string()));
     }
 
     #[test]
     fn sql_literal_real_accepts_leading_decimal_draft() {
-        let value =
-            build_edited_query_value(&QueryValue::SqlLiteral("3.14".to_string()), ".5").unwrap();
+        let value = build_edited_query_value(
+            DatabaseType::SQLite,
+            &QueryValue::SqlLiteral("3.14".to_string()),
+            ".5",
+        )
+        .unwrap();
 
         assert_eq!(value, QueryValue::SqlLiteral("0.5".to_string()));
     }
@@ -203,6 +236,7 @@ mod tests {
     #[test]
     fn sql_literal_integer_rejects_overflow() {
         let error = build_edited_query_value(
+            DatabaseType::SQLite,
             &QueryValue::SqlLiteral("7".to_string()),
             "9223372036854775808",
         )
@@ -213,17 +247,36 @@ mod tests {
 
     #[test]
     fn sql_literal_real_rejects_non_finite_input() {
-        let error = build_edited_query_value(&QueryValue::SqlLiteral("1.0".to_string()), "1e999")
-            .unwrap_err();
+        let error = build_edited_query_value(
+            DatabaseType::SQLite,
+            &QueryValue::SqlLiteral("1.0".to_string()),
+            "1e999",
+        )
+        .unwrap_err();
 
         assert_eq!(error, InlineCellEditError::NonFiniteReal);
     }
 
     #[test]
     fn sql_literal_real_rejects_non_numeric_input() {
-        let error = build_edited_query_value(&QueryValue::SqlLiteral("1.0".to_string()), "NaN")
-            .unwrap_err();
+        let error = build_edited_query_value(
+            DatabaseType::SQLite,
+            &QueryValue::SqlLiteral("1.0".to_string()),
+            "NaN",
+        )
+        .unwrap_err();
 
         assert_eq!(error, InlineCellEditError::InvalidReal);
+    }
+
+    #[test]
+    fn postgres_sql_literal_is_not_treated_as_sqlite_numeric_cell() {
+        let error = editable_inline_display_value(
+            DatabaseType::PostgreSQL,
+            &QueryValue::SqlLiteral("42".to_string()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, InlineCellEditError::UnsupportedCellType);
     }
 }
