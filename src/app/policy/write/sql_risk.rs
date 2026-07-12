@@ -1376,10 +1376,7 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
             #[case::vacuum("VACUUM INTO 'copy.db'", "VACUUM")]
             #[case::reindex("REINDEX users_name_idx", "REINDEX")]
             #[case::analyze("ANALYZE users", "ANALYZE")]
-            fn sqlite_high_risk_statements_require_acknowledgment(
-                #[case] sql: &str,
-                #[case] expected_label: &str,
-            ) {
+            fn requires_acknowledgment(#[case] sql: &str, #[case] expected_label: &str) {
                 let result =
                     evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
 
