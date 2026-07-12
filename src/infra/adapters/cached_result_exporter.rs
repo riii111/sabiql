@@ -188,6 +188,28 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn flushes_incrementally_when_data_exceeds_threshold() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("large_export.csv");
+            let big_value = "x".repeat(CSV_FLUSH_THRESHOLD + 1);
+
+            let row_count = CsvCachedResultExporter
+                .export_cached_result_to_csv(
+                    path.clone(),
+                    vec!["data".to_string()],
+                    vec![vec![QueryValue::Text(big_value.clone())]],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(row_count, 1);
+            assert_eq!(
+                std::fs::read_to_string(path).unwrap(),
+                format!("data\n{big_value}\n")
+            );
+        }
+
+        #[tokio::test]
         async fn returns_error_when_file_cannot_be_created() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing").join("export.csv");
