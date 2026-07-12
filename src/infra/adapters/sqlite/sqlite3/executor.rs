@@ -1951,33 +1951,6 @@ mod tests {
             }
         }
 
-        mod dml_command_tag_comments {
-            use super::*;
-
-            #[tokio::test]
-            async fn dml_with_trailing_line_comment_returns_affected_rows() {
-                let (_dir, dsn) = test_support::make_sqlite_db(
-                    r"
-            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-            INSERT INTO users(id, name) VALUES (1, 'a');
-            ",
-                );
-                let adapter = SqliteAdapter::new();
-
-                let result = adapter
-                    .execute_adhoc(
-                        &dsn,
-                        "DELETE FROM users WHERE id = 1 -- cleanup selected row",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .unwrap();
-
-                assert_eq!(result.row_count(), 1);
-                assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
-            }
-        }
-
         mod returning_results {
             use super::*;
 
@@ -2051,6 +2024,29 @@ mod tests {
 
         mod dml_command_tags {
             use super::*;
+
+            #[tokio::test]
+            async fn dml_with_trailing_line_comment_returns_affected_rows() {
+                let (_dir, dsn) = test_support::make_sqlite_db(
+                    r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
+                );
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "DELETE FROM users WHERE id = 1 -- cleanup selected row",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.row_count(), 1);
+                assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
+            }
 
             #[tokio::test]
             async fn with_insert_reports_affected_rows_command_tag() {
