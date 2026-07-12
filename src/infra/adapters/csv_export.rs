@@ -100,24 +100,14 @@ where
     F: FnOnce(PathBuf) -> Fut,
     Fut: Future<Output = Result<(), DbOperationError>>,
 {
-    if final_path.exists() {
-        return Err(DbOperationError::QueryFailed(format!(
-            "CSV export already exists: {}",
-            final_path.display()
-        )));
-    }
-
     let temporary_path = temporary_export_path(&final_path);
     let mut temporary_file = TemporaryExportFile::new(temporary_path.clone());
     write(temporary_path.clone()).await?;
 
-    if final_path.exists() {
-        return Err(DbOperationError::QueryFailed(format!(
-            "CSV export already exists: {}",
-            final_path.display()
-        )));
-    }
-    tokio::fs::rename(&temporary_path, &final_path)
+    tokio::fs::hard_link(&temporary_path, &final_path)
+        .await
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    tokio::fs::remove_file(&temporary_path)
         .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     temporary_file.disarm();
@@ -127,8 +117,10 @@ where
 #[cfg(test)]
 mod tests {
     use std::future::pending;
+    use std::sync::Arc;
 
     use tempfile::tempdir;
+    use tokio::sync::Barrier;
     use tokio::sync::oneshot;
 
     use super::*;
@@ -158,7 +150,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn success_renames_temporary_file_without_replacing_existing_file() {
+    async fn success_publishes_temporary_file_without_replacing_existing_file() {
         let dir = tempdir().unwrap();
         let final_path = dir.path().join("export.csv");
 
@@ -187,7 +179,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_and_rename_failures_leave_no_partial_file() {
+    async fn write_failure_leaves_no_partial_file() {
         let dir = tempdir().unwrap();
         let failed_write = dir.path().join("write.csv");
         let write_error = export_to_path(failed_write.clone(), |_| async {
@@ -197,7 +189,11 @@ mod tests {
         .unwrap_err();
         assert!(matches!(write_error, DbOperationError::QueryFailed(_)));
         assert_eq!(dir.path().read_dir().unwrap().count(), 0);
+    }
 
+    #[tokio::test]
+    async fn finalize_failure_leaves_no_partial_file() {
+        let dir = tempdir().unwrap();
         let rename_dir = dir.path().join("rename");
         tokio::fs::create_dir(&rename_dir).await.unwrap();
         let failed_rename = rename_dir.join("export.csv");
@@ -213,5 +209,54 @@ mod tests {
         .unwrap_err();
         assert!(matches!(rename_error, DbOperationError::QueryFailed(_)));
         assert!(!rename_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn concurrent_exports_with_same_final_path_allow_only_one_completion() {
+        let dir = tempdir().unwrap();
+        let final_path = dir.path().join("export.csv");
+        let barrier = Arc::new(Barrier::new(2));
+
+        let first = tokio::spawn(export_to_path(final_path.clone(), {
+            let barrier = Arc::clone(&barrier);
+            move |temporary_path| async move {
+                tokio::fs::write(temporary_path, b"first\n")
+                    .await
+                    .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+                barrier.wait().await;
+                Ok(())
+            }
+        }));
+        let second = tokio::spawn(export_to_path(final_path.clone(), {
+            let barrier = Arc::clone(&barrier);
+            move |temporary_path| async move {
+                tokio::fs::write(temporary_path, b"second\n")
+                    .await
+                    .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+                barrier.wait().await;
+                Ok(())
+            }
+        }));
+
+        let first = first.await.unwrap();
+        let second = second.await.unwrap();
+
+        assert!(first.is_ok() ^ second.is_ok());
+        assert!(matches!(
+            first,
+            Ok(_) | Err(DbOperationError::QueryFailed(_))
+        ));
+        assert!(matches!(
+            second,
+            Ok(_) | Err(DbOperationError::QueryFailed(_))
+        ));
+        assert!(matches!(
+            tokio::fs::read_to_string(final_path)
+                .await
+                .unwrap()
+                .as_str(),
+            "first\n" | "second\n"
+        ));
+        assert_eq!(dir.path().read_dir().unwrap().count(), 1);
     }
 }
