@@ -134,8 +134,7 @@ pub(super) fn has_virtual_tables_query() -> &'static str {
 pub(super) fn table_list_required_error() -> DbOperationError {
     DbOperationError::UnsupportedOperation(format!(
         "{TABLE_LIST_REQUIRED_MARKER}: This database contains virtual tables (such as FTS or RTree). \
-         Upgrade sqlite3 to version 3.37.0 or later to browse it safely. \
-         Databases with only regular tables can still be opened with older sqlite3 versions."
+         Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
     ))
 }
 
@@ -485,7 +484,7 @@ mod tests {
             let error = table_list_required_error();
             let message = error.user_message();
             assert!(message.contains(TABLE_LIST_REQUIRED_MARKER));
-            assert!(message.contains("3.37.0"));
+            assert!(message.contains("3.41.1"));
         }
 
         #[test]

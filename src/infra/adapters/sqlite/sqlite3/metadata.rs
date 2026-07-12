@@ -736,6 +736,7 @@ fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+        self.cli.ensure_safe_mode_supported().await?;
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.list_tables(path).await?;
         let mut metadata = DatabaseMetadata::new(Self::database_name(path));

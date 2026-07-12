@@ -78,7 +78,7 @@ impl ConnectionErrorKind {
             Self::DatabaseNotFound => "Database does not exist",
             Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
-            Self::SqliteVersionTooOld => "SQLite 3.37 or later required",
+            Self::SqliteVersionTooOld => "SQLite 3.41.1 or later required",
             Self::SqliteFileNotFound => "SQLite database file not found",
             Self::SqlitePathIsDirectory => "SQLite path is a directory",
             Self::SqlitePathNotRegularFile => "SQLite path is not a regular file",
@@ -99,9 +99,7 @@ impl ConnectionErrorKind {
             Self::DatabaseNotFound => "Check database name",
             Self::ConnectionLost => "Reconnect and retry the operation",
             Self::Timeout => "Check network connectivity",
-            Self::SqliteVersionTooOld => {
-                "Upgrade sqlite3, or open a database without virtual tables"
-            }
+            Self::SqliteVersionTooOld => "Upgrade sqlite3 to use SQLite safely",
             Self::SqliteFileNotFound => {
                 "Check the file path — sabiql does not create new database files"
             }
@@ -159,7 +157,8 @@ impl ConnectionErrorInfo {
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
             DbOperationError::UnsupportedOperation(details)
-                if details.contains("SQLITE_TABLE_LIST_REQUIRED") =>
+                if details.contains("SQLITE_TABLE_LIST_REQUIRED")
+                    || details.contains("SQLITE_SAFE_MODE_REQUIRED") =>
             {
                 ConnectionErrorKind::SqliteVersionTooOld
             }
@@ -413,7 +412,19 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
-            assert_eq!(info.summary(), "SQLite 3.37 or later required");
+            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
+        }
+
+        #[test]
+        fn from_db_operation_error_classifies_sqlite_safe_mode_requirement() {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::UnsupportedOperation(
+                    "SQLITE_SAFE_MODE_REQUIRED: upgrade sqlite3".to_string(),
+                ),
+            );
+
+            assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
+            assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
         }
 
         #[test]
