@@ -11,7 +11,7 @@ use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
     normalize_for_write_diff, preview_cell_text_diff_handling, uses_structured_json_diff,
 };
-use crate::policy::write::inline_cell_edit::build_edited_query_value;
+use crate::policy::write::inline_cell_edit::build_inline_edited_value;
 use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
@@ -58,7 +58,7 @@ fn build_update_preview(
         .clone();
 
     ensure_column_writable(state, &column_name, &identity)?;
-    let new_value = build_edited_query_value(
+    let new_value = build_inline_edited_value(
         state.session.active_database_type_or_default(),
         row_values
             .get(col_idx)

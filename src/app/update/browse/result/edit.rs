@@ -9,7 +9,7 @@ use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
 use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
-use crate::policy::write::inline_cell_edit::editable_inline_display_value;
+use crate::policy::write::inline_cell_edit::text_for_inline_edit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
 fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
@@ -59,7 +59,7 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
         return Err(EditGuardrailError::StableKeyColumnsMissing);
     }
 
-    let cell_value = editable_inline_display_value(
+    let cell_value = text_for_inline_edit(
         state.session.active_database_type_or_default(),
         result
             .value_at(row_idx, col_idx)
