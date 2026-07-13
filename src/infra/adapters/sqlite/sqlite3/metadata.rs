@@ -523,11 +523,7 @@ impl SqliteAdapter {
             columns,
             primary_key,
             foreign_keys,
-            indexes: if mode.include_indexes() {
-                indexes
-            } else {
-                Vec::new()
-            },
+            indexes,
             rls: None,
             triggers,
             row_count_estimate: metadata.row_count,
