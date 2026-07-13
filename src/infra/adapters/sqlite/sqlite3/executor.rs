@@ -1403,7 +1403,8 @@ mod tests {
                 std::fs::write(&outside, "fsdir canary").unwrap();
                 let adapter = SqliteAdapter::new();
                 let sql = format!(
-                    "SELECT content FROM fsdir('{}') WHERE name = 'outside.txt'",
+                    "SELECT data FROM 'fsdir'('{}') WHERE name = '{}'",
+                    outside.display(),
                     outside.display()
                 );
 
