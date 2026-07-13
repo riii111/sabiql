@@ -146,8 +146,12 @@ impl TableDetailMode {
         matches!(self, Self::Full | Self::Signature)
     }
 
-    const fn include_row_count(self) -> bool {
-        matches!(self, Self::Full)
+    const fn query_mode(self) -> sql::TableMetadataQueryMode {
+        match self {
+            Self::Full => sql::TableMetadataQueryMode::Full,
+            Self::ColumnsAndFks => sql::TableMetadataQueryMode::ColumnsAndFks,
+            Self::Signature => sql::TableMetadataQueryMode::FullWithoutRowCount,
+        }
     }
 
     const fn include_triggers(self) -> bool {
@@ -160,6 +164,14 @@ impl TableDetailMode {
 }
 
 impl SqliteAdapter {
+    fn row_count_fallback_mode<T>(
+        mode: sql::TableMetadataQueryMode,
+        result: &Result<T, DbOperationError>,
+    ) -> Option<sql::TableMetadataQueryMode> {
+        result.as_ref().err()?;
+        mode.without_row_count()
+    }
+
     fn database_name(path: &str) -> String {
         std::path::Path::new(path)
             .file_name()
@@ -419,28 +431,17 @@ impl SqliteAdapter {
         table: &str,
         mode: TableDetailMode,
     ) -> Result<Table, DbOperationError> {
+        let query_mode = mode.query_mode();
         let metadata = self
-            .execute_json_payload(
-                path,
-                &sql::table_metadata_query(
-                    table,
-                    mode.include_triggers(),
-                    mode.include_row_count(),
-                ),
-            )
+            .execute_json_payload(path, &sql::table_metadata_query(table, query_mode))
             .await;
-        let metadata: RawTableMetadata = match metadata {
-            Err(DbOperationError::QueryFailed(_) | DbOperationError::Timeout(_))
-                if mode.include_row_count() =>
-            {
-                self.execute_json_payload(
-                    path,
-                    &sql::table_metadata_query(table, mode.include_triggers(), false),
-                )
-                .await?
-            }
-            result => result?,
-        };
+        let metadata: RawTableMetadata =
+            if let Some(fallback_mode) = Self::row_count_fallback_mode(query_mode, &metadata) {
+                self.execute_json_payload(path, &sql::table_metadata_query(table, fallback_mode))
+                    .await?
+            } else {
+                metadata?
+            };
         Self::table_from_metadata(table, mode, metadata)
     }
 
@@ -693,6 +694,18 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn lock_timeout_uses_row_count_fallback() {
+        let result: Result<(), DbOperationError> = Err(DbOperationError::LockTimeout(
+            "database is locked".to_string(),
+        ));
+
+        assert_eq!(
+            SqliteAdapter::row_count_fallback_mode(sql::TableMetadataQueryMode::Full, &result,),
+            Some(sql::TableMetadataQueryMode::FullWithoutRowCount)
+        );
+    }
 
     #[test]
     fn legacy_list_row_uses_sql_for_storage() {

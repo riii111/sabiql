@@ -340,18 +340,38 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
     )
 }
 
-pub(super) fn table_metadata_query(
-    table: &str,
-    include_full_detail: bool,
-    include_row_count: bool,
-) -> String {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TableMetadataQueryMode {
+    Full,
+    FullWithoutRowCount,
+    ColumnsAndFks,
+}
+
+impl TableMetadataQueryMode {
+    const fn include_full_detail(self) -> bool {
+        matches!(self, Self::Full | Self::FullWithoutRowCount)
+    }
+
+    const fn include_row_count(self) -> bool {
+        matches!(self, Self::Full)
+    }
+
+    pub(super) const fn without_row_count(self) -> Option<Self> {
+        match self {
+            Self::Full => Some(Self::FullWithoutRowCount),
+            Self::FullWithoutRowCount | Self::ColumnsAndFks => None,
+        }
+    }
+}
+
+pub(super) fn table_metadata_query(table: &str, mode: TableMetadataQueryMode) -> String {
     let table_literal = quote_literal(table);
-    let row_count = if include_row_count {
+    let row_count = if mode.include_row_count() {
         format!("(SELECT COUNT(*) FROM {})", quote_ident(table))
     } else {
         "NULL".to_string()
     };
-    let payload = table_metadata_json(&table_literal, &row_count, include_full_detail);
+    let payload = table_metadata_json(&table_literal, &row_count, mode.include_full_detail());
     format!(
         r"
         SELECT {payload} AS payload
@@ -756,7 +776,7 @@ mod tests {
 
         #[test]
         fn table_detail_combines_metadata_sources() {
-            let query = table_metadata_query("users", true, true);
+            let query = table_metadata_query("users", TableMetadataQueryMode::Full);
 
             assert!(query.contains("pragma_table_xinfo('users')"));
             assert!(query.contains("pragma_index_list('users')"));
@@ -767,7 +787,7 @@ mod tests {
 
         #[test]
         fn table_detail_escapes_identifier_and_literal_contexts() {
-            let query = table_metadata_query(r#"my'"table"#, true, true);
+            let query = table_metadata_query(r#"my'"table"#, TableMetadataQueryMode::Full);
 
             assert!(query.contains(r#"pragma_table_xinfo('my''"table')"#));
             assert!(query.contains(r#"SELECT COUNT(*) FROM "my'""table""#));
@@ -785,7 +805,7 @@ mod tests {
 
         #[test]
         fn completion_query_only_loads_unique_index_key_columns() {
-            let query = table_metadata_query("users", false, false);
+            let query = table_metadata_query("users", TableMetadataQueryMode::ColumnsAndFks);
 
             assert!(query.contains(r#"WHERE "unique" != 0 AND partial = 0"#));
             assert!(query.contains(r#"WHERE "key" != 0"#));
