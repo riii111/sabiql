@@ -14,7 +14,9 @@ use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{
     AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
 };
-use crate::domain::{CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult};
+use crate::domain::{
+    CommandTag, QueryResult, QuerySource, TableKind, TableKindInfo, WriteExecutionResult,
+};
 
 use super::super::{SqliteAdapter, path_validation, sql};
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -480,17 +482,14 @@ fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
 }
 
 impl SqliteAdapter {
-    async fn preview_rowid_order_alias(
-        &self,
-        path: &str,
-        table: &str,
+    fn preview_rowid_order_alias(
         visible_columns: &[String],
         order_columns: &[String],
+        kind_info: &TableKindInfo,
     ) -> Option<&'static str> {
         if !order_columns.is_empty() {
             return None;
         }
-        let kind_info = self.table_kind_info(path, table).await.ok().flatten()?;
         if kind_info.kind != TableKind::Table || kind_info.without_rowid {
             return None;
         }
@@ -550,14 +549,9 @@ impl QueryExecutor for SqliteAdapter {
     ) -> Result<QueryResult, DbOperationError> {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
-        let order_columns = self.preview_order_columns(path, table).await;
-        let columns = self
-            .preview_visible_column_names(path, table)
-            .await
-            .unwrap_or_default();
-        let rowid_order_alias = self
-            .preview_rowid_order_alias(path, table, &columns, &order_columns)
-            .await;
+        let (columns, order_columns, kind_info) = self.preview_metadata(path, table).await?;
+        let rowid_order_alias =
+            Self::preview_rowid_order_alias(&columns, &order_columns, &kind_info);
         let query = sql::build_preview_query(
             table,
             &columns,

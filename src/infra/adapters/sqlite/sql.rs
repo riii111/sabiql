@@ -142,10 +142,6 @@ pub(super) fn is_table_list_unavailable(error: &str) -> bool {
     error.to_ascii_lowercase().contains("pragma_table_list")
 }
 
-pub(super) fn row_count_query(table: &str) -> String {
-    format!("SELECT COUNT(*) AS count FROM {}", quote_ident(table))
-}
-
 pub(super) const PREVIEW_TRANSPORT_UNISTR_PREFIX: &str = "\\u0001SABIQL_HEX:";
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
@@ -195,60 +191,162 @@ pub(super) fn build_preview_query(
     )
 }
 
-pub(super) fn table_xinfo_query(table: &str) -> String {
-    format!("PRAGMA table_xinfo({})", quote_ident(table))
+fn metadata_columns_json(table_expr: &str) -> String {
+    format!(
+        r#"COALESCE((
+            SELECT json_group_array(json_object(
+                'cid', c.cid, 'name', c.name, 'type', c.type,
+                'notnull', c."notnull", 'dflt_value', c.dflt_value,
+                'pk', c.pk, 'hidden', c.hidden
+            ))
+            FROM (SELECT * FROM pragma_table_xinfo({table_expr}) ORDER BY cid) AS c
+        ), json('[]'))"#
+    )
 }
 
-pub(super) fn table_info_query(table: &str) -> String {
-    format!("PRAGMA table_info({})", quote_ident(table))
+fn metadata_indexes_json(table_expr: &str) -> String {
+    format!(
+        r#"COALESCE((
+            SELECT json_group_array(json_object(
+                'name', i.name, 'unique', i."unique", 'origin', i.origin,
+                'partial', i.partial,
+                'columns', json(COALESCE((
+                    SELECT json_group_array(json_object(
+                        'seqno', x.seqno, 'cid', x.cid, 'name', x.name,
+                        'desc', x."desc", 'coll', x.coll, 'key', x."key"
+                    ))
+                    FROM (SELECT * FROM pragma_index_xinfo(i.name) ORDER BY seqno) AS x
+                ), json('[]'))),
+                'definition', (
+                    SELECT m.sql FROM sqlite_master AS m
+                    WHERE m.type = 'index' AND m.name = i.name LIMIT 1
+                )
+            ))
+            FROM (SELECT * FROM pragma_index_list({table_expr}) ORDER BY name) AS i
+        ), json('[]'))"#
+    )
 }
 
-pub(super) fn table_kind_info_query(table: &str) -> String {
+fn metadata_foreign_keys_json(table_expr: &str) -> String {
+    format!(
+        r#"COALESCE((
+            SELECT json_group_array(json_object(
+                'id', f.id, 'seq', f.seq, 'table', f."table", 'from', f."from",
+                'to', f."to", 'on_update', f.on_update, 'on_delete', f.on_delete
+            ))
+            FROM (
+                SELECT * FROM pragma_foreign_key_list({table_expr}) ORDER BY id, seq
+            ) AS f
+        ), json('[]'))"#
+    )
+}
+
+fn metadata_triggers_json(table_expr: &str) -> String {
+    format!(
+        r"COALESCE((
+            SELECT json_group_array(json_object('name', m.name, 'sql', m.sql))
+            FROM (
+                SELECT name, sql FROM sqlite_master
+                WHERE type = 'trigger' AND tbl_name = {table_expr}
+                ORDER BY name
+            ) AS m
+        ), json('[]'))"
+    )
+}
+
+pub(super) fn preview_metadata_query(table: &str) -> String {
+    let table = quote_literal(table);
+    let columns = metadata_columns_json(&table);
     format!(
         r"
-        SELECT tl.type, tl.wr, tl.strict, m.sql
-        FROM pragma_table_list() AS tl
-        LEFT JOIN sqlite_master AS m
-          ON m.type IN ('table', 'view')
-         AND m.name = tl.name
-        WHERE tl.schema = 'main'
-          AND tl.name = {}
-        LIMIT 1
+        SELECT json_object(
+            'columns', json({columns}),
+            'table', json((
+                SELECT json_object('type', tl.type, 'wr', tl.wr, 'strict', tl.strict, 'sql', m.sql)
+                FROM pragma_table_list() AS tl
+                LEFT JOIN sqlite_master AS m
+                  ON m.type IN ('table', 'view') AND m.name = tl.name
+                WHERE tl.schema = 'main' AND tl.name = {table}
+                LIMIT 1
+            ))
+        ) AS payload
+        "
+    )
+}
+
+fn table_metadata_json(table_expr: &str, row_count: &str, include_triggers: bool) -> String {
+    let columns = metadata_columns_json(table_expr);
+    let indexes = metadata_indexes_json(table_expr);
+    let foreign_keys = metadata_foreign_keys_json(table_expr);
+    let triggers = if include_triggers {
+        format!("json({})", metadata_triggers_json(table_expr))
+    } else {
+        "json('[]')".to_string()
+    };
+    format!(
+        r#"json_object(
+            'table', json((
+                SELECT json_object('type', tl.type, 'wr', tl.wr, 'strict', tl.strict, 'sql', m.sql)
+                FROM pragma_table_list() AS tl
+                LEFT JOIN sqlite_master AS m
+                  ON m.type IN ('table', 'view') AND m.name = tl.name
+                WHERE tl.schema = 'main' AND tl.name = {table_expr}
+                LIMIT 1
+            )),
+            'columns', json({columns}),
+            'indexes', json({indexes}),
+            'foreign_keys', json({foreign_keys}),
+            'triggers', {triggers},
+            'referenced_columns', json(COALESCE((
+                SELECT json_group_array(json_object(
+                    'name', r.name,
+                    'columns', json({referenced_columns})
+                ))
+                FROM (
+                    SELECT DISTINCT f."table" AS name
+                    FROM pragma_foreign_key_list({table_expr}) AS f
+                    ORDER BY name
+                ) AS r
+            ), json('[]'))),
+            'row_count', {row_count},
+            'source_ddl', (
+                SELECT sql FROM sqlite_master
+                WHERE type IN ('table', 'view') AND name = {table_expr} LIMIT 1
+            )
+        )"#,
+        referenced_columns = metadata_columns_json("r.name"),
+    )
+}
+
+pub(super) fn table_metadata_query(table: &str, include_full_detail: bool) -> String {
+    let table_literal = quote_literal(table);
+    let row_count = if include_full_detail {
+        format!("(SELECT COUNT(*) FROM {})", quote_ident(table))
+    } else {
+        "NULL".to_string()
+    };
+    let payload = table_metadata_json(&table_literal, &row_count, include_full_detail);
+    format!(
+        r"
+        SELECT {payload} AS payload
         ",
-        quote_literal(table)
     )
 }
 
-pub(super) fn table_definition_query(table: &str) -> String {
+pub(super) fn table_signatures_query() -> String {
+    let payload = table_metadata_json("t.name", "NULL", true);
     format!(
-        "SELECT sql FROM sqlite_master WHERE type IN ('table', 'view') AND name = {} LIMIT 1",
-        quote_literal(table)
-    )
-}
-
-pub(super) fn index_list_query(table: &str) -> String {
-    format!("PRAGMA index_list({})", quote_ident(table))
-}
-
-pub(super) fn index_xinfo_query(index: &str) -> String {
-    format!("PRAGMA index_xinfo({})", quote_ident(index))
-}
-
-pub(super) fn index_definition_query(index: &str) -> String {
-    format!(
-        "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = {} LIMIT 1",
-        quote_literal(index)
-    )
-}
-
-pub(super) fn foreign_key_list_query(table: &str) -> String {
-    format!("PRAGMA foreign_key_list({})", quote_ident(table))
-}
-
-pub(super) fn trigger_list_query(table: &str) -> String {
-    format!(
-        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = {} ORDER BY name",
-        quote_literal(table)
+        r"
+        SELECT t.name, {payload} AS payload
+        FROM (
+            SELECT tl.name
+            FROM pragma_table_list() AS tl
+            WHERE tl.schema = 'main'
+              AND tl.type IN ('table', 'virtual', 'view')
+              AND tl.name NOT LIKE 'sqlite_%'
+            ORDER BY tl.name
+        ) AS t
+        "
     )
 }
 
@@ -574,14 +672,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn row_count_quotes_table_name() {
-            assert_eq!(
-                row_count_query(r#"my"table"#),
-                r#"SELECT COUNT(*) AS count FROM "my""table""#
-            );
-        }
-
-        #[test]
         fn orders_by_primary_key_columns_when_available() {
             assert_eq!(
                 build_preview_query(
@@ -635,35 +725,36 @@ mod tests {
         }
     }
 
-    mod pragma_queries {
+    mod metadata_batch_queries {
         use super::*;
 
         #[test]
-        fn quote_identifiers() {
-            assert_eq!(
-                table_xinfo_query(r#"my"table"#),
-                r#"PRAGMA table_xinfo("my""table")"#
-            );
-            assert_eq!(
-                table_info_query(r#"my"table"#),
-                r#"PRAGMA table_info("my""table")"#
-            );
-            assert_eq!(
-                index_list_query(r#"my"table"#),
-                r#"PRAGMA index_list("my""table")"#
-            );
-            assert_eq!(
-                foreign_key_list_query(r#"my"table"#),
-                r#"PRAGMA foreign_key_list("my""table")"#
-            );
-            assert_eq!(
-                trigger_list_query("users"),
-                "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users' ORDER BY name"
-            );
-            assert_eq!(
-                index_xinfo_query(r#"my"index"#),
-                r#"PRAGMA index_xinfo("my""index")"#
-            );
+        fn table_detail_combines_metadata_sources() {
+            let query = table_metadata_query("users", true);
+
+            assert!(query.contains("pragma_table_xinfo('users')"));
+            assert!(query.contains("pragma_index_list('users')"));
+            assert!(query.contains("pragma_foreign_key_list('users')"));
+            assert!(query.contains("type = 'trigger'"));
+            assert!(query.contains("SELECT COUNT(*) FROM \"users\""));
+        }
+
+        #[test]
+        fn table_detail_escapes_identifier_and_literal_contexts() {
+            let query = table_metadata_query(r#"my'"table"#, true);
+
+            assert!(query.contains(r#"pragma_table_xinfo('my''"table')"#));
+            assert!(query.contains(r#"SELECT COUNT(*) FROM "my'""table""#));
+        }
+
+        #[test]
+        fn signatures_query_batches_all_tables() {
+            let query = table_signatures_query();
+
+            assert!(query.contains("SELECT t.name"));
+            assert!(query.contains("pragma_table_xinfo(t.name)"));
+            assert!(query.contains("pragma_index_list(t.name)"));
+            assert!(query.contains("pragma_foreign_key_list(t.name)"));
         }
     }
 
