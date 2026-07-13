@@ -36,4 +36,20 @@ if [[ "$listed_packages" != "$publishable_packages" ]]; then
     exit 1
 fi
 
+workspace_version=$(jq -r --arg manifest "$repo_root/Cargo.toml" \
+    '.packages[] | select(.manifest_path == $manifest) | .version' <<<"$metadata")
+expected_requirement="^$workspace_version"
+mismatched_dependencies=$(jq -r --arg expected "$expected_requirement" '
+    .packages[] as $package
+    | $package.dependencies[]
+    | select(.name | startswith("sabiql-"))
+    | select(.req != $expected)
+    | "\($package.name) depends on \(.name) \(.req), expected \($expected)"
+' <<<"$metadata")
+if [[ -n "$mismatched_dependencies" ]]; then
+    echo "internal crate dependency versions must match the workspace release" >&2
+    echo "$mismatched_dependencies" >&2
+    exit 1
+fi
+
 printf '%s\n' "${publish_order[@]}"
