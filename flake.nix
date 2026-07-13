@@ -53,7 +53,6 @@
             [
               pkgs.graphviz
               pkgs.postgresql
-              pkgs.sqlite
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.xdg-utils ]
           );
@@ -81,38 +80,6 @@
               mainProgram = "sabiql";
             };
           };
-        }
-      );
-
-      checks = forAllSystems (
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            overlays = [ rust-overlay.overlays.default ];
-          };
-          package = self.packages.${system}.default;
-        in
-        {
-          sqlite-runtime =
-            pkgs.runCommand "sabiql-sqlite-runtime"
-              {
-                nativeBuildInputs = [
-                  pkgs.gawk
-                  pkgs.gnugrep
-                ];
-              }
-              ''
-                grep -F "${pkgs.sqlite}/bin" "${package}/bin/sabiql"
-                "${pkgs.sqlite}/bin/sqlite3" --version | awk '
-                  {
-                    split($1, version, ".")
-                    if (version[1] > 3 || (version[1] == 3 && (version[2] > 41 || (version[2] == 41 && version[3] >= 1)))) exit 0
-                    exit 1
-                  }
-                '
-                touch "$out"
-              '';
         }
       );
 

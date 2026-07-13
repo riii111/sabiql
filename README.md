@@ -116,7 +116,7 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 Install the CLI for the database you want to open:
 
 - **PostgreSQL:** `psql` (PostgreSQL client)
-- **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later. Homebrew and Nix installs provide a compatible runtime automatically.
+- **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later.
 
 Optional:
 

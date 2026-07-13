@@ -139,14 +139,6 @@ jobs:
         run: |
           git -C tap diff
 
-      - name: Verify SQLite runtime contract
-        if: steps.get-tag.outputs.skip != 'true'
-        run: |
-          FORMULA="tap/Formula/sabiql.rb"
-          grep -Fq 'depends_on "sqlite"' "$FORMULA"
-          grep -Fq 'formula_opt_bin("sqlite")' "$FORMULA"
-          grep -Fq 'SQLite 3.41.1 or later' "$FORMULA"
-
       - name: Create pull request
         if: steps.get-tag.outputs.skip != 'true'
         env:
