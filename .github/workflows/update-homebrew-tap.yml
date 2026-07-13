@@ -144,7 +144,7 @@ jobs:
         run: |
           FORMULA="tap/Formula/sabiql.rb"
           grep -Fq 'depends_on "sqlite"' "$FORMULA"
-          grep -Fq 'Formula["sqlite"].opt_bin' "$FORMULA"
+          grep -Fq 'formula_opt_bin("sqlite")' "$FORMULA"
           grep -Fq 'SQLite 3.41.1 or later' "$FORMULA"
 
       - name: Create pull request
