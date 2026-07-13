@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use super::CommandTag;
 
 const BLOB_PREVIEW_BYTES: usize = 8;
@@ -19,24 +21,16 @@ impl QueryValue {
 
     #[must_use]
     pub fn display_value(&self) -> String {
+        self.display_value_ref().into_owned()
+    }
+
+    #[must_use]
+    pub fn display_value_ref(&self) -> Cow<'_, str> {
         match self {
-            Self::Null => "NULL".to_string(),
-            Self::Text(value) | Self::SqlLiteral(value) => escape_display_text(value),
-            Self::Blob(bytes) => {
-                let preview = bytes
-                    .iter()
-                    .take(BLOB_PREVIEW_BYTES)
-                    .map(|byte| format!("{byte:02X}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                if preview.is_empty() {
-                    "BLOB (0 bytes)".to_string()
-                } else if bytes.len() > BLOB_PREVIEW_BYTES {
-                    format!("BLOB ({} bytes) {preview} ...", bytes.len())
-                } else {
-                    format!("BLOB ({} bytes) {preview}", bytes.len())
-                }
-            }
+            Self::Null => Cow::Borrowed("NULL"),
+            Self::Text(value) if value.contains('\0') => Cow::Owned(escape_display_text(value)),
+            Self::Text(value) | Self::SqlLiteral(value) => Cow::Borrowed(value),
+            Self::Blob(bytes) => Cow::Owned(blob_display_value(bytes)),
         }
     }
 
@@ -78,6 +72,22 @@ fn escape_display_text(value: &str) -> String {
         }
     }
     escaped
+}
+
+fn blob_display_value(bytes: &[u8]) -> String {
+    let preview = bytes
+        .iter()
+        .take(BLOB_PREVIEW_BYTES)
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    if preview.is_empty() {
+        "BLOB (0 bytes)".to_string()
+    } else if bytes.len() > BLOB_PREVIEW_BYTES {
+        format!("BLOB ({} bytes) {preview} ...", bytes.len())
+    } else {
+        format!("BLOB ({} bytes) {preview}", bytes.len())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,15 +146,11 @@ impl QueryResult {
         execution_time_ms: u64,
         source: QuerySource,
     ) -> Self {
-        let rows = values
-            .iter()
-            .map(|row| row.iter().map(QueryValue::display_value).collect())
-            .collect();
         let row_count = values.len();
         Self {
             query,
             columns,
-            rows,
+            rows: Vec::new(),
             values,
             row_count,
             typed_values: true,
@@ -199,16 +205,28 @@ impl QueryResult {
     #[must_use]
     pub fn without_empty_result_sentinel(mut self) -> Self {
         self.columns.pop();
-        for (row, values) in self.rows.iter_mut().zip(&mut self.values) {
-            let sentinel = values.pop();
-            row.pop();
-            if sentinel == Some(QueryValue::Null) {
-                values.clear();
-                row.clear();
+        if self.typed_values {
+            for values in &mut self.values {
+                let sentinel = values.pop();
+                if sentinel == Some(QueryValue::Null) {
+                    values.clear();
+                }
             }
+            self.values
+                .retain(|values| values.len() == self.columns.len());
+        } else {
+            for (row, values) in self.rows.iter_mut().zip(&mut self.values) {
+                let sentinel = values.pop();
+                row.pop();
+                if sentinel == Some(QueryValue::Null) {
+                    values.clear();
+                    row.clear();
+                }
+            }
+            self.rows.retain(|row| row.len() == self.columns.len());
+            self.values
+                .retain(|values| values.len() == self.columns.len());
         }
-        self.rows.retain(|row| row.len() == self.columns.len());
-        self.values.retain(|row| row.len() == self.columns.len());
         self.row_count = self.values.len();
         self
     }
@@ -216,6 +234,11 @@ impl QueryResult {
     #[must_use]
     pub fn has_typed_values(&self) -> bool {
         self.typed_values
+    }
+
+    #[must_use]
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
     }
 
     pub fn is_error(&self) -> bool {
@@ -228,6 +251,18 @@ impl QueryResult {
     }
 
     #[must_use]
+    pub fn display_rows(&self) -> Vec<Vec<String>> {
+        if self.typed_values {
+            self.values
+                .iter()
+                .map(|row| row.iter().map(QueryValue::display_value).collect())
+                .collect()
+        } else {
+            self.rows.clone()
+        }
+    }
+
+    #[must_use]
     pub fn values(&self) -> &[Vec<QueryValue>] {
         &self.values
     }
@@ -235,6 +270,15 @@ impl QueryResult {
     #[must_use]
     pub fn row_count(&self) -> usize {
         self.row_count
+    }
+
+    #[must_use]
+    pub fn data_row_count(&self) -> usize {
+        if self.typed_values {
+            self.values.len()
+        } else {
+            self.rows.len()
+        }
     }
 
     #[must_use]
@@ -249,6 +293,34 @@ impl QueryResult {
     #[must_use]
     pub fn value_at(&self, row: usize, col: usize) -> Option<&QueryValue> {
         self.values.get(row)?.get(col)
+    }
+
+    #[must_use]
+    pub fn display_value_ref_at(&self, row: usize, col: usize) -> Option<Cow<'_, str>> {
+        if self.typed_values {
+            self.value_at(row, col).map(QueryValue::display_value_ref)
+        } else {
+            self.rows
+                .get(row)?
+                .get(col)
+                .map(|value| Cow::Borrowed(value.as_str()))
+        }
+    }
+
+    #[must_use]
+    pub fn display_value_at(&self, row: usize, col: usize) -> Option<String> {
+        self.display_value_ref_at(row, col).map(Cow::into_owned)
+    }
+
+    #[must_use]
+    pub fn display_row_at(&self, row: usize) -> Option<Vec<String>> {
+        if self.typed_values {
+            self.values
+                .get(row)
+                .map(|values| values.iter().map(QueryValue::display_value).collect())
+        } else {
+            self.rows.get(row).cloned()
+        }
     }
 }
 

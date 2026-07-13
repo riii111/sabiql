@@ -720,7 +720,10 @@ mod tests {
 
             assert_eq!(result.source, QuerySource::Preview);
             assert_eq!(result.columns, vec!["id", "name"]);
-            assert_eq!(result.rows(), vec![vec!["2".to_string(), "b".to_string()]]);
+            assert_eq!(
+                result.display_rows(),
+                vec![vec!["2".to_string(), "b".to_string()]]
+            );
         }
 
         #[tokio::test]
@@ -740,7 +743,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["rowid", "message"]);
             assert_eq!(
-                result.rows()[0],
+                result.display_rows()[0],
                 vec!["user-visible".to_string(), "first".to_string()]
             );
         }
@@ -775,7 +778,7 @@ mod tests {
                 preview.value_at(0, 0),
                 Some(&QueryValue::Text("a\0bc".to_string()))
             );
-            assert_eq!(preview.rows()[0][0], "a\\0bc");
+            assert_eq!(preview.display_rows()[0][0], "a\\0bc");
 
             let delete_sql = adapter.build_bulk_delete_sql(
                 DatabaseType::SQLite,
@@ -837,7 +840,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.columns, vec!["name", "email"]);
-            assert!(result.rows().is_empty());
+            assert_eq!(result.data_row_count(), 0);
             assert_eq!(result.row_count(), 0);
         }
 
@@ -939,7 +942,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["value"]);
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
             }
 
@@ -1039,7 +1042,7 @@ mod tests {
                     plan_text.to_ascii_lowercase().contains("users"),
                     "expected users table in plan, got: {plan_text}"
                 );
-                assert_eq!(rows.rows(), vec![vec!["2".to_string()]]);
+                assert_eq!(rows.display_rows(), vec![vec!["2".to_string()]]);
             }
 
             fn explain_plan_operation_lines(plan_text: &str) -> Vec<&str> {
@@ -1095,7 +1098,7 @@ mod tests {
                 .await
                 .unwrap();
 
-                let stored = result.rows()[0][0].replace('\n', " ");
+                let stored = result.display_rows()[0][0].replace('\n', " ");
                 let expected = trigger.trim().replace('\n', " ");
                 assert!(
                     !stored.contains("__sabiql_sqlite_probe_"),
@@ -1143,7 +1146,7 @@ mod tests {
                 .await
                 .unwrap();
 
-                let stored = result.rows()[0][0].replace('\n', " ");
+                let stored = result.display_rows()[0][0].replace('\n', " ");
                 let expected = trigger.trim().replace('\n', " ");
                 assert!(
                     !stored.contains("__sabiql_sqlite_probe_"),
@@ -1192,7 +1195,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["body", "marker"]);
                 assert_eq!(
-                    result.rows(),
+                    result.display_rows(),
                     vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -1212,7 +1215,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["body", "marker"]);
                 assert_eq!(
-                    result.rows(),
+                    result.display_rows(),
                     vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -1233,7 +1236,10 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["c", "d"]);
-                assert_eq!(result.rows(), vec![vec!["5".to_string(), "6".to_string()]]);
+                assert_eq!(
+                    result.display_rows(),
+                    vec![vec!["5".to_string(), "6".to_string()]]
+                );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
             }
 
@@ -1252,7 +1258,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["b"]);
-                assert!(result.rows().is_empty());
+                assert_eq!(result.data_row_count(), 0);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
             }
 
@@ -1271,7 +1277,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["value"]);
-                assert!(result.rows().is_empty());
+                assert_eq!(result.data_row_count(), 0);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
             }
 
@@ -1315,7 +1321,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
             }
 
             #[tokio::test]
@@ -1328,7 +1334,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
             }
 
             #[tokio::test]
@@ -1341,7 +1347,10 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows(), vec![vec![BUSY_TIMEOUT_MS.to_string()]]);
+                assert_eq!(
+                    result.display_rows(),
+                    vec![vec![BUSY_TIMEOUT_MS.to_string()]]
+                );
             }
 
             #[rstest::rstest]
@@ -1406,7 +1415,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
                 assert_eq!(result.command_tag, None);
             }
 
@@ -1499,7 +1508,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["name"]);
-                assert_eq!(result.rows(), vec![vec!["x".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["x".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
             }
 
@@ -1581,7 +1590,7 @@ mod tests {
                     )
                     .await
                     .unwrap();
-                    assert!(tables.rows().is_empty());
+                    assert_eq!(tables.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1613,7 +1622,7 @@ mod tests {
                             .execute_adhoc(&dsn, read, AccessMode::ReadOnly)
                             .await
                             .unwrap();
-                        assert_eq!(value.rows(), vec![vec!["0".to_string()]], "{write}");
+                        assert_eq!(value.display_rows(), vec![vec!["0".to_string()]], "{write}");
                     }
                 }
 
@@ -1654,7 +1663,7 @@ mod tests {
                         .await
                         .unwrap();
 
-                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(rows.display_rows(), vec![vec!["1".to_string()]]);
                 }
 
                 #[tokio::test]
@@ -1673,7 +1682,7 @@ mod tests {
                         .await
                         .unwrap();
 
-                    assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
                 }
             }
 
@@ -1700,7 +1709,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1727,7 +1736,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1755,7 +1764,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(rows.display_rows(), vec![vec!["1".to_string()]]);
                 }
 
                 #[tokio::test]
@@ -1785,7 +1794,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(rows.display_rows(), vec![vec!["1".to_string()]]);
                 }
 
                 #[tokio::test]
@@ -1815,7 +1824,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(rows.rows(), vec![vec!["1".to_string()]]);
+                    assert_eq!(rows.display_rows(), vec![vec!["1".to_string()]]);
                 }
 
                 #[tokio::test]
@@ -1843,7 +1852,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(rows.rows(), vec![vec!["3".to_string()]]);
+                    assert_eq!(rows.display_rows(), vec![vec!["3".to_string()]]);
                 }
 
                 #[tokio::test]
@@ -1863,7 +1872,7 @@ mod tests {
                         .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                         .await
                         .unwrap();
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1884,7 +1893,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Rollback));
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
             }
 
@@ -1910,7 +1919,7 @@ mod tests {
                         .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                         .await
                         .unwrap();
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1934,7 +1943,7 @@ mod tests {
                         .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                         .await
                         .unwrap();
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1953,7 +1962,7 @@ mod tests {
                         .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                         .await
                         .unwrap();
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
 
                 #[tokio::test]
@@ -1973,7 +1982,7 @@ mod tests {
                         .execute_adhoc(&dsn, "SELECT id FROM users", AccessMode::ReadOnly)
                         .await
                         .unwrap();
-                    assert!(rows.rows().is_empty());
+                    assert_eq!(rows.data_row_count(), 0);
                 }
             }
         }
@@ -1998,7 +2007,10 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["id", "name"]);
-                assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
+                assert_eq!(
+                    result.display_rows(),
+                    vec![vec!["1".to_string(), "a".to_string()]]
+                );
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
 
@@ -2019,7 +2031,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["value_empty"]);
-                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
 
@@ -2042,7 +2054,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows().len(), 2);
+                assert_eq!(result.data_row_count(), 2);
                 assert_eq!(result.command_tag, Some(CommandTag::Update(2)));
             }
 
@@ -2065,7 +2077,10 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
+                assert_eq!(
+                    result.display_rows(),
+                    vec![vec!["1".to_string(), "a".to_string()]]
+                );
                 assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
             }
         }
@@ -2234,7 +2249,7 @@ mod tests {
                 result,
                 Err(DbOperationError::ForeignKeyViolation(_))
             ));
-            assert_eq!(children.rows(), vec![vec!["1".to_string()]]);
+            assert_eq!(children.display_rows(), vec![vec!["1".to_string()]]);
         }
 
         #[tokio::test]
@@ -2302,7 +2317,7 @@ mod tests {
                 .unwrap();
 
             assert_eq!(result.affected_rows, 1);
-            assert!(children.rows().is_empty());
+            assert_eq!(children.data_row_count(), 0);
         }
 
         #[tokio::test]
@@ -2644,7 +2659,7 @@ world'), (2, 'done');
                 .await;
 
             let result = result.unwrap();
-            assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+            assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
         }
 
         #[cfg(not(windows))]
@@ -2737,10 +2752,10 @@ world'), (2, 'done');
                 let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
 
                 assert_eq!(write.affected_rows, 1);
-                assert_eq!(result.rows(), vec![vec!["Grace".to_string()]]);
+                assert_eq!(result.display_rows(), vec![vec!["Grace".to_string()]]);
                 assert_eq!(metadata.table_summaries.len(), 1);
                 assert_eq!(
-                    preview.rows(),
+                    preview.display_rows(),
                     vec![
                         vec!["1".to_string(), "Ada".to_string()],
                         vec!["2".to_string(), "Grace".to_string()]

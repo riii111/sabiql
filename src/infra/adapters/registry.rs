@@ -477,7 +477,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+        assert_eq!(result.display_rows(), vec![vec!["1".to_string()]]);
     }
 
     #[tokio::test]

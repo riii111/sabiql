@@ -483,7 +483,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows(),
+                result.display_rows(),
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
         }
@@ -507,7 +507,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows(),
+                result.display_rows(),
                 vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
             );
         }
@@ -521,7 +521,7 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                result.rows(),
+                result.display_rows(),
                 vec![vec![
                     "NULL".to_string(),
                     String::new(),

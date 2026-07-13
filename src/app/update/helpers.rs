@@ -213,7 +213,7 @@ pub fn build_bulk_delete_preview(
         .next()
         .unwrap();
     let (target_page, target_row) = deletion_refresh_target_bulk(
-        result.rows().len(),
+        result.data_row_count(),
         staged_count,
         first_deleted_idx,
         state.query.pagination.current_page(),
