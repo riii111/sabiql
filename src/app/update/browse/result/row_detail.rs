@@ -27,10 +27,10 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 };
                 RowDetailState::open_with_values(&result.columns, values)
             } else {
-                let Some(cells) = result.rows().get(row_idx) else {
+                let Some(cells) = result.display_row_at(row_idx) else {
                     return DispatchResult::handled();
                 };
-                RowDetailState::open(&result.columns, cells)
+                RowDetailState::open(&result.columns, &cells)
             };
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()

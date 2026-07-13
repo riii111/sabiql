@@ -29,11 +29,7 @@ pub fn reduce_yank(
                             .value_at(row_idx, col_idx)
                             .map(QueryValue::copy_value)
                     } else {
-                        result
-                            .rows()
-                            .get(row_idx)
-                            .and_then(|row| row.get(col_idx))
-                            .cloned()
+                        result.display_value_at(row_idx, col_idx)
                     }
                 });
                 if let Some(value) = content {
@@ -85,7 +81,7 @@ pub fn reduce_yank(
                                 row.iter().map(QueryValue::copy_value).collect::<Vec<_>>()
                             })
                         } else {
-                            result.rows().get(row_idx).cloned()
+                            result.display_row_at(row_idx)
                         }
                     })
                     .map(|row| {

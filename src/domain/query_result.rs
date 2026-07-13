@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
 use super::CommandTag;
 
 const BLOB_PREVIEW_BYTES: usize = 8;
@@ -28,9 +30,20 @@ impl QueryValue {
     pub fn display_value_ref(&self) -> Cow<'_, str> {
         match self {
             Self::Null => Cow::Borrowed("NULL"),
-            Self::Text(value) if value.contains('\0') => Cow::Owned(escape_display_text(value)),
+            Self::Text(value) | Self::SqlLiteral(value) if value.contains('\0') => {
+                Cow::Owned(escape_display_text(value))
+            }
             Self::Text(value) | Self::SqlLiteral(value) => Cow::Borrowed(value),
             Self::Blob(bytes) => Cow::Owned(blob_display_value(bytes)),
+        }
+    }
+
+    #[must_use]
+    pub fn display_width(&self) -> usize {
+        match self {
+            Self::Null => UnicodeWidthStr::width("NULL"),
+            Self::Text(value) | Self::SqlLiteral(value) => display_width_of_first_line(value, true),
+            Self::Blob(bytes) => blob_display_width(bytes),
         }
     }
 
@@ -88,6 +101,43 @@ fn blob_display_value(bytes: &[u8]) -> String {
     } else {
         format!("BLOB ({} bytes) {preview}", bytes.len())
     }
+}
+
+fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
+    value
+        .chars()
+        .take_while(|&ch| ch != '\n')
+        .map(|ch| {
+            if escape_nul && ch == '\0' {
+                2
+            } else {
+                UnicodeWidthChar::width(ch).unwrap_or(0)
+            }
+        })
+        .sum()
+}
+
+fn blob_display_width(bytes: &[u8]) -> usize {
+    let mut width = UnicodeWidthStr::width("BLOB (")
+        + decimal_display_width(bytes.len())
+        + UnicodeWidthStr::width(" bytes)");
+    let preview_bytes = bytes.len().min(BLOB_PREVIEW_BYTES);
+    if preview_bytes > 0 {
+        width += 1 + preview_bytes * 2 + preview_bytes.saturating_sub(1);
+        if bytes.len() > BLOB_PREVIEW_BYTES {
+            width += UnicodeWidthStr::width(" ...");
+        }
+    }
+    width
+}
+
+fn decimal_display_width(mut value: usize) -> usize {
+    let mut width = 1;
+    while value >= 10 {
+        value /= 10;
+        width += 1;
+    }
+    width
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -246,23 +296,6 @@ impl QueryResult {
     }
 
     #[must_use]
-    pub fn rows(&self) -> &[Vec<String>] {
-        &self.rows
-    }
-
-    #[must_use]
-    pub fn display_rows(&self) -> Vec<Vec<String>> {
-        if self.typed_values {
-            self.values
-                .iter()
-                .map(|row| row.iter().map(QueryValue::display_value).collect())
-                .collect()
-        } else {
-            self.rows.clone()
-        }
-    }
-
-    #[must_use]
     pub fn values(&self) -> &[Vec<QueryValue>] {
         &self.values
     }
@@ -313,6 +346,18 @@ impl QueryResult {
     }
 
     #[must_use]
+    pub fn display_width_at(&self, row: usize, col: usize) -> Option<usize> {
+        if self.typed_values {
+            self.value_at(row, col).map(QueryValue::display_width)
+        } else {
+            self.rows
+                .get(row)?
+                .get(col)
+                .map(|value| display_width_of_first_line(value, false))
+        }
+    }
+
+    #[must_use]
     pub fn display_row_at(&self, row: usize) -> Option<Vec<String>> {
         if self.typed_values {
             self.values
@@ -344,7 +389,7 @@ mod tests {
 
             assert_eq!(result.query, "SELECT 1");
             assert_eq!(result.columns, vec!["id"]);
-            assert_eq!(result.rows(), vec![vec!["1"]]);
+            assert_eq!(result.display_row_at(0), Some(vec!["1".to_string()]));
             assert_eq!(result.row_count(), 1);
             assert_eq!(result.execution_time_ms, 42);
             assert_eq!(result.source, QuerySource::Adhoc);
@@ -382,7 +427,7 @@ mod tests {
             assert!(result.is_error());
             assert_eq!(result.error.as_deref(), Some("syntax error"));
             assert!(result.columns.is_empty());
-            assert!(result.rows().is_empty());
+            assert_eq!(result.data_row_count(), 0);
             assert_eq!(result.row_count(), 0);
         }
     }
@@ -414,7 +459,6 @@ mod tests {
                 QuerySource::Adhoc,
             );
 
-            assert!(result.rows().is_empty());
             assert_eq!(result.data_row_count(), 1);
             assert_eq!(result.column_count(), 1);
             assert_eq!(
@@ -436,7 +480,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body"]);
             assert_eq!(result.values(), &[vec![QueryValue::text("body")]]);
-            assert!(result.rows().is_empty());
+            assert_eq!(result.display_row_at(0), Some(vec!["body".to_string()]));
         }
     }
 
@@ -462,6 +506,26 @@ mod tests {
         #[test]
         fn display_value_escapes_embedded_nul_byte() {
             assert_eq!(QueryValue::text("a\0bc").display_value(), "a\\0bc");
+        }
+
+        #[test]
+        fn display_width_handles_large_nul_text_and_blob_without_display_materialization() {
+            const SIZE: usize = 1024 * 1024;
+            let text = format!("{}\0tail", "a".repeat(SIZE));
+            let blob = vec![0xAB; SIZE];
+            let result = QueryResult::success_with_values(
+                "SELECT body, payload".to_string(),
+                vec!["body".to_string(), "payload".to_string()],
+                vec![vec![QueryValue::text(text), QueryValue::Blob(blob)]],
+                0,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(result.display_width_at(0, 0), Some(SIZE + 6));
+            assert_eq!(
+                result.display_width_at(0, 1),
+                Some("BLOB (1048576 bytes) AB AB AB AB AB AB AB AB ...".len())
+            );
         }
     }
 }

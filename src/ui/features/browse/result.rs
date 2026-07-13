@@ -362,7 +362,7 @@ impl ResultPane {
 
         // Scroll indicators (pass inner area, not outer with border)
         let total_rows = result.data_row_count();
-        let total_cols = result.columns.len();
+        let total_cols = result.column_count();
 
         use crate::primitives::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
@@ -408,16 +408,10 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
 }
 
 fn calculate_result_ideal_widths(result: &QueryResult) -> Vec<u16> {
-    use unicode_width::UnicodeWidthStr;
-
     calculate_ideal_widths_with(
         &result.columns,
         result.data_row_count(),
-        |row_idx, col_idx| {
-            result.display_value_ref_at(row_idx, col_idx).map(|cell| {
-                UnicodeWidthStr::width(cell.lines().next().unwrap_or_else(|| cell.as_ref()))
-            })
-        },
+        |row_idx, col_idx| result.display_width_at(row_idx, col_idx),
     )
 }
 
@@ -611,7 +605,7 @@ mod tests {
 
             assert_eq!(calculate_result_ideal_widths(&result), vec![7]);
             assert_eq!(result.display_value_ref_at(0, 0).as_deref(), Some("hello"));
-            assert!(result.rows().is_empty());
+            assert_eq!(result.display_row_at(0), Some(vec!["hello".to_string()]));
         }
     }
 

@@ -108,8 +108,8 @@ mod query_execution {
             .unwrap();
 
         assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.rows().len(), 1);
-        assert_eq!(result.rows()[0], vec!["1"]);
+        assert_eq!(result.data_row_count(), 1);
+        assert_eq!(result.display_row_at(0), Some(vec!["1".to_string()]));
     }
 }
 
@@ -133,7 +133,10 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["b", "c"]);
-        assert_eq!(result.rows(), vec![vec!["2", "3"]]);
+        assert_eq!(
+            result.display_row_at(0),
+            Some(vec!["2".to_string(), "3".to_string()])
+        );
     }
 
     #[tokio::test]
@@ -150,7 +153,10 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["id", "name"]);
-        assert_eq!(result.rows(), vec![vec!["id", "name"]]);
+        assert_eq!(
+            result.display_row_at(0),
+            Some(vec!["id".to_string(), "name".to_string()])
+        );
     }
 
     #[tokio::test]
@@ -166,7 +172,7 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
-        assert_eq!(result.rows(), vec![vec!["2"]]);
+        assert_eq!(result.display_row_at(0), Some(vec!["2".to_string()]));
     }
 
     #[tokio::test]
@@ -182,7 +188,7 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["b"]);
-        assert!(result.rows().is_empty());
+        assert_eq!(result.data_row_count(), 0);
     }
 
     #[tokio::test]
@@ -202,7 +208,7 @@ mod multi_statement_boundaries {
             .unwrap();
 
         assert_eq!(result.columns, vec!["v"]);
-        assert_eq!(result.rows(), vec![vec!["7"]]);
+        assert_eq!(result.display_row_at(0), Some(vec!["7".to_string()]));
     }
 
     #[tokio::test]
@@ -218,7 +224,7 @@ mod multi_statement_boundaries {
             .await
             .unwrap();
 
-        assert!(result.rows().is_empty());
+        assert_eq!(result.data_row_count(), 0);
         assert_eq!(
             result.command_tag,
             Some(CommandTag::Create("TABLE".to_string()))
@@ -254,8 +260,11 @@ mod multi_statement_boundaries {
                     )
                     .await
                     .map_err(|err| err.to_string())?;
-                if check.rows() != vec![vec!["t"]] {
-                    return Err(format!("expected rollback marker, got {:?}", check.rows()));
+                if check.display_row_at(0) != Some(vec!["t".to_string()]) {
+                    return Err(format!(
+                        "expected rollback marker, got {:?}",
+                        check.display_row_at(0)
+                    ));
                 }
                 Ok(())
             })

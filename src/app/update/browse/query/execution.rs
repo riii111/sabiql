@@ -122,9 +122,9 @@ pub fn reduce_execution(
                             state.result_interaction.reset_interaction();
                         }
                         PostDeleteRowSelection::Select(row) => {
-                            if result.data_row_count() > 0 && !result.columns.is_empty() {
+                            if result.data_row_count() > 0 && result.column_count() > 0 {
                                 let clamped = row.min(result.data_row_count() - 1);
-                                let max_col = result.columns.len() - 1;
+                                let max_col = result.column_count() - 1;
                                 let col = preserved_result_col
                                     .unwrap_or(preserved_horizontal_offset)
                                     .min(max_col);
