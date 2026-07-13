@@ -76,6 +76,15 @@ jobs:
       - name: Run psql integration tests (Tier 2)
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
 
+  nix-runtime:
+    name: Nix Runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: DeterminateSystems/nix-installer-action@786fff0690178f1234e4e1fe9b536e94f5433196 # v20
+      - name: Verify SQLite runtime contract
+        run: nix build .#checks.x86_64-linux.sqlite-runtime --print-build-logs
+
   sqlite-safe-mode:
     name: SQLite Safe Mode (${{ matrix.sqlite }})
     runs-on: ubuntu-latest
