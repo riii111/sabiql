@@ -566,8 +566,10 @@ impl QueryExecutor for SqliteAdapter {
             limit,
             offset,
         );
-        self.execute_quoted_query(path, &query, QuerySource::Preview, true)
-            .await
+        let result = self
+            .execute_quoted_query(path, &query, QuerySource::Preview, true)
+            .await?;
+        Ok(result.with_columns_if_empty(columns))
     }
 
     async fn execute_adhoc(
