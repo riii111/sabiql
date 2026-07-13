@@ -37,6 +37,8 @@ const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1)
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
+    #[cfg(test)]
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 }
 
 struct SqliteOutput {
@@ -75,7 +77,11 @@ impl SqliteVersion {
 
 impl SqliteCli {
     pub(in crate::adapters::sqlite) fn new() -> Self {
-        Self { timeout_secs: 30 }
+        Self {
+            timeout_secs: 30,
+            #[cfg(test)]
+            environment: Vec::new(),
+        }
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -97,7 +103,10 @@ impl SqliteCli {
     pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
         &self,
     ) -> Result<(), DbOperationError> {
-        let output = Command::new("sqlite3")
+        let mut cmd = self.command();
+        Self::apply_initialization_file(&mut cmd);
+        let output = cmd
+            .arg("--safe")
             .arg("--version")
             .output()
             .await
@@ -225,7 +234,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
-        let mut cmd = Command::new(command);
+        let mut cmd = self.command_with_program(command);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
@@ -311,7 +320,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
-        let mut cmd = Command::new("sqlite3");
+        let mut cmd = self.command();
         Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
@@ -326,6 +335,7 @@ impl SqliteCli {
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
+        Self::apply_initialization_file(cmd);
         cmd.arg("--safe");
         if read_only {
             cmd.arg("-readonly");
@@ -337,6 +347,28 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-cmd").arg("PRAGMA query_only=ON");
         }
+    }
+
+    fn apply_initialization_file(cmd: &mut Command) {
+        cmd.arg("-init").arg(sqlite_empty_init_file());
+    }
+
+    fn command(&self) -> Command {
+        self.command_with_program("sqlite3")
+    }
+
+    fn command_with_program(&self, program: &str) -> Command {
+        #[cfg(test)]
+        let command = {
+            let mut cmd = Command::new(program);
+            for (key, value) in &self.environment {
+                cmd.env(key, value);
+            }
+            cmd
+        };
+        #[cfg(not(test))]
+        let command = Command::new(program);
+        command
     }
 
     async fn collect_output(
@@ -398,6 +430,14 @@ fn safe_mode_required_error(details: &str) -> DbOperationError {
     DbOperationError::UnsupportedOperation(format!(
         "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
     ))
+}
+
+fn sqlite_empty_init_file() -> &'static str {
+    sqlite_empty_init_file_for_platform(cfg!(windows))
+}
+
+const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
+    if is_windows { "NUL" } else { "/dev/null" }
 }
 
 async fn write_sql_to_stdin(
@@ -633,6 +673,8 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use std::{ffi::OsString, path::PathBuf};
+
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
@@ -640,6 +682,13 @@ mod tests {
     };
 
     use super::*;
+
+    impl SqliteCli {
+        fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
+            self.environment = environment;
+            self
+        }
+    }
 
     mod preview {
         use crate::adapters::test_support;
@@ -2593,6 +2642,39 @@ world'), (2, 'done');
         }
 
         #[test]
+        fn empty_initialization_file_uses_platform_null_device() {
+            assert_eq!(sqlite_empty_init_file_for_platform(false), "/dev/null");
+            assert_eq!(sqlite_empty_init_file_for_platform(true), "NUL");
+        }
+
+        #[test]
+        fn initialization_precedes_safe_read_only_and_session_options() {
+            let mut cmd = Command::new("sqlite3");
+            SqliteCli::apply_session_options(&mut cmd, true);
+            let args = cmd
+                .as_std()
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                args,
+                vec![
+                    "-init",
+                    sqlite_empty_init_file(),
+                    "--safe",
+                    "-readonly",
+                    "-cmd",
+                    &format!(".timeout {BUSY_TIMEOUT_MS}"),
+                    "-cmd",
+                    "PRAGMA foreign_keys=ON",
+                    "-cmd",
+                    "PRAGMA query_only=ON",
+                ]
+            );
+        }
+
+        #[test]
         fn database_uri_uses_non_creating_access_modes() {
             let read_write = sqlite_database_uri("/tmp/sabiql database?.db", false);
             let read_only = sqlite_database_uri("/tmp/sabiql database?.db", true);
@@ -2662,6 +2744,130 @@ world'), (2, 'done');
 
             let result = result.unwrap();
             assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
+        }
+
+        #[cfg(not(windows))]
+        mod initialization_isolation {
+            use crate::adapters::test_support;
+            use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
+
+            use super::*;
+
+            struct InitializationArtifacts {
+                redirected_database: PathBuf,
+                redirected_output: PathBuf,
+            }
+
+            fn adapter_with_malicious_initialization(
+                dir: &tempfile::TempDir,
+            ) -> (SqliteAdapter, InitializationArtifacts) {
+                let home = dir.path().join("home");
+                let xdg_config_home = dir.path().join("xdg-config");
+                let redirected_database = dir.path().join("redirected.sqlite");
+                let redirected_output = dir.path().join("redirected.csv");
+                std::fs::create_dir_all(&home).unwrap();
+                std::fs::create_dir_all(&xdg_config_home).unwrap();
+                std::fs::write(
+                    home.join(".sqliterc"),
+                    format!(
+                        ".output {}\n.mode csv\n.open {}\nCREATE TABLE initialization_side_effect(value TEXT);\n.exit\n",
+                        redirected_output.display(),
+                        redirected_database.display(),
+                    ),
+                )
+                .unwrap();
+
+                let mut adapter = SqliteAdapter::new();
+                adapter.cli = SqliteCli::new().with_environment(vec![
+                    (OsString::from("HOME"), home.into_os_string()),
+                    (
+                        OsString::from("XDG_CONFIG_HOME"),
+                        xdg_config_home.into_os_string(),
+                    ),
+                ]);
+                (
+                    adapter,
+                    InitializationArtifacts {
+                        redirected_database,
+                        redirected_output,
+                    },
+                )
+            }
+
+            fn assert_initialization_was_not_loaded(artifacts: &InitializationArtifacts) {
+                assert!(!artifacts.redirected_database.exists());
+                assert!(!artifacts.redirected_output.exists());
+            }
+
+            #[tokio::test]
+            async fn public_adapter_operations_preserve_query_metadata_preview_and_diagnostics() {
+                let (dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
+                );
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+
+                let write = adapter
+                    .execute_write(
+                        &dsn,
+                        "INSERT INTO users VALUES (2, 'Grace')",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "SELECT name FROM users WHERE id = 2",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .unwrap();
+                let metadata = adapter.fetch_metadata(&dsn).await.unwrap();
+                let preview = adapter
+                    .execute_preview(&dsn, "main", "users", 10, 0)
+                    .await
+                    .unwrap();
+                let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
+
+                assert_eq!(write.affected_rows, 1);
+                assert_eq!(result.rows(), vec![vec!["Grace".to_string()]]);
+                assert_eq!(metadata.table_summaries.len(), 1);
+                assert_eq!(
+                    preview.rows(),
+                    vec![
+                        vec!["1".to_string(), "Ada".to_string()],
+                        vec!["2".to_string(), "Grace".to_string()]
+                    ]
+                );
+                assert!(diagnostics.sqlite_version.is_ok());
+                assert_initialization_was_not_loaded(&artifacts);
+            }
+
+            #[tokio::test]
+            async fn export_preserves_csv_protocol() {
+                let (dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
+                );
+                let export_path = dir.path().join("users.csv");
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+
+                adapter
+                    .cli
+                    .export_csv(
+                        SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                        "SELECT id, name FROM users",
+                        &export_path,
+                        true,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(
+                    std::fs::read_to_string(export_path).unwrap(),
+                    "id,name\n1,Ada\n"
+                );
+                assert_initialization_was_not_loaded(&artifacts);
+            }
         }
     }
 }
