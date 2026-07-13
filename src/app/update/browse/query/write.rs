@@ -712,6 +712,44 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_without_rowid_table_uses_primary_key_for_update_preview() {
+            let mut state = editable_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("sqlite-test"),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            let mut detail = users_table_detail();
+            detail.schema = "main".to_string();
+            detail.kind_info.without_rowid = true;
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("main", "users");
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            let dispatched = match &effects[0] {
+                Effect::DispatchActions(actions) => actions.first().expect("action"),
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            match dispatched {
+                Action::OpenWritePreviewConfirm(preview) => {
+                    assert_eq!(
+                        preview.sql,
+                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+                    );
+                }
+                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+            }
+        }
+
+        #[test]
         fn sqlite_rowid_table_uses_hidden_rowid_for_update_preview() {
             let mut state = sqlite_rowid_editable_state();
 

@@ -76,6 +76,64 @@ jobs:
       - name: Run psql integration tests (Tier 2)
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
 
+  sqlite-safe-mode:
+    name: SQLite Safe Mode (${{ matrix.sqlite }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sqlite: minimum
+            archive: sqlite-autoconf-3410100.tar.gz
+            directory: sqlite-autoconf-3410100
+            sha256: 4dadfbeab9f8e16c695d4fbbc51c16b2f77fb97ff4c1c3d139919dfc038c9e33
+            below_minimum: false
+          - sqlite: below-minimum
+            archive: sqlite-autoconf-3410000.tar.gz
+            directory: sqlite-autoconf-3410000
+            sha256: 49f77ac53fd9aa5d7395f2499cb816410e5621984a121b858ccca05310b05c70
+            below_minimum: true
+          - sqlite: system
+            below_minimum: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - uses: taiki-e/install-action@c93ccc03e00cd0e08e494f5fd058a6c55a6a1907 # v2
+        with:
+          tool: nextest
+      - name: Install SQLite
+        if: matrix.sqlite != 'system'
+        run: |
+          curl --fail --location --retry 3 \
+            https://www.sqlite.org/2023/${{ matrix.archive }} \
+            --output "${{ matrix.archive }}"
+          echo "${{ matrix.sha256 }}  ${{ matrix.archive }}" | sha256sum --check --status
+          tar -xzf "${{ matrix.archive }}"
+          cd "${{ matrix.directory }}"
+          ./configure --prefix="$HOME/.local"
+          make -j2
+          make install
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Show SQLite version
+        run: sqlite3 --version
+      - name: Run SQLite adapter tests
+        if: matrix.below_minimum == false
+        run: cargo nextest run -p sabiql-infra
+      - name: Reject SQLite below the safe mode minimum
+        if: matrix.below_minimum
+        run: |
+          SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo test -p sabiql-infra \
+            adapters::sqlite::sqlite3::metadata::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
+            -- --exact
+          cargo test -p sabiql-app \
+            model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \
+            -- --exact
+
   build:
     name: Build
     runs-on: ubuntu-latest

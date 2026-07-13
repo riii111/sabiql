@@ -10,7 +10,9 @@ use tokio::time::timeout;
 use async_trait::async_trait;
 
 use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
-use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{
+    AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult,
     available_sqlite_rowid_alias,
@@ -29,6 +31,8 @@ use super::parser::{
 
 pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
 
+const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1);
+
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
@@ -38,6 +42,34 @@ struct SqliteOutput {
     status: ExitStatus,
     stdout: String,
     stderr: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct SqliteVersion {
+    major: u16,
+    minor: u16,
+    patch: u16,
+}
+
+impl SqliteVersion {
+    const fn new(major: u16, minor: u16, patch: u16) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    fn parse(output: &str) -> Option<Self> {
+        let mut components = output.split_whitespace().next()?.split('.');
+        let major = components.next()?.parse().ok()?;
+        let minor = components.next()?.parse().ok()?;
+        let patch = components.next()?.parse().ok()?;
+        components
+            .next()
+            .is_none()
+            .then_some(Self::new(major, minor, patch))
+    }
 }
 
 impl SqliteCli {
@@ -59,6 +91,34 @@ impl SqliteCli {
             stdout => stdout,
         };
         serde_json::from_str(stdout).map_err(DbOperationError::from)
+    }
+
+    pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
+        &self,
+    ) -> Result<(), DbOperationError> {
+        let output = Command::new("sqlite3")
+            .arg("--version")
+            .output()
+            .await
+            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let version = SqliteVersion::parse(&stdout).ok_or_else(|| {
+            safe_mode_required_error("could not determine the installed sqlite3 version")
+        })?;
+
+        if output.status.success() && version >= SQLITE_SAFE_MODE_MIN_VERSION {
+            return Ok(());
+        }
+
+        let details = if output.status.success() {
+            format!(
+                "found sqlite3 {}.{}.{}",
+                version.major, version.minor, version.patch
+            )
+        } else {
+            "sqlite3 --version failed".to_string()
+        };
+        Err(safe_mode_required_error(&details))
     }
 
     pub(in crate::adapters::sqlite) async fn execute_csv(
@@ -259,6 +319,7 @@ impl SqliteCli {
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
+        cmd.arg("--safe");
         if read_only {
             cmd.arg("-readonly");
         }
@@ -324,6 +385,12 @@ impl SqliteCli {
             stderr,
         })
     }
+}
+
+fn safe_mode_required_error(details: &str) -> DbOperationError {
+    DbOperationError::UnsupportedOperation(format!(
+        "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
+    ))
 }
 
 async fn write_sql_to_stdin(
@@ -713,10 +780,6 @@ mod tests {
                 .await
                 .unwrap();
             adapter
-                .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
-                .await
-                .unwrap();
-            adapter
                 .execute_write(
                     &dsn,
                     "INSERT INTO logs(message, note) VALUES ('replacement', NULL)",
@@ -797,10 +860,6 @@ mod tests {
                     "DELETE FROM logs WHERE rowid = 1",
                     AccessMode::ReadWrite,
                 )
-                .await
-                .unwrap();
-            adapter
-                .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
                 .await
                 .unwrap();
             adapter
@@ -1345,6 +1404,14 @@ mod tests {
         mod session_configuration {
             use super::*;
 
+            fn safe_mode_error(result: Result<QueryResult, DbOperationError>, expected: &[&str]) {
+                assert!(matches!(
+                    result,
+                    Err(DbOperationError::QueryFailed(details))
+                        if expected.iter().any(|message| details.contains(message))
+                ));
+            }
+
             #[tokio::test]
             async fn enables_foreign_keys_before_user_sql() {
                 let (_dir, dsn) = test_support::make_sqlite_db("");
@@ -1382,6 +1449,54 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.rows(), vec![vec![BUSY_TIMEOUT_MS.to_string()]]);
+            }
+
+            #[rstest::rstest]
+            #[case::writefile(
+                "writefile",
+                &["cannot use the writefile() function in safe mode"],
+            )]
+            #[case::readfile(
+                "readfile",
+                &["cannot use the readfile() function in safe mode"],
+            )]
+            #[case::load_extension(
+                "load_extension",
+                &[
+                    "cannot use the load_extension() function in safe mode",
+                    "no such function: load_extension",
+                ],
+            )]
+            #[case::attach("attach", &["cannot run ATTACH in safe mode"])]
+            #[tokio::test]
+            async fn safe_mode_rejects_host_side_effects_in_read_write_sessions(
+                #[case] side_effect: &str,
+                #[case] expected: &[&str],
+            ) {
+                let (dir, dsn) = test_support::make_sqlite_db("");
+                let attached = dir.path().join("attached.db");
+                let output = dir.path().join("output.txt");
+                std::fs::write(&attached, []).unwrap();
+                let adapter = SqliteAdapter::new();
+
+                let sql = match side_effect {
+                    "writefile" => format!("SELECT writefile('{}', 'hello')", output.display()),
+                    "readfile" => format!("SELECT readfile('{}')", attached.display()),
+                    "load_extension" => {
+                        "SELECT load_extension('/tmp/sabiql-extension')".to_string()
+                    }
+                    "attach" => format!("ATTACH DATABASE '{}' AS attached", attached.display()),
+                    _ => unreachable!(),
+                };
+                safe_mode_error(
+                    adapter
+                        .execute_adhoc(&dsn, &sql, AccessMode::ReadWrite)
+                        .await,
+                    expected,
+                );
+                if side_effect == "writefile" {
+                    assert!(!output.exists());
+                }
             }
         }
 
@@ -1610,34 +1725,20 @@ mod tests {
                 }
 
                 #[tokio::test]
-                async fn vacuum_in_mixed_sql_runs_outside_auto_transaction() {
+                async fn vacuum_is_rejected_in_safe_mode() {
                     let (_dir, dsn) = test_support::make_sqlite_db("");
                     let adapter = SqliteAdapter::new();
 
-                    adapter
-                        .execute_adhoc(
-                            &dsn,
-                            "CREATE TABLE users(id INTEGER PRIMARY KEY);\
-                     INSERT INTO users(id) VALUES (1);\
-                     VACUUM;\
-                     INSERT INTO users(id) VALUES (2)",
-                            AccessMode::ReadWrite,
-                        )
-                        .await
-                        .unwrap();
-                    let rows = adapter
-                        .execute_adhoc(
-                            &dsn,
-                            "SELECT id FROM users ORDER BY id",
-                            AccessMode::ReadOnly,
-                        )
-                        .await
-                        .unwrap();
+                    let result = adapter
+                        .execute_adhoc(&dsn, "VACUUM", AccessMode::ReadWrite)
+                        .await;
 
-                    assert_eq!(
-                        rows.rows(),
-                        vec![vec!["1".to_string()], vec!["2".to_string()]]
-                    );
+                    // VACUUM internally attaches a temporary database, so safe mode reports ATTACH.
+                    assert!(matches!(
+                        result,
+                        Err(DbOperationError::QueryFailed(details))
+                            if details.contains("cannot run ATTACH in safe mode")
+                    ));
                 }
 
                 #[tokio::test]
@@ -2459,6 +2560,24 @@ world'), (2, 'done');
 
     mod dsn_validation {
         use super::*;
+
+        #[rstest::rstest]
+        #[case("3.41.1 2023-03-10 12:13:52", Some(SqliteVersion::new(3, 41, 1)))]
+        #[case("3.40.1", Some(SqliteVersion::new(3, 40, 1)))]
+        #[case("3.41", None)]
+        #[case("sqlite 3.41.1", None)]
+        fn parses_sqlite_cli_version(
+            #[case] output: &str,
+            #[case] expected: Option<SqliteVersion>,
+        ) {
+            assert_eq!(SqliteVersion::parse(output), expected);
+        }
+
+        #[test]
+        fn safe_mode_requires_sqlite_3_41_1_or_later() {
+            assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
+            assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
+        }
 
         #[test]
         fn database_uri_uses_non_creating_access_modes() {

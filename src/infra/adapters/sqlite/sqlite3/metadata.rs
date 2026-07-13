@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use serde::Deserialize;
 
+#[cfg(test)]
+use crate::app::ports::outbound::SQLITE_SAFE_MODE_REQUIRED_MARKER;
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 #[cfg(test)]
 use crate::domain::TableKind;
@@ -586,7 +588,7 @@ impl SqliteAdapter {
                 let is_generated = column.hidden == 2 || column.hidden == 3;
                 let is_read_only = is_hidden || is_generated;
                 let mut attributes = ColumnAttributes::from_parts(
-                    column.notnull == 0 && !is_pk,
+                    column.notnull == 0,
                     is_pk,
                     unique_single_columns.contains(column.name.as_str()),
                 );
@@ -736,6 +738,7 @@ fn parse_fk_action(action: &str) -> Result<FkAction, DbOperationError> {
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
+        self.cli.ensure_safe_mode_supported().await?;
         let path = Self::path_from_dsn(dsn)?;
         let tables = self.list_tables(path).await?;
         let mut metadata = DatabaseMetadata::new(Self::database_name(path));
@@ -881,6 +884,22 @@ mod tests {
                 empty_result,
                 Err(DbOperationError::ConnectionFailed(_))
             ));
+        }
+
+        #[tokio::test]
+        async fn rejects_sqlite_before_safe_mode_minimum_at_connection() {
+            let (_dir, dsn) = test_support::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+            let expects_rejection =
+                std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
+
+            match adapter.fetch_metadata(&dsn).await {
+                Err(DbOperationError::UnsupportedOperation(details)) if expects_rejection => {
+                    assert!(details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER));
+                }
+                Ok(_) if !expects_rejection => {}
+                result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
+            }
         }
 
         #[tokio::test]
@@ -1242,6 +1261,42 @@ mod tests {
 
             assert_eq!(detail.primary_key, None);
             assert_eq!(detail.columns.len(), 1);
+        }
+
+        #[tokio::test]
+        async fn primary_key_nullability_matches_sqlite_metadata() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+            CREATE TABLE regular(key TEXT PRIMARY KEY, value TEXT);
+            CREATE TABLE without_rowid(key TEXT PRIMARY KEY, value TEXT) WITHOUT ROWID;
+            ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let regular = adapter
+                .fetch_table_detail(&dsn, "main", "regular")
+                .await
+                .unwrap();
+            let without_rowid = adapter
+                .fetch_table_detail(&dsn, "main", "without_rowid")
+                .await
+                .unwrap();
+
+            let regular_key = regular
+                .columns
+                .iter()
+                .find(|column| column.name == "key")
+                .unwrap();
+            let without_rowid_key = without_rowid
+                .columns
+                .iter()
+                .find(|column| column.name == "key")
+                .unwrap();
+
+            assert!(regular_key.is_primary_key());
+            assert!(regular_key.is_nullable());
+            assert!(without_rowid_key.is_primary_key());
+            assert!(!without_rowid_key.is_nullable());
         }
 
         #[tokio::test]
