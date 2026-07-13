@@ -133,6 +133,7 @@ SQLite support covers browsing, editing, and ad-hoc SQL on regular database file
 - **File paths only** — Use a regular SQLite database file path or a `sqlite://` DSN to that file. The `sqlite://` form treats everything after the prefix as a raw path; it does not percent-decode URI escapes. In-memory databases (`:memory:`) and SQLite URI filenames (`file:...`) are not supported because sabiql starts `sqlite3` per operation; use a temporary database file instead.
 - **No new database files** — Opening a path that does not exist does not create a database.
 - **Main database only** — Attached and temporary databases are not browsed as separate namespaces.
+- **Session state is per operation** — sabiql starts a new `sqlite3` process for each operation. Statements in one SQL modal submission share that process, but `TEMP` tables/views and connection-local `PRAGMA` settings do not carry over to the next SQL execution. Persistent changes to the main database remain available.
 - **Grid editing requires a declared primary key** — Regular tables with a declared `PRIMARY KEY` support grid editing. Tables without a declared primary key, views, and virtual tables remain browsable but are read-only targets in the grid.
 - **Query plans** — SQLite shows `EXPLAIN QUERY PLAN` in the Plan tab. Plan comparison and `EXPLAIN ANALYZE` are PostgreSQL-only.
 - **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
