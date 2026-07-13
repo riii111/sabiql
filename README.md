@@ -24,7 +24,7 @@ sabiql treats the SQL modal as SQL-only input. CLI meta-commands such as psql ba
 
 Read-only mode combines app-level write blocking with the database client guard available for the active adapter. PostgreSQL uses a read-only session option. SQLite also runs every sqlite3 command in safe mode, preventing SQL from accessing files, extensions, or databases outside the selected database file.
 
-PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement write SQL is wrapped in an explicit transaction unless the input contains transaction control or transaction-incompatible statements such as `PRAGMA journal_mode` changes. SQLite safe mode also rejects operations such as `ATTACH` and `VACUUM` that require capabilities unavailable in safe mode.
+PostgreSQL multi-statement SQL runs in one transaction. SQLite wraps transactional writes, including persistent PRAGMAs such as `user_version`, unless the input contains transaction control or a session-side-effect / transaction-incompatible statement such as `PRAGMA journal_mode`, `PRAGMA foreign_keys`, or `PRAGMA synchronous`. SQLite safe mode also rejects operations such as `ATTACH` and `VACUUM` that require capabilities unavailable in safe mode.
 
 ## Features
 ![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)

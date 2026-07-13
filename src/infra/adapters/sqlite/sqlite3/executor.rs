@@ -1590,6 +1590,39 @@ mod tests {
                 }
 
                 #[tokio::test]
+                async fn persistent_pragma_writes_roll_back_when_a_later_statement_fails() {
+                    for (write, read) in [
+                        ("PRAGMA user_version = 42", "PRAGMA user_version"),
+                        (
+                            "PRAGMA \"main\".\"user_version\" = 42",
+                            "PRAGMA user_version",
+                        ),
+                        ("PRAGMA [main].[application_id](7)", "PRAGMA application_id"),
+                    ] {
+                        let (_dir, dsn) = test_support::make_sqlite_db("");
+                        let adapter = SqliteAdapter::new();
+
+                        let result = adapter
+                            .execute_adhoc(
+                                &dsn,
+                                &format!("{write}; SELECT * FROM missing_table"),
+                                AccessMode::ReadWrite,
+                            )
+                            .await;
+
+                        assert!(
+                            matches!(result, Err(DbOperationError::ObjectMissing(_))),
+                            "{write}"
+                        );
+                        let value = adapter
+                            .execute_adhoc(&dsn, read, AccessMode::ReadOnly)
+                            .await
+                            .unwrap();
+                        assert_eq!(value.rows(), vec![vec!["0".to_string()]], "{write}");
+                    }
+                }
+
+                #[tokio::test]
                 async fn vacuum_is_rejected_in_safe_mode() {
                     let (_dir, dsn) = test_support::make_sqlite_db("");
                     let adapter = SqliteAdapter::new();
