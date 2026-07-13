@@ -13,15 +13,7 @@ pub struct RowDetailState {
 
 impl RowDetailState {
     pub fn open(columns: &[String], cells: &[String]) -> Self {
-        let mut display_lines = Vec::new();
-        for (col, cell) in columns.iter().zip(cells.iter()) {
-            display_lines.push(col.clone());
-            for line in cell.lines() {
-                display_lines.push(format!("  {line}"));
-            }
-            display_lines.push(String::new());
-        }
-        let display_text = display_lines.join("\n") + "\n";
+        let display_text = Self::display_text(columns, cells);
 
         let mut obj = serde_json::Map::new();
         for (col, cell) in columns.iter().zip(cells.iter()) {
@@ -44,15 +36,33 @@ impl RowDetailState {
             .iter()
             .map(QueryValue::display_value)
             .collect::<Vec<_>>();
-        let mut state = Self::open(columns, &cells);
+        let display_text = Self::display_text(columns, &cells);
         let object = columns
             .iter()
             .zip(values)
             .map(|(column, value)| (column.clone(), sqlite_json_value(value)))
             .collect();
-        state.json_text = serde_json::to_string_pretty(&Value::Object(object))
+        let json_text = serde_json::to_string_pretty(&Value::Object(object))
             .unwrap_or_else(|_| "{}".to_string());
-        state
+        Self {
+            display_text,
+            json_text,
+            scroll_offset: 0,
+            horizontal_offset: 0,
+            active: true,
+        }
+    }
+
+    fn display_text(columns: &[String], cells: &[String]) -> String {
+        let mut display_lines = Vec::new();
+        for (column, cell) in columns.iter().zip(cells.iter()) {
+            display_lines.push(column.clone());
+            for line in cell.lines() {
+                display_lines.push(format!("  {line}"));
+            }
+            display_lines.push(String::new());
+        }
+        display_lines.join("\n") + "\n"
     }
 
     pub fn close(&mut self) {
@@ -270,6 +280,27 @@ mod tests {
         assert_eq!(
             state.json_for_yank(),
             "{\n  \"blob\": \"X'ABCD'\",\n  \"empty\": \"\",\n  \"number_text\": \"42\"\n}"
+        );
+    }
+
+    #[test]
+    fn sql_literals_preserve_json_values_and_invalid_literals_as_strings() {
+        let state = RowDetailState::open_with_values(
+            &[
+                "number".to_string(),
+                "boolean".to_string(),
+                "invalid".to_string(),
+            ],
+            &[
+                QueryValue::SqlLiteral("42".to_string()),
+                QueryValue::SqlLiteral("true".to_string()),
+                QueryValue::SqlLiteral("not json".to_string()),
+            ],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "{\n  \"boolean\": true,\n  \"invalid\": \"not json\",\n  \"number\": 42\n}"
         );
     }
 }

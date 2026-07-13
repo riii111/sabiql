@@ -728,10 +728,14 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
 }
 
 fn sqlite_empty_result_frame(statement: &str, marker: &str) -> String {
-    let sentinel = format!("{marker}_empty");
+    let sentinel = sqlite_empty_result_sentinel(marker);
     format!(
         "SELECT _s.* FROM (SELECT 1) AS _p LEFT JOIN (SELECT _q.*, 1 AS \"{sentinel}\" FROM ({statement}) AS _q) AS _s ON true"
     )
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_empty_result_sentinel(marker: &str) -> String {
+    format!("{marker}_empty")
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(

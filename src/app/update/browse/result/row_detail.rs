@@ -155,7 +155,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use crate::domain::{QueryResult, QuerySource};
+    use crate::domain::{QueryResult, QuerySource, QueryValue};
 
     fn state_with_result() -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -203,6 +203,30 @@ mod tests {
                 .json_for_yank()
                 .contains("\"name\": \"alice\"")
         );
+    }
+
+    #[test]
+    fn open_builds_row_detail_from_typed_values() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                "SELECT payload".to_string(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::Blob(vec![0xAB, 0xCD])]],
+                1,
+                QuerySource::Preview,
+            )));
+        state.result_interaction.activate_cell(0, 0);
+
+        reduce_row_detail(
+            &mut state,
+            &Action::OpenModal(ModalKind::RowDetail),
+            Instant::now(),
+        );
+
+        assert!(state.row_detail.content().contains("BLOB (2 bytes) AB CD"));
+        assert!(state.row_detail.json_for_yank().contains("X'ABCD'"));
     }
 
     #[test]

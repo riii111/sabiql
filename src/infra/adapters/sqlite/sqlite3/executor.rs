@@ -25,9 +25,9 @@ use super::parser::{
     SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
     command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
     parse_affected_rows, parse_count_result, quoted_to_query_result,
-    sqlite_adhoc_execution_query_for_plan, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
-    sqlite_statement_plan, sqlite_statement_tags, statement_counts_as_select_tag,
-    strip_sqlite_probes,
+    sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel,
+    sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_plan,
+    sqlite_statement_tags, statement_counts_as_select_tag, strip_sqlite_probes,
 };
 
 pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -618,10 +618,11 @@ impl QueryExecutor for SqliteAdapter {
         }
 
         let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        let empty_sentinel = sqlite_empty_result_sentinel(&marker);
         if result
             .columns
             .last()
-            .is_some_and(|column| column.ends_with("_empty"))
+            .is_some_and(|column| column == &empty_sentinel)
         {
             result = result.without_empty_result_sentinel();
         }
@@ -2162,6 +2163,27 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["id", "name"]);
                 assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
+                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            }
+
+            #[tokio::test]
+            async fn dml_returning_preserves_empty_suffix_column() {
+                let (_dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);",
+                );
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "INSERT INTO users(name) VALUES ('a') RETURNING id AS value_empty",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.columns, vec!["value_empty"]);
+                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
 
