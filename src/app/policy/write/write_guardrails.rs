@@ -38,12 +38,10 @@ impl StableRowIdentity {
 /// resolves primary-key identity; it does not enforce whether
 /// the table itself is writable.
 pub fn stable_row_identity_for_table(table: &Table) -> Option<StableRowIdentity> {
-    table
-        .primary_key
-        .as_ref()
-        .filter(|columns| !columns.is_empty())
-        .cloned()
-        .map(StableRowIdentity::PrimaryKey)
+    if !table.has_primary_key() {
+        return None;
+    }
+    table.primary_key.clone().map(StableRowIdentity::PrimaryKey)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,11 +58,7 @@ pub fn preview_writeability(table: &Table) -> PreviewWriteability {
     if table.kind_info.kind == TableKind::Virtual {
         return PreviewWriteability::ReadOnly("virtual table");
     }
-    let has_primary_key = table
-        .primary_key
-        .as_ref()
-        .is_some_and(|columns| !columns.is_empty());
-    if !has_primary_key {
+    if !table.has_primary_key() {
         return PreviewWriteability::MissingStableRowIdentity;
     }
     PreviewWriteability::Writable

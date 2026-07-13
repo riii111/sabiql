@@ -494,6 +494,10 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Editing requires a PRIMARY KEY.")
+            );
         }
 
         #[test]

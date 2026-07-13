@@ -46,6 +46,12 @@ impl Table {
     pub fn source_ddl(&self) -> Option<&str> {
         self.source_ddl.as_deref()
     }
+
+    pub fn has_primary_key(&self) -> bool {
+        self.primary_key
+            .as_ref()
+            .is_some_and(|columns| !columns.is_empty())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +167,26 @@ mod tests {
             let table = make_table("public", "users");
 
             assert_eq!(table.display_name(false), "public.users");
+        }
+    }
+
+    mod primary_key {
+        use super::*;
+
+        #[test]
+        fn is_present_when_columns_are_defined() {
+            let mut table = make_table("public", "users");
+            table.primary_key = Some(vec!["id".to_string()]);
+
+            assert!(table.has_primary_key());
+        }
+
+        #[test]
+        fn is_absent_when_columns_are_empty() {
+            let mut table = make_table("public", "users");
+            table.primary_key = Some(Vec::new());
+
+            assert!(!table.has_primary_key());
         }
     }
 
