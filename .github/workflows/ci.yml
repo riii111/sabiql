@@ -19,6 +19,11 @@ jobs:
     outputs:
       sqlite_safe_mode: ${{ steps.changes.outputs.sqlite_safe_mode }}
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Test SQLite Safe Mode change detection
+        run: bash scripts/test_sqlite_safe_mode_changes.sh
       - id: changes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -29,28 +34,8 @@ jobs:
             exit 0
           fi
 
-          changed_files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          sqlite_safe_mode=false
-          while IFS= read -r changed_file; do
-            case "$changed_file" in
-              # Build configuration and the Safe Mode workflow itself.
-              .github/workflows/ci.yml|Cargo.lock|Cargo.toml|rust-toolchain.toml)
-                sqlite_safe_mode=true
-                ;;
-              # SQLite execution, connection boundaries, and their test support.
-              src/app/Cargo.toml|src/app/model/connection/error.rs|src/app/model/sqlite/*|src/app/update/connection/*|src/app/cmd/sqlite_*|src/app/policy/sql/sqlite_*|src/app/policy/sqlite_path.rs|src/app/ports/outbound/*|src/domain/Cargo.toml|src/domain/connection/*|src/infra/Cargo.toml|src/infra/adapters/mod.rs|src/infra/adapters/registry.rs|src/infra/adapters/sqlite/*|src/infra/adapters/test_support.rs|src/ui/features/connections/error.rs)
-                sqlite_safe_mode=true
-                ;;
-            esac
-
-            if [ "$sqlite_safe_mode" = true ]; then
-              break
-            fi
-          done <<EOF
-          $changed_files
-          EOF
-
-          echo "sqlite_safe_mode=$sqlite_safe_mode" >> "$GITHUB_OUTPUT"
+          mapfile -t changed_files < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          bash scripts/sqlite_safe_mode_changes.sh "${changed_files[@]}" >> "$GITHUB_OUTPUT"
 
   fmt:
     name: Format
@@ -119,28 +104,12 @@ jobs:
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
 
   sqlite-safe-mode:
-    name: SQLite Safe Mode (${{ matrix.sqlite }})
+    name: SQLite Safe Mode
     needs: sqlite-safe-mode-changes
     if: needs.sqlite-safe-mode-changes.outputs.sqlite_safe_mode == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - sqlite: minimum
-            archive: sqlite-autoconf-3410100.tar.gz
-            directory: sqlite-autoconf-3410100
-            sha256: 4dadfbeab9f8e16c695d4fbbc51c16b2f77fb97ff4c1c3d139919dfc038c9e33
-            below_minimum: false
-          - sqlite: below-minimum
-            archive: sqlite-autoconf-3410000.tar.gz
-            directory: sqlite-autoconf-3410000
-            sha256: 49f77ac53fd9aa5d7395f2499cb816410e5621984a121b858ccca05310b05c70
-            below_minimum: true
-          - sqlite: system
-            below_minimum: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -150,33 +119,42 @@ jobs:
       - uses: taiki-e/install-action@c93ccc03e00cd0e08e494f5fd058a6c55a6a1907 # v2
         with:
           tool: nextest
-      - name: Install SQLite
-        if: matrix.sqlite != 'system'
+      - name: Test SQLite 3.41.1
         run: |
           curl --fail --location --retry 3 \
-            https://www.sqlite.org/2023/${{ matrix.archive }} \
-            --output "${{ matrix.archive }}"
-          echo "${{ matrix.sha256 }}  ${{ matrix.archive }}" | sha256sum --check --status
-          tar -xzf "${{ matrix.archive }}"
-          cd "${{ matrix.directory }}"
-          ./configure --prefix="$HOME/.local"
+            https://www.sqlite.org/2023/sqlite-autoconf-3410100.tar.gz \
+            --output sqlite-autoconf-3410100.tar.gz
+          echo "4dadfbeab9f8e16c695d4fbbc51c16b2f77fb97ff4c1c3d139919dfc038c9e33  sqlite-autoconf-3410100.tar.gz" | sha256sum --check --status
+          tar -xzf sqlite-autoconf-3410100.tar.gz
+          cd sqlite-autoconf-3410100
+          ./configure --prefix="$HOME/.local/sqlite-minimum"
           make -j2
           make install
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Show SQLite version
-        run: sqlite3 --version
-      - name: Run SQLite adapter tests
-        if: matrix.below_minimum == false
-        run: cargo nextest run -p sabiql-infra
-      - name: Reject SQLite below the safe mode minimum
-        if: matrix.below_minimum
+          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" sqlite3 --version
+          PATH="$HOME/.local/sqlite-minimum/bin:$PATH" cargo nextest run -p sabiql-infra
+      - name: Reject SQLite 3.41.0
         run: |
+          curl --fail --location --retry 3 \
+            https://www.sqlite.org/2023/sqlite-autoconf-3410000.tar.gz \
+            --output sqlite-autoconf-3410000.tar.gz
+          echo "49f77ac53fd9aa5d7395f2499cb816410e5621984a121b858ccca05310b05c70  sqlite-autoconf-3410000.tar.gz" | sha256sum --check --status
+          tar -xzf sqlite-autoconf-3410000.tar.gz
+          cd sqlite-autoconf-3410000
+          ./configure --prefix="$HOME/.local/sqlite-below-minimum"
+          make -j2
+          make install
+          export PATH="$HOME/.local/sqlite-below-minimum/bin:$PATH"
+          sqlite3 --version
           SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo test -p sabiql-infra \
             adapters::sqlite::sqlite3::metadata::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
             -- --exact
           cargo test -p sabiql-app \
             model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \
             -- --exact
+      - name: Test system SQLite
+        run: |
+          sqlite3 --version
+          cargo nextest run -p sabiql-infra
 
   build:
     name: Build
