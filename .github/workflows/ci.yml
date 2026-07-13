@@ -30,11 +30,27 @@ jobs:
           fi
 
           changed_files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          if printf '%s\n' "$changed_files" | grep -Eq '^(\.github/workflows/ci\.yml|Cargo\.lock|Cargo\.toml|rust-toolchain\.toml|src/(app/(Cargo\.toml|model/connection/error\.rs|ports/outbound/.*)|domain/(Cargo\.toml|connection/.*)|infra/(Cargo\.toml|adapters/(mod\.rs|registry\.rs|sqlite/.*|test_support\.rs))))$'; then
-            echo "sqlite_safe_mode=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "sqlite_safe_mode=false" >> "$GITHUB_OUTPUT"
-          fi
+          sqlite_safe_mode=false
+          while IFS= read -r changed_file; do
+            case "$changed_file" in
+              # Build configuration and the Safe Mode workflow itself.
+              .github/workflows/ci.yml|Cargo.lock|Cargo.toml|rust-toolchain.toml)
+                sqlite_safe_mode=true
+                ;;
+              # SQLite execution, connection boundaries, and their test support.
+              src/app/Cargo.toml|src/app/model/connection/error.rs|src/app/model/sqlite/*|src/app/update/connection/*|src/app/cmd/sqlite_*|src/app/policy/sql/sqlite_*|src/app/policy/sqlite_path.rs|src/app/ports/outbound/*|src/domain/Cargo.toml|src/domain/connection/*|src/infra/Cargo.toml|src/infra/adapters/mod.rs|src/infra/adapters/registry.rs|src/infra/adapters/sqlite/*|src/infra/adapters/test_support.rs|src/ui/features/connections/error.rs)
+                sqlite_safe_mode=true
+                ;;
+            esac
+
+            if [ "$sqlite_safe_mode" = true ]; then
+              break
+            fi
+          done <<EOF
+          $changed_files
+          EOF
+
+          echo "sqlite_safe_mode=$sqlite_safe_mode" >> "$GITHUB_OUTPUT"
 
   fmt:
     name: Format
