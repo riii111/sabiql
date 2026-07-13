@@ -675,6 +675,7 @@ impl QueryExecutor for SqliteAdapter {
 mod tests {
     use std::{ffi::OsString, path::PathBuf};
 
+    use crate::adapters::csv_export::export_to_path;
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
@@ -2536,21 +2537,18 @@ world'), (2, 'done');
             let final_path = dir.path().join("export.csv");
             let adapter = SqliteAdapter::new();
 
-            let result = crate::adapters::csv_export::export_to_path(
-                final_path.clone(),
-                |temporary_path| async move {
-                    adapter
-                        .cli
-                        .export_csv_with_command(
-                            "sabiql-missing-sqlite3",
-                            SqliteAdapter::path_from_dsn(&dsn)?,
-                            "SELECT id FROM users",
-                            &temporary_path,
-                            true,
-                        )
-                        .await
-                },
-            )
+            let result = export_to_path(final_path.clone(), |temporary_path| async move {
+                adapter
+                    .cli
+                    .export_csv_with_command(
+                        "sabiql-missing-sqlite3",
+                        SqliteAdapter::path_from_dsn(&dsn)?,
+                        "SELECT id FROM users",
+                        &temporary_path,
+                        true,
+                    )
+                    .await
+            })
             .await;
 
             assert!(matches!(
