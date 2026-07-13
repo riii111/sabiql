@@ -766,7 +766,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_stale_duplicate_row_cannot_build_delete_preview_without_primary_key() {
+        fn sqlite_table_without_primary_key_cannot_build_delete_preview() {
             let mut state = editable_state(DatabaseType::SQLite);
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.primary_key = None;

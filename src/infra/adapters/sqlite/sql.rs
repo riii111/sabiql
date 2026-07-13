@@ -611,7 +611,7 @@ mod tests {
         }
 
         #[test]
-        fn primary_keyless_table_does_not_select_or_order_by_rowid() {
+        fn primary_keyless_table_orders_by_rowid_without_selecting_it() {
             assert_eq!(
                 build_preview_query("logs", &["message".to_string()], &[], Some("rowid"), 10, 0),
                 concat!(

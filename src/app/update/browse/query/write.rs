@@ -473,7 +473,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_stale_duplicate_row_cannot_open_update_preview_without_primary_key() {
+        fn sqlite_table_without_primary_key_cannot_open_update_preview() {
             let mut state = editable_state();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
