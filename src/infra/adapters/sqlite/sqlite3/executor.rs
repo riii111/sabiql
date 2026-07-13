@@ -212,8 +212,20 @@ impl SqliteCli {
         output_path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
+        self.export_csv_with_command("sqlite3", path, sql, output_path, read_only)
+            .await
+    }
+
+    async fn export_csv_with_command(
+        &self,
+        command: &str,
+        path: &str,
+        sql: &str,
+        output_path: &std::path::Path,
+        read_only: bool,
+    ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
-        let mut cmd = Command::new("sqlite3");
+        let mut cmd = Command::new(command);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
@@ -2466,6 +2478,44 @@ world'), (2, 'done');
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
             assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_spawn_failure_leaves_no_output_files() {
+            let (dir, dsn) =
+                test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+            let final_path = dir.path().join("export.csv");
+            let adapter = SqliteAdapter::new();
+
+            let result = crate::adapters::csv_export::export_to_path(
+                final_path.clone(),
+                |temporary_path| async move {
+                    adapter
+                        .cli
+                        .export_csv_with_command(
+                            "sabiql-missing-sqlite3",
+                            SqliteAdapter::path_from_dsn(&dsn)?,
+                            "SELECT id FROM users",
+                            &temporary_path,
+                            true,
+                        )
+                        .await
+                },
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::CommandNotFound { .. })
+            ));
+            assert!(!final_path.exists());
+            assert!(!dir.path().read_dir().unwrap().any(|entry| {
+                entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .contains(".export.csv")
+            }));
         }
 
         #[tokio::test]

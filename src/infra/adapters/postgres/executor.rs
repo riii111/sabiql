@@ -59,9 +59,7 @@ impl QueryExecutor for PostgresAdapter {
         file_name: &str,
     ) -> Result<std::path::PathBuf, DbOperationError> {
         export_to_downloads(file_name, |path| async move {
-            self.export_csv_to_file(dsn, query, &path, true)
-                .await
-                .map(|_| ())
+            self.export_csv_to_file(dsn, query, &path, true).await
         })
         .await
     }

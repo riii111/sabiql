@@ -81,6 +81,32 @@ impl Drop for TemporaryExportFile {
     }
 }
 
+struct PublishedExportFile {
+    path: PathBuf,
+    cleanup: bool,
+}
+
+impl PublishedExportFile {
+    fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            cleanup: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.cleanup = false;
+    }
+}
+
+impl Drop for PublishedExportFile {
+    fn drop(&mut self) {
+        if self.cleanup {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 pub async fn export_to_downloads<F, Fut>(
     file_name: &str,
     write: F,
@@ -100,6 +126,19 @@ where
     F: FnOnce(PathBuf) -> Fut,
     Fut: Future<Output = Result<(), DbOperationError>>,
 {
+    export_to_path_with_cleanup(final_path, write, std::fs::remove_file).await
+}
+
+async fn export_to_path_with_cleanup<F, Fut, C>(
+    final_path: PathBuf,
+    write: F,
+    cleanup: C,
+) -> Result<PathBuf, DbOperationError>
+where
+    F: FnOnce(PathBuf) -> Fut,
+    Fut: Future<Output = Result<(), DbOperationError>>,
+    C: FnOnce(&Path) -> std::io::Result<()>,
+{
     let temporary_path = temporary_export_path(&final_path);
     let mut temporary_file = TemporaryExportFile::new(temporary_path.clone());
     write(temporary_path.clone()).await?;
@@ -107,10 +146,12 @@ where
     tokio::fs::hard_link(&temporary_path, &final_path)
         .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    tokio::fs::remove_file(&temporary_path)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    temporary_file.disarm();
+    let mut published_file = PublishedExportFile::new(final_path.clone());
+
+    if cleanup(&temporary_path).is_ok() {
+        temporary_file.disarm();
+    }
+    published_file.disarm();
     Ok(final_path)
 }
 
@@ -209,6 +250,60 @@ mod tests {
         .unwrap_err();
         assert!(matches!(rename_error, DbOperationError::QueryFailed(_)));
         assert!(!rename_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn temporary_cleanup_failure_keeps_published_file_successful() {
+        let dir = tempdir().unwrap();
+        let final_path = dir.path().join("export.csv");
+
+        let exported_path = export_to_path_with_cleanup(
+            final_path.clone(),
+            |temporary_path| async move {
+                tokio::fs::write(temporary_path, b"complete,csv\n")
+                    .await
+                    .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+            },
+            |_| Err(std::io::Error::other("cleanup failed")),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(exported_path, final_path);
+        assert_eq!(
+            tokio::fs::read_to_string(final_path).await.unwrap(),
+            "complete,csv\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancellation_after_publication_keeps_successful_file() {
+        let dir = tempdir().unwrap();
+        let final_path = dir.path().join("export.csv");
+        let (published_tx, published_rx) = oneshot::channel();
+
+        let task = tokio::spawn(export_to_path_with_cleanup(
+            final_path.clone(),
+            |temporary_path| async move {
+                tokio::fs::write(temporary_path, b"complete,csv\n")
+                    .await
+                    .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+            },
+            move |temporary_path| {
+                published_tx.send(()).ok();
+                std::fs::remove_file(temporary_path)
+            },
+        ));
+
+        published_rx.await.unwrap();
+        task.abort();
+        let result = task.await.unwrap().unwrap();
+
+        assert_eq!(result, final_path);
+        assert_eq!(
+            tokio::fs::read_to_string(final_path).await.unwrap(),
+            "complete,csv\n"
+        );
     }
 
     #[tokio::test]
