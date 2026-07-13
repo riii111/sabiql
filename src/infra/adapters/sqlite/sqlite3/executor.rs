@@ -38,6 +38,8 @@ pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
     #[cfg(test)]
     environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+    #[cfg(test)]
+    process_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 struct SqliteOutput {
@@ -80,7 +82,15 @@ impl SqliteCli {
             timeout_secs: 30,
             #[cfg(test)]
             environment: Vec::new(),
+            #[cfg(test)]
+            process_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::adapters::sqlite) fn process_count(&self) -> usize {
+        self.process_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -359,6 +369,8 @@ impl SqliteCli {
     fn command_with_program(&self, program: &str) -> Command {
         #[cfg(test)]
         let command = {
+            self.process_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let mut cmd = Command::new(program);
             for (key, value) in &self.environment {
                 cmd.env(key, value);
@@ -701,6 +713,25 @@ mod tests {
         use crate::adapters::test_support;
 
         use super::*;
+
+        #[tokio::test]
+        async fn metadata_and_rows_use_at_most_two_sqlite_processes() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE, org_id INTEGER);
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 7);
+                ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            adapter
+                .execute_preview(&dsn, "main", "users", 10, 0)
+                .await
+                .unwrap();
+
+            assert_eq!(adapter.cli.process_count(), 2);
+        }
 
         #[tokio::test]
         async fn returns_columns_rows_and_respects_pagination() {

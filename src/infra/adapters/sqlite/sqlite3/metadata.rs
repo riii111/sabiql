@@ -996,6 +996,58 @@ mod tests {
         use super::*;
 
         #[tokio::test]
+        async fn inspector_metadata_uses_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY, name TEXT);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    email TEXT UNIQUE,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id DESC);
+                CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END;
+                ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.indexes.len(), 2);
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(detail.triggers.len(), 1);
+            assert_eq!(adapter.cli.process_count(), 1);
+        }
+
+        #[tokio::test]
+        async fn completion_metadata_uses_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    email TEXT UNIQUE,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(detail.columns[1].is_unique());
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(adapter.cli.process_count(), 1);
+        }
+
+        #[tokio::test]
         async fn non_main_schema_returns_object_missing() {
             let (_dir, dsn) =
                 test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
@@ -1600,6 +1652,28 @@ mod tests {
         use crate::adapters::test_support;
 
         use super::*;
+
+        #[tokio::test]
+        async fn all_tables_use_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                CREATE TABLE events(id INTEGER PRIMARY KEY, user_id INTEGER);
+                CREATE INDEX idx_events_user_id ON events(user_id);
+                ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+
+            assert_eq!(signatures.len(), 3);
+            assert_eq!(adapter.cli.process_count(), 1);
+        }
 
         #[tokio::test]
         async fn change_with_table_shape() {
