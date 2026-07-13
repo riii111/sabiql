@@ -305,6 +305,17 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
     } else {
         "json('[]')".to_string()
     };
+    let source_ddl = if include_full_detail {
+        format!(
+            r",
+            'source_ddl', (
+                SELECT sql FROM sqlite_master
+                WHERE type IN ('table', 'view') AND name = {table_expr} COLLATE NOCASE LIMIT 1
+            )"
+        )
+    } else {
+        String::new()
+    };
     format!(
         r#"json_object(
             'table', json((
@@ -330,11 +341,8 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
                     ORDER BY name
                 ) AS r
             ), json('[]'))),
-            'row_count', {row_count},
-            'source_ddl', (
-                SELECT sql FROM sqlite_master
-                WHERE type IN ('table', 'view') AND name = {table_expr} COLLATE NOCASE LIMIT 1
-            )
+            'row_count', {row_count}
+            {source_ddl}
         )"#,
         referenced_columns = metadata_columns_json("r.name"),
     )
@@ -811,6 +819,16 @@ mod tests {
             assert!(query.contains(r#"WHERE "key" != 0"#));
             assert!(!query.contains("'definition'"));
             assert!(!query.contains("'coll'"));
+            assert!(!query.contains("'source_ddl'"));
+        }
+
+        #[test]
+        fn row_count_fallback_keeps_full_detail_payload() {
+            let query = table_metadata_query("users", TableMetadataQueryMode::FullWithoutRowCount);
+
+            assert!(!query.contains("SELECT COUNT(*)"));
+            assert!(query.contains("'source_ddl'"));
+            assert!(query.contains("'definition'"));
         }
     }
 
