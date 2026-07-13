@@ -126,7 +126,7 @@ where
     F: FnOnce(PathBuf) -> Fut,
     Fut: Future<Output = Result<(), DbOperationError>>,
 {
-    export_to_path_with_cleanup(final_path, write, std::fs::remove_file).await
+    export_to_path_with_cleanup(final_path, write, |path| std::fs::remove_file(path)).await
 }
 
 async fn export_to_path_with_cleanup<F, Fut, C>(
