@@ -274,11 +274,11 @@ pub(super) fn preview_metadata_query(table: &str) -> String {
     )
 }
 
-fn table_metadata_json(table_expr: &str, row_count: &str, include_triggers: bool) -> String {
+fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: bool) -> String {
     let columns = metadata_columns_json(table_expr);
     let indexes = metadata_indexes_json(table_expr);
     let foreign_keys = metadata_foreign_keys_json(table_expr);
-    let triggers = if include_triggers {
+    let triggers = if include_full_detail {
         format!("json({})", metadata_triggers_json(table_expr))
     } else {
         "json('[]')".to_string()
@@ -318,9 +318,13 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_triggers: bool
     )
 }
 
-pub(super) fn table_metadata_query(table: &str, include_full_detail: bool) -> String {
+pub(super) fn table_metadata_query(
+    table: &str,
+    include_full_detail: bool,
+    include_row_count: bool,
+) -> String {
     let table_literal = quote_literal(table);
-    let row_count = if include_full_detail {
+    let row_count = if include_row_count {
         format!("(SELECT COUNT(*) FROM {})", quote_ident(table))
     } else {
         "NULL".to_string()
@@ -730,7 +734,7 @@ mod tests {
 
         #[test]
         fn table_detail_combines_metadata_sources() {
-            let query = table_metadata_query("users", true);
+            let query = table_metadata_query("users", true, true);
 
             assert!(query.contains("pragma_table_xinfo('users')"));
             assert!(query.contains("pragma_index_list('users')"));
@@ -741,7 +745,7 @@ mod tests {
 
         #[test]
         fn table_detail_escapes_identifier_and_literal_contexts() {
-            let query = table_metadata_query(r#"my'"table"#, true);
+            let query = table_metadata_query(r#"my'"table"#, true, true);
 
             assert!(query.contains(r#"pragma_table_xinfo('my''"table')"#));
             assert!(query.contains(r#"SELECT COUNT(*) FROM "my'""table""#));

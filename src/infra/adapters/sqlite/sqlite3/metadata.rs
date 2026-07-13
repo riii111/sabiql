@@ -407,12 +407,28 @@ impl SqliteAdapter {
         table: &str,
         mode: TableDetailMode,
     ) -> Result<Table, DbOperationError> {
-        let metadata: RawTableMetadata = self
+        let metadata = self
             .execute_json_payload(
                 path,
-                &sql::table_metadata_query(table, mode.include_row_count()),
+                &sql::table_metadata_query(
+                    table,
+                    mode.include_triggers(),
+                    mode.include_row_count(),
+                ),
             )
-            .await?;
+            .await;
+        let metadata: RawTableMetadata = match metadata {
+            Err(DbOperationError::QueryFailed(_) | DbOperationError::Timeout(_))
+                if mode.include_row_count() =>
+            {
+                self.execute_json_payload(
+                    path,
+                    &sql::table_metadata_query(table, mode.include_triggers(), false),
+                )
+                .await?
+            }
+            result => result?,
+        };
         Self::table_from_metadata(table, mode, metadata)
     }
 
@@ -1020,6 +1036,27 @@ mod tests {
             assert_eq!(detail.foreign_keys.len(), 1);
             assert_eq!(detail.triggers.len(), 1);
             assert_eq!(adapter.cli.process_count(), 1);
+        }
+
+        #[tokio::test]
+        async fn inspector_returns_metadata_when_view_row_count_fails() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE VIEW broken_json AS
+                SELECT * FROM json_each('invalid');
+                ",
+            );
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "broken_json")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.kind_info.kind, TableKind::View);
+            assert!(!detail.columns.is_empty());
+            assert!(detail.row_count_estimate.is_none());
+            assert_eq!(adapter.cli.process_count(), 2);
         }
 
         #[tokio::test]
