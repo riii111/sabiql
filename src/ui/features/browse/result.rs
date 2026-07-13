@@ -291,8 +291,6 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let display = result.display_value_ref_at(abs_row_idx, orig_idx);
-                        let val = display.as_deref().unwrap_or("");
                         let is_editing_cell = editing_cell
                             .as_ref()
                             .is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
@@ -321,7 +319,9 @@ impl ResultPane {
                                 );
                             }
                         } else {
-                            let display = truncate_cell(val, col_width as usize);
+                            let display = result
+                                .display_value_at_width(abs_row_idx, orig_idx, col_width as usize)
+                                .unwrap_or_default();
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {

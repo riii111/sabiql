@@ -39,6 +39,17 @@ impl QueryValue {
     }
 
     #[must_use]
+    pub fn display_value_at_width(&self, max_width: usize) -> String {
+        match self {
+            Self::Null => truncate_display_text("NULL", false, max_width),
+            Self::Text(value) | Self::SqlLiteral(value) => {
+                truncate_display_text(value, true, max_width)
+            }
+            Self::Blob(bytes) => blob_display_value_at_width(bytes, max_width),
+        }
+    }
+
+    #[must_use]
     pub fn display_width(&self) -> usize {
         match self {
             Self::Null => UnicodeWidthStr::width("NULL"),
@@ -88,33 +99,93 @@ fn escape_display_text(value: &str) -> String {
 }
 
 fn blob_display_value(bytes: &[u8]) -> String {
-    let preview = bytes
-        .iter()
-        .take(BLOB_PREVIEW_BYTES)
-        .map(|byte| format!("{byte:02X}"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    if preview.is_empty() {
-        "BLOB (0 bytes)".to_string()
-    } else if bytes.len() > BLOB_PREVIEW_BYTES {
-        format!("BLOB ({} bytes) {preview} ...", bytes.len())
-    } else {
-        format!("BLOB ({} bytes) {preview}", bytes.len())
+    use std::fmt::Write as _;
+
+    let preview_bytes = bytes.len().min(BLOB_PREVIEW_BYTES);
+    let mut display = String::with_capacity(32 + preview_bytes * 3);
+    let _ = write!(display, "BLOB ({} bytes)", bytes.len());
+    if preview_bytes > 0 {
+        display.push(' ');
+        for (index, byte) in bytes.iter().take(preview_bytes).enumerate() {
+            if index > 0 {
+                display.push(' ');
+            }
+            let _ = write!(display, "{byte:02X}");
+        }
+        if bytes.len() > BLOB_PREVIEW_BYTES {
+            display.push_str(" ...");
+        }
     }
+    display
 }
 
 fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
-    value
-        .chars()
-        .take_while(|&ch| ch != '\n')
-        .map(|ch| {
-            if escape_nul && ch == '\0' {
-                2
-            } else {
-                UnicodeWidthChar::width(ch).unwrap_or(0)
+    let first_line = value.split('\n').next().unwrap_or(value);
+    if escape_nul {
+        first_line
+            .split('\0')
+            .map(UnicodeWidthStr::width)
+            .sum::<usize>()
+            + first_line.matches('\0').count() * 2
+    } else {
+        UnicodeWidthStr::width(first_line)
+    }
+}
+
+fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
+    let first_line = value.split('\n').next().unwrap_or(value);
+    let display_width = display_width_of_first_line(first_line, escape_nul);
+    if display_width <= max_width {
+        return if escape_nul && first_line.contains('\0') {
+            escape_display_text(first_line)
+        } else {
+            first_line.to_string()
+        };
+    }
+
+    if max_width < 3 {
+        return ".".repeat(max_width);
+    }
+
+    let mut truncated = String::new();
+    let mut used_width = 0;
+    let budget = max_width - 3;
+    for ch in first_line.chars() {
+        if escape_nul && ch == '\0' {
+            if used_width + 2 > budget {
+                break;
             }
-        })
-        .sum()
+            truncated.push_str("\\0");
+            used_width += 2;
+        } else {
+            let width = UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used_width + width > budget {
+                break;
+            }
+            truncated.push(ch);
+            used_width += width;
+        }
+    }
+    truncated.push_str("...");
+    truncated
+}
+
+fn blob_display_value_at_width(bytes: &[u8], max_width: usize) -> String {
+    let mut display = blob_display_value(bytes);
+    if display_width(&display) <= max_width {
+        return display;
+    }
+    if max_width < 3 {
+        return ".".repeat(max_width);
+    }
+
+    display.truncate(max_width - 3);
+    display.push_str("...");
+    display
+}
+
+fn display_width(value: &str) -> usize {
+    UnicodeWidthStr::width(value)
 }
 
 fn blob_display_width(bytes: &[u8]) -> usize {
@@ -341,6 +412,24 @@ impl QueryResult {
     }
 
     #[must_use]
+    pub fn display_value_at_width(
+        &self,
+        row: usize,
+        col: usize,
+        max_width: usize,
+    ) -> Option<String> {
+        if self.typed_values {
+            self.value_at(row, col)
+                .map(|value| value.display_value_at_width(max_width))
+        } else {
+            self.rows
+                .get(row)?
+                .get(col)
+                .map(|value| truncate_display_text(value, false, max_width))
+        }
+    }
+
+    #[must_use]
     pub fn display_value_at(&self, row: usize, col: usize) -> Option<String> {
         self.display_value_ref_at(row, col).map(Cow::into_owned)
     }
@@ -460,6 +549,7 @@ mod tests {
             );
 
             assert_eq!(result.data_row_count(), 1);
+            assert!(result.rows.is_empty());
             assert_eq!(result.column_count(), 1);
             assert_eq!(
                 result.display_value_ref_at(0, 0).as_deref(),
@@ -509,6 +599,13 @@ mod tests {
         }
 
         #[test]
+        fn width_limited_display_avoids_materializing_the_full_nul_text() {
+            let value = QueryValue::text("a\0bcdef");
+
+            assert_eq!(value.display_value_at_width(6), "a\\0...");
+        }
+
+        #[test]
         fn display_width_handles_large_nul_text_and_blob_without_display_materialization() {
             const SIZE: usize = 1024 * 1024;
             let text = format!("{}\0tail", "a".repeat(SIZE));
@@ -527,5 +624,10 @@ mod tests {
                 Some("BLOB (1048576 bytes) AB AB AB AB AB AB AB AB ...".len())
             );
         }
+    }
+
+    #[test]
+    fn display_width_counts_zwj_emoji_as_one_sequence() {
+        assert_eq!(QueryValue::text("👨‍👩‍👧‍👦").display_width(), 2);
     }
 }
