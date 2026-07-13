@@ -1,11 +1,15 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_statement;
 use crate::app::policy::sql::sqlite_transaction::{
-    SqliteStatementClassification, SqliteTransactionPolicy, sqlite_statement_classification,
+    SqliteTransactionPolicy, sqlite_statement_classification,
     sqlite_transaction_policy_for_classifications,
 };
 use crate::app::ports::outbound::DbOperationError;
+
+#[cfg(test)]
+use crate::app::policy::sql::sqlite_transaction::SqliteStatementClassification;
 
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
@@ -407,17 +411,6 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
         && statements
             .iter()
             .all(|statement| is_sqlite_rerunnable_export_statement(statement)))
-}
-
-fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
-    if sqlite_statement_classification(statement) != SqliteStatementClassification::ReadOnly {
-        return false;
-    }
-    match first_keyword(statement).to_ascii_uppercase().as_str() {
-        "SELECT" | "EXPLAIN" | "VALUES" | "PRAGMA" => true,
-        "WITH" => !is_dml_statement(statement),
-        _ => false,
-    }
 }
 
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error() -> DbOperationError

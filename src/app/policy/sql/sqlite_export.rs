@@ -48,7 +48,7 @@ pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
     }
 }
 
-fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
+pub fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
     if sqlite_statement_classification(statement) != SqliteStatementClassification::ReadOnly {
         return false;
     }
