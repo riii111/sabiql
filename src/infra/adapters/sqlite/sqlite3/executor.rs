@@ -1,8 +1,6 @@
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
-#[cfg(test)]
-use std::{ffi::OsString, path::PathBuf};
 
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -39,7 +37,7 @@ const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1)
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
     #[cfg(test)]
-    environment: Vec<(OsString, OsString)>,
+    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 }
 
 struct SqliteOutput {
@@ -83,12 +81,6 @@ impl SqliteCli {
             #[cfg(test)]
             environment: Vec::new(),
         }
-    }
-
-    #[cfg(test)]
-    fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
-        self.environment = environment;
-        self
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -683,6 +675,8 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use std::{ffi::OsString, path::PathBuf};
+
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QuerySource, QueryValue,
@@ -690,6 +684,13 @@ mod tests {
     };
 
     use super::*;
+
+    impl SqliteCli {
+        fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
+            self.environment = environment;
+            self
+        }
+    }
 
     mod preview {
         use crate::adapters::test_support;
