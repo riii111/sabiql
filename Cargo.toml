@@ -58,7 +58,7 @@ license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
-keywords = ["postgresql", "sqlite", "tui", "database", "cli", "sql"]
+keywords = ["postgresql", "sqlite", "tui", "database", "sql"]
 categories = ["command-line-utilities", "database"]
 
 [dependencies]
