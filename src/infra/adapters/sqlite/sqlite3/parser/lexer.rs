@@ -2,7 +2,9 @@ use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_statement;
-use crate::app::policy::sql::sqlite_lexer::{SqliteStatementSplitError, split_sqlite_statements};
+use crate::app::policy::sql::sqlite_statement_splitter::{
+    SqliteStatementSplitError, split_sqlite_statements,
+};
 use crate::app::policy::sql::sqlite_transaction::{
     SqliteTransactionPolicy, sqlite_statement_classification,
     sqlite_transaction_policy_for_classifications,
@@ -849,6 +851,7 @@ END";
 
         #[rstest]
         #[case::multi_dml("INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)")]
+        #[case::trailing_comment_only("INSERT INTO users(id) VALUES (1); -- trailing comment")]
         #[case::read_only_pragma_with_writes(
             "PRAGMA journal_mode; INSERT INTO users(id) VALUES (1); INSERT INTO users(id) VALUES (2)"
         )]

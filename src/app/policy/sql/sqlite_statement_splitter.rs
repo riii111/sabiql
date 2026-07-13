@@ -10,12 +10,12 @@ pub enum SqliteStatementSplitError {
 }
 
 #[derive(Debug)]
-pub struct SqliteStatementSplit<'sql> {
+pub struct SqliteStatementSplitResult<'sql> {
     statements: Vec<&'sql str>,
     error: Option<SqliteStatementSplitError>,
 }
 
-impl<'sql> SqliteStatementSplit<'sql> {
+impl<'sql> SqliteStatementSplitResult<'sql> {
     pub fn statements(&self) -> &[&'sql str] {
         &self.statements
     }
@@ -29,7 +29,7 @@ impl<'sql> SqliteStatementSplit<'sql> {
     }
 }
 
-pub fn split_sqlite_statements(sql: &str) -> SqliteStatementSplit<'_> {
+pub fn split_sqlite_statements(sql: &str) -> SqliteStatementSplitResult<'_> {
     // Keep offsets from the original string so Unicode input remains sliceable.
     let chars: Vec<(usize, char)> = sql.char_indices().collect();
     let mut statements = Vec::new();
@@ -130,9 +130,10 @@ pub fn split_sqlite_statements(sql: &str) -> SqliteStatementSplit<'_> {
         }
     }
 
-    statements.retain(|statement| !is_comment_only(statement));
-
-    SqliteStatementSplit { statements, error }
+    // Keep comment-only fragments for the sqlite3 execution plan. It has
+    // historically counted them as statement boundaries when deciding on
+    // automatic transaction wrapping.
+    SqliteStatementSplitResult { statements, error }
 }
 
 fn push_statement<'sql>(sql: &'sql str, start: usize, end: usize, statements: &mut Vec<&'sql str>) {
@@ -251,28 +252,6 @@ fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
     false
 }
 
-fn is_comment_only(sql: &str) -> bool {
-    let chars: Vec<(usize, char)> = sql.char_indices().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        let (_, ch) = chars[i];
-        if ch.is_whitespace() {
-            i += 1;
-            continue;
-        }
-        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        return false;
-    }
-    true
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,12 +261,26 @@ mod tests {
     #[case::empty("", Vec::<&str>::new())]
     #[case::whitespace("   ", Vec::<&str>::new())]
     #[case::empty_statements("; ; SELECT 1;;", vec!["SELECT 1"])]
-    #[case::comment_only("-- comment\n/* another comment */", Vec::<&str>::new())]
+    #[case::comment_only(
+        "-- comment\n/* another comment */",
+        vec!["-- comment\n/* another comment */"]
+    )]
     fn handles_empty_input_and_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
         let result = split_sqlite_statements(sql);
 
         assert_eq!(result.statements(), expected);
         assert_eq!(result.error(), None);
+    }
+
+    #[test]
+    fn keeps_comment_only_fragment_after_statement() {
+        let result =
+            split_sqlite_statements("INSERT INTO users(id) VALUES (1); -- trailing comment");
+
+        assert_eq!(
+            result.statements(),
+            vec!["INSERT INTO users(id) VALUES (1)", "-- trailing comment"]
+        );
     }
 
     #[rstest]

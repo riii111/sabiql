@@ -1,6 +1,6 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
-use crate::policy::sql::sqlite_lexer::split_sqlite_statements;
+use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
 use crate::policy::sql::sqlite_transaction::{
     SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
     sqlite_statement_classification, sqlite_transaction_policy_for_classifications,
@@ -138,6 +138,7 @@ pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> 
         return split_sqlite_statements(sql)
             .statements()
             .iter()
+            .filter(|statement| !is_comment_only(statement))
             .map(|statement| (*statement).to_string())
             .collect();
     }
@@ -1354,6 +1355,21 @@ mod tests {
 
         mod sqlite_transaction_policy {
             use super::*;
+
+            #[test]
+            fn sqlite_policy_ignores_trailing_comment_only_fragment() {
+                let result = evaluate_multi_statement_for_database(
+                    DatabaseType::SQLite,
+                    "INSERT INTO users(id) VALUES (1); -- trailing comment",
+                );
+
+                match result {
+                    MultiStatementDecision::Allow { statements, .. } => {
+                        assert_eq!(statements, vec!["INSERT INTO users(id) VALUES (1)"]);
+                    }
+                    _ => panic!("expected Allow"),
+                }
+            }
 
             #[test]
             fn sqlite_incompatible_transaction_requires_non_atomic_acknowledgement() {
