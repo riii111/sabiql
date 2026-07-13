@@ -102,6 +102,8 @@ mod cli_sqlite_startup {
         let alias = dir.path().join("current.db");
         fs::write(&database_a, b"").unwrap();
         fs::write(&database_b, b"").unwrap();
+        let database_a = fs::canonicalize(database_a).unwrap();
+        let database_b = fs::canonicalize(database_b).unwrap();
 
         let adapter = SqliteAdapter::new();
         for (path, value) in [(&database_a, "A"), (&database_b, "B")] {
@@ -146,8 +148,7 @@ mod cli_sqlite_startup {
         let absolute = activate(&database_a);
         let relative = activate(&relative_database_a);
         let symlinked = activate(&alias);
-        let canonical_a = fs::canonicalize(&database_a).unwrap();
-        let canonical_a = canonical_a.to_str().unwrap();
+        let canonical_a = database_a.to_str().unwrap();
         let expected_dsn = format!("sqlite://{canonical_a}");
 
         assert_eq!(absolute.0, connection_id_for_path(canonical_a));
