@@ -25,9 +25,9 @@ use super::parser::{
     SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
     command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
     parse_affected_rows, parse_count_result, quoted_to_query_result,
-    sqlite_adhoc_execution_query_for_plan, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
-    sqlite_statement_plan, sqlite_statement_tags, statement_counts_as_select_tag,
-    strip_sqlite_probes,
+    sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel,
+    sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_plan,
+    sqlite_statement_tags, statement_counts_as_select_tag, strip_sqlite_probes,
 };
 
 pub(in crate::adapters::sqlite) const BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -562,9 +562,12 @@ impl QueryExecutor for SqliteAdapter {
         let result = self
             .execute_quoted_query(path, &query, QuerySource::Preview, true)
             .await?;
+        let result = result.with_columns_if_empty(columns);
         Ok(match rowid_alias {
-            Some(alias) => result.with_first_column_hidden(alias.to_string()),
-            None => result,
+            Some(alias) if !result.rows().is_empty() => {
+                result.with_first_column_hidden(alias.to_string())
+            }
+            _ => result,
         })
     }
 
@@ -615,6 +618,14 @@ impl QueryExecutor for SqliteAdapter {
         }
 
         let mut result = quoted_to_query_result(query, &stdout, QuerySource::Adhoc, elapsed)?;
+        let empty_sentinel = sqlite_empty_result_sentinel(&marker);
+        if result
+            .columns
+            .last()
+            .is_some_and(|column| column == &empty_sentinel)
+        {
+            result = result.without_empty_result_sentinel();
+        }
         if let Some(tag) = tag {
             result = result.with_command_tag(tag);
         } else if statements
@@ -1009,6 +1020,22 @@ mod tests {
                 result.value_at(0, 0),
                 Some(&QueryValue::Text("hello".to_string()))
             );
+        }
+
+        #[tokio::test]
+        async fn empty_rowid_table_preview_keeps_all_visible_columns() {
+            let (_dir, dsn) =
+                test_support::make_sqlite_db("CREATE TABLE users(name TEXT, email TEXT);");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .execute_preview(&dsn, "main", "users", 10, 0)
+                .await
+                .unwrap();
+
+            assert_eq!(result.columns, vec!["name", "email"]);
+            assert!(result.rows().is_empty());
+            assert_eq!(result.row_count(), 0);
         }
 
         #[tokio::test]
@@ -1408,7 +1435,7 @@ mod tests {
             }
 
             #[tokio::test]
-            async fn multi_select_empty_trailing_result_returns_empty_result() {
+            async fn multi_select_empty_trailing_result_preserves_projection_columns() {
                 let (_dir, dsn) = test_support::make_sqlite_db("");
                 let adapter = SqliteAdapter::new();
 
@@ -1421,7 +1448,26 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert!(result.columns.is_empty());
+                assert_eq!(result.columns, vec!["b"]);
+                assert!(result.rows().is_empty());
+                assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
+            }
+
+            #[tokio::test]
+            async fn empty_cte_select_preserves_projection_columns() {
+                let (_dir, dsn) = test_support::make_sqlite_db("");
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "WITH q(value) AS (VALUES (1)) SELECT value FROM q WHERE false",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.columns, vec!["value"]);
                 assert!(result.rows().is_empty());
                 assert_eq!(result.command_tag, Some(CommandTag::Select(0)));
             }
@@ -2117,6 +2163,27 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["id", "name"]);
                 assert_eq!(result.rows(), vec![vec!["1".to_string(), "a".to_string()]]);
+                assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
+            }
+
+            #[tokio::test]
+            async fn dml_returning_preserves_empty_suffix_column() {
+                let (_dir, dsn) = test_support::make_sqlite_db(
+                    "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);",
+                );
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "INSERT INTO users(name) VALUES ('a') RETURNING id AS value_empty",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .unwrap();
+
+                assert_eq!(result.columns, vec!["value_empty"]);
+                assert_eq!(result.rows(), vec![vec!["1".to_string()]]);
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
 

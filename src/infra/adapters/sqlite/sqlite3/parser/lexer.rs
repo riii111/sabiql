@@ -727,6 +727,17 @@ fn sqlite_result_probe(marker: &str, index: usize) -> String {
     format!("SELECT {index} AS \"{stmt_col}\", '{marker}' AS \"{marker_col}\"")
 }
 
+fn sqlite_empty_result_frame(statement: &str, marker: &str) -> String {
+    let sentinel = sqlite_empty_result_sentinel(marker);
+    format!(
+        "SELECT _s.* FROM (SELECT 1) AS _p LEFT JOIN (SELECT _q.*, 1 AS \"{sentinel}\" FROM ({statement}) AS _q) AS _s ON true"
+    )
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn sqlite_empty_result_sentinel(marker: &str) -> String {
+    format!("{marker}_empty")
+}
+
 pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
     marker: &str,
@@ -742,7 +753,14 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_pla
         parts.push("BEGIN".to_string());
     }
     for (index, statement) in statements.iter().enumerate() {
-        parts.push((*statement).to_string());
+        if first_keyword(statement).eq_ignore_ascii_case("SELECT")
+            || (first_keyword(statement).eq_ignore_ascii_case("WITH")
+                && !is_dml_statement(statement))
+        {
+            parts.push(sqlite_empty_result_frame(statement, marker));
+        } else {
+            parts.push((*statement).to_string());
+        }
         if plan.is_dml(index) {
             parts.push(sqlite_changes_probe(marker, index));
         }

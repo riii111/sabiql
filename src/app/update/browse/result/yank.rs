@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -22,12 +23,19 @@ pub fn reduce_yank(
                 state.result_interaction.selection().row(),
                 state.result_interaction.selection().cell(),
             ) {
-                let content = state
-                    .query
-                    .visible_result()
-                    .and_then(|r| r.rows().get(row_idx))
-                    .and_then(|row| row.get(col_idx))
-                    .cloned();
+                let content = state.query.visible_result().and_then(|result| {
+                    if result.has_typed_values() {
+                        result
+                            .value_at(row_idx, col_idx)
+                            .map(QueryValue::copy_value)
+                    } else {
+                        result
+                            .rows()
+                            .get(row_idx)
+                            .and_then(|row| row.get(col_idx))
+                            .cloned()
+                    }
+                });
                 if let Some(value) = content {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
@@ -71,7 +79,15 @@ pub fn reduce_yank(
                 let content = state
                     .query
                     .visible_result()
-                    .and_then(|r| r.rows().get(row_idx))
+                    .and_then(|result| {
+                        if result.has_typed_values() {
+                            result.values().get(row_idx).map(|row| {
+                                row.iter().map(QueryValue::copy_value).collect::<Vec<_>>()
+                            })
+                        } else {
+                            result.rows().get(row_idx).cloned()
+                        }
+                    })
                     .map(|row| {
                         row.iter()
                             .map(|v| {
@@ -133,7 +149,9 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, Table};
+    use crate::domain::{
+        Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
+    };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
 
@@ -224,6 +242,34 @@ mod tests {
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
             assert!(state.result_interaction.yank_flash().is_none());
+        }
+
+        #[test]
+        fn typed_blob_cell_emits_lossless_copy_effect() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["payload".to_string()],
+                    vec![vec![QueryValue::Blob(vec![0xAB, 0xCD])]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_yank(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::CopyToClipboard { content, .. } if content == "X'ABCD'"
+            ));
         }
 
         #[test]
@@ -325,6 +371,37 @@ mod tests {
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
             assert!(state.result_interaction.yank_flash().is_none());
+        }
+
+        #[test]
+        fn typed_blob_row_emits_lossless_tsv_copy_effect() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Blob(vec![0xAB, 0xCD]),
+                    ]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_yank(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::CopyToClipboard { content, .. } if content == "1\tX'ABCD'"
+            ));
         }
 
         #[test]

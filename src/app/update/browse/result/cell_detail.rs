@@ -153,7 +153,11 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     let row_idx = state.result_interaction.selection().row()?;
     let col_idx = state.result_interaction.selection().cell()?;
     let column_name = result.columns.get(col_idx)?.clone();
-    let cell_value = result.rows().get(row_idx)?.get(col_idx)?.clone();
+    let cell_value = if result.has_typed_values() {
+        result.value_at(row_idx, col_idx)?.copy_value()
+    } else {
+        result.rows().get(row_idx)?.get(col_idx)?.clone()
+    };
     let data_type = selected_column_data_type(state, col_idx).map(ToString::to_string);
     Some((row_idx, col_idx, column_name, cell_value, data_type))
 }

@@ -8,8 +8,8 @@ pub(super) use command_tag::{
 };
 pub(super) use lexer::{
     SqliteStatementPlan, append_changes_query_for_plan, is_sqlite_rerunnable_export_query,
-    sqlite_adhoc_execution_query_for_plan, sqlite_export_not_rerunnable_error, sqlite_probe_marker,
-    sqlite_statement_plan,
+    sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel,
+    sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_plan,
 };
 pub(super) use output::{
     last_sqlite_result_set, parse_affected_rows, parse_count_result, quoted_to_query_result,
