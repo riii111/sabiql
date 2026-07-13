@@ -1,8 +1,8 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::sqlite_transaction::{
-    SqliteStatementClassification, SqliteTransactionPolicy, sqlite_statement_classification,
-    sqlite_transaction_policy,
+    SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
+    sqlite_statement_classification, sqlite_transaction_policy_for_classifications,
 };
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
@@ -518,7 +518,7 @@ pub fn evaluate_multi_statement_for_database(
         .map(|statement| sqlite_statement_classification(statement))
         .collect();
     let transaction_policy = if database_type == DatabaseType::SQLite {
-        sqlite_transaction_policy(&statements)
+        sqlite_transaction_policy_for_classifications(statements.len(), &sqlite_classifications)
     } else {
         SqliteTransactionPolicy::NotNeeded
     };
@@ -784,67 +784,6 @@ fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
     Some(parts.join("."))
 }
 
-fn top_level_char_index(sql: &str, target: char) -> Option<usize> {
-    let chars: Vec<(usize, char)> = sql.char_indices().collect();
-    let mut i = 0;
-    let mut depth: i32 = 0;
-    let mut in_string = false;
-
-    while i < chars.len() {
-        let (byte_pos, ch) = chars[i];
-
-        if let Some(next_i) = skip_line_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_block_comment(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = advance_single_quote(&chars, i, ch, &mut in_string) {
-            i = next_i;
-            continue;
-        }
-        if in_string {
-            i += 1;
-            continue;
-        }
-        if let Some(next_i) = skip_double_quoted_identifier(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_sqlite_quoted_identifier(&chars, i, ch) {
-            i = next_i;
-            continue;
-        }
-        if let Some(next_i) = skip_dollar_quoted_string(sql, &chars, i, byte_pos, ch) {
-            i = next_i;
-            continue;
-        }
-
-        if depth == 0 && ch == target {
-            return Some(byte_pos);
-        }
-        if ch == '(' {
-            depth += 1;
-        } else if ch == ')' {
-            depth -= 1;
-        }
-        i += 1;
-    }
-
-    None
-}
-
-fn parenthesized_pragma_value(sql: &str) -> Option<String> {
-    let open = top_level_char_index(sql, '(')?;
-    let close = sql[open + 1..].find(')')? + open + 1;
-    sql[open + 1..close]
-        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
-        .find(|part| !part.is_empty())
-        .map(str::to_lowercase)
-}
-
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
     match sqlite_statement_classification(sql) {
         SqliteStatementClassification::ReadOnly => return Some(low_immediate()),
@@ -860,15 +799,9 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
         | SqliteStatementClassification::TransactionControl => {}
     }
 
-    let tokens = top_level_token_lowers(sql);
-    let name = tokens.get(1)?;
-    let pragma_name = name.rsplit('.').next().unwrap_or(name);
-
-    let parenthesized_value = parenthesized_pragma_value(sql);
-    let value = tokens
-        .get(2)
-        .map(String::as_str)
-        .or(parenthesized_value.as_deref());
+    let pragma = parse_sqlite_pragma(sql)?;
+    let pragma_name = pragma.name.as_str();
+    let value = pragma.value.as_deref();
     let dangerous = matches!(
         pragma_name,
         "writable_schema"
@@ -900,9 +833,11 @@ fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
 
 fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
     let effective = statement_after_leading_ctes(sql);
+    if parse_sqlite_pragma(effective).is_some() {
+        return sqlite_pragma_risk(effective);
+    }
     let tokens = top_level_token_lowers(effective);
     match tokens.first().map(String::as_str)? {
-        "pragma" => sqlite_pragma_risk(effective),
         "attach" | "detach" | "vacuum" | "reindex" | "analyze" => {
             Some(high_acknowledge_keyword(&tokens[0]))
         }
@@ -1302,6 +1237,8 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
             #[case::writable_schema_call("PRAGMA writable_schema(ON)")]
             #[case::foreign_keys_off("PRAGMA foreign_keys = OFF")]
             #[case::foreign_keys_call_off("PRAGMA foreign_keys(OFF)")]
+            #[case::quoted_schema_foreign_keys_off("PRAGMA \"main\".\"foreign_keys\" = OFF")]
+            #[case::bracket_schema_journal_mode("PRAGMA [main].[journal_mode](WAL)")]
             #[case::journal_mode("PRAGMA journal_mode = WAL")]
             #[case::journal_mode_call("PRAGMA journal_mode(WAL)")]
             #[case::locking_mode("PRAGMA locking_mode = EXCLUSIVE")]
@@ -1678,6 +1615,34 @@ CREATE TRIGGER normalize_events AFTER UPDATE ON events BEGIN
                         ));
                     }
                     _ => panic!("expected Allow"),
+                }
+            }
+
+            #[test]
+            fn sqlite_side_effect_without_transactional_write_requires_non_atomic_acknowledgement()
+            {
+                for sql in [
+                    "PRAGMA synchronous = NORMAL; SELECT 1",
+                    "PRAGMA cache_size = 2000; SELECT 1",
+                ] {
+                    let result = evaluate_multi_statement_for_database(DatabaseType::SQLite, sql);
+
+                    assert!(
+                        matches!(
+                            result,
+                            MultiStatementDecision::Allow {
+                                risk: SqlRiskDecision {
+                                    confirmation: ConfirmationType::Acknowledge {
+                                        reason: AcknowledgeReason::NonAtomicTransaction,
+                                        ..
+                                    },
+                                    ..
+                                },
+                                ..
+                            }
+                        ),
+                        "{sql}"
+                    );
                 }
             }
 

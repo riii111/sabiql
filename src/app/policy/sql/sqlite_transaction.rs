@@ -9,6 +9,13 @@ pub enum SqliteStatementClassification {
     TransactionControl,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SqlitePragma {
+    pub name: String,
+    pub has_value: bool,
+    pub value: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteTransactionPolicy {
     AutoWrap,
@@ -43,14 +50,7 @@ pub fn sqlite_transaction_policy_for_classifications(
     if statement_count != classifications.len() {
         return SqliteTransactionPolicy::ClassificationMismatch;
     }
-    if statement_count < 2
-        || !classifications.iter().any(|classification| {
-            matches!(
-                classification,
-                SqliteStatementClassification::TransactionalWrite
-            )
-        })
-    {
+    if statement_count < 2 {
         return SqliteTransactionPolicy::NotNeeded;
     }
     if classifications.iter().any(|classification| {
@@ -70,7 +70,16 @@ pub fn sqlite_transaction_policy_for_classifications(
     }) {
         return SqliteTransactionPolicy::IncompatibleStatement;
     }
-    SqliteTransactionPolicy::AutoWrap
+    if classifications.iter().any(|classification| {
+        matches!(
+            classification,
+            SqliteStatementClassification::TransactionalWrite
+        )
+    }) {
+        SqliteTransactionPolicy::AutoWrap
+    } else {
+        SqliteTransactionPolicy::NotNeeded
+    }
 }
 
 pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassification {
@@ -118,29 +127,29 @@ pub fn is_transaction_incompatible(statement: &str) -> bool {
     if first_keyword(statement).as_deref() == Some("VACUUM") {
         return true;
     }
-    let Some((name, tail)) = pragma_name_and_tail(statement) else {
+    let Some(pragma) = parse_sqlite_pragma(statement) else {
         return false;
     };
     matches!(
-        name.as_str(),
+        pragma.name.as_str(),
         "journal_mode" | "foreign_keys" | "synchronous"
-    ) && pragma_has_value(tail)
+    ) && pragma.has_value
 }
 
 fn is_transactional_pragma_write(statement: &str) -> bool {
-    let Some((name, tail)) = pragma_name_and_tail(statement) else {
+    let Some(pragma) = parse_sqlite_pragma(statement) else {
         return false;
     };
-    matches!(name.as_str(), "application_id" | "user_version") && pragma_has_value(tail)
+    matches!(pragma.name.as_str(), "application_id" | "user_version") && pragma.has_value
 }
 
 fn is_session_pragma_side_effect(statement: &str) -> bool {
-    let Some((name, tail)) = pragma_name_and_tail(statement) else {
+    let Some(pragma) = parse_sqlite_pragma(statement) else {
         return false;
     };
-    (pragma_has_value(tail) && !is_read_only_parameterized_pragma(&name))
+    (pragma.has_value && !is_read_only_parameterized_pragma(&pragma.name))
         || matches!(
-            name.as_str(),
+            pragma.name.as_str(),
             "optimize" | "incremental_vacuum" | "wal_checkpoint"
         )
 }
@@ -166,11 +175,6 @@ fn is_read_only_parameterized_pragma(name: &str) -> bool {
     )
 }
 
-fn pragma_has_value(tail: &str) -> bool {
-    let tail = trim_sql_prefix(tail);
-    tail.starts_with('=') || tail.starts_with('(')
-}
-
 fn trim_sql_prefix(mut sql: &str) -> &str {
     loop {
         let trimmed = sql.trim_start();
@@ -186,7 +190,7 @@ fn trim_sql_prefix(mut sql: &str) -> &str {
     }
 }
 
-fn pragma_name_and_tail(statement: &str) -> Option<(String, &str)> {
+pub fn parse_sqlite_pragma(statement: &str) -> Option<SqlitePragma> {
     let trimmed = trim_sql_prefix(statement);
     if !trimmed.get(..6)?.eq_ignore_ascii_case("PRAGMA") {
         return None;
@@ -200,7 +204,27 @@ fn pragma_name_and_tail(statement: &str) -> Option<(String, &str)> {
     } else {
         (first_name, rest)
     };
-    Some((name.to_ascii_lowercase(), rest))
+    let rest = trim_sql_prefix(rest);
+    let has_value = rest.starts_with('=') || rest.starts_with('(');
+    let value = pragma_value(rest);
+    Some(SqlitePragma {
+        name: name.to_ascii_lowercase(),
+        has_value,
+        value,
+    })
+}
+
+fn pragma_value(tail: &str) -> Option<String> {
+    let value = if let Some(value) = tail.strip_prefix('=') {
+        value
+    } else {
+        let value = tail.strip_prefix('(')?;
+        &value[..value.find(')')?]
+    };
+    value
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '_')
+        .find(|part| !part.is_empty())
+        .map(str::to_ascii_lowercase)
 }
 
 fn pragma_identifier_and_tail(sql: &str) -> Option<(&str, &str)> {
@@ -313,6 +337,20 @@ mod tests {
     }
 
     #[test]
+    fn side_effect_pragma_requires_acknowledgement_without_a_transactional_write() {
+        for sql in [
+            "PRAGMA synchronous = NORMAL; SELECT 1",
+            "PRAGMA cache_size = 2000; SELECT 1",
+        ] {
+            assert_eq!(
+                policy_for(sql),
+                SqliteTransactionPolicy::IncompatibleStatement,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
     fn session_pragma_changes_are_not_implicitly_atomic() {
         for sql in [
             "PRAGMA cache_size = 2000",
@@ -332,5 +370,26 @@ mod tests {
             sqlite_statement_classification("PRAGMA synchronous = NORMAL"),
             SqliteStatementClassification::TransactionIncompatible
         );
+    }
+
+    #[test]
+    fn quoted_schema_pragma_is_normalized_with_its_value() {
+        for (sql, expected_name, expected_value) in [
+            (
+                "PRAGMA \"main\".\"foreign_keys\" = OFF",
+                "foreign_keys",
+                Some("off"),
+            ),
+            (
+                "PRAGMA [main].[journal_mode](WAL)",
+                "journal_mode",
+                Some("wal"),
+            ),
+        ] {
+            let pragma = parse_sqlite_pragma(sql).unwrap();
+
+            assert_eq!(pragma.name, expected_name, "{sql}");
+            assert_eq!(pragma.value.as_deref(), expected_value, "{sql}");
+        }
     }
 }
