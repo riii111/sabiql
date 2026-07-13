@@ -947,6 +947,30 @@ mod tests {
             }
 
             #[tokio::test]
+            async fn long_text_result_does_not_materialize_display_rows() {
+                let (_dir, dsn) = test_support::make_sqlite_db("");
+                let adapter = SqliteAdapter::new();
+
+                let result = adapter
+                    .execute_adhoc(
+                        &dsn,
+                        "SELECT replace(hex(zeroblob(2048)), '00', 'xx') AS body",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .unwrap();
+
+                assert!(result.rows().is_empty());
+                assert_eq!(
+                    result
+                        .value_at(0, 0)
+                        .and_then(QueryValue::as_str)
+                        .map(str::len),
+                    Some(4096)
+                );
+            }
+
+            #[tokio::test]
             async fn explain_query_plan_returns_readable_detail_lines() {
                 let (_dir, dsn) = test_support::make_sqlite_db(
                     "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);

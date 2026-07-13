@@ -400,6 +400,46 @@ mod tests {
         }
     }
 
+    mod typed_values {
+        use super::*;
+
+        #[test]
+        fn keeps_text_owned_only_by_typed_values() {
+            let text = "a".repeat(4096);
+            let result = QueryResult::success_with_values(
+                "SELECT body".to_string(),
+                vec!["body".to_string()],
+                vec![vec![QueryValue::text(text.clone())]],
+                0,
+                QuerySource::Adhoc,
+            );
+
+            assert!(result.rows().is_empty());
+            assert_eq!(result.data_row_count(), 1);
+            assert_eq!(result.column_count(), 1);
+            assert_eq!(
+                result.display_value_ref_at(0, 0).as_deref(),
+                Some(text.as_str())
+            );
+        }
+
+        #[test]
+        fn removes_sentinel_column_without_display_rows() {
+            let result = QueryResult::success_with_values(
+                "SELECT body, sentinel".to_string(),
+                vec!["body".to_string(), "sentinel".to_string()],
+                vec![vec![QueryValue::text("body"), QueryValue::text("sentinel")]],
+                0,
+                QuerySource::Adhoc,
+            )
+            .without_empty_result_sentinel();
+
+            assert_eq!(result.columns, vec!["body"]);
+            assert_eq!(result.values(), &[vec![QueryValue::text("body")]]);
+            assert!(result.rows().is_empty());
+        }
+    }
+
     mod row_count_display {
         use super::*;
 
