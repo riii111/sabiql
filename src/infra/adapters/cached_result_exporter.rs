@@ -176,16 +176,14 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            let row_count = CsvCachedResultExporter
-                .export_cached_result_to_csv(
-                    path.clone(),
-                    vec!["id".to_string(), "payload".to_string()],
-                    vec![],
-                )
-                .await
-                .unwrap();
+            write_cached_result_csv(
+                path.clone(),
+                vec!["id".to_string(), "payload".to_string()],
+                vec![],
+            )
+            .await
+            .unwrap();
 
-            assert_eq!(row_count, 0);
             assert_eq!(std::fs::read_to_string(path).unwrap(), "id,payload\n");
         }
 
