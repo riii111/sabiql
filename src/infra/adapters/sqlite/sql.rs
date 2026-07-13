@@ -204,7 +204,29 @@ fn metadata_columns_json(table_expr: &str) -> String {
     )
 }
 
-fn metadata_indexes_json(table_expr: &str) -> String {
+fn metadata_indexes_json(table_expr: &str, include_full_detail: bool) -> String {
+    if !include_full_detail {
+        return format!(
+            r#"COALESCE((
+                SELECT json_group_array(json_object(
+                    'name', i.name, 'unique', i."unique", 'partial', i.partial,
+                    'columns', json(COALESCE((
+                        SELECT json_group_array(json_object(
+                            'cid', x.cid, 'name', x.name, 'key', x."key"
+                        ))
+                        FROM (
+                            SELECT * FROM pragma_index_xinfo(i.name)
+                            WHERE "key" != 0 ORDER BY seqno
+                        ) AS x
+                    ), json('[]')))
+                ))
+                FROM (
+                    SELECT * FROM pragma_index_list({table_expr})
+                    WHERE "unique" != 0 AND partial = 0 ORDER BY name
+                ) AS i
+            ), json('[]'))"#
+        );
+    }
     format!(
         r#"COALESCE((
             SELECT json_group_array(json_object(
@@ -276,7 +298,7 @@ pub(super) fn preview_metadata_query(table: &str) -> String {
 
 fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: bool) -> String {
     let columns = metadata_columns_json(table_expr);
-    let indexes = metadata_indexes_json(table_expr);
+    let indexes = metadata_indexes_json(table_expr, include_full_detail);
     let foreign_keys = metadata_foreign_keys_json(table_expr);
     let triggers = if include_full_detail {
         format!("json({})", metadata_triggers_json(table_expr))
@@ -759,6 +781,16 @@ mod tests {
             assert!(query.contains("pragma_table_xinfo(t.name)"));
             assert!(query.contains("pragma_index_list(t.name)"));
             assert!(query.contains("pragma_foreign_key_list(t.name)"));
+        }
+
+        #[test]
+        fn completion_query_only_loads_unique_index_key_columns() {
+            let query = table_metadata_query("users", false, false);
+
+            assert!(query.contains(r#"WHERE "unique" != 0 AND partial = 0"#));
+            assert!(query.contains(r#"WHERE "key" != 0"#));
+            assert!(!query.contains("'definition'"));
+            assert!(!query.contains("'coll'"));
         }
     }
 

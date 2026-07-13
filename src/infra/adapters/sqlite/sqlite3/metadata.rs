@@ -95,6 +95,7 @@ struct RawPreviewMetadata {
 struct RawBatchIndex {
     name: String,
     unique: i64,
+    #[serde(default)]
     origin: String,
     #[serde(default)]
     partial: i64,
@@ -290,6 +291,17 @@ impl SqliteAdapter {
         indexes
     }
 
+    fn unique_single_columns_from_batch(raw_indexes: &[RawBatchIndex]) -> HashSet<String> {
+        raw_indexes
+            .iter()
+            .filter(|index| index.unique != 0 && index.partial == 0)
+            .filter_map(|index| {
+                let columns = Self::index_key_column_names(&index.columns);
+                (columns.len() == 1 && columns[0] != "<expression>").then(|| columns[0].clone())
+            })
+            .collect()
+    }
+
     fn foreign_keys_from_batch(
         table: &str,
         mut raw: Vec<RawForeignKey>,
@@ -442,17 +454,12 @@ impl SqliteAdapter {
                 "SQLite table not found: {table}"
             )));
         }
-        let indexes = Self::indexes_from_batch(metadata.indexes);
-        let unique_single_columns = indexes
-            .iter()
-            .filter(|index| {
-                index.is_unique()
-                    && !index.is_partial()
-                    && !index.has_expression()
-                    && index.columns.len() == 1
-            })
-            .map(|index| index.columns[0].clone())
-            .collect::<HashSet<_>>();
+        let unique_single_columns = Self::unique_single_columns_from_batch(&metadata.indexes);
+        let indexes = if mode.include_indexes() {
+            Self::indexes_from_batch(metadata.indexes)
+        } else {
+            Vec::new()
+        };
         let mut raw_columns = metadata.columns;
         raw_columns.sort_by_key(|column| column.cid);
         let primary_key = Self::extract_primary_key(&raw_columns);
