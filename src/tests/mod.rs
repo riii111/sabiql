@@ -166,7 +166,7 @@ mod cli_sqlite_startup {
             .execute_preview(&symlinked.1, "main", "items", 10, 0)
             .await
             .unwrap();
-        assert_eq!(preview.rows()[0][1], "A");
+        assert_eq!(preview.display_value_at(0, 1).as_deref(), Some("A"));
 
         let write = adapter
             .execute_write(
@@ -182,14 +182,17 @@ mod cli_sqlite_startup {
             .execute_preview(&symlinked.1, "main", "items", 10, 0)
             .await
             .unwrap();
-        assert_eq!(updated_a.rows()[0][1], "A updated");
+        assert_eq!(
+            updated_a.display_value_at(0, 1).as_deref(),
+            Some("A updated")
+        );
 
         let database_b_dsn = format!("sqlite://{}", database_b.display());
         let unchanged_b = adapter
             .execute_preview(&database_b_dsn, "main", "items", 10, 0)
             .await
             .unwrap();
-        assert_eq!(unchanged_b.rows()[0][1], "B");
+        assert_eq!(unchanged_b.display_value_at(0, 1).as_deref(), Some("B"));
 
         assert_eq!(symlinked.3.session.dsn(), Some(expected_dsn.as_str()));
     }
