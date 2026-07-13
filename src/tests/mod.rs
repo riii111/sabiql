@@ -30,9 +30,14 @@ fn database_positional_is_recognized() {
 
 mod cli_sqlite_startup {
     use std::fs;
+    use std::path::Path;
 
-    use sabiql_app::cmd::cli_sqlite::resolve_cli_sqlite_target;
-    use sabiql_infra::adapters::FsSqlitePathValidator;
+    use sabiql_app::cmd::cli_sqlite::{
+        activate_cli_sqlite_connection, connection_id_for_path, resolve_cli_sqlite_target,
+    };
+    use sabiql_app::model::app_state::AppState;
+    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
+    use sabiql_infra::adapters::{FsSqlitePathValidator, SqliteAdapter};
     use tempfile::tempdir;
 
     #[test]
@@ -81,6 +86,111 @@ mod cli_sqlite_startup {
             resolve_cli_sqlite_target(path.to_str().unwrap(), &FsSqlitePathValidator).unwrap_err();
 
         assert!(error.to_string().contains("not found"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn activation_pins_canonical_target_for_identity_preview_and_write() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::Builder::new()
+            .prefix("sabiql-sab-351-")
+            .tempdir_in(".")
+            .unwrap();
+        let database_a = dir.path().join("app-a.db");
+        let database_b = dir.path().join("app-b.db");
+        let alias = dir.path().join("current.db");
+        fs::write(&database_a, b"").unwrap();
+        fs::write(&database_b, b"").unwrap();
+
+        let adapter = SqliteAdapter::new();
+        for (path, value) in [(&database_a, "A"), (&database_b, "B")] {
+            let dsn = format!("sqlite://{}", path.display());
+            adapter
+                .execute_adhoc(
+                    &dsn,
+                    "CREATE TABLE items (id INTEGER PRIMARY KEY, value TEXT)",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .unwrap();
+            adapter
+                .execute_adhoc(
+                    &dsn,
+                    &format!("INSERT INTO items VALUES (1, '{value}')"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .unwrap();
+        }
+
+        symlink(&database_a, &alias).unwrap();
+        let relative_database_a = database_a
+            .strip_prefix(std::env::current_dir().unwrap())
+            .unwrap()
+            .to_path_buf();
+
+        let activate = |input: &Path| {
+            let target =
+                resolve_cli_sqlite_target(input.to_str().unwrap(), &FsSqlitePathValidator).unwrap();
+            let mut state = AppState::new("test".to_string());
+            activate_cli_sqlite_connection(&mut state, &target, &FsSqlitePathValidator).unwrap();
+            (
+                state.session.active_connection_id().cloned().unwrap(),
+                state.session.dsn().unwrap().to_owned(),
+                state.session.active_connection_name().unwrap().to_owned(),
+                state,
+            )
+        };
+
+        let absolute = activate(&database_a);
+        let relative = activate(&relative_database_a);
+        let symlinked = activate(&alias);
+        let canonical_a = fs::canonicalize(&database_a).unwrap();
+        let canonical_a = canonical_a.to_str().unwrap();
+        let expected_dsn = format!("sqlite://{canonical_a}");
+
+        assert_eq!(absolute.0, connection_id_for_path(canonical_a));
+        assert_eq!(absolute.0, relative.0);
+        assert_eq!(absolute.0, symlinked.0);
+        assert_eq!(absolute.1, expected_dsn);
+        assert_eq!(relative.1, absolute.1);
+        assert_eq!(symlinked.1, absolute.1);
+        assert_eq!(symlinked.2, "current.db");
+
+        fs::remove_file(&alias).unwrap();
+        symlink(&database_b, &alias).unwrap();
+
+        let preview = adapter
+            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(preview.rows()[0][1], "A");
+
+        let write = adapter
+            .execute_write(
+                &symlinked.1,
+                "UPDATE items SET value = 'A updated' WHERE id = 1",
+                AccessMode::ReadWrite,
+            )
+            .await
+            .unwrap();
+        assert_eq!(write.affected_rows, 1);
+
+        let updated_a = adapter
+            .execute_preview(&symlinked.1, "main", "items", 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(updated_a.rows()[0][1], "A updated");
+
+        let database_b_dsn = format!("sqlite://{}", database_b.display());
+        let unchanged_b = adapter
+            .execute_preview(&database_b_dsn, "main", "items", 10, 0)
+            .await
+            .unwrap();
+        assert_eq!(unchanged_b.rows()[0][1], "B");
+
+        assert_eq!(symlinked.3.session.dsn(), Some(expected_dsn.as_str()));
     }
 }
 
