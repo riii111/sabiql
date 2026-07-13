@@ -247,7 +247,7 @@ fn metadata_triggers_json(table_expr: &str) -> String {
             SELECT json_group_array(json_object('name', m.name, 'sql', m.sql))
             FROM (
                 SELECT name, sql FROM sqlite_master
-                WHERE type = 'trigger' AND tbl_name = {table_expr}
+                WHERE type = 'trigger' AND tbl_name = {table_expr} COLLATE NOCASE
                 ORDER BY name
             ) AS m
         ), json('[]'))"
@@ -266,7 +266,7 @@ pub(super) fn preview_metadata_query(table: &str) -> String {
                 FROM pragma_table_list() AS tl
                 LEFT JOIN sqlite_master AS m
                   ON m.type IN ('table', 'view') AND m.name = tl.name
-                WHERE tl.schema = 'main' AND tl.name = {table}
+                WHERE tl.schema = 'main' AND tl.name = {table} COLLATE NOCASE
                 LIMIT 1
             ))
         ) AS payload
@@ -290,7 +290,7 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
                 FROM pragma_table_list() AS tl
                 LEFT JOIN sqlite_master AS m
                   ON m.type IN ('table', 'view') AND m.name = tl.name
-                WHERE tl.schema = 'main' AND tl.name = {table_expr}
+                WHERE tl.schema = 'main' AND tl.name = {table_expr} COLLATE NOCASE
                 LIMIT 1
             )),
             'columns', json({columns}),
@@ -311,7 +311,7 @@ fn table_metadata_json(table_expr: &str, row_count: &str, include_full_detail: b
             'row_count', {row_count},
             'source_ddl', (
                 SELECT sql FROM sqlite_master
-                WHERE type IN ('table', 'view') AND name = {table_expr} LIMIT 1
+                WHERE type IN ('table', 'view') AND name = {table_expr} COLLATE NOCASE LIMIT 1
             )
         )"#,
         referenced_columns = metadata_columns_json("r.name"),

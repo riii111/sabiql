@@ -1107,6 +1107,21 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn resolves_table_name_case_insensitively() {
+            let (_dir, dsn) =
+                test_support::make_sqlite_db("CREATE TABLE MixedCase(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "mixedcase")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
+            assert_eq!(detail.kind_info.kind, TableKind::Table);
+        }
+
+        #[tokio::test]
         async fn loads_columns_indexes_and_foreign_keys() {
             let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
