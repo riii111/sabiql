@@ -1854,7 +1854,6 @@ mod tests {
                     schema: "public".to_string(),
                     table: "users".to_string(),
                     key_values: vec![("id".to_string(), QueryValue::text("2"))],
-                    uses_sqlite_rowid: false,
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {
@@ -1927,7 +1926,6 @@ mod tests {
                     schema: "public".to_string(),
                     table: "t".to_string(),
                     key_values: vec![],
-                    uses_sqlite_rowid: false,
                 },
                 diff: vec![],
                 guardrail: GuardrailDecision {

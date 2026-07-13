@@ -907,7 +907,7 @@ mod tests {
                 let mut state = sqlite_state();
                 state.query.set_current_result(Arc::new(
                     QueryResult::success_with_values(
-                        "SELECT \"_rowid_\" AS \"__sabiql_rowid\", CASE WHEN typeof(\"message\") = 'text' THEN hex(\"message\") END AS \"message\" FROM \"logs\"".to_string(),
+                        "SELECT CASE WHEN typeof(\"message\") = 'text' THEN hex(\"message\") END AS \"message\" FROM \"logs\"".to_string(),
                         vec!["message".to_string()],
                         vec![vec![QueryValue::text("a\0bc")]],
                         1,

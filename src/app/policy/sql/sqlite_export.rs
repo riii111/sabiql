@@ -1,7 +1,10 @@
 use crate::domain::{DatabaseType, QuerySource};
-use crate::policy::sql::statement_classifier::{classify, first_keyword};
+use crate::policy::sql::sqlite_transaction::{
+    SqliteStatementClassification, sqlite_statement_classification,
+};
+use crate::policy::sql::statement_classifier::first_keyword;
 use crate::policy::write::sql_risk::{
-    MultiStatementDecision, evaluate_multi_statement_for_database, evaluate_sql_risk_for_database,
+    MultiStatementDecision, evaluate_multi_statement_for_database,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,98 +48,14 @@ pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
     }
 }
 
-fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
-    if is_write_statement(statement)
-        || is_dml_statement(statement)
-        || is_transaction_control(statement)
-    {
+pub fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
+    if sqlite_statement_classification(statement) != SqliteStatementClassification::ReadOnly {
         return false;
     }
-    let kind = classify(statement);
-    evaluate_sql_risk_for_database(DatabaseType::SQLite, &kind, statement).read_only_allowed
-}
-
-fn is_write_statement(statement: &str) -> bool {
     matches!(
         first_keyword(statement).as_deref(),
-        Some("INSERT" | "REPLACE" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE")
+        Some("SELECT" | "EXPLAIN" | "VALUES" | "WITH" | "PRAGMA")
     )
-}
-
-fn is_transaction_control(statement: &str) -> bool {
-    matches!(
-        first_keyword(statement).as_deref(),
-        Some("BEGIN" | "COMMIT" | "END" | "ROLLBACK" | "SAVEPOINT" | "RELEASE")
-    )
-}
-
-fn is_dml_statement(statement: &str) -> bool {
-    dml_keyword(statement).is_some()
-}
-
-fn dml_keyword(statement: &str) -> Option<&'static str> {
-    let keyword = first_keyword(statement)?;
-    if keyword.eq_ignore_ascii_case("INSERT") {
-        return Some("INSERT");
-    }
-    if keyword.eq_ignore_ascii_case("REPLACE") {
-        return Some("INSERT");
-    }
-    if keyword.eq_ignore_ascii_case("UPDATE") {
-        return Some("UPDATE");
-    }
-    if keyword.eq_ignore_ascii_case("DELETE") {
-        return Some("DELETE");
-    }
-    if !keyword.eq_ignore_ascii_case("WITH") {
-        return None;
-    }
-
-    let lower = statement.to_lowercase();
-    let chars: Vec<(usize, char)> = lower.char_indices().collect();
-    let mut offset = 0usize;
-    while let Some((next_keyword, end)) = next_keyword_from(&lower, &chars, offset) {
-        if next_keyword.eq_ignore_ascii_case("INSERT") {
-            return Some("INSERT");
-        }
-        if next_keyword.eq_ignore_ascii_case("REPLACE") {
-            return Some("INSERT");
-        }
-        if next_keyword.eq_ignore_ascii_case("UPDATE") {
-            return Some("UPDATE");
-        }
-        if next_keyword.eq_ignore_ascii_case("DELETE") {
-            return Some("DELETE");
-        }
-        offset = end;
-    }
-    None
-}
-
-fn next_keyword_from(
-    lower: &str,
-    chars: &[(usize, char)],
-    start: usize,
-) -> Option<(String, usize)> {
-    let mut i = 0usize;
-    while i < chars.len() {
-        if chars[i].0 < start {
-            i += 1;
-            continue;
-        }
-        if chars[i].1.is_ascii_alphabetic() {
-            let keyword_start = chars[i].0;
-            let mut j = i + 1;
-            while j < chars.len() && (chars[j].1.is_ascii_alphanumeric() || chars[j].1 == '_') {
-                j += 1;
-            }
-            let keyword = lower[keyword_start..chars[j - 1].0 + chars[j - 1].1.len_utf8()]
-                .to_ascii_uppercase();
-            return Some((keyword, chars[j - 1].0 + chars[j - 1].1.len_utf8()));
-        }
-        i += 1;
-    }
-    None
 }
 
 #[cfg(test)]
@@ -203,6 +122,18 @@ mod tests {
             ));
         }
 
+        #[test]
+        fn persistent_pragma_write_is_not_rerunnable() {
+            assert!(!is_sqlite_rerunnable_export_query(
+                "PRAGMA user_version = 42"
+            ));
+        }
+
+        #[test]
+        fn maintenance_statement_is_not_rerunnable() {
+            assert!(!is_sqlite_rerunnable_export_query("REINDEX users_name_idx"));
+        }
+
         #[rstest]
         #[case::no_space_assignment("PRAGMA foreign_keys=OFF")]
         #[case::journal_mode("PRAGMA journal_mode=WAL")]
@@ -257,7 +188,7 @@ mod tests {
         fn preview_uses_cached_result() {
             let plan = sqlite_export_plan(
                 QuerySource::Preview,
-                "SELECT __sabiql_rowid, CASE WHEN typeof(message) = 'text' THEN hex(message) END",
+                "SELECT CASE WHEN typeof(message) = 'text' THEN hex(message) END",
                 &["message".to_string()],
                 2,
             );

@@ -147,8 +147,6 @@ pub(super) fn row_count_query(table: &str) -> String {
 }
 
 pub(super) const PREVIEW_TRANSPORT_UNISTR_PREFIX: &str = "\\u0001SABIQL_HEX:";
-pub(super) const PREVIEW_ROWID_ALIAS: &str = "__sabiql_rowid";
-
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
     format!(
@@ -162,7 +160,7 @@ pub(super) fn build_preview_query(
     table: &str,
     columns: &[String],
     order_columns: &[String],
-    rowid_alias: Option<&str>,
+    rowid_order_alias: Option<&str>,
     limit: usize,
     offset: usize,
 ) -> String {
@@ -175,18 +173,8 @@ pub(super) fn build_preview_query(
             .collect::<Vec<_>>()
             .join(", ")
     };
-    let select_list = rowid_alias.map_or_else(
-        || visible_select_list.clone(),
-        |alias| {
-            format!(
-                "{} AS {}, {visible_select_list}",
-                quote_ident(alias),
-                quote_ident(PREVIEW_ROWID_ALIAS)
-            )
-        },
-    );
     let order_clause = if order_columns.is_empty() {
-        rowid_alias.map_or_else(String::new, |alias| {
+        rowid_order_alias.map_or_else(String::new, |alias| {
             format!(" ORDER BY {}", quote_ident(alias))
         })
     } else {
@@ -199,7 +187,7 @@ pub(super) fn build_preview_query(
     };
 
     format!(
-        "SELECT {select_list} FROM {}{} LIMIT {} OFFSET {}",
+        "SELECT {visible_select_list} FROM {}{} LIMIT {} OFFSET {}",
         quote_ident(table),
         order_clause,
         limit,
@@ -623,21 +611,13 @@ mod tests {
         }
 
         #[test]
-        fn selects_hidden_rowid_when_available() {
+        fn primary_keyless_table_orders_by_rowid_without_selecting_it() {
             assert_eq!(
-                build_preview_query(
-                    "logs",
-                    &["message".to_string()],
-                    &[],
-                    Some("_rowid_"),
-                    10,
-                    0
-                ),
+                build_preview_query("logs", &["message".to_string()], &[], Some("rowid"), 10, 0),
                 concat!(
-                    r#"SELECT "_rowid_" AS "__sabiql_rowid", "#,
-                    r#"CASE WHEN typeof("message") = 'text' "#,
+                    r#"SELECT CASE WHEN typeof("message") = 'text' "#,
                     r#"THEN char(1) || 'SABIQL_HEX:' || hex("message") ELSE "message" END AS "message" "#,
-                    r#"FROM "logs" ORDER BY "_rowid_" LIMIT 10 OFFSET 0"#
+                    r#"FROM "logs" ORDER BY "rowid" LIMIT 10 OFFSET 0"#
                 )
             );
         }

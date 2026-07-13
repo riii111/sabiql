@@ -608,7 +608,6 @@ mod tests {
                         schema: "public".to_string(),
                         table: "t".to_string(),
                         key_values: vec![],
-                        uses_sqlite_rowid: false,
                     },
                     diff: vec![],
                     guardrail: GuardrailDecision {

@@ -334,16 +334,10 @@ impl AppState {
         if !self.query.pagination.matches_table(table_detail) {
             return None;
         }
-        match preview_writeability(self.session.active_database_type_or_default(), table_detail) {
+        match preview_writeability(table_detail) {
             PreviewWriteability::Writable => None,
             PreviewWriteability::ReadOnly(reason) => Some(reason),
-            PreviewWriteability::MissingStableRowIdentity => {
-                if self.session.active_database_type() == Some(DatabaseType::SQLite) {
-                    Some("table without PRIMARY KEY or rowid")
-                } else {
-                    Some("table without PRIMARY KEY")
-                }
-            }
+            PreviewWriteability::MissingStableRowIdentity => Some("table without PRIMARY KEY"),
         }
     }
 
@@ -979,11 +973,14 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_rowid_table_can_write_preview_without_primary_key() {
+        fn sqlite_table_without_primary_key_is_read_only() {
             let state = sqlite_preview_state_with_table(test_support::table::minimal("", ""));
 
-            assert!(state.can_write_visible_preview());
-            assert_eq!(state.visible_preview_target_read_only_reason(), None);
+            assert!(!state.can_write_visible_preview());
+            assert_eq!(
+                state.visible_preview_target_read_only_reason(),
+                Some("table without PRIMARY KEY")
+            );
         }
 
         #[rstest]
@@ -1016,7 +1013,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_table_with_all_rowid_aliases_shadowed_is_read_only() {
+        fn sqlite_table_without_primary_key_is_read_only_even_when_rowid_aliases_are_available() {
             let mut table = test_support::table::minimal("", "");
             table.columns = vec![
                 test_support::column::test_nullable_column("rowid", "TEXT", 1),
@@ -1028,12 +1025,12 @@ mod tests {
             assert!(!state.can_write_visible_preview());
             assert_eq!(
                 state.visible_preview_target_read_only_reason(),
-                Some("table without PRIMARY KEY or rowid")
+                Some("table without PRIMARY KEY")
             );
         }
 
         #[test]
-        fn postgres_table_without_primary_key_does_not_mention_rowid() {
+        fn postgres_table_without_primary_key_is_read_only() {
             let state = postgres_preview_state_with_table(test_support::table::minimal("", ""));
 
             assert!(!state.can_write_visible_preview());
