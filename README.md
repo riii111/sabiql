@@ -32,13 +32,13 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite multi-statement w
 ### Core
 
 - **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
-- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; browse past results with `Ctrl+H`; recall previous queries with `Ctrl+O`
+- **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; recall previous queries with `Ctrl+O`
 - **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser (PostgreSQL only)
 - **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
 
 ### Editing
 
-- **Inline Cell Editing** (`e` in Result) — Edit cells in-place with a guarded UPDATE preview before committing
+- **Inline Cell Editing** (`i` in Result) — Edit cells in-place with a guarded UPDATE preview before committing
 - **Row Deletion** (`dd` in Result) — DELETE with mandatory preview; risk level color-coded (yellow/orange/red)
 - **Yank** (`y`) — Copy any cell value to clipboard
 - **CSV Export** (`Ctrl+E`) — Export query results to a CSV file
@@ -63,6 +63,12 @@ brew install riii111/sabiql/sabiql
 
 # Cargo (crates.io)
 cargo install sabiql
+
+# Nix
+nix profile install github:riii111/sabiql
+
+# Run once with Nix, without installing
+nix run github:riii111/sabiql
 
 # Arch Linux (AUR)
 paru -S sabiql  # or yay -S sabiql

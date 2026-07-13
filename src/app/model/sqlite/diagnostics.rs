@@ -31,7 +31,7 @@ impl DiagnosticFieldKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::DbFile => "Database file",
-            Self::SqliteVersion => "SQLite version",
+            Self::SqliteVersion => "SQLite version (requires 3.41.1+)",
             Self::FeatureSummary => "SQLite features",
             Self::ForeignKeys => "Effective foreign keys",
             Self::JournalMode => "Journal mode",
