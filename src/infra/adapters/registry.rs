@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::app::ports::outbound::{
@@ -189,12 +189,12 @@ impl QueryExecutor for DbAdapterRegistry {
         &self,
         dsn: &str,
         query: &str,
-        path: &Path,
-    ) -> Result<usize, DbOperationError> {
+        file_name: &str,
+    ) -> Result<PathBuf, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.export_to_csv(dsn, query, path).await,
+            DatabaseType::PostgreSQL => self.postgres.export_to_csv(dsn, query, file_name).await,
             DatabaseType::SQLite => {
-                QueryExecutor::export_to_csv(self.sqlite.as_ref(), dsn, query, path).await
+                QueryExecutor::export_to_csv(self.sqlite.as_ref(), dsn, query, file_name).await
             }
         }
     }

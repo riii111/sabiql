@@ -74,14 +74,14 @@ pub struct TestCachedResultExporter;
 impl CachedResultExporter for TestCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
-        path: PathBuf,
+        file_name: String,
         _columns: Vec<String>,
         values: Vec<Vec<QueryValue>>,
-    ) -> Result<usize, DbOperationError> {
-        tokio::fs::write(path, [])
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        Ok(values.len())
+    ) -> Result<PathBuf, DbOperationError> {
+        Ok(PathBuf::from(format!(
+            "/tmp/{file_name}_{}.csv",
+            values.len()
+        )))
     }
 }
 

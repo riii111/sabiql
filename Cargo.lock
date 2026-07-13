@@ -2621,7 +2621,6 @@ dependencies = [
  "async-trait",
  "color-eyre",
  "csv",
- "dirs",
  "lru",
  "mockall",
  "nucleo-matcher",

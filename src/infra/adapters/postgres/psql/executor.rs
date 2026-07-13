@@ -403,7 +403,7 @@ impl PostgresAdapter {
         query: &str,
         path: &std::path::Path,
         read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    ) -> Result<(), DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
@@ -427,7 +427,6 @@ impl PostgresAdapter {
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            let mut newline_count: usize = 0;
             if let Some(mut out) = stdout {
                 let mut buf = [0u8; 8192];
                 loop {
@@ -435,7 +434,6 @@ impl PostgresAdapter {
                     if n == 0 {
                         break;
                     }
-                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
                     writer.write_all(&buf[..n]).await?;
                 }
                 writer.flush().await?;
@@ -450,7 +448,7 @@ impl PostgresAdapter {
             };
 
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr, newline_count))
+            Ok::<_, std::io::Error>((status, stderr))
         })
         .await;
 
@@ -462,15 +460,13 @@ impl PostgresAdapter {
             }
         };
 
-        let (status, stderr, newline_count) = result;
+        let (status, stderr) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
             return Err(Self::classify_psql_error(&stderr));
         }
 
-        // Subtract 1 for the CSV header line
-        let row_count = newline_count.saturating_sub(1);
-        Ok(row_count)
+        Ok(())
     }
 
     pub(in crate::adapters::postgres) async fn fetch_preview_order_columns(

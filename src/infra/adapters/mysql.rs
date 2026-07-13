@@ -110,8 +110,8 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _path: &std::path::Path,
-    ) -> Result<usize, DbOperationError> {
+        _file_name: &str,
+    ) -> Result<std::path::PathBuf, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))

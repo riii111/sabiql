@@ -1,9 +1,9 @@
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
 use tokio::io::{AsyncWriteExt, BufWriter};
+
+use crate::adapters::csv_export::export_to_downloads;
 
 const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
 
@@ -14,11 +14,14 @@ pub struct CsvCachedResultExporter;
 impl CachedResultExporter for CsvCachedResultExporter {
     async fn export_cached_result_to_csv(
         &self,
-        path: PathBuf,
+        file_name: String,
         columns: Vec<String>,
         values: Vec<Vec<QueryValue>>,
-    ) -> Result<usize, DbOperationError> {
-        write_cached_result_csv(path, columns, values).await
+    ) -> Result<std::path::PathBuf, DbOperationError> {
+        export_to_downloads(&file_name, |path| {
+            write_cached_result_csv(path, columns, values)
+        })
+        .await
     }
 }
 
@@ -38,10 +41,10 @@ fn cached_csv_cell(value: &QueryValue) -> String {
 }
 
 async fn write_cached_result_csv(
-    path: PathBuf,
+    path: std::path::PathBuf,
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
-) -> Result<usize, DbOperationError> {
+) -> Result<(), DbOperationError> {
     let file = tokio::fs::File::create(path)
         .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
@@ -75,7 +78,7 @@ async fn write_cached_result_csv(
     file.flush()
         .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    Ok(values.len())
+    Ok(())
 }
 
 async fn write_csv_record<I>(
@@ -147,23 +150,21 @@ mod tests {
         use super::*;
 
         #[tokio::test]
-        async fn writes_columns_rows_and_returns_row_count() {
+        async fn writes_columns_and_rows() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            let row_count = CsvCachedResultExporter
-                .export_cached_result_to_csv(
-                    path.clone(),
-                    vec!["id".to_string(), "payload".to_string()],
-                    vec![vec![
-                        QueryValue::SqlLiteral("1".to_string()),
-                        QueryValue::Blob(vec![0xAB, 0xCD]),
-                    ]],
-                )
-                .await
-                .unwrap();
+            write_cached_result_csv(
+                path.clone(),
+                vec!["id".to_string(), "payload".to_string()],
+                vec![vec![
+                    QueryValue::SqlLiteral("1".to_string()),
+                    QueryValue::Blob(vec![0xAB, 0xCD]),
+                ]],
+            )
+            .await
+            .unwrap();
 
-            assert_eq!(row_count, 1);
             assert_eq!(
                 std::fs::read_to_string(path).unwrap(),
                 "id,payload\n1,ABCD\n"
@@ -175,14 +176,13 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("export.csv");
 
-            CsvCachedResultExporter
-                .export_cached_result_to_csv(
-                    path.clone(),
-                    vec!["payload".to_string()],
-                    vec![vec![QueryValue::text("a\0bc")]],
-                )
-                .await
-                .unwrap();
+            write_cached_result_csv(
+                path.clone(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::text("a\0bc")]],
+            )
+            .await
+            .unwrap();
 
             assert_eq!(std::fs::read(path).unwrap(), b"payload\na\0bc\n");
         }
@@ -193,16 +193,14 @@ mod tests {
             let path = dir.path().join("large_export.csv");
             let big_value = "x".repeat(CSV_FLUSH_THRESHOLD + 1);
 
-            let row_count = CsvCachedResultExporter
-                .export_cached_result_to_csv(
-                    path.clone(),
-                    vec!["data".to_string()],
-                    vec![vec![QueryValue::Text(big_value.clone())]],
-                )
-                .await
-                .unwrap();
+            write_cached_result_csv(
+                path.clone(),
+                vec!["data".to_string()],
+                vec![vec![QueryValue::Text(big_value.clone())]],
+            )
+            .await
+            .unwrap();
 
-            assert_eq!(row_count, 1);
             assert_eq!(
                 std::fs::read_to_string(path).unwrap(),
                 format!("data\n{big_value}\n")
@@ -214,8 +212,7 @@ mod tests {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing").join("export.csv");
 
-            let error = CsvCachedResultExporter
-                .export_cached_result_to_csv(path, vec!["id".to_string()], vec![])
+            let error = write_cached_result_csv(path, vec!["id".to_string()], vec![])
                 .await
                 .unwrap_err();
 
