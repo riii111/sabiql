@@ -55,12 +55,12 @@ fn temporary_export_path(final_path: &Path) -> PathBuf {
     ))
 }
 
-struct TemporaryExportFile {
+struct RemoveOnDropGuard {
     path: PathBuf,
     cleanup: bool,
 }
 
-impl TemporaryExportFile {
+impl RemoveOnDropGuard {
     fn new(path: PathBuf) -> Self {
         Self {
             path,
@@ -73,33 +73,7 @@ impl TemporaryExportFile {
     }
 }
 
-impl Drop for TemporaryExportFile {
-    fn drop(&mut self) {
-        if self.cleanup {
-            let _ = std::fs::remove_file(&self.path);
-        }
-    }
-}
-
-struct PublishedExportFile {
-    path: PathBuf,
-    cleanup: bool,
-}
-
-impl PublishedExportFile {
-    fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            cleanup: true,
-        }
-    }
-
-    fn disarm(&mut self) {
-        self.cleanup = false;
-    }
-}
-
-impl Drop for PublishedExportFile {
+impl Drop for RemoveOnDropGuard {
     fn drop(&mut self) {
         if self.cleanup {
             let _ = std::fs::remove_file(&self.path);
@@ -140,13 +114,13 @@ where
     C: FnOnce(&Path) -> std::io::Result<()>,
 {
     let temporary_path = temporary_export_path(&final_path);
-    let mut temporary_file = TemporaryExportFile::new(temporary_path.clone());
+    let mut temporary_file = RemoveOnDropGuard::new(temporary_path.clone());
     write(temporary_path.clone()).await?;
 
     tokio::fs::hard_link(&temporary_path, &final_path)
         .await
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut published_file = PublishedExportFile::new(final_path.clone());
+    let mut published_file = RemoveOnDropGuard::new(final_path.clone());
 
     if cleanup(&temporary_path).is_ok() {
         temporary_file.disarm();
