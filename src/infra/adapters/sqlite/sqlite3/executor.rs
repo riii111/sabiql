@@ -14,7 +14,9 @@ use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{
     AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
 };
-use crate::domain::{CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult};
+use crate::domain::{
+    CommandTag, QueryResult, QuerySource, TableKind, TableKindInfo, WriteExecutionResult,
+};
 
 use super::super::{SqliteAdapter, path_validation, sql};
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -34,8 +36,6 @@ const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1)
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
-    #[cfg(test)]
-    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
 }
 
 struct SqliteOutput {
@@ -74,11 +74,7 @@ impl SqliteVersion {
 
 impl SqliteCli {
     pub(in crate::adapters::sqlite) fn new() -> Self {
-        Self {
-            timeout_secs: 30,
-            #[cfg(test)]
-            environment: Vec::new(),
-        }
+        Self { timeout_secs: 30 }
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -232,6 +228,8 @@ impl SqliteCli {
     ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
         let mut cmd = self.command_with_program(command);
+        #[cfg(test)]
+        super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
@@ -318,6 +316,8 @@ impl SqliteCli {
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
         let mut cmd = self.command();
+        #[cfg(test)]
+        super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
@@ -355,17 +355,7 @@ impl SqliteCli {
     }
 
     fn command_with_program(&self, program: &str) -> Command {
-        #[cfg(test)]
-        let command = {
-            let mut cmd = Command::new(program);
-            for (key, value) in &self.environment {
-                cmd.env(key, value);
-            }
-            cmd
-        };
-        #[cfg(not(test))]
-        let command = Command::new(program);
-        command
+        Command::new(program)
     }
 
     async fn collect_output(
@@ -480,17 +470,14 @@ fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
 }
 
 impl SqliteAdapter {
-    async fn preview_rowid_order_alias(
-        &self,
-        path: &str,
-        table: &str,
+    fn preview_rowid_order_alias(
         visible_columns: &[String],
         order_columns: &[String],
+        kind_info: &TableKindInfo,
     ) -> Option<&'static str> {
         if !order_columns.is_empty() {
             return None;
         }
-        let kind_info = self.table_kind_info(path, table).await.ok().flatten()?;
         if kind_info.kind != TableKind::Table || kind_info.without_rowid {
             return None;
         }
@@ -550,14 +537,9 @@ impl QueryExecutor for SqliteAdapter {
     ) -> Result<QueryResult, DbOperationError> {
         Self::validate_main_schema(schema)?;
         let path = Self::path_from_dsn(dsn)?;
-        let order_columns = self.preview_order_columns(path, table).await;
-        let columns = self
-            .preview_visible_column_names(path, table)
-            .await
-            .unwrap_or_default();
-        let rowid_order_alias = self
-            .preview_rowid_order_alias(path, table, &columns, &order_columns)
-            .await;
+        let (columns, order_columns, kind_info) = self.preview_metadata(path, table).await?;
+        let rowid_order_alias =
+            Self::preview_rowid_order_alias(&columns, &order_columns, &kind_info);
         let query = sql::build_preview_query(
             table,
             &columns,
@@ -685,7 +667,8 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, path::PathBuf};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
 
     use crate::adapters::csv_export::export_to_path;
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
@@ -696,17 +679,29 @@ mod tests {
 
     use super::*;
 
-    impl SqliteCli {
-        fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
-            self.environment = environment;
-            self
-        }
-    }
-
     mod preview {
         use crate::adapters::test_support;
 
         use super::*;
+
+        #[tokio::test]
+        async fn metadata_and_rows_use_at_most_two_sqlite_processes() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE, org_id INTEGER);
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 7);
+                ",
+            );
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+            adapter
+                .execute_preview(&dsn, "main", "users", 10, 0)
+                .await
+                .unwrap();
+
+            assert_eq!(process_counter.count(), 2);
+        }
 
         #[tokio::test]
         async fn returns_columns_rows_and_respects_pagination() {
@@ -2654,6 +2649,7 @@ world'), (2, 'done');
 
         #[cfg(not(windows))]
         mod initialization_isolation {
+            use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
             use crate::adapters::test_support;
             use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
@@ -2662,10 +2658,12 @@ world'), (2, 'done');
             struct InitializationArtifacts {
                 redirected_database: PathBuf,
                 redirected_output: PathBuf,
+                _command_context: TestCommandContext,
             }
 
             fn adapter_with_malicious_initialization(
                 dir: &tempfile::TempDir,
+                dsn: &str,
             ) -> (SqliteAdapter, InitializationArtifacts) {
                 let home = dir.path().join("home");
                 let xdg_config_home = dir.path().join("xdg-config");
@@ -2683,19 +2681,22 @@ world'), (2, 'done');
                 )
                 .unwrap();
 
-                let mut adapter = SqliteAdapter::new();
-                adapter.cli = SqliteCli::new().with_environment(vec![
-                    (OsString::from("HOME"), home.into_os_string()),
-                    (
-                        OsString::from("XDG_CONFIG_HOME"),
-                        xdg_config_home.into_os_string(),
-                    ),
-                ]);
+                let (adapter, command_context) = SqliteAdapter::with_test_environment(
+                    dsn,
+                    vec![
+                        (OsString::from("HOME"), home.into_os_string()),
+                        (
+                            OsString::from("XDG_CONFIG_HOME"),
+                            xdg_config_home.into_os_string(),
+                        ),
+                    ],
+                );
                 (
                     adapter,
                     InitializationArtifacts {
                         redirected_database,
                         redirected_output,
+                        _command_context: command_context,
                     },
                 )
             }
@@ -2710,7 +2711,7 @@ world'), (2, 'done');
                 let (dir, dsn) = test_support::make_sqlite_db(
                     "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
                 );
-                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir, &dsn);
 
                 let write = adapter
                     .execute_write(
@@ -2755,7 +2756,7 @@ world'), (2, 'done');
                     "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
                 );
                 let export_path = dir.path().join("users.csv");
-                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir, &dsn);
 
                 adapter
                     .cli

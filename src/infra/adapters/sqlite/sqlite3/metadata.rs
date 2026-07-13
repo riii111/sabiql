@@ -10,8 +10,7 @@ use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::TableKind;
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, Schema, Table, TableKindInfo, TableSignature, TableSummary, Trigger,
-    UNRESOLVED_FK_COLUMN,
+    IndexType, Schema, Table, TableKindInfo, TableSignature, TableSummary, UNRESOLVED_FK_COLUMN,
 };
 
 use super::super::{SqliteAdapter, schema::MAIN_SCHEMA, sql};
@@ -48,17 +47,7 @@ struct RawColumn {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct RawIndex {
-    name: String,
-    unique: i64,
-    origin: String,
-    #[serde(default)]
-    partial: i64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
 struct RawIndexColumn {
-    seqno: i64,
     cid: i64,
     name: Option<String>,
     #[serde(default)]
@@ -66,11 +55,6 @@ struct RawIndexColumn {
     #[serde(default)]
     coll: Option<String>,
     key: i64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RawSql {
-    sql: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -95,6 +79,61 @@ struct RawRowCount {
     count: i64,
 }
 
+#[derive(Debug, Deserialize)]
+struct RawJsonPayload {
+    payload: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawPreviewMetadata {
+    #[serde(default)]
+    columns: Vec<RawColumn>,
+    table: Option<RawTableKindInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawBatchIndex {
+    name: String,
+    unique: i64,
+    #[serde(default)]
+    origin: String,
+    #[serde(default)]
+    partial: i64,
+    #[serde(default)]
+    columns: Vec<RawIndexColumn>,
+    definition: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawReferencedColumns {
+    name: String,
+    #[serde(default)]
+    columns: Vec<RawColumn>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawTableMetadata {
+    table: Option<RawTableKindInfo>,
+    #[serde(default)]
+    columns: Vec<RawColumn>,
+    #[serde(default)]
+    indexes: Vec<RawBatchIndex>,
+    #[serde(default)]
+    foreign_keys: Vec<RawForeignKey>,
+    #[serde(default)]
+    triggers: Vec<RawTrigger>,
+    #[serde(default)]
+    referenced_columns: Vec<RawReferencedColumns>,
+    row_count: Option<i64>,
+    source_ddl: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawNamedJsonPayload {
+    name: String,
+    payload: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TableDetailMode {
     Full,
@@ -107,8 +146,12 @@ impl TableDetailMode {
         matches!(self, Self::Full | Self::Signature)
     }
 
-    const fn include_row_count(self) -> bool {
-        matches!(self, Self::Full)
+    const fn query_mode(self) -> sql::TableMetadataQueryMode {
+        match self {
+            Self::Full => sql::TableMetadataQueryMode::Full,
+            Self::ColumnsAndFks => sql::TableMetadataQueryMode::ColumnsAndFks,
+            Self::Signature => sql::TableMetadataQueryMode::FullWithoutRowCount,
+        }
     }
 
     const fn include_triggers(self) -> bool {
@@ -116,15 +159,19 @@ impl TableDetailMode {
     }
 
     const fn include_source_ddl(self) -> bool {
-        matches!(self, Self::Full)
-    }
-
-    const fn include_kind_info(self) -> bool {
-        !matches!(self, Self::Signature)
+        matches!(self, Self::Full | Self::Signature)
     }
 }
 
 impl SqliteAdapter {
+    fn row_count_fallback_mode<T>(
+        mode: sql::TableMetadataQueryMode,
+        result: &Result<T, DbOperationError>,
+    ) -> Option<sql::TableMetadataQueryMode> {
+        result.as_ref().err()?;
+        mode.without_row_count()
+    }
+
     fn database_name(path: &str) -> String {
         std::path::Path::new(path)
             .file_name()
@@ -166,285 +213,139 @@ impl SqliteAdapter {
         table_kind_info_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
     }
 
-    pub(in crate::adapters::sqlite) async fn table_kind_info(
+    async fn execute_json_payload<T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        query: &str,
+    ) -> Result<T, DbOperationError> {
+        let rows: Vec<RawJsonPayload> = self.cli.execute_json(path, query).await?;
+        let payload = rows.into_iter().next().ok_or_else(|| {
+            DbOperationError::MetadataParseFailed("SQLite metadata payload was empty".to_string())
+        })?;
+        serde_json::from_str(&payload.payload).map_err(DbOperationError::from)
+    }
+
+    pub(in crate::adapters::sqlite) async fn preview_metadata(
         &self,
         path: &str,
         table: &str,
-    ) -> Result<Option<TableKindInfo>, DbOperationError> {
-        let query = sql::table_kind_info_query(table);
-        match self
-            .cli
-            .execute_json::<Vec<RawTableKindInfo>>(path, &query)
-            .await
-        {
-            Ok(rows) => Ok(rows
-                .into_iter()
-                .next()
-                .map(RawTableKindInfo::into_table_kind_info)),
-            Err(DbOperationError::QueryFailed(message))
-                if sql::is_table_list_unavailable(&message) =>
-            {
-                let sql = self.table_definition(path, table).await;
-                Ok(Some(table_kind_info_from_legacy_sql(sql.as_deref())))
-            }
-            Err(error) => Err(error),
+    ) -> Result<(Vec<String>, Vec<String>, TableKindInfo), DbOperationError> {
+        let metadata: RawPreviewMetadata = self
+            .execute_json_payload(path, &sql::preview_metadata_query(table))
+            .await?;
+        if metadata.columns.is_empty() || metadata.table.is_none() {
+            return Err(DbOperationError::ObjectMissing(format!(
+                "SQLite table not found: {table}"
+            )));
         }
-    }
-
-    async fn row_count(&self, path: &str, table: &str) -> Option<i64> {
-        let rows: Result<Vec<RawRowCount>, DbOperationError> = self
-            .cli
-            .execute_json(path, &sql::row_count_query(table))
-            .await;
-        rows.ok()
-            .and_then(|rows| rows.into_iter().next())
-            .map(|row| row.count)
-    }
-
-    async fn table_definition(&self, path: &str, table: &str) -> Option<String> {
-        let rows: Result<Vec<RawSql>, DbOperationError> = self
-            .cli
-            .execute_json(path, &sql::table_definition_query(table))
-            .await;
-        rows.ok()
-            .and_then(|rows| rows.into_iter().next())
-            .and_then(|row| row.sql)
-    }
-
-    async fn columns(&self, path: &str, table: &str) -> Result<Vec<RawColumn>, DbOperationError> {
-        match self
-            .cli
-            .execute_json(path, &sql::table_xinfo_query(table))
-            .await
-        {
-            Ok(columns) => Ok(columns),
-            Err(_) => {
-                self.cli
-                    .execute_json(path, &sql::table_info_query(table))
-                    .await
-            }
-        }
-    }
-
-    pub(in crate::adapters::sqlite) async fn preview_visible_column_names(
-        &self,
-        path: &str,
-        table: &str,
-    ) -> Result<Vec<String>, DbOperationError> {
-        Ok(self
-            .columns(path, table)
-            .await?
+        let primary_key = Self::extract_primary_key(&metadata.columns);
+        let visible_columns = metadata
+            .columns
             .into_iter()
             .filter(|column| column.hidden != 1)
             .map(|column| column.name)
-            .collect())
-    }
-
-    fn extract_primary_key(columns: &[RawColumn]) -> Vec<String> {
-        let mut primary_key: Vec<(i64, String)> = columns
-            .iter()
-            .filter(|column| column.pk > 0)
-            .map(|column| (column.pk, column.name.clone()))
             .collect();
-        primary_key.sort_by_key(|(pk, _)| *pk);
-        primary_key.into_iter().map(|(_, name)| name).collect()
+        let kind_info = metadata
+            .table
+            .map(RawTableKindInfo::into_table_kind_info)
+            .unwrap_or_default();
+        Ok((visible_columns, primary_key, kind_info))
     }
 
-    async fn primary_key_columns(
-        &self,
-        path: &str,
-        table: &str,
-    ) -> Result<Vec<String>, DbOperationError> {
-        let columns = self.columns(path, table).await?;
-        Ok(Self::extract_primary_key(&columns))
-    }
-
-    pub(in crate::adapters::sqlite) fn validate_main_schema(
-        schema: &str,
-    ) -> Result<(), DbOperationError> {
-        if schema == MAIN_SCHEMA {
-            Ok(())
-        } else {
-            Err(DbOperationError::ObjectMissing(format!(
-                "SQLite schema not found: {schema}"
-            )))
-        }
-    }
-
-    pub(in crate::adapters::sqlite) async fn preview_order_columns(
-        &self,
-        path: &str,
-        table: &str,
-    ) -> Vec<String> {
-        self.primary_key_columns(path, table)
-            .await
-            .unwrap_or_default()
-    }
-
-    async fn indexes(&self, path: &str, table: &str) -> Result<Vec<Index>, DbOperationError> {
-        let raw_indexes: Vec<RawIndex> = self
-            .cli
-            .execute_json(path, &sql::index_list_query(table))
-            .await?;
-        let mut indexes = Vec::new();
-
-        for raw in raw_indexes {
-            let mut columns: Vec<RawIndexColumn> = self
-                .cli
-                .execute_json(path, &sql::index_xinfo_query(&raw.name))
-                .await?;
-            columns.sort_by_key(|col| col.seqno);
-            let has_expression = columns.iter().any(|col| col.key != 0 && col.cid == -2);
-            let has_auxiliary_columns = columns.iter().any(|col| col.key == 0);
-            let has_descending_key = columns.iter().any(|col| col.key != 0 && col.desc != 0);
-            let has_non_binary_collation = columns.iter().any(|col| {
-                col.key != 0
-                    && col
-                        .coll
-                        .as_deref()
-                        .is_some_and(|collation| !collation.eq_ignore_ascii_case("BINARY"))
-            });
-            let columns = Self::index_key_column_names(&columns);
-            let definition = self.index_definition(path, &raw.name).await;
-
-            let mut attributes = IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk");
-            if raw.partial != 0 {
-                attributes = attributes | IndexAttributes::PARTIAL;
-            }
-            if has_expression {
-                attributes = attributes | IndexAttributes::EXPRESSION;
-            }
-            if has_auxiliary_columns {
-                attributes = attributes | IndexAttributes::HAS_AUXILIARY_COLUMNS;
-            }
-            if has_descending_key {
-                attributes = attributes | IndexAttributes::DESCENDING;
-            }
-            if has_non_binary_collation {
-                attributes = attributes | IndexAttributes::NON_BINARY_COLLATION;
-            }
-
-            indexes.push(Index {
-                name: raw.name,
-                columns,
-                attributes,
-                index_type: IndexType::Unknown,
-                definition,
-            });
-        }
-
-        indexes.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(indexes)
-    }
-
-    async fn unique_single_columns(
-        &self,
-        path: &str,
-        table: &str,
-    ) -> Result<std::collections::HashSet<String>, DbOperationError> {
-        let raw_indexes: Vec<RawIndex> = self
-            .cli
-            .execute_json(path, &sql::index_list_query(table))
-            .await?;
-        let mut columns = std::collections::HashSet::new();
-
-        for raw in raw_indexes
+    fn indexes_from_batch(raw_indexes: Vec<RawBatchIndex>) -> Vec<Index> {
+        let mut indexes = raw_indexes
             .into_iter()
-            .filter(|index| index.unique != 0 && index.partial == 0)
-        {
-            let key_columns = self.index_key_columns(path, &raw.name).await?;
-            if key_columns.len() == 1 && key_columns[0] != "<expression>" {
-                columns.insert(key_columns[0].clone());
-            }
-        }
-
-        Ok(columns)
-    }
-
-    async fn index_key_columns(
-        &self,
-        path: &str,
-        index: &str,
-    ) -> Result<Vec<String>, DbOperationError> {
-        let mut columns: Vec<RawIndexColumn> = self
-            .cli
-            .execute_json(path, &sql::index_xinfo_query(index))
-            .await?;
-        columns.sort_by_key(|col| col.seqno);
-        Ok(Self::index_key_column_names(&columns))
-    }
-
-    fn index_key_column_names(columns: &[RawIndexColumn]) -> Vec<String> {
-        columns
-            .iter()
-            .filter(|col| col.key != 0)
-            .map(|col| {
-                if col.cid == -2 {
-                    "<expression>".to_string()
-                } else {
-                    col.name.clone().unwrap_or_else(|| "<unknown>".to_string())
+            .map(|raw| {
+                let has_expression = raw
+                    .columns
+                    .iter()
+                    .any(|column| column.key != 0 && column.cid == -2);
+                let has_auxiliary_columns = raw.columns.iter().any(|column| column.key == 0);
+                let has_descending_key = raw
+                    .columns
+                    .iter()
+                    .any(|column| column.key != 0 && column.desc != 0);
+                let has_non_binary_collation = raw.columns.iter().any(|column| {
+                    column.key != 0
+                        && column
+                            .coll
+                            .as_deref()
+                            .is_some_and(|collation| !collation.eq_ignore_ascii_case("BINARY"))
+                });
+                let columns = Self::index_key_column_names(&raw.columns);
+                let mut attributes =
+                    IndexAttributes::from_parts(raw.unique != 0, raw.origin == "pk");
+                if raw.partial != 0 {
+                    attributes = attributes | IndexAttributes::PARTIAL;
                 }
+                if has_expression {
+                    attributes = attributes | IndexAttributes::EXPRESSION;
+                }
+                if has_auxiliary_columns {
+                    attributes = attributes | IndexAttributes::HAS_AUXILIARY_COLUMNS;
+                }
+                if has_descending_key {
+                    attributes = attributes | IndexAttributes::DESCENDING;
+                }
+                if has_non_binary_collation {
+                    attributes = attributes | IndexAttributes::NON_BINARY_COLLATION;
+                }
+                Index {
+                    name: raw.name,
+                    columns,
+                    attributes,
+                    index_type: IndexType::Unknown,
+                    definition: raw.definition,
+                }
+            })
+            .collect::<Vec<_>>();
+        indexes.sort_by(|left, right| left.name.cmp(&right.name));
+        indexes
+    }
+
+    fn unique_single_columns_from_batch(raw_indexes: &[RawBatchIndex]) -> HashSet<String> {
+        raw_indexes
+            .iter()
+            .filter(|index| index.unique != 0 && index.partial == 0)
+            .filter_map(|index| {
+                let columns = Self::index_key_column_names(&index.columns);
+                (columns.len() == 1 && columns[0] != "<expression>").then(|| columns[0].clone())
             })
             .collect()
     }
 
-    async fn index_definition(&self, path: &str, index: &str) -> Option<String> {
-        let rows: Result<Vec<RawSql>, DbOperationError> = self
-            .cli
-            .execute_json(path, &sql::index_definition_query(index))
-            .await;
-        rows.ok()
-            .and_then(|rows| rows.into_iter().next())
-            .and_then(|row| row.sql)
-    }
-
-    async fn triggers(&self, path: &str, table: &str) -> Result<Vec<Trigger>, DbOperationError> {
-        let raw: Vec<RawTrigger> = self
-            .cli
-            .execute_json(path, &sql::trigger_list_query(table))
-            .await?;
-        let mut triggers = Vec::new();
-
-        for raw in raw {
-            if let Some(sql) = raw.sql {
-                triggers.push(parse_sqlite_trigger(&raw.name, &sql)?);
-            }
-        }
-
-        triggers.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(triggers)
-    }
-
-    async fn foreign_keys(
-        &self,
-        path: &str,
+    fn foreign_keys_from_batch(
         table: &str,
+        mut raw: Vec<RawForeignKey>,
+        referenced: &[RawReferencedColumns],
     ) -> Result<Vec<ForeignKey>, DbOperationError> {
-        let mut raw: Vec<RawForeignKey> = self
-            .cli
-            .execute_json(path, &sql::foreign_key_list_query(table))
-            .await?;
         raw.sort_by_key(|fk| (fk.id, fk.seq));
-
+        let referenced = referenced
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.columns.as_slice()))
+            .collect::<HashMap<_, _>>();
         let mut grouped = Vec::new();
         let mut current: Option<ForeignKey> = None;
         let mut current_id = None;
-        let mut referenced_primary_keys = HashMap::new();
-        let mut referenced_columns = HashMap::new();
 
         for fk in raw {
-            let (to_column, resolved) = self
-                .resolve_fk_target_column(
-                    path,
-                    &fk,
-                    &mut referenced_primary_keys,
-                    &mut referenced_columns,
-                )
-                .await?;
+            let referenced_columns = referenced.get(fk.table.as_str()).copied();
+            let (to_column, resolved) = if let Some(to) = &fk.to {
+                let resolved = referenced_columns.is_some_and(|columns| {
+                    !columns.is_empty()
+                        && columns
+                            .iter()
+                            .any(|column| column.name.eq_ignore_ascii_case(to))
+                });
+                (to.clone(), resolved)
+            } else {
+                let primary_key = referenced_columns.map(Self::extract_primary_key);
+                Self::primary_key_target_column(&fk, primary_key.as_ref())
+            };
 
             if current_id != Some(fk.id) {
-                if let Some(fk) = current.take() {
-                    grouped.push(fk);
+                if let Some(foreign_key) = current.take() {
+                    grouped.push(foreign_key);
                 }
                 current_id = Some(fk.id);
                 current = Some(ForeignKey {
@@ -460,53 +361,52 @@ impl SqliteAdapter {
                     reference_resolved: resolved,
                 });
             }
-
             if let Some(current) = &mut current {
                 current.from_columns.push(fk.from);
                 current.to_columns.push(to_column);
-                if !resolved {
-                    current.reference_resolved = false;
-                }
+                current.reference_resolved &= resolved;
             }
         }
-
-        if let Some(fk) = current {
-            grouped.push(fk);
+        if let Some(foreign_key) = current {
+            grouped.push(foreign_key);
         }
-
         Ok(grouped)
     }
 
-    async fn resolve_fk_target_column(
-        &self,
-        path: &str,
-        fk: &RawForeignKey,
-        referenced_primary_keys: &mut HashMap<String, Vec<String>>,
-        referenced_columns: &mut HashMap<String, HashSet<String>>,
-    ) -> Result<(String, bool), DbOperationError> {
-        if let Some(to) = &fk.to {
-            self.cache_table_columns(path, &fk.table, referenced_columns)
-                .await?;
-            if !Self::cached_table_has_columns(referenced_columns, &fk.table) {
-                return Ok((to.clone(), false));
-            }
-            let resolved = referenced_columns.get(&fk.table).is_some_and(|columns| {
-                columns.iter().any(|column| column.eq_ignore_ascii_case(to))
-            });
-            Ok((to.clone(), resolved))
-        } else if !referenced_primary_keys.contains_key(&fk.table) {
-            let columns = self.columns(path, &fk.table).await?;
-            referenced_primary_keys.insert(fk.table.clone(), Self::extract_primary_key(&columns));
-            Ok(Self::primary_key_target_column(
-                fk,
-                referenced_primary_keys.get(&fk.table),
-            ))
+    fn extract_primary_key(columns: &[RawColumn]) -> Vec<String> {
+        let mut primary_key: Vec<(i64, String)> = columns
+            .iter()
+            .filter(|column| column.pk > 0)
+            .map(|column| (column.pk, column.name.clone()))
+            .collect();
+        primary_key.sort_by_key(|(pk, _)| *pk);
+        primary_key.into_iter().map(|(_, name)| name).collect()
+    }
+
+    pub(in crate::adapters::sqlite) fn validate_main_schema(
+        schema: &str,
+    ) -> Result<(), DbOperationError> {
+        if schema == MAIN_SCHEMA {
+            Ok(())
         } else {
-            Ok(Self::primary_key_target_column(
-                fk,
-                referenced_primary_keys.get(&fk.table),
-            ))
+            Err(DbOperationError::ObjectMissing(format!(
+                "SQLite schema not found: {schema}"
+            )))
         }
+    }
+
+    fn index_key_column_names(columns: &[RawIndexColumn]) -> Vec<String> {
+        columns
+            .iter()
+            .filter(|col| col.key != 0)
+            .map(|col| {
+                if col.cid == -2 {
+                    "<expression>".to_string()
+                } else {
+                    col.name.clone().unwrap_or_else(|| "<unknown>".to_string())
+                }
+            })
+            .collect()
     }
 
     fn primary_key_target_column(
@@ -525,59 +425,43 @@ impl SqliteAdapter {
         }
     }
 
-    async fn cache_table_columns(
-        &self,
-        path: &str,
-        table: &str,
-        cache: &mut HashMap<String, HashSet<String>>,
-    ) -> Result<(), DbOperationError> {
-        if !cache.contains_key(table) {
-            let columns = self.columns(path, table).await?;
-            cache.insert(
-                table.to_string(),
-                columns.into_iter().map(|column| column.name).collect(),
-            );
-        }
-        Ok(())
-    }
-
-    fn cached_table_has_columns(cache: &HashMap<String, HashSet<String>>, table: &str) -> bool {
-        !cache.get(table).is_some_and(HashSet::is_empty)
-    }
-
     async fn table_detail_with_mode(
         &self,
         path: &str,
         table: &str,
         mode: TableDetailMode,
     ) -> Result<Table, DbOperationError> {
-        let include_indexes = mode.include_indexes();
-        let include_row_count = mode.include_row_count();
-        let include_triggers = mode.include_triggers();
-        let include_source_ddl = mode.include_source_ddl();
-        let (indexes, unique_single_columns) = if include_indexes {
-            let indexes = self.indexes(path, table).await?;
-            let unique_single_columns = indexes
-                .iter()
-                .filter(|index| {
-                    index.is_unique()
-                        && !index.is_partial()
-                        && !index.has_expression()
-                        && index.columns.len() == 1
-                })
-                .map(|index| index.columns[0].clone())
-                .collect::<std::collections::HashSet<_>>();
-            (indexes, unique_single_columns)
-        } else {
-            (Vec::new(), self.unique_single_columns(path, table).await?)
-        };
+        let query_mode = mode.query_mode();
+        let metadata = self
+            .execute_json_payload(path, &sql::table_metadata_query(table, query_mode))
+            .await;
+        let metadata: RawTableMetadata =
+            if let Some(fallback_mode) = Self::row_count_fallback_mode(query_mode, &metadata) {
+                self.execute_json_payload(path, &sql::table_metadata_query(table, fallback_mode))
+                    .await?
+            } else {
+                metadata?
+            };
+        Self::table_from_metadata(table, mode, metadata)
+    }
 
-        let mut raw_columns = self.columns(path, table).await?;
-        if raw_columns.is_empty() {
+    fn table_from_metadata(
+        table: &str,
+        mode: TableDetailMode,
+        metadata: RawTableMetadata,
+    ) -> Result<Table, DbOperationError> {
+        if metadata.columns.is_empty() || metadata.table.is_none() {
             return Err(DbOperationError::ObjectMissing(format!(
                 "SQLite table not found: {table}"
             )));
         }
+        let unique_single_columns = Self::unique_single_columns_from_batch(&metadata.indexes);
+        let indexes = if mode.include_indexes() {
+            Self::indexes_from_batch(metadata.indexes)
+        } else {
+            Vec::new()
+        };
+        let mut raw_columns = metadata.columns;
         raw_columns.sort_by_key(|column| column.cid);
         let primary_key = Self::extract_primary_key(&raw_columns);
         let columns: Vec<Column> = raw_columns
@@ -613,11 +497,24 @@ impl SqliteAdapter {
             })
             .collect();
         let primary_key = (!primary_key.is_empty()).then_some(primary_key);
-        let kind_info = if mode.include_kind_info() {
-            self.table_kind_info(path, table).await?.unwrap_or_default()
-        } else {
-            TableKindInfo::default()
-        };
+        let kind_info = metadata
+            .table
+            .map(RawTableKindInfo::into_table_kind_info)
+            .unwrap_or_default();
+        let foreign_keys = Self::foreign_keys_from_batch(
+            table,
+            metadata.foreign_keys,
+            &metadata.referenced_columns,
+        )?;
+        let mut triggers = Vec::new();
+        if mode.include_triggers() {
+            for raw in metadata.triggers {
+                if let Some(sql) = raw.sql {
+                    triggers.push(parse_sqlite_trigger(&raw.name, &sql)?);
+                }
+            }
+            triggers.sort_by(|left, right| left.name.cmp(&right.name));
+        }
 
         Ok(Table {
             schema: MAIN_SCHEMA.to_string(),
@@ -625,22 +522,14 @@ impl SqliteAdapter {
             owner: None,
             columns,
             primary_key,
-            foreign_keys: self.foreign_keys(path, table).await?,
+            foreign_keys,
             indexes,
             rls: None,
-            triggers: if include_triggers {
-                self.triggers(path, table).await?
-            } else {
-                Vec::new()
-            },
-            row_count_estimate: if include_row_count {
-                self.row_count(path, table).await
-            } else {
-                None
-            },
+            triggers,
+            row_count_estimate: metadata.row_count,
             comment: None,
-            source_ddl: if include_source_ddl {
-                self.table_definition(path, table).await
+            source_ddl: if mode.include_source_ddl() {
+                metadata.source_ddl
             } else {
                 None
             },
@@ -648,17 +537,10 @@ impl SqliteAdapter {
         })
     }
 
-    async fn signature_for_table(
-        &self,
-        path: &str,
-        table: &RawTable,
-    ) -> Result<TableSignature, DbOperationError> {
-        let detail = self
-            .table_detail_with_mode(path, &table.name, TableDetailMode::Signature)
-            .await?;
-        let kind_info = Self::kind_info_for_raw_table(table);
+    fn signature_for_table(detail: &Table) -> TableSignature {
+        let kind_info = &detail.kind_info;
         let mut parts = vec![
-            format!("sql={}", table.sql.clone().unwrap_or_default()),
+            format!("sql={}", detail.source_ddl.clone().unwrap_or_default()),
             format!("kind={:?}", kind_info.kind),
             format!("strict={}", kind_info.is_strict),
             format!("wr={}", kind_info.without_rowid),
@@ -721,11 +603,11 @@ impl SqliteAdapter {
             )
         }));
 
-        Ok(TableSignature {
+        TableSignature {
             schema: MAIN_SCHEMA.to_string(),
-            name: table.name.clone(),
+            name: detail.name.clone(),
             signature: parts.join("|"),
-        })
+        }
     }
 }
 
@@ -783,12 +665,19 @@ impl MetadataProvider for SqliteAdapter {
         dsn: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
-        let tables = self.list_tables(path).await?;
-        let mut signatures = Vec::new();
-        for table in &tables {
-            signatures.push(self.signature_for_table(path, table).await?);
-        }
-        Ok(signatures)
+        let rows: Vec<RawNamedJsonPayload> = self
+            .cli
+            .execute_json(path, &sql::table_signatures_query())
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                let metadata: RawTableMetadata =
+                    serde_json::from_str(&row.payload).map_err(DbOperationError::from)?;
+                let detail =
+                    Self::table_from_metadata(&row.name, TableDetailMode::Signature, metadata)?;
+                Ok(Self::signature_for_table(&detail))
+            })
+            .collect()
     }
 }
 
@@ -801,6 +690,18 @@ mod tests {
     };
 
     use super::*;
+
+    #[test]
+    fn lock_timeout_uses_row_count_fallback() {
+        let result: Result<(), DbOperationError> = Err(DbOperationError::LockTimeout(
+            "database is locked".to_string(),
+        ));
+
+        assert_eq!(
+            SqliteAdapter::row_count_fallback_mode(sql::TableMetadataQueryMode::Full, &result,),
+            Some(sql::TableMetadataQueryMode::FullWithoutRowCount)
+        );
+    }
 
     #[test]
     fn legacy_list_row_uses_sql_for_storage() {
@@ -821,7 +722,6 @@ mod tests {
     fn index_key_column_names_preserves_expression_and_unknown_key_columns() {
         let columns = vec![
             RawIndexColumn {
-                seqno: 0,
                 cid: 1,
                 name: Some("email".to_string()),
                 desc: 0,
@@ -829,7 +729,6 @@ mod tests {
                 key: 1,
             },
             RawIndexColumn {
-                seqno: 1,
                 cid: -2,
                 name: None,
                 desc: 0,
@@ -837,7 +736,6 @@ mod tests {
                 key: 1,
             },
             RawIndexColumn {
-                seqno: 2,
                 cid: 99,
                 name: None,
                 desc: 0,
@@ -845,7 +743,6 @@ mod tests {
                 key: 1,
             },
             RawIndexColumn {
-                seqno: 3,
                 cid: 2,
                 name: Some("rowid".to_string()),
                 desc: 0,
@@ -1131,6 +1028,79 @@ mod tests {
         use super::*;
 
         #[tokio::test]
+        async fn inspector_metadata_uses_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY, name TEXT);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    email TEXT UNIQUE,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id DESC);
+                CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END;
+                ",
+            );
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.indexes.len(), 2);
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(detail.triggers.len(), 1);
+            assert_eq!(process_counter.count(), 1);
+        }
+
+        #[tokio::test]
+        async fn inspector_returns_metadata_when_view_row_count_fails() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE VIEW broken_json AS
+                SELECT * FROM json_each('invalid');
+                ",
+            );
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "broken_json")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.kind_info.kind, TableKind::View);
+            assert!(!detail.columns.is_empty());
+            assert!(detail.row_count_estimate.is_none());
+            assert_eq!(process_counter.count(), 2);
+        }
+
+        #[tokio::test]
+        async fn completion_metadata_uses_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    email TEXT UNIQUE,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                ",
+            );
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+            let detail = adapter
+                .fetch_table_columns_and_fks(&dsn, "main", "users")
+                .await
+                .unwrap();
+
+            assert!(detail.columns[1].is_unique());
+            assert_eq!(detail.foreign_keys.len(), 1);
+            assert_eq!(process_counter.count(), 1);
+        }
+
+        #[tokio::test]
         async fn non_main_schema_returns_object_missing() {
             let (_dir, dsn) =
                 test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
@@ -1150,6 +1120,21 @@ mod tests {
             let result = adapter.fetch_table_detail(&dsn, "main", "missing").await;
 
             assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+        }
+
+        #[tokio::test]
+        async fn resolves_table_name_case_insensitively() {
+            let (_dir, dsn) =
+                test_support::make_sqlite_db("CREATE TABLE MixedCase(id INTEGER PRIMARY KEY);");
+            let adapter = SqliteAdapter::new();
+
+            let detail = adapter
+                .fetch_table_detail(&dsn, "main", "mixedcase")
+                .await
+                .unwrap();
+
+            assert_eq!(detail.primary_key, Some(vec!["id".to_string()]));
+            assert_eq!(detail.kind_info.kind, TableKind::Table);
         }
 
         #[tokio::test]
@@ -1735,6 +1720,28 @@ mod tests {
         use crate::adapters::test_support;
 
         use super::*;
+
+        #[tokio::test]
+        async fn all_tables_use_one_sqlite_process() {
+            let (_dir, dsn) = test_support::make_sqlite_db(
+                r"
+                CREATE TABLE organizations(id INTEGER PRIMARY KEY);
+                CREATE TABLE users(
+                    id INTEGER PRIMARY KEY,
+                    org_id INTEGER REFERENCES organizations(id)
+                );
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                CREATE TABLE events(id INTEGER PRIMARY KEY, user_id INTEGER);
+                CREATE INDEX idx_events_user_id ON events(user_id);
+                ",
+            );
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
+
+            let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+
+            assert_eq!(signatures.len(), 3);
+            assert_eq!(process_counter.count(), 1);
+        }
 
         #[tokio::test]
         async fn change_with_table_shape() {
