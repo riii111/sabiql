@@ -23,7 +23,7 @@ use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{
     SqliteStatementPlan, aggregate_sqlite_command_tag, append_changes_query_for_plan,
     command_tag_result, is_sqlite_rerunnable_export_query, last_sqlite_result_set,
-    parse_affected_rows, parse_count_result, quoted_to_query_result,
+    parse_affected_rows, parse_count_result, quoted_to_query_result, reject_sqlite_fsdir,
     sqlite_adhoc_execution_query_for_plan, sqlite_empty_result_sentinel,
     sqlite_export_not_rerunnable_error, sqlite_probe_marker, sqlite_statement_plan,
     sqlite_statement_tags, statement_counts_as_select_tag, strip_sqlite_probes,
@@ -639,6 +639,7 @@ impl QueryExecutor for SqliteAdapter {
     }
 
     async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
+        reject_sqlite_fsdir(query)?;
         let stdout = self
             .cli
             .execute_csv(Self::path_from_dsn(dsn)?, query, true)
@@ -1390,6 +1391,29 @@ mod tests {
                 if side_effect == "writefile" {
                     assert!(!output.exists());
                 }
+            }
+
+            #[rstest::rstest]
+            #[case::read_write(AccessMode::ReadWrite)]
+            #[case::read_only(AccessMode::ReadOnly)]
+            #[tokio::test]
+            async fn rejects_fsdir_before_reading_host_files(#[case] access_mode: AccessMode) {
+                let (dir, dsn) = test_support::make_sqlite_db("");
+                let outside = dir.path().join("outside.txt");
+                std::fs::write(&outside, "fsdir canary").unwrap();
+                let adapter = SqliteAdapter::new();
+                let sql = format!(
+                    "SELECT content FROM fsdir('{}') WHERE name = 'outside.txt'",
+                    outside.display()
+                );
+
+                let result = adapter.execute_adhoc(&dsn, &sql, access_mode).await;
+
+                assert!(matches!(
+                    result,
+                    Err(DbOperationError::UnsupportedOperation(details))
+                        if details == "SQLite fsdir access is not supported in safe mode"
+                ));
             }
         }
 
@@ -2346,6 +2370,25 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn count_query_rows_rejects_fsdir_before_execution() {
+            let (_dir, dsn) = test_support::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .count_query_rows(
+                    &dsn,
+                    "SELECT COUNT(*) FROM (SELECT * FROM fsdir('/tmp')) AS files",
+                )
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(details))
+                    if details == "SQLite fsdir access is not supported in safe mode"
+            ));
+        }
+
+        #[tokio::test]
         async fn export_to_csv_writes_rows() {
             let (dir, dsn) = test_support::make_sqlite_db(
                 r"
@@ -2417,6 +2460,22 @@ world'), (2, 'done');
                 if message.contains("write or DDL")
             ));
             assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_rejects_fsdir_before_creating_output() {
+            let (_dir, dsn) = test_support::make_sqlite_db("");
+            let adapter = SqliteAdapter::new();
+
+            let result = adapter
+                .export_to_csv(&dsn, "SELECT * FROM fsdir('/tmp')", "fsdir_export")
+                .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(details))
+                    if details == "SQLite fsdir access is not supported in safe mode"
+            ));
         }
 
         #[tokio::test]
