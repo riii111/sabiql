@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_statement;
+use crate::app::policy::sql::sqlite_lexer::{SqliteStatementSplitError, split_sqlite_statements};
 use crate::app::policy::sql::sqlite_transaction::{
     SqliteTransactionPolicy, sqlite_statement_classification,
     sqlite_transaction_policy_for_classifications,
@@ -119,10 +120,6 @@ fn is_create_keyword_prefix(sql: &str, keyword: &str) -> bool {
     second.eq_ignore_ascii_case(keyword)
 }
 
-fn is_create_trigger_prefix(sql: &str) -> bool {
-    is_create_keyword_prefix(sql, "TRIGGER")
-}
-
 pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: &str) -> bool {
     let Some((first, pos)) = next_keyword_from(sql, 0) else {
         return false;
@@ -221,128 +218,21 @@ fn module_name_at(sql: &str, start: usize) -> Option<String> {
     }
 }
 
-fn is_dotted_identifier_suffix(sql: &str, keyword_start: usize) -> bool {
-    let mut index = keyword_start;
-    while index > 0 {
-        index -= 1;
-        match sql.as_bytes()[index] {
-            byte if byte.is_ascii_whitespace() => {}
-            b'.' => return true,
-            _ => return false,
-        }
-    }
-    false
-}
-
-fn is_sqlite_trigger_body_end(
-    keyword: &str,
-    in_trigger_body: bool,
-    trigger_body_stmt_start: bool,
-    sql: &str,
-    keyword_start: usize,
-) -> bool {
-    in_trigger_body
-        && trigger_body_stmt_start
-        && keyword.eq_ignore_ascii_case("END")
-        && !is_dotted_identifier_suffix(sql, keyword_start)
-}
-
 pub(in crate::adapters::sqlite::sqlite3) fn try_split_sqlite_statements(
     sql: &str,
 ) -> Result<Vec<&str>, DbOperationError> {
     reject_sqlite_meta_commands(sql)?;
-
-    let bytes = sql.as_bytes();
-    let mut statements = Vec::new();
-    let mut start = 0;
-    let mut i = 0;
-    let mut in_trigger_body = false;
-    let mut trigger_body_stmt_start = false;
-
-    while i < bytes.len() {
-        match bytes[i] {
-            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
+    let split = split_sqlite_statements(sql);
+    if let Some(error) = split.error() {
+        let error = match error {
+            SqliteStatementSplitError::UnclosedCreateTriggerBody => "Unclosed CREATE TRIGGER body",
+            SqliteStatementSplitError::IncompleteCreateTrigger => {
+                "Incomplete CREATE TRIGGER statement"
             }
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                if i + 1 < bytes.len() {
-                    i += 2;
-                }
-            }
-            b'\'' | b'"' | b'`' => {
-                i = skip_quoted(bytes, i, bytes[i]);
-            }
-            b'[' => {
-                i = skip_bracket_quoted(bytes, i);
-            }
-            b';' if in_trigger_body => {
-                trigger_body_stmt_start = true;
-                i += 1;
-            }
-            b';' => {
-                let statement = sql[start..i].trim();
-                if !statement.is_empty() {
-                    statements.push(statement);
-                }
-                i += 1;
-                start = i;
-                in_trigger_body = false;
-                trigger_body_stmt_start = false;
-            }
-            _ => {
-                if bytes[i].is_ascii_alphabetic()
-                    && is_create_trigger_prefix(&sql[start..])
-                    && let Some((keyword, kw_end)) = next_keyword_from(sql, i)
-                {
-                    if keyword.eq_ignore_ascii_case("BEGIN") {
-                        if in_trigger_body {
-                            trigger_body_stmt_start = false;
-                        } else {
-                            in_trigger_body = true;
-                            trigger_body_stmt_start = true;
-                        }
-                    } else if is_sqlite_trigger_body_end(
-                        keyword,
-                        in_trigger_body,
-                        trigger_body_stmt_start,
-                        sql,
-                        i,
-                    ) {
-                        in_trigger_body = false;
-                        trigger_body_stmt_start = false;
-                    } else if in_trigger_body {
-                        trigger_body_stmt_start = false;
-                    }
-                    i = kw_end;
-                    continue;
-                }
-                i += 1;
-            }
-        }
+        };
+        return Err(DbOperationError::QueryFailed(error.to_string()));
     }
-
-    let tail = sql[start..].trim();
-    if !tail.is_empty() {
-        if in_trigger_body {
-            return Err(DbOperationError::QueryFailed(
-                "Unclosed CREATE TRIGGER body".to_string(),
-            ));
-        }
-        if is_create_trigger_prefix(tail) && !contains_keyword(tail, "BEGIN") {
-            return Err(DbOperationError::QueryFailed(
-                "Incomplete CREATE TRIGGER statement".to_string(),
-            ));
-        }
-        statements.push(tail);
-    }
-
-    Ok(statements)
+    Ok(split.into_statements())
 }
 
 fn reject_sqlite_meta_commands(sql: &str) -> Result<(), DbOperationError> {
