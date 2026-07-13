@@ -36,10 +36,6 @@ const SQLITE_SAFE_MODE_MIN_VERSION: SqliteVersion = SqliteVersion::new(3, 41, 1)
 #[derive(Debug, Clone)]
 pub(in crate::adapters::sqlite) struct SqliteCli {
     timeout_secs: u64,
-    #[cfg(test)]
-    environment: Vec<(std::ffi::OsString, std::ffi::OsString)>,
-    #[cfg(test)]
-    process_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 struct SqliteOutput {
@@ -78,19 +74,7 @@ impl SqliteVersion {
 
 impl SqliteCli {
     pub(in crate::adapters::sqlite) fn new() -> Self {
-        Self {
-            timeout_secs: 30,
-            #[cfg(test)]
-            environment: Vec::new(),
-            #[cfg(test)]
-            process_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-        }
-    }
-
-    #[cfg(test)]
-    pub(in crate::adapters::sqlite) fn process_count(&self) -> usize {
-        self.process_count
-            .load(std::sync::atomic::Ordering::Relaxed)
+        Self { timeout_secs: 30 }
     }
 
     pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
@@ -244,6 +228,8 @@ impl SqliteCli {
     ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
         let mut cmd = self.command_with_program(command);
+        #[cfg(test)]
+        super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
@@ -330,6 +316,8 @@ impl SqliteCli {
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
         let mut cmd = self.command();
+        #[cfg(test)]
+        super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
@@ -367,19 +355,7 @@ impl SqliteCli {
     }
 
     fn command_with_program(&self, program: &str) -> Command {
-        #[cfg(test)]
-        let command = {
-            self.process_count
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let mut cmd = Command::new(program);
-            for (key, value) in &self.environment {
-                cmd.env(key, value);
-            }
-            cmd
-        };
-        #[cfg(not(test))]
-        let command = Command::new(program);
-        command
+        Command::new(program)
     }
 
     async fn collect_output(
@@ -691,7 +667,8 @@ impl QueryExecutor for SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::OsString, path::PathBuf};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
 
     use crate::adapters::csv_export::export_to_path;
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
@@ -701,13 +678,6 @@ mod tests {
     };
 
     use super::*;
-
-    impl SqliteCli {
-        fn with_environment(mut self, environment: Vec<(OsString, OsString)>) -> Self {
-            self.environment = environment;
-            self
-        }
-    }
 
     mod preview {
         use crate::adapters::test_support;
@@ -723,14 +693,14 @@ mod tests {
                 INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 7);
                 ",
             );
-            let adapter = SqliteAdapter::new();
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
             adapter
                 .execute_preview(&dsn, "main", "users", 10, 0)
                 .await
                 .unwrap();
 
-            assert_eq!(adapter.cli.process_count(), 2);
+            assert_eq!(process_counter.count(), 2);
         }
 
         #[tokio::test]
@@ -2679,6 +2649,7 @@ world'), (2, 'done');
 
         #[cfg(not(windows))]
         mod initialization_isolation {
+            use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
             use crate::adapters::test_support;
             use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
@@ -2687,10 +2658,12 @@ world'), (2, 'done');
             struct InitializationArtifacts {
                 redirected_database: PathBuf,
                 redirected_output: PathBuf,
+                _command_context: TestCommandContext,
             }
 
             fn adapter_with_malicious_initialization(
                 dir: &tempfile::TempDir,
+                dsn: &str,
             ) -> (SqliteAdapter, InitializationArtifacts) {
                 let home = dir.path().join("home");
                 let xdg_config_home = dir.path().join("xdg-config");
@@ -2708,19 +2681,22 @@ world'), (2, 'done');
                 )
                 .unwrap();
 
-                let mut adapter = SqliteAdapter::new();
-                adapter.cli = SqliteCli::new().with_environment(vec![
-                    (OsString::from("HOME"), home.into_os_string()),
-                    (
-                        OsString::from("XDG_CONFIG_HOME"),
-                        xdg_config_home.into_os_string(),
-                    ),
-                ]);
+                let (adapter, command_context) = SqliteAdapter::with_test_environment(
+                    dsn,
+                    vec![
+                        (OsString::from("HOME"), home.into_os_string()),
+                        (
+                            OsString::from("XDG_CONFIG_HOME"),
+                            xdg_config_home.into_os_string(),
+                        ),
+                    ],
+                );
                 (
                     adapter,
                     InitializationArtifacts {
                         redirected_database,
                         redirected_output,
+                        _command_context: command_context,
                     },
                 )
             }
@@ -2735,7 +2711,7 @@ world'), (2, 'done');
                 let (dir, dsn) = test_support::make_sqlite_db(
                     "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
                 );
-                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir, &dsn);
 
                 let write = adapter
                     .execute_write(
@@ -2780,7 +2756,7 @@ world'), (2, 'done');
                     "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Ada');",
                 );
                 let export_path = dir.path().join("users.csv");
-                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir);
+                let (adapter, artifacts) = adapter_with_malicious_initialization(&dir, &dsn);
 
                 adapter
                     .cli

@@ -1045,7 +1045,7 @@ mod tests {
                 CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END;
                 ",
             );
-            let adapter = SqliteAdapter::new();
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
             let detail = adapter
                 .fetch_table_detail(&dsn, "main", "users")
@@ -1055,7 +1055,7 @@ mod tests {
             assert_eq!(detail.indexes.len(), 2);
             assert_eq!(detail.foreign_keys.len(), 1);
             assert_eq!(detail.triggers.len(), 1);
-            assert_eq!(adapter.cli.process_count(), 1);
+            assert_eq!(process_counter.count(), 1);
         }
 
         #[tokio::test]
@@ -1066,7 +1066,7 @@ mod tests {
                 SELECT * FROM json_each('invalid');
                 ",
             );
-            let adapter = SqliteAdapter::new();
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
             let detail = adapter
                 .fetch_table_detail(&dsn, "main", "broken_json")
@@ -1076,7 +1076,7 @@ mod tests {
             assert_eq!(detail.kind_info.kind, TableKind::View);
             assert!(!detail.columns.is_empty());
             assert!(detail.row_count_estimate.is_none());
-            assert_eq!(adapter.cli.process_count(), 2);
+            assert_eq!(process_counter.count(), 2);
         }
 
         #[tokio::test]
@@ -1092,7 +1092,7 @@ mod tests {
                 CREATE INDEX idx_users_org_id ON users(org_id);
                 ",
             );
-            let adapter = SqliteAdapter::new();
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
             let detail = adapter
                 .fetch_table_columns_and_fks(&dsn, "main", "users")
@@ -1101,7 +1101,7 @@ mod tests {
 
             assert!(detail.columns[1].is_unique());
             assert_eq!(detail.foreign_keys.len(), 1);
-            assert_eq!(adapter.cli.process_count(), 1);
+            assert_eq!(process_counter.count(), 1);
         }
 
         #[tokio::test]
@@ -1739,12 +1739,12 @@ mod tests {
                 CREATE INDEX idx_events_user_id ON events(user_id);
                 ",
             );
-            let adapter = SqliteAdapter::new();
+            let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
             let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
 
             assert_eq!(signatures.len(), 3);
-            assert_eq!(adapter.cli.process_count(), 1);
+            assert_eq!(process_counter.count(), 1);
         }
 
         #[tokio::test]
