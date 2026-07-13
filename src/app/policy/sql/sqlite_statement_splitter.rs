@@ -261,14 +261,21 @@ mod tests {
     #[case::empty("", Vec::<&str>::new())]
     #[case::whitespace("   ", Vec::<&str>::new())]
     #[case::empty_statements("; ; SELECT 1;;", vec!["SELECT 1"])]
-    #[case::comment_only(
-        "-- comment\n/* another comment */",
-        vec!["-- comment\n/* another comment */"]
-    )]
     fn handles_empty_input_and_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
         let result = split_sqlite_statements(sql);
 
         assert_eq!(result.statements(), expected);
+        assert_eq!(result.error(), None);
+    }
+
+    #[test]
+    fn keeps_comment_only_input_as_a_fragment() {
+        let result = split_sqlite_statements("-- comment\n/* another comment */");
+
+        assert_eq!(
+            result.statements(),
+            vec!["-- comment\n/* another comment */"]
+        );
         assert_eq!(result.error(), None);
     }
 
