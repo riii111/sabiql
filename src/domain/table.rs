@@ -5,8 +5,6 @@ use super::rls::RlsInfo;
 use super::table_kind::TableKindInfo;
 use super::trigger::Trigger;
 
-const SQLITE_ROWID_ALIASES: [&str; 3] = ["rowid", "_rowid_", "oid"];
-
 fn make_qualified_name(schema: &str, name: &str) -> String {
     format!("{schema}.{name}")
 }
@@ -49,24 +47,11 @@ impl Table {
         self.source_ddl.as_deref()
     }
 
-    pub fn sqlite_rowid_alias(&self) -> Option<&'static str> {
-        if self.primary_key.as_ref().is_some_and(|pk| !pk.is_empty())
-            || self.kind_info.kind != super::table_kind::TableKind::Table
-            || self.kind_info.without_rowid
-        {
-            return None;
-        }
-        available_sqlite_rowid_alias(self.columns.iter().map(|column| column.name.as_str()))
+    pub fn has_primary_key(&self) -> bool {
+        self.primary_key
+            .as_ref()
+            .is_some_and(|columns| !columns.is_empty())
     }
-}
-
-pub fn available_sqlite_rowid_alias<'a>(
-    column_names: impl IntoIterator<Item = &'a str>,
-) -> Option<&'static str> {
-    let names = column_names.into_iter().collect::<Vec<_>>();
-    SQLITE_ROWID_ALIASES
-        .into_iter()
-        .find(|alias| !names.iter().any(|name| name.eq_ignore_ascii_case(alias)))
 }
 
 #[derive(Debug, Clone)]
@@ -182,6 +167,26 @@ mod tests {
             let table = make_table("public", "users");
 
             assert_eq!(table.display_name(false), "public.users");
+        }
+    }
+
+    mod primary_key {
+        use super::*;
+
+        #[test]
+        fn is_present_when_columns_are_defined() {
+            let mut table = make_table("public", "users");
+            table.primary_key = Some(vec!["id".to_string()]);
+
+            assert!(table.has_primary_key());
+        }
+
+        #[test]
+        fn is_absent_when_columns_are_empty() {
+            let mut table = make_table("public", "users");
+            table.primary_key = Some(Vec::new());
+
+            assert!(!table.has_primary_key());
         }
     }
 

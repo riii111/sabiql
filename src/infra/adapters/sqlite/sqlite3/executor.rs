@@ -14,10 +14,7 @@ use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{
     AccessMode, DatabaseCli, DbOperationError, QueryExecutor, SQLITE_SAFE_MODE_REQUIRED_MARKER,
 };
-use crate::domain::{
-    CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult,
-    available_sqlite_rowid_alias,
-};
+use crate::domain::{CommandTag, QueryResult, QuerySource, TableKind, WriteExecutionResult};
 
 use super::super::{SqliteAdapter, path_validation, sql};
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -483,7 +480,7 @@ fn sqlite_uri_path(path: &str, is_windows: bool) -> String {
 }
 
 impl SqliteAdapter {
-    async fn preview_rowid_alias(
+    async fn preview_rowid_order_alias(
         &self,
         path: &str,
         table: &str,
@@ -497,7 +494,11 @@ impl SqliteAdapter {
         if kind_info.kind != TableKind::Table || kind_info.without_rowid {
             return None;
         }
-        available_sqlite_rowid_alias(visible_columns.iter().map(String::as_str))
+        ["rowid", "_rowid_", "oid"].into_iter().find(|alias| {
+            !visible_columns
+                .iter()
+                .any(|column| column.eq_ignore_ascii_case(alias))
+        })
     }
 
     async fn execute_quoted_query(
@@ -554,21 +555,21 @@ impl QueryExecutor for SqliteAdapter {
             .preview_visible_column_names(path, table)
             .await
             .unwrap_or_default();
-        let rowid_alias = self
-            .preview_rowid_alias(path, table, &columns, &order_columns)
+        let rowid_order_alias = self
+            .preview_rowid_order_alias(path, table, &columns, &order_columns)
             .await;
-        let query =
-            sql::build_preview_query(table, &columns, &order_columns, rowid_alias, limit, offset);
+        let query = sql::build_preview_query(
+            table,
+            &columns,
+            &order_columns,
+            rowid_order_alias,
+            limit,
+            offset,
+        );
         let result = self
             .execute_quoted_query(path, &query, QuerySource::Preview, true)
             .await?;
-        let result = result.with_columns_if_empty(columns);
-        Ok(match rowid_alias {
-            Some(alias) if !result.rows().is_empty() => {
-                result.with_first_column_hidden(alias.to_string())
-            }
-            _ => result,
-        })
+        Ok(result.with_columns_if_empty(columns))
     }
 
     async fn execute_adhoc(
@@ -728,30 +729,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn rowid_table_preview_hides_rowid_but_keeps_internal_identity() {
-            let (_dir, dsn) = test_support::make_sqlite_db(
-                r"
-            CREATE TABLE logs(message TEXT);
-            INSERT INTO logs(message) VALUES ('first'), ('second');
-            ",
-            );
-            let adapter = SqliteAdapter::new();
-
-            let result = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0)
-                .await
-                .unwrap();
-
-            assert_eq!(result.columns, vec!["message"]);
-            assert_eq!(result.rows()[0], vec!["first".to_string()]);
-            assert_eq!(
-                result.hidden_value_at(0, "rowid"),
-                Some(&QueryValue::SqlLiteral("1".to_string()))
-            );
-        }
-
-        #[tokio::test]
-        async fn rowid_table_preview_uses_unshadowed_rowid_alias() {
+        async fn primary_keyless_preview_exposes_only_user_columns() {
             let (_dir, dsn) = test_support::make_sqlite_db(
                 r"
             CREATE TABLE logs(rowid TEXT, message TEXT);
@@ -770,176 +748,6 @@ mod tests {
                 result.rows()[0],
                 vec!["user-visible".to_string(), "first".to_string()]
             );
-            assert_eq!(
-                result.hidden_value_at(0, "_rowid_"),
-                Some(&QueryValue::SqlLiteral("1".to_string()))
-            );
-        }
-
-        #[tokio::test]
-        async fn rowid_update_predicate_updates_matching_current_row() {
-            let (_dir, dsn) = test_support::make_sqlite_db(
-                r"
-            CREATE TABLE logs(message TEXT);
-            INSERT INTO logs(message) VALUES ('old');
-            ",
-            );
-            let adapter = SqliteAdapter::new();
-            let predicate = vec![
-                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
-                ("message".to_string(), QueryValue::text("old")),
-            ];
-
-            let sql = adapter.build_update_sql(
-                DatabaseType::SQLite,
-                "main",
-                "logs",
-                "message",
-                &QueryValue::text("new"),
-                &predicate,
-            );
-            let write = adapter
-                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
-                .await
-                .unwrap();
-            let preview = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0)
-                .await
-                .unwrap();
-
-            assert_eq!(write.affected_rows, 1);
-            assert_eq!(preview.rows(), vec![vec!["new".to_string()]]);
-        }
-
-        #[tokio::test]
-        async fn rowid_update_predicate_rejects_reused_rowid_with_changed_values() {
-            let (_dir, dsn) = test_support::make_sqlite_db(
-                r"
-            CREATE TABLE logs(message TEXT, note TEXT);
-            INSERT INTO logs(message, note) VALUES ('old', NULL);
-            ",
-            );
-            let adapter = SqliteAdapter::new();
-            let stale_pairs = vec![
-                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
-                ("message".to_string(), QueryValue::text("old")),
-                ("note".to_string(), QueryValue::Null),
-            ];
-
-            adapter
-                .execute_write(
-                    &dsn,
-                    "DELETE FROM logs WHERE rowid = 1",
-                    AccessMode::ReadWrite,
-                )
-                .await
-                .unwrap();
-            adapter
-                .execute_write(
-                    &dsn,
-                    "INSERT INTO logs(message, note) VALUES ('replacement', NULL)",
-                    AccessMode::ReadWrite,
-                )
-                .await
-                .unwrap();
-
-            let sql = adapter.build_update_sql(
-                DatabaseType::SQLite,
-                "main",
-                "logs",
-                "message",
-                &QueryValue::text("new"),
-                &stale_pairs,
-            );
-            let write = adapter
-                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
-                .await
-                .unwrap();
-            let remaining = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0)
-                .await
-                .unwrap();
-
-            assert_eq!(write.affected_rows, 0);
-            assert_eq!(
-                remaining.rows(),
-                vec![vec!["replacement".to_string(), "NULL".to_string()]]
-            );
-        }
-
-        #[tokio::test]
-        async fn rowid_delete_predicate_deletes_matching_current_row() {
-            let (_dir, dsn) = test_support::make_sqlite_db(
-                r"
-            CREATE TABLE logs(message TEXT);
-            INSERT INTO logs(message) VALUES ('old');
-            ",
-            );
-            let adapter = SqliteAdapter::new();
-            let rows = vec![vec![
-                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
-                ("message".to_string(), QueryValue::text("old")),
-            ]];
-
-            let sql = adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &rows);
-            let write = adapter
-                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
-                .await
-                .unwrap();
-            let preview = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0)
-                .await
-                .unwrap();
-
-            assert_eq!(write.affected_rows, 1);
-            assert_eq!(preview.row_count(), 0);
-        }
-
-        #[tokio::test]
-        async fn rowid_delete_predicate_rejects_reused_rowid_with_changed_values() {
-            let (_dir, dsn) = test_support::make_sqlite_db(
-                r"
-            CREATE TABLE logs(message TEXT);
-            INSERT INTO logs(message) VALUES ('old');
-            ",
-            );
-            let adapter = SqliteAdapter::new();
-            let stale_rows = vec![vec![
-                ("rowid".to_string(), QueryValue::SqlLiteral("1".to_string())),
-                ("message".to_string(), QueryValue::text("old")),
-            ]];
-
-            adapter
-                .execute_write(
-                    &dsn,
-                    "DELETE FROM logs WHERE rowid = 1",
-                    AccessMode::ReadWrite,
-                )
-                .await
-                .unwrap();
-            adapter
-                .execute_write(
-                    &dsn,
-                    "INSERT INTO logs(message) VALUES ('replacement')",
-                    AccessMode::ReadWrite,
-                )
-                .await
-                .unwrap();
-
-            let sql =
-                adapter.build_bulk_delete_sql(DatabaseType::SQLite, "main", "logs", &stale_rows);
-            let write = adapter
-                .execute_write(&dsn, &sql, AccessMode::ReadWrite)
-                .await
-                .unwrap();
-            let remaining = adapter
-                .execute_preview(&dsn, "main", "logs", 10, 0)
-                .await
-                .unwrap();
-
-            assert_eq!(write.affected_rows, 0);
-            assert_eq!(remaining.row_count(), 1);
-            assert_eq!(remaining.rows(), vec![vec!["replacement".to_string()]]);
         }
 
         #[tokio::test]

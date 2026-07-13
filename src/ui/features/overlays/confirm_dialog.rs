@@ -138,30 +138,6 @@ impl ConfirmDialog {
         )));
         content_lines.push(Line::from(""));
 
-        if preview.target_summary.uses_sqlite_rowid
-            && matches!(preview.operation, WriteOperation::Update)
-        {
-            content_lines.push(Line::from(vec![Span::styled(
-                "Target",
-                Style::default().fg(theme.semantic.text.secondary),
-            )]));
-            content_lines.push(Line::from(vec![
-                Span::styled(
-                    "  Method: ",
-                    Style::default().fg(theme.semantic.text.secondary),
-                ),
-                Span::styled(
-                    preview.target_summary.identity_label(),
-                    Style::default().fg(theme.semantic.text.primary),
-                ),
-            ]));
-            content_lines.extend(Self::render_key_value_lines(
-                &preview.target_summary.key_values,
-                theme,
-            ));
-            content_lines.push(Line::from(""));
-        }
-
         match preview.operation {
             WriteOperation::Update => {
                 content_lines.push(Line::from(vec![Span::styled(
@@ -197,18 +173,6 @@ impl ConfirmDialog {
                     "Target",
                     Style::default().fg(theme.semantic.text.secondary),
                 )]));
-                if preview.target_summary.uses_sqlite_rowid {
-                    content_lines.push(Line::from(vec![
-                        Span::styled(
-                            "  Method: ",
-                            Style::default().fg(theme.semantic.text.secondary),
-                        ),
-                        Span::styled(
-                            preview.target_summary.identity_label(),
-                            Style::default().fg(theme.semantic.text.primary),
-                        ),
-                    ]));
-                }
                 content_lines.extend(Self::render_key_value_lines(
                     &preview.target_summary.key_values,
                     theme,
