@@ -64,6 +64,12 @@ brew install riii111/sabiql/sabiql
 # Cargo (crates.io)
 cargo install sabiql
 
+# Nix
+nix profile install github:riii111/sabiql
+
+# Run once with Nix, without installing
+nix run github:riii111/sabiql
+
 # Arch Linux (AUR)
 paru -S sabiql  # or yay -S sabiql
 
