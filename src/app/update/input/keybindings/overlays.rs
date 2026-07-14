@@ -416,13 +416,13 @@ pub mod er_picker {
     };
 
     pub const SELECT_ALL: ModeRow = ModeRow {
-        key_short: "^A",
-        key: "Ctrl+A",
+        key_short: "⌥A",
+        key: "Alt+A",
         desc_short: "All",
         description: "Select/deselect all tables",
         bindings: &[ExecBinding {
             action: Action::ErSelectAll,
-            combos: &[KeyCombo::ctrl(Key::Char('a'))],
+            combos: &[KeyCombo::alt(Key::Char('a'))],
         }],
     };
 

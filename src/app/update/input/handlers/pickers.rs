@@ -92,13 +92,13 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::ErFilter) {
+        return action;
+    }
     if let Some(action) = resolve_mode(
         &combo,
         keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
     ) {
-        return action;
-    }
-    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::ErFilter) {
         return action;
     }
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
@@ -489,19 +489,27 @@ mod tests {
         }
 
         #[test]
-        fn default_ctrl_a_selects_all() {
+        fn default_ctrl_a_moves_filter_cursor_to_line_start() {
             let state = state_with_preset(KeymapPreset::Default);
             let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
 
-            assert!(matches!(result, Action::ErSelectAll));
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: crate::update::action::CursorMove::LineStart,
+                }
+            ));
         }
 
         #[test]
-        fn ide_alt_a_selects_all() {
-            let state = state_with_preset(KeymapPreset::Ide);
-            let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
+        fn alt_a_selects_all_for_both_presets() {
+            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
+                let state = state_with_preset(preset);
+                let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
 
-            assert!(matches!(result, Action::ErSelectAll));
+                assert!(matches!(result, Action::ErSelectAll));
+            }
         }
 
         #[test]
@@ -514,20 +522,6 @@ mod tests {
                 Action::TextInput {
                     target: InputTarget::ErFilter,
                     ch: 'A'
-                }
-            ));
-        }
-
-        #[test]
-        fn ide_ctrl_a_moves_filter_cursor_to_line_start() {
-            let state = state_with_preset(KeymapPreset::Ide);
-            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
-
-            assert!(matches!(
-                result,
-                Action::TextMoveCursor {
-                    target: InputTarget::ErFilter,
-                    direction: crate::update::action::CursorMove::LineStart,
                 }
             ));
         }
