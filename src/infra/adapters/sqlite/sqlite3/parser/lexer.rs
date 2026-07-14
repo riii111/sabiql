@@ -45,6 +45,156 @@ fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
     i
 }
 
+const SQLITE_FSDIR_SAFE_MODE_ERROR: &str = "SQLite fsdir access is not supported in safe mode";
+
+fn quoted_identifier_matches(bytes: &[u8], start: usize, quote: u8, expected: &str) -> bool {
+    let mut i = start + 1;
+    let content_start = i;
+    while i < bytes.len() {
+        if bytes[i] == quote {
+            if i + 1 < bytes.len() && bytes[i + 1] == quote {
+                i += 2;
+            } else {
+                return bytes[content_start..i].eq_ignore_ascii_case(expected.as_bytes());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+fn bracket_identifier_matches(bytes: &[u8], start: usize, expected: &str) -> bool {
+    let end = skip_bracket_quoted(bytes, start);
+    end > start + 1
+        && end <= bytes.len()
+        && bytes[start + 1..end - 1].eq_ignore_ascii_case(expected.as_bytes())
+}
+
+fn skip_sqlite_trivia(bytes: &[u8], mut i: usize) -> usize {
+    loop {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            while i < bytes.len() && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            if i + 1 < bytes.len() {
+                i += 2;
+            }
+            continue;
+        }
+
+        return i;
+    }
+}
+
+fn is_followed_by_open_parenthesis(bytes: &[u8], end: usize) -> bool {
+    let next = skip_sqlite_trivia(bytes, end);
+    next < bytes.len() && bytes[next] == b'('
+}
+
+fn contains_sqlite_fsdir_access(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut i = 0;
+    let mut previous_token_was_using = false;
+    let mut create_statement = false;
+    let mut create_table_name_context = false;
+
+    while i < bytes.len() {
+        let next = skip_sqlite_trivia(bytes, i);
+        if next == bytes.len() {
+            break;
+        }
+        i = next;
+
+        let start = i;
+        let mut token_was_using = false;
+        match bytes[i] {
+            b'\'' | b'"' | b'`' => {
+                let quote = bytes[i];
+                let matches = quoted_identifier_matches(bytes, i, quote, "fsdir");
+                i = skip_quoted(bytes, i, quote);
+                if matches
+                    && (previous_token_was_using
+                        || (!create_table_name_context
+                            && is_followed_by_open_parenthesis(bytes, i)))
+                {
+                    return true;
+                }
+            }
+            b'[' => {
+                let matches = bracket_identifier_matches(bytes, i, "fsdir");
+                i = skip_bracket_quoted(bytes, i);
+                if matches
+                    && (previous_token_was_using
+                        || (!create_table_name_context
+                            && is_followed_by_open_parenthesis(bytes, i)))
+                {
+                    return true;
+                }
+            }
+            byte if byte.is_ascii_alphabetic() || byte == b'_' => {
+                while i < bytes.len() && is_ident_char(bytes[i]) {
+                    i += 1;
+                }
+                let matches = bytes[start..i].eq_ignore_ascii_case(b"fsdir");
+                if bytes[start..i].eq_ignore_ascii_case(b"create") {
+                    create_statement = true;
+                    create_table_name_context = false;
+                } else if create_statement && bytes[start..i].eq_ignore_ascii_case(b"table") {
+                    create_table_name_context = true;
+                } else if bytes[start..i].eq_ignore_ascii_case(b"using")
+                    || bytes[start..i].eq_ignore_ascii_case(b"as")
+                {
+                    create_table_name_context = false;
+                }
+                if matches
+                    && (previous_token_was_using
+                        || (!create_table_name_context
+                            && is_followed_by_open_parenthesis(bytes, i)))
+                {
+                    return true;
+                }
+                token_was_using = bytes[start..i].eq_ignore_ascii_case(b"using");
+            }
+            _ => {
+                if bytes[i] == b';' {
+                    create_statement = false;
+                    create_table_name_context = false;
+                } else if bytes[i] == b'(' {
+                    create_table_name_context = false;
+                }
+                i += 1;
+            }
+        }
+        previous_token_was_using = token_was_using;
+    }
+
+    false
+}
+
+pub(in crate::adapters::sqlite::sqlite3) fn reject_sqlite_fsdir(
+    sql: &str,
+) -> Result<(), DbOperationError> {
+    if contains_sqlite_fsdir_access(sql) {
+        return Err(DbOperationError::UnsupportedOperation(
+            SQLITE_FSDIR_SAFE_MODE_ERROR.to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Returns the next SQL keyword and the byte offset immediately after it.
 fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
     let bytes = sql.as_bytes();
@@ -224,6 +374,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn try_split_sqlite_statements(
     sql: &str,
 ) -> Result<Vec<&str>, DbOperationError> {
     reject_sqlite_meta_commands(sql)?;
+    reject_sqlite_fsdir(sql)?;
     let split = split_sqlite_statements(sql);
     if let Some(error) = split.error() {
         let error = match error {
@@ -635,6 +786,56 @@ mod tests {
 
     mod statement_splitting {
         use super::*;
+
+        #[rstest]
+        #[case::unquoted("SELECT * FROM fsdir('/tmp')")]
+        #[case::double_quoted("SELECT * FROM \"fsdir\"('/tmp')")]
+        #[case::backtick_quoted("SELECT * FROM `fsdir`('/tmp')")]
+        #[case::bracket_quoted("SELECT * FROM [fsdir]('/tmp')")]
+        #[case::single_quoted("SELECT * FROM 'fsdir'('/tmp')")]
+        #[case::comments_between_tokens("SELECT * FROM /* ignored */ fsdir /* ignored */ ('/tmp')")]
+        #[case::virtual_table_module("CREATE VIRTUAL TABLE files USING fsdir")]
+        #[case::single_quoted_virtual_table_module("CREATE VIRTUAL TABLE files USING 'fsdir'")]
+        #[case::double_quoted_virtual_table_module("CREATE VIRTUAL TABLE files USING \"fsdir\"")]
+        #[case::backtick_virtual_table_module("CREATE VIRTUAL TABLE files USING `fsdir`")]
+        #[case::bracket_virtual_table_module("CREATE VIRTUAL TABLE files USING [fsdir]")]
+        fn rejects_fsdir_access(#[case] sql: &str) {
+            let error = try_split_sqlite_statements(sql).unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperation(details)
+                    if details == SQLITE_FSDIR_SAFE_MODE_ERROR
+            ));
+        }
+
+        #[rstest]
+        #[case::single_quoted_literal("SELECT 'fsdir'")]
+        #[case::line_comment("-- fsdir\nSELECT 1")]
+        #[case::block_comment("/* fsdir */ SELECT 1")]
+        #[case::identifier_prefix("SELECT fsdirname FROM users")]
+        #[case::identifier_suffix("SELECT myfsdir FROM users")]
+        #[case::column("SELECT fsdir FROM users")]
+        #[case::alias("SELECT 1 AS fsdir")]
+        #[case::table_without_arguments("SELECT * FROM fsdir")]
+        #[case::table_definition("CREATE TABLE fsdir(name TEXT)")]
+        #[case::quoted_table_definition("CREATE TABLE IF NOT EXISTS 'fsdir'(name TEXT)")]
+        #[case::other_virtual_table("SELECT * FROM json_each('{}')")]
+        fn ignores_non_fsdir_occurrences(#[case] sql: &str) {
+            assert!(try_split_sqlite_statements(sql).is_ok());
+        }
+
+        #[test]
+        fn rejects_fsdir_in_any_statement_of_batch() {
+            let error =
+                try_split_sqlite_statements("SELECT 1; SELECT * FROM fsdir('/tmp')").unwrap_err();
+
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperation(details)
+                    if details == SQLITE_FSDIR_SAFE_MODE_ERROR
+            ));
+        }
 
         #[test]
         fn ignores_semicolons_in_literals_and_comments() {
