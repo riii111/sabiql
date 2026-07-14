@@ -92,10 +92,8 @@ fn feature_probe(result: Result<QueryResult, DbOperationError>) -> FeatureProbe 
     match result {
         Ok(query_result) if query_result.columns.is_empty() => FeatureProbe::Unavailable,
         Ok(query_result) => FeatureProbe::Available(
-            query_result
-                .rows()
-                .iter()
-                .filter_map(|row| row.first())
+            (0..query_result.data_row_count())
+                .filter_map(|row| query_result.display_value_at(row, 0))
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
                 .collect(),
@@ -213,12 +211,11 @@ fn on_off_field(result: Result<QueryResult, DbOperationError>) -> DiagnosticFiel
 fn database_list_field(result: Result<QueryResult, DbOperationError>) -> DiagnosticField {
     match result {
         Ok(query_result) => {
-            if query_result.rows().is_empty() {
+            if query_result.data_row_count() == 0 {
                 return DiagnosticField::err("database_list: empty result");
             }
-            let lines = query_result
-                .rows()
-                .iter()
+            let lines = (0..query_result.data_row_count())
+                .filter_map(|row| query_result.display_row_at(row))
                 .map(|row| format_database_list_row(row.as_slice()))
                 .collect::<Vec<_>>()
                 .join("\n");
@@ -231,14 +228,11 @@ fn database_list_field(result: Result<QueryResult, DbOperationError>) -> Diagnos
 fn quick_check_field(result: Result<QueryResult, DbOperationError>) -> DiagnosticField {
     match result {
         Ok(query_result) => {
-            if query_result.rows().is_empty() {
+            if query_result.data_row_count() == 0 {
                 return DiagnosticField::err("quick_check: empty result");
             }
-            let summary = query_result
-                .rows()
-                .iter()
-                .filter_map(|row| row.first())
-                .cloned()
+            let summary = (0..query_result.data_row_count())
+                .filter_map(|row| query_result.display_value_at(row, 0))
                 .collect::<Vec<_>>()
                 .join("\n");
             DiagnosticField::ok(summary)
@@ -249,10 +243,7 @@ fn quick_check_field(result: Result<QueryResult, DbOperationError>) -> Diagnosti
 
 fn first_cell(result: &QueryResult) -> Result<String, String> {
     result
-        .rows()
-        .first()
-        .and_then(|row| row.first())
-        .cloned()
+        .display_value_at(0, 0)
         .ok_or_else(|| "empty result".to_string())
 }
 

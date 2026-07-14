@@ -1,7 +1,7 @@
 use crate::cmd::effect::Effect;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
-use crate::domain::QuerySource;
+use crate::domain::{QuerySource, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::shared::flash_timer::FlashId;
@@ -53,12 +53,22 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 return DispatchResult::handled();
             }
 
-            let cell_value = match result.rows().get(row_idx).and_then(|r| r.get(col_idx)) {
-                Some(v) if !v.is_empty() => v,
-                _ => return DispatchResult::handled(),
+            let cell_value = if result.has_typed_values() {
+                let Some(value) = result.value_at(row_idx, col_idx) else {
+                    return DispatchResult::handled();
+                };
+                if matches!(value, QueryValue::Null) {
+                    return DispatchResult::handled();
+                }
+                value.display_value()
+            } else {
+                match result.display_value_at(row_idx, col_idx) {
+                    Some(value) if !value.is_empty() => value,
+                    _ => return DispatchResult::handled(),
+                }
             };
 
-            let pretty_original = match serde_json::from_str::<serde_json::Value>(cell_value) {
+            let pretty_original = match serde_json::from_str::<serde_json::Value>(&cell_value) {
                 Ok(value) => {
                     serde_json::to_string_pretty(&value).unwrap_or_else(|_| cell_value.clone())
                 }
@@ -74,7 +84,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 row_idx,
                 col_idx,
                 column.name.clone(),
-                cell_value.clone(),
+                cell_value,
                 pretty_original,
             );
             state.modal.push_mode(InputMode::JsonbDetail);
@@ -337,7 +347,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
         let original_cell = state
             .query
             .visible_result()
-            .and_then(|r| r.rows().get(row).and_then(|r| r.get(col)).cloned())
+            .and_then(|result| result.display_value_at(row, col))
             .unwrap_or_default();
         state
             .result_interaction
@@ -497,6 +507,29 @@ mod tests {
             );
 
             assert!(!state.jsonb_detail.is_active());
+        }
+
+        #[test]
+        fn blocked_on_typed_null_cell() {
+            let mut state = state_with_jsonb_cell();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+
+            reduce_jsonb(
+                &mut state,
+                &Action::OpenModal(ModalKind::JsonbDetail),
+                Instant::now(),
+            );
+
+            assert!(!state.jsonb_detail.is_active());
+            assert_eq!(state.messages.last_error, None);
         }
 
         #[test]

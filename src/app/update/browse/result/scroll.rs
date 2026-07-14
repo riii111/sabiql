@@ -1,3 +1,4 @@
+use crate::domain::QueryResult;
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
@@ -7,7 +8,10 @@ use crate::update::action::{
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn result_row_count(state: &AppState) -> usize {
-    state.query.visible_result().map_or(0, |r| r.rows().len())
+    state
+        .query
+        .visible_result()
+        .map_or(0, QueryResult::data_row_count)
 }
 
 pub(super) fn result_col_count(state: &AppState) -> usize {
@@ -275,7 +279,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::domain::{QueryResult, QuerySource};
+    use crate::domain::QuerySource;
     use crate::model::shared::key_sequence::Prefix;
 
     fn state_with_result_rows(rows: usize, pane_height: u16) -> AppState {

@@ -112,7 +112,7 @@ pub fn reduce_execution(
                         state
                             .query
                             .pagination
-                            .set_page_result(*page, result.rows().len() < PREVIEW_PAGE_SIZE);
+                            .set_page_result(*page, result.data_row_count() < PREVIEW_PAGE_SIZE);
                     }
                     state.query.set_current_result(Arc::clone(result));
 
@@ -122,9 +122,9 @@ pub fn reduce_execution(
                             state.result_interaction.reset_interaction();
                         }
                         PostDeleteRowSelection::Select(row) => {
-                            if !result.rows().is_empty() && !result.columns.is_empty() {
-                                let clamped = row.min(result.rows().len() - 1);
-                                let max_col = result.columns.len() - 1;
+                            if result.data_row_count() > 0 && result.column_count() > 0 {
+                                let clamped = row.min(result.data_row_count() - 1);
+                                let max_col = result.column_count() - 1;
                                 let col = preserved_result_col
                                     .unwrap_or(preserved_horizontal_offset)
                                     .min(max_col);

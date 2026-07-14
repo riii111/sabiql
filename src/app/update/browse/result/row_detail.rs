@@ -13,15 +13,11 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
     match action {
         Action::OpenModal(ModalKind::RowDetail) => {
             let result = match state.query.visible_result() {
-                Some(r) if !r.is_error() && !r.rows().is_empty() => r,
+                Some(r) if !r.is_error() && r.data_row_count() > 0 => r,
                 _ => return DispatchResult::handled(),
             };
 
             let Some(row_idx) = state.result_interaction.selection().row() else {
-                return DispatchResult::handled();
-            };
-
-            let Some(cells) = result.rows().get(row_idx) else {
                 return DispatchResult::handled();
             };
 
@@ -31,7 +27,10 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 };
                 RowDetailState::open_with_values(&result.columns, values)
             } else {
-                RowDetailState::open(&result.columns, cells)
+                let Some(cells) = result.display_row_at(row_idx) else {
+                    return DispatchResult::handled();
+                };
+                RowDetailState::open(&result.columns, &cells)
             };
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()

@@ -13,6 +13,8 @@ path = "lib.rs"
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+unicode-width.workspace = true
+unicode-segmentation.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

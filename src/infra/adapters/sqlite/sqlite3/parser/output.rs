@@ -483,8 +483,8 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows(),
-                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+                result.display_row_at(0),
+                Some(vec!["line 1\nline 2".to_string(), "ok".to_string()])
             );
         }
 
@@ -507,8 +507,8 @@ mod tests {
 
             assert_eq!(result.columns, vec!["body", "marker"]);
             assert_eq!(
-                result.rows(),
-                vec![vec!["line 1\nline 2".to_string(), "ok".to_string()]]
+                result.display_row_at(0),
+                Some(vec!["line 1\nline 2".to_string(), "ok".to_string()])
             );
         }
 
@@ -521,13 +521,13 @@ mod tests {
                     .unwrap();
 
             assert_eq!(
-                result.rows(),
-                vec![vec![
+                result.display_row_at(0),
+                Some(vec![
                     "NULL".to_string(),
                     String::new(),
                     "NULL".to_string(),
                     "BLOB (3 bytes) 00 FF 41".to_string()
-                ]]
+                ])
             );
             assert!(matches!(result.value_at(0, 0), Some(QueryValue::Null)));
             assert_eq!(

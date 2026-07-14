@@ -30,14 +30,15 @@ fn sqlite_explain_plan_rows(result: &QueryResult) -> Option<Vec<SqliteExplainPla
     let parent_index = column_index(&result.columns, "parent")?;
     let detail_index = column_index(&result.columns, "detail")?;
 
-    result
-        .rows()
-        .iter()
-        .map(|row| {
+    (0..result.data_row_count())
+        .map(|row_idx| {
             Some(SqliteExplainPlanRow {
-                id: row.get(id_index)?.parse().ok()?,
-                parent: row.get(parent_index)?.parse().ok()?,
-                detail: row.get(detail_index)?.clone(),
+                id: result.display_value_at(row_idx, id_index)?.parse().ok()?,
+                parent: result
+                    .display_value_at(row_idx, parent_index)?
+                    .parse()
+                    .ok()?,
+                detail: result.display_value_at(row_idx, detail_index)?,
             })
         })
         .collect()
@@ -81,11 +82,8 @@ fn sqlite_explain_plan_text(result: &QueryResult) -> Option<String> {
 
 pub fn sqlite_explain_query_plan_text_from_result(result: &QueryResult) -> String {
     sqlite_explain_plan_text(result).unwrap_or_else(|| {
-        result
-            .rows()
-            .iter()
-            .filter_map(|row| row.first())
-            .cloned()
+        (0..result.data_row_count())
+            .filter_map(|row_idx| result.display_value_at(row_idx, 0))
             .collect::<Vec<_>>()
             .join("\n")
     })

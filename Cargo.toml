@@ -44,6 +44,7 @@ tokio = { version = "1", features = ["sync", "time", "io-util", "process", "rt-m
 tokio-util = "0.7"
 toml = "0.8"
 unicode-casefold = "0.2"
+unicode-segmentation = "1"
 unicode-width = "0.2"
 urlencoding = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
