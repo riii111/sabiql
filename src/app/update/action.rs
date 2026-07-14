@@ -289,6 +289,7 @@ pub enum Action {
         target: InputTarget,
         direction: CursorMove,
     },
+    ToggleHelpFilterFocus,
     Select(SelectMotion),
     ListSelect {
         target: ListTarget,

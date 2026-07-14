@@ -11,6 +11,7 @@ use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 pub struct HelpState {
     origin: HelpOrigin,
     filter: TextInputState,
+    filter_focused: bool,
     scroll_offset: usize,
     horizontal_offset: usize,
 }
@@ -25,6 +26,7 @@ impl Default for HelpState {
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
+            filter_focused: false,
             scroll_offset: 0,
             horizontal_offset: 0,
         }
@@ -35,11 +37,13 @@ impl HelpState {
     pub fn open(&mut self, origin: HelpOrigin) {
         self.origin = origin;
         self.filter.clear();
+        self.filter_focused = false;
         self.reset_offsets();
     }
 
     pub fn close(&mut self) {
         self.filter.clear();
+        self.filter_focused = false;
         self.reset_offsets();
     }
 
@@ -49,6 +53,14 @@ impl HelpState {
 
     pub fn filter(&self) -> &TextInputState {
         &self.filter
+    }
+
+    pub fn filter_focused(&self) -> bool {
+        self.filter_focused
+    }
+
+    pub fn toggle_filter_focus(&mut self) {
+        self.filter_focused = !self.filter_focused;
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -73,13 +85,25 @@ impl HelpState {
     }
 
     pub fn insert_filter_char(&mut self, ch: char) {
+        self.filter_focused = true;
         self.filter.insert_char(ch);
         self.reset_offsets();
     }
 
     pub fn backspace_filter(&mut self) {
+        self.filter_focused = true;
         self.filter.backspace();
         self.reset_offsets();
+    }
+
+    pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
+        let result = edit(&mut self.filter);
+        self.reset_offsets();
+        result
+    }
+
+    pub fn move_filter_cursor(&mut self, direction: crate::model::shared::cursor::CursorMove) {
+        self.filter.move_cursor(direction);
     }
 
     pub fn clamp_offsets(&mut self, max_scroll: usize, max_horizontal_scroll: usize) {
@@ -356,5 +380,15 @@ mod tests {
         assert_eq!(state.filter().content(), "c");
         assert_eq!(state.scroll_offset(), 0);
         assert_eq!(state.horizontal_offset(), 0);
+    }
+
+    #[test]
+    fn filter_focus_resets_when_help_is_closed() {
+        let mut state = HelpState::default();
+        state.toggle_filter_focus();
+
+        state.close();
+
+        assert!(!state.filter_focused());
     }
 }

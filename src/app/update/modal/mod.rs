@@ -141,6 +141,49 @@ mod tests {
             assert!(input_effects.is_empty());
             assert!(backspace_effects.is_empty());
         }
+
+        #[test]
+        fn focused_help_filter_applies_readline_edits() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+
+            super::dispatch_modal(&mut state, &Action::ToggleHelpFilterFocus, Instant::now());
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: 'x',
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::HelpFilter,
+                    direction: crate::update::action::CursorMove::LineStart,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::HelpFilter,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::HelpFilter,
+                },
+                Instant::now(),
+            );
+
+            assert!(state.ui.help.filter_focused());
+            assert_eq!(state.ui.help.filter().content(), "x");
+            assert_eq!(state.ui.help.filter().cursor(), 1);
+        }
     }
 
     mod settings {
