@@ -85,7 +85,7 @@ pub(super) fn reduce_query_history_picker(
         } => {
             state
                 .query_history_picker
-                .edit_filter(|input| input.delete());
+                .edit_filter(crate::model::shared::text_input::TextInputState::delete);
             DispatchResult::handled()
         }
         Action::TextKill {

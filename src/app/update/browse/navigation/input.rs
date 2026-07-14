@@ -55,7 +55,10 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
         Action::TextDelete {
             target: InputTarget::Filter,
         } => {
-            state.ui.table_picker.edit_filter(|input| input.delete());
+            state
+                .ui
+                .table_picker
+                .edit_filter(crate::model::shared::text_input::TextInputState::delete);
             DispatchResult::handled()
         }
         Action::TextKill {

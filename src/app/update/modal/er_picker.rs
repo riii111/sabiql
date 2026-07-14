@@ -48,7 +48,10 @@ pub(super) fn reduce_er_picker(
         Action::TextDelete {
             target: InputTarget::ErFilter,
         } => {
-            state.ui.er_picker.edit_filter(|input| input.delete());
+            state
+                .ui
+                .er_picker
+                .edit_filter(crate::model::shared::text_input::TextInputState::delete);
             DispatchResult::handled()
         }
         Action::TextKill {
