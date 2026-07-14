@@ -796,6 +796,9 @@ mod tests {
         #[case::comments_between_tokens("SELECT * FROM /* ignored */ fsdir /* ignored */ ('/tmp')")]
         #[case::virtual_table_module("CREATE VIRTUAL TABLE files USING fsdir")]
         #[case::single_quoted_virtual_table_module("CREATE VIRTUAL TABLE files USING 'fsdir'")]
+        #[case::double_quoted_virtual_table_module("CREATE VIRTUAL TABLE files USING \"fsdir\"")]
+        #[case::backtick_virtual_table_module("CREATE VIRTUAL TABLE files USING `fsdir`")]
+        #[case::bracket_virtual_table_module("CREATE VIRTUAL TABLE files USING [fsdir]")]
         fn rejects_fsdir_access(#[case] sql: &str) {
             let error = try_split_sqlite_statements(sql).unwrap_err();
 
