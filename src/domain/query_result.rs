@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use super::CommandTag;
 
@@ -134,40 +135,44 @@ fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
 
 fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
     let first_line = value.split('\n').next().unwrap_or(value);
-    let display_width = display_width_of_first_line(first_line, escape_nul);
-    if display_width <= max_width {
-        return if escape_nul && first_line.contains('\0') {
-            escape_display_text(first_line)
-        } else {
-            first_line.to_string()
-        };
-    }
-
-    if max_width < 3 {
-        return ".".repeat(max_width);
-    }
-
+    let budget = max_width.saturating_sub(3);
+    let mut display = String::new();
     let mut truncated = String::new();
-    let mut used_width = 0;
-    let budget = max_width - 3;
-    for ch in first_line.chars() {
-        if escape_nul && ch == '\0' {
-            if used_width + 2 > budget {
-                break;
-            }
-            truncated.push_str("\\0");
-            used_width += 2;
+    let mut display_width = 0usize;
+    let mut truncated_width = 0usize;
+
+    for grapheme in first_line.graphemes(true) {
+        let (width, is_nul) = if escape_nul && grapheme == "\0" {
+            (2, true)
         } else {
-            let width = UnicodeWidthChar::width(ch).unwrap_or(0);
-            if used_width + width > budget {
-                break;
+            (UnicodeWidthStr::width(grapheme), false)
+        };
+
+        if display_width.saturating_add(width) > max_width {
+            if max_width < 3 {
+                return ".".repeat(max_width);
             }
-            truncated.push(ch);
-            used_width += width;
+            truncated.push_str("...");
+            return truncated;
         }
+
+        if is_nul {
+            display.push_str("\\0");
+            if truncated_width.saturating_add(width) <= budget {
+                truncated.push_str("\\0");
+                truncated_width += width;
+            }
+        } else {
+            display.push_str(grapheme);
+            if truncated_width.saturating_add(width) <= budget {
+                truncated.push_str(grapheme);
+                truncated_width += width;
+            }
+        }
+        display_width += width;
     }
-    truncated.push_str("...");
-    truncated
+
+    display
 }
 
 fn blob_display_value_at_width(bytes: &[u8], max_width: usize) -> String {

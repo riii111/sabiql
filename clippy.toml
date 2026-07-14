@@ -30,6 +30,7 @@ absolute-paths-allowed-crates = [
     "tokio_util",
     "toml",
     "unicode_casefold",
+    "unicode_segmentation",
     "unicode_width",
     "urlencoding",
     "uuid",
