@@ -135,6 +135,8 @@ fn reduce_inner(
         | Action::TextInput { .. }
         | Action::TextBackspace { .. }
         | Action::TextDelete { .. }
+        | Action::TextKill { .. }
+        | Action::TextYank { .. }
         | Action::TextMoveCursor { .. }
         | Action::Select(_)
         | Action::ListSelect { .. } => {

@@ -24,6 +24,19 @@ pub trait TextInputLike {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKillDirection {
+    ToLineEnd,
+    ToLineStart,
+    NextWord,
+    PreviousWord,
+}
+
+pub trait TextInputEditing {
+    fn kill(&mut self, direction: TextKillDirection) -> String;
+    fn yank(&mut self, text: &str);
+}
+
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
@@ -105,6 +118,22 @@ impl TextInputState {
         self.char_count -= 1;
     }
 
+    pub fn kill_to_line_end(&mut self) -> String {
+        self.remove_range(self.cursor, self.char_count)
+    }
+
+    pub fn kill_to_line_start(&mut self) -> String {
+        self.remove_range(0, self.cursor)
+    }
+
+    pub fn kill_next_word(&mut self) -> String {
+        self.remove_range(self.cursor, next_word_start(&self.content, self.cursor))
+    }
+
+    pub fn kill_previous_word(&mut self) -> String {
+        self.remove_range(previous_word_start(&self.content, self.cursor), self.cursor)
+    }
+
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
             CursorMove::Left => {
@@ -184,11 +213,43 @@ impl TextInputState {
     pub fn char_count(&self) -> usize {
         self.char_count
     }
+
+    pub(crate) fn remove_range(&mut self, start: usize, end: usize) -> String {
+        let start = start.min(self.char_count);
+        let end = end.min(self.char_count);
+        if start >= end {
+            return String::new();
+        }
+
+        let start_byte = char_to_byte_index(&self.content, start);
+        let end_byte = char_to_byte_index(&self.content, end);
+        let removed = self.content[start_byte..end_byte].to_string();
+        self.content.replace_range(start_byte..end_byte, "");
+        self.char_count -= end - start;
+        self.cursor = start;
+        self.viewport_offset = 0;
+        removed
+    }
 }
 
 impl TextInputLike for TextInputState {
     fn text_input(&self) -> &TextInputState {
         self
+    }
+}
+
+impl TextInputEditing for TextInputState {
+    fn kill(&mut self, direction: TextKillDirection) -> String {
+        match direction {
+            TextKillDirection::ToLineEnd => self.kill_to_line_end(),
+            TextKillDirection::ToLineStart => self.kill_to_line_start(),
+            TextKillDirection::NextWord => self.kill_next_word(),
+            TextKillDirection::PreviousWord => self.kill_previous_word(),
+        }
+    }
+
+    fn yank(&mut self, text: &str) {
+        self.insert_str(text);
     }
 }
 
@@ -830,6 +891,21 @@ mod tests {
 
             assert_eq!(s.cursor(), 1);
             assert_eq!(s.viewport_offset(), 0);
+        }
+    }
+
+    mod kill {
+        use super::*;
+
+        #[test]
+        fn previous_word_preserves_unicode_boundaries_and_cursor_position() {
+            let mut input = TextInputState::new("alpha 日本語 beta", 10);
+
+            let killed = input.kill_previous_word();
+
+            assert_eq!(killed, "日本語 ");
+            assert_eq!(input.content(), "alpha beta");
+            assert_eq!(input.cursor(), 6);
         }
     }
 }

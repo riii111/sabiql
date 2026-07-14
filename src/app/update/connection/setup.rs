@@ -7,6 +7,7 @@ use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::TextInputEditing;
 use crate::update::action::{Action, ConnectionTarget, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
@@ -111,6 +112,43 @@ pub(super) fn reduce_connection_setup(
             let setup = &mut state.connection_setup;
             if let Some(input) = setup.focused_input_mut() {
                 input.backspace();
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::ConnectionSetup,
+        } => {
+            let setup = &mut state.connection_setup;
+            if let Some(input) = setup.focused_input_mut() {
+                input.delete();
+                input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+            }
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::ConnectionSetup,
+            direction,
+        } => {
+            let killed = state
+                .connection_setup
+                .focused_input_mut()
+                .map(|input| {
+                    let killed = input.kill(*direction);
+                    input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
+                    killed
+                })
+                .unwrap_or_default();
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::ConnectionSetup,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned)
+                && let Some(input) = state.connection_setup.focused_input_mut()
+            {
+                input.yank(&killed);
                 input.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
             DispatchResult::handled()

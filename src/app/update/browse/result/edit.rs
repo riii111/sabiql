@@ -5,6 +5,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::TextInputEditing;
 use crate::policy::write::write_update::build_pk_pairs;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -135,6 +136,25 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             target: InputTarget::ResultCellEdit,
         } => {
             state.result_interaction.cell_edit_input_mut().delete();
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::ResultCellEdit,
+            direction,
+        } => {
+            let killed = state
+                .result_interaction
+                .cell_edit_input_mut()
+                .kill(*direction);
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::ResultCellEdit,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.result_interaction.cell_edit_input_mut().yank(&killed);
+            }
             DispatchResult::handled()
         }
         Action::TextMoveCursor {

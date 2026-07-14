@@ -10,7 +10,7 @@ use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::TextInputLike;
+use crate::model::shared::text_input::{TextInputEditing, TextInputLike};
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
@@ -165,6 +165,26 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
             state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
+        Action::TextKill {
+            target: InputTarget::JsonbEdit,
+            direction,
+        } => {
+            let killed = state.jsonb_detail.editor_mut().kill(*direction);
+            state.record_kill(killed);
+            update_editor_scroll(state);
+            state.jsonb_detail.validate_editor_content();
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::JsonbEdit,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.jsonb_detail.editor_mut().yank(&killed);
+                update_editor_scroll(state);
+                state.jsonb_detail.validate_editor_content();
+            }
+            DispatchResult::handled()
+        }
 
         Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -256,6 +276,24 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
         } => {
             state.jsonb_detail.search_mut().input.delete();
             update_search_matches(state);
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::JsonbSearch,
+            direction,
+        } => {
+            let killed = state.jsonb_detail.search_mut().input.kill(*direction);
+            state.record_kill(killed);
+            update_search_matches(state);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::JsonbSearch,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.jsonb_detail.search_mut().input.yank(&killed);
+                update_search_matches(state);
+            }
             DispatchResult::handled()
         }
 

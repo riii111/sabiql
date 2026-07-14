@@ -67,6 +67,13 @@ impl PickerState {
         self.reset();
     }
 
+    pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
+        let result = edit(&mut self.filter_input);
+        self.filter_input.update_viewport(self.filter_visible_width);
+        self.reset();
+        result
+    }
+
     pub fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter_input.move_cursor(direction);
         self.filter_input.update_viewport(self.filter_visible_width);

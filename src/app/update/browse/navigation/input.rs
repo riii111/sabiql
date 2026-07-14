@@ -1,5 +1,6 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::TextInputEditing;
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::palette::palette_command_count;
@@ -49,6 +50,65 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
             target: InputTarget::Filter,
         } => {
             state.ui.table_picker.backspace_filter();
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::Filter,
+        } => {
+            state.ui.table_picker.edit_filter(|input| input.delete());
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::Filter,
+            direction,
+        } => {
+            let killed = state
+                .ui
+                .table_picker
+                .edit_filter(|input| input.kill(*direction));
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::Filter,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state
+                    .ui
+                    .table_picker
+                    .edit_filter(|input| input.yank(&killed));
+            }
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::CommandLine,
+        } => {
+            state.command_line_input.delete();
+            state
+                .command_line_input
+                .update_viewport(state.command_line_visible_width);
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::CommandLine,
+            direction,
+        } => {
+            let killed = state.command_line_input.kill(*direction);
+            state.record_kill(killed);
+            state
+                .command_line_input
+                .update_viewport(state.command_line_visible_width);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::CommandLine,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.command_line_input.yank(&killed);
+                state
+                    .command_line_input
+                    .update_viewport(state.command_line_visible_width);
+            }
             DispatchResult::handled()
         }
         Action::TextMoveCursor {
@@ -542,6 +602,34 @@ mod tests {
             );
 
             assert_eq!(state.ui.table_picker.selected(), 0);
+        }
+    }
+
+    mod readline {
+        use super::*;
+        use crate::model::shared::text_input::TextInputState;
+        use crate::update::action::TextKillDirection;
+
+        #[test]
+        fn command_line_yanks_the_latest_killed_text() {
+            let mut state = AppState::new("test".to_string());
+            state.command_line_input = TextInputState::new("before after", 7);
+
+            reduce_input(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::CommandLine,
+                    direction: TextKillDirection::ToLineEnd,
+                },
+            );
+            reduce_input(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::CommandLine,
+                },
+            );
+
+            assert_eq!(state.command_line_input.content(), "before after");
         }
     }
 }
