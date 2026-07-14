@@ -1,7 +1,7 @@
 use crate::model::shared::key_sequence::Prefix;
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{
-    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
+    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers, readline_action_for,
 };
 use crate::update::input::keymap;
 use crate::update::input::vim::{
@@ -72,6 +72,9 @@ fn handle_search_input(combo: KeyCombo) -> Action {
     if let Some(action) = keymap::resolve(&combo, JSONB_SEARCH_KEYS) {
         return action;
     }
+    if let Some(action) = readline_action_for(&combo, InputTarget::JsonbSearch) {
+        return action;
+    }
 
     // Text input fallthrough
     match combo.key {
@@ -114,6 +117,9 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
     }
 
     if let Some(action) = JSONB_EDIT.resolve(&combo) {
+        return action;
+    }
+    if let Some(action) = readline_action_for(&combo, InputTarget::JsonbEdit) {
         return action;
     }
 
@@ -386,6 +392,19 @@ mod tests {
                 Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
                     direction: CursorMove::Up,
+                }
+            ));
+        }
+
+        #[test]
+        fn alt_d_kills_the_next_word() {
+            let result = handle_jsonb_edit_keys(KeyCombo::alt(Key::Char('d')));
+
+            assert!(matches!(
+                result,
+                Action::TextKill {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::update::action::TextKillDirection::NextWord,
                 }
             ));
         }

@@ -7,6 +7,9 @@ pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
         return action;
     }
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::Filter) {
+        return action;
+    }
     // Char input falls through to filter (keybindings resolve Backspace/Left/Right/Home/End)
     match combo.key {
         Key::Char(c) => Action::TextInput {
@@ -35,6 +38,9 @@ pub fn handle_settings_keys(combo: KeyCombo, state: &AppState) -> Action {
 
 fn handle_custom_browser_edit_keys(combo: KeyCombo) -> Action {
     use crate::update::action::CursorMove;
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::SettingsErBrowser) {
+        return action;
+    }
     match combo.key {
         Key::Enter => Action::SettingsApply,
         Key::Esc => Action::SettingsStopCustomBrowserEdit,
@@ -72,6 +78,10 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::QUERY_HISTORY_PICKER.resolve(&combo) {
         return action;
     }
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::QueryHistoryFilter)
+    {
+        return action;
+    }
     match combo.key {
         Key::Char(c) => Action::TextInput {
             target: InputTarget::QueryHistoryFilter,
@@ -86,6 +96,9 @@ pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action 
         &combo,
         keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
     ) {
+        return action;
+    }
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::ErFilter) {
         return action;
     }
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
@@ -195,6 +208,19 @@ mod tests {
                     target: ListTarget::TablePicker,
                     motion: actual_motion,
                 } if actual_motion == motion
+            ));
+        }
+
+        #[test]
+        fn ctrl_k_kills_filter_to_line_end() {
+            let result = handle_table_picker_keys(KeyCombo::ctrl(Key::Char('k')));
+
+            assert!(matches!(
+                result,
+                Action::TextKill {
+                    target: InputTarget::Filter,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                }
             ));
         }
     }
@@ -493,11 +519,17 @@ mod tests {
         }
 
         #[test]
-        fn ide_ctrl_a_is_ignored() {
+        fn ide_ctrl_a_moves_filter_cursor_to_line_start() {
             let state = state_with_preset(KeymapPreset::Ide);
             let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
 
-            assert!(matches!(result, Action::None));
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::ErFilter,
+                    direction: crate::update::action::CursorMove::LineStart,
+                }
+            ));
         }
 
         #[test]

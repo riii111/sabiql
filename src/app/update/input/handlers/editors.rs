@@ -8,6 +8,9 @@ pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keymap::resolve(&combo, keybindings::CELL_EDIT_KEYS) {
         return action;
     }
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::ResultCellEdit) {
+        return action;
+    }
     match combo.key {
         Key::Backspace => Action::TextBackspace {
             target: InputTarget::ResultCellEdit,
@@ -42,6 +45,9 @@ pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
 pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
     use crate::update::action::CursorMove;
     if let Some(action) = keymap::resolve(&combo, keybindings::COMMAND_LINE_KEYS) {
+        return action;
+    }
+    if let Some(action) = keybindings::readline_action_for(&combo, InputTarget::CommandLine) {
         return action;
     }
     match combo.key {
@@ -219,6 +225,19 @@ mod tests {
                 }
                 Expected::None => assert!(matches!(result, Action::None)),
             }
+        }
+
+        #[test]
+        fn ctrl_a_moves_to_line_start_without_becoming_text_input() {
+            let result = handle_command_line_mode(KeyCombo::ctrl(Key::Char('a')));
+
+            assert!(matches!(
+                result,
+                Action::TextMoveCursor {
+                    target: InputTarget::CommandLine,
+                    direction: crate::update::action::CursorMove::LineStart,
+                }
+            ));
         }
     }
 }
