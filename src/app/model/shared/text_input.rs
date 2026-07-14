@@ -28,8 +28,8 @@ pub trait TextInputLike {
 pub enum TextKillDirection {
     ToLineEnd,
     ToLineStart,
-    NextWord,
-    PreviousWord,
+    ReadlineWordEnd,
+    ReadlinePreviousWhitespace,
 }
 
 pub trait TextInputEditing {
@@ -127,11 +127,17 @@ impl TextInputState {
     }
 
     pub fn kill_next_word(&mut self) -> String {
-        self.remove_range(self.cursor, next_word_start(&self.content, self.cursor))
+        self.remove_range(
+            self.cursor,
+            readline_forward_word_end(&self.content, self.cursor),
+        )
     }
 
     pub fn kill_previous_word(&mut self) -> String {
-        self.remove_range(previous_word_start(&self.content, self.cursor), self.cursor)
+        self.remove_range(
+            readline_previous_whitespace_boundary(&self.content, self.cursor),
+            self.cursor,
+        )
     }
 
     pub fn move_cursor(&mut self, movement: CursorMove) {
@@ -161,6 +167,9 @@ impl TextInputState {
             }
             CursorMove::WordBackward => {
                 self.cursor = previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::ReadlineWordEnd => {
+                self.cursor = readline_forward_word_end(&self.content, self.cursor);
             }
             CursorMove::Up
             | CursorMove::Down
@@ -243,8 +252,8 @@ impl TextInputEditing for TextInputState {
         match direction {
             TextKillDirection::ToLineEnd => self.kill_to_line_end(),
             TextKillDirection::ToLineStart => self.kill_to_line_start(),
-            TextKillDirection::NextWord => self.kill_next_word(),
-            TextKillDirection::PreviousWord => self.kill_previous_word(),
+            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
+            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
         }
     }
 
@@ -354,6 +363,42 @@ pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
     }
 
     last_non_whitespace_run_start.unwrap_or(0)
+}
+
+pub(super) fn readline_forward_word_end(content: &str, cursor: usize) -> usize {
+    let mut idx = cursor.min(content.chars().count());
+    let mut chars = content.chars().skip(idx);
+
+    while let Some(ch) = chars.next()
+        && ch.is_whitespace()
+    {
+        idx += 1;
+    }
+
+    if let Some(ch) = content.chars().nth(idx)
+        && !ch.is_whitespace()
+    {
+        idx += 1;
+        for ch in content.chars().skip(idx) {
+            if ch.is_whitespace() {
+                break;
+            }
+            idx += 1;
+        }
+    }
+
+    idx
+}
+
+pub(super) fn readline_previous_whitespace_boundary(content: &str, cursor: usize) -> usize {
+    content
+        .chars()
+        .enumerate()
+        .take(cursor)
+        .filter(|(_, ch)| ch.is_whitespace())
+        .map(|(idx, _)| idx + 1)
+        .last()
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -665,6 +710,22 @@ mod tests {
         }
 
         #[rstest]
+        #[case("foo.bar baz", 0, 7)]
+        #[case("foo.bar baz", 7, 11)]
+        #[case("  日本語", 0, 5)]
+        fn readline_word_forward_moves_to_the_end_of_the_current_or_next_whitespace_delimited_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(CursorMove::ReadlineWordEnd);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
         #[case("foo bar", 7, CursorMove::WordBackward, 4)]
         #[case("foo.bar", 7, CursorMove::WordBackward, 4)]
         #[case("  foo", 4, CursorMove::WordBackward, 2)]
@@ -897,15 +958,41 @@ mod tests {
     mod kill {
         use super::*;
 
-        #[test]
-        fn previous_word_preserves_unicode_boundaries_and_cursor_position() {
-            let mut input = TextInputState::new("alpha 日本語 beta", 10);
+        #[rstest]
+        #[case("foo.bar", 7, "foo.bar", "")]
+        #[case("alpha 日本語", 9, "日本語", "alpha ")]
+        #[case("foo bar", 7, "bar", "foo ")]
+        fn previous_word_kills_to_the_previous_whitespace_boundary(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_killed: &str,
+            #[case] expected_content: &str,
+        ) {
+            let mut input = TextInputState::new(content, cursor);
 
             let killed = input.kill_previous_word();
 
-            assert_eq!(killed, "日本語 ");
-            assert_eq!(input.content(), "alpha beta");
-            assert_eq!(input.cursor(), 6);
+            assert_eq!(killed, expected_killed);
+            assert_eq!(input.content(), expected_content);
+            assert_eq!(input.cursor(), expected_content.chars().count());
+        }
+
+        #[rstest]
+        #[case("foo.bar  baz", 0, "foo.bar", "  baz")]
+        #[case("foo  日本語", 3, "  日本語", "foo")]
+        fn next_word_kills_through_the_end_of_a_whitespace_delimited_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_killed: &str,
+            #[case] expected_content: &str,
+        ) {
+            let mut input = TextInputState::new(content, cursor);
+
+            let killed = input.kill_next_word();
+
+            assert_eq!(killed, expected_killed);
+            assert_eq!(input.content(), expected_content);
+            assert_eq!(input.cursor(), cursor.min(expected_content.chars().count()));
         }
     }
 }

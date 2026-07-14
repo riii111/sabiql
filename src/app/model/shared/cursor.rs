@@ -10,6 +10,7 @@ pub enum CursorMove {
     LineEnd,
     WordForward,
     WordBackward,
+    ReadlineWordEnd,
     BufferStart,
     BufferEnd,
     FirstLine,

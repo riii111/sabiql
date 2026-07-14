@@ -32,7 +32,7 @@ pub fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Acti
         },
         (Key::Char('w'), Modifiers::CTRL) => Action::TextKill {
             target,
-            direction: TextKillDirection::PreviousWord,
+            direction: TextKillDirection::ReadlinePreviousWhitespace,
         },
         (Key::Char('y'), Modifiers::CTRL) => Action::TextYank { target },
         (Key::Char('b'), Modifiers::ALT) => Action::TextMoveCursor {
@@ -41,11 +41,11 @@ pub fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Acti
         },
         (Key::Char('f'), Modifiers::ALT) => Action::TextMoveCursor {
             target,
-            direction: CursorMove::WordForward,
+            direction: CursorMove::ReadlineWordEnd,
         },
         (Key::Char('d'), Modifiers::ALT) => Action::TextKill {
             target,
-            direction: TextKillDirection::NextWord,
+            direction: TextKillDirection::ReadlineWordEnd,
         },
         _ => return None,
     };
@@ -67,11 +67,11 @@ mod tests {
     #[case(KeyCombo::ctrl(Key::Char('d')), None)]
     #[case(KeyCombo::ctrl(Key::Char('k')), Some((None, Some(TextKillDirection::ToLineEnd))))]
     #[case(KeyCombo::ctrl(Key::Char('u')), Some((None, Some(TextKillDirection::ToLineStart))))]
-    #[case(KeyCombo::ctrl(Key::Char('w')), Some((None, Some(TextKillDirection::PreviousWord))))]
+    #[case(KeyCombo::ctrl(Key::Char('w')), Some((None, Some(TextKillDirection::ReadlinePreviousWhitespace))))]
     #[case(KeyCombo::ctrl(Key::Char('y')), None)]
     #[case(KeyCombo::alt(Key::Char('b')), Some((Some(CursorMove::WordBackward), None)))]
-    #[case(KeyCombo::alt(Key::Char('f')), Some((Some(CursorMove::WordForward), None)))]
-    #[case(KeyCombo::alt(Key::Char('d')), Some((None, Some(TextKillDirection::NextWord))))]
+    #[case(KeyCombo::alt(Key::Char('f')), Some((Some(CursorMove::ReadlineWordEnd), None)))]
+    #[case(KeyCombo::alt(Key::Char('d')), Some((None, Some(TextKillDirection::ReadlineWordEnd))))]
     fn maps_readline_keys(
         #[case] combo: KeyCombo,
         #[case] expected: Option<(Option<CursorMove>, Option<TextKillDirection>)>,

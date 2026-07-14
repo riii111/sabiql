@@ -404,7 +404,7 @@ mod tests {
                 result,
                 Action::TextKill {
                     target: InputTarget::JsonbEdit,
-                    direction: crate::update::action::TextKillDirection::NextWord,
+                    direction: crate::update::action::TextKillDirection::ReadlineWordEnd,
                 }
             ));
         }

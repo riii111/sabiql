@@ -2,7 +2,7 @@ use crate::model::shared::cursor::CursorMove;
 
 use super::text_input::{
     TextInputEditing, TextInputLike, TextInputState, TextKillDirection, next_word_start,
-    previous_word_start,
+    previous_word_start, readline_forward_word_end, readline_previous_whitespace_boundary,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -101,13 +101,13 @@ impl MultiLineInputState {
     pub fn kill_next_word(&mut self) -> String {
         self.remove_range(
             self.cursor(),
-            next_word_start(self.content(), self.cursor()),
+            readline_forward_word_end(self.content(), self.cursor()),
         )
     }
 
     pub fn kill_previous_word(&mut self) -> String {
         self.remove_range(
-            previous_word_start(self.content(), self.cursor()),
+            readline_previous_whitespace_boundary(self.content(), self.cursor()),
             self.cursor(),
         )
     }
@@ -178,6 +178,11 @@ impl MultiLineInputState {
             CursorMove::WordBackward => {
                 let previous = previous_word_start(self.content(), self.cursor());
                 self.set_cursor_and_sync(previous);
+                self.preferred_col = None;
+            }
+            CursorMove::ReadlineWordEnd => {
+                let next = readline_forward_word_end(self.content(), self.cursor());
+                self.set_cursor_and_sync(next);
                 self.preferred_col = None;
             }
             CursorMove::BufferStart => {
@@ -332,8 +337,8 @@ impl TextInputEditing for MultiLineInputState {
         match direction {
             TextKillDirection::ToLineEnd => self.kill_to_line_end(),
             TextKillDirection::ToLineStart => self.kill_to_line_start(),
-            TextKillDirection::NextWord => self.kill_next_word(),
-            TextKillDirection::PreviousWord => self.kill_previous_word(),
+            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
+            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
         }
     }
 
