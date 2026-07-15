@@ -1,20 +1,47 @@
-use crate::update::action::{Action, InputTarget};
+use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
 use super::interaction::InputInteraction;
 
 pub fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
-    if let Some(action) = keybindings::HELP.resolve(&combo) {
+    match interaction {
+        InputInteraction::Viewing => handle_help_viewing_keys(combo),
+        InputInteraction::Editing(InputTarget::HelpFilter) => handle_help_editing_keys(combo),
+        InputInteraction::Editing(_) => Action::None,
+    }
+}
+
+fn handle_help_viewing_keys(combo: KeyCombo) -> Action {
+    keymap::resolve_mode(&combo, keybindings::HELP_VIEWING_ROWS).unwrap_or(Action::None)
+}
+
+fn handle_help_editing_keys(combo: KeyCombo) -> Action {
+    if let Some(action) = keymap::resolve_mode(&combo, keybindings::HELP_EDITING_ROWS) {
         return action;
     }
 
-    match (interaction, combo.key, combo.modifiers) {
-        (
-            InputInteraction::Editing(InputTarget::HelpFilter),
-            Key::Char(ch),
-            Modifiers::NONE | Modifiers::SHIFT,
-        ) => Action::TextInput {
+    match (combo.key, combo.modifiers) {
+        (Key::Delete, Modifiers::NONE) => Action::TextDelete {
+            target: InputTarget::HelpFilter,
+        },
+        (Key::Left, Modifiers::NONE) => Action::TextMoveCursor {
+            target: InputTarget::HelpFilter,
+            direction: CursorMove::Left,
+        },
+        (Key::Right, Modifiers::NONE) => Action::TextMoveCursor {
+            target: InputTarget::HelpFilter,
+            direction: CursorMove::Right,
+        },
+        (Key::Home, Modifiers::NONE) => Action::TextMoveCursor {
+            target: InputTarget::HelpFilter,
+            direction: CursorMove::Home,
+        },
+        (Key::End, Modifiers::NONE) => Action::TextMoveCursor {
+            target: InputTarget::HelpFilter,
+            direction: CursorMove::End,
+        },
+        (Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
             target: InputTarget::HelpFilter,
             ch,
         },
@@ -30,7 +57,9 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
 mod tests {
     use super::*;
     use crate::update::action::ModalKind;
-    use crate::update::action::{InputTarget, ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::action::{
+        CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+    };
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
@@ -91,6 +120,92 @@ mod tests {
             let result = handle_help_keys(combo(Key::Tab), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::ToggleHelpFilterFocus));
+        }
+
+        #[rstest]
+        #[case(Key::Backspace)]
+        #[case(Key::Delete)]
+        #[case(Key::Left)]
+        #[case(Key::Right)]
+        #[case(Key::Home)]
+        #[case(Key::End)]
+        fn editing_filter_prioritizes_standard_text_keys(#[case] key: Key) {
+            let result = handle_help_keys(
+                combo(key),
+                InputInteraction::Editing(InputTarget::HelpFilter),
+            );
+
+            match key {
+                Key::Backspace => assert!(matches!(
+                    result,
+                    Action::TextBackspace {
+                        target: InputTarget::HelpFilter
+                    }
+                )),
+                Key::Delete => assert!(matches!(
+                    result,
+                    Action::TextDelete {
+                        target: InputTarget::HelpFilter
+                    }
+                )),
+                Key::Left | Key::Right | Key::Home | Key::End => {
+                    let direction = match key {
+                        Key::Left => CursorMove::Left,
+                        Key::Right => CursorMove::Right,
+                        Key::Home => CursorMove::Home,
+                        Key::End => CursorMove::End,
+                        _ => unreachable!(),
+                    };
+                    assert!(matches!(
+                        result,
+                        Action::TextMoveCursor {
+                            target: InputTarget::HelpFilter,
+                            direction: actual_direction,
+                        } if actual_direction == direction
+                    ));
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        #[rstest]
+        #[case(Key::Backspace)]
+        #[case(Key::Delete)]
+        fn viewing_ignores_filter_edit_keys(#[case] key: Key) {
+            let result = handle_help_keys(combo(key), InputInteraction::Viewing);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
+        #[case(Key::Left, ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(Key::Right, ScrollDirection::Right, ScrollAmount::Line)]
+        #[case(Key::Home, ScrollDirection::Up, ScrollAmount::ToStart)]
+        #[case(Key::End, ScrollDirection::Down, ScrollAmount::ToEnd)]
+        fn viewing_resolves_navigation_keys_as_scroll(
+            #[case] key: Key,
+            #[case] direction: ScrollDirection,
+            #[case] amount: ScrollAmount,
+        ) {
+            assert_help_scroll(
+                handle_help_keys(combo(key), InputInteraction::Viewing),
+                direction,
+                amount,
+            );
+        }
+
+        #[rstest]
+        #[case(Key::Up)]
+        #[case(Key::Down)]
+        #[case(Key::PageUp)]
+        #[case(Key::PageDown)]
+        fn editing_filter_does_not_scroll(#[case] key: Key) {
+            let result = handle_help_keys(
+                combo(key),
+                InputInteraction::Editing(InputTarget::HelpFilter),
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]
