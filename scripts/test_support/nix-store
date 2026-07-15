@@ -1,3 +1,0 @@
-#!/usr/bin/env bash
-
-printf '%s\n' "${NIX_TEST_GC_ROOTS:-}"
