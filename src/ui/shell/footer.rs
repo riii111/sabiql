@@ -469,8 +469,10 @@ mod tests {
         let services = AppServices::stub();
         state.modal.set_mode(InputMode::RowDetail);
 
+        let hints = Footer::get_context_hints(&state, &services);
+
         assert_eq!(
-            Footer::get_context_hints(&state, &services),
+            hints,
             vec![
                 row_detail::YANK.as_hint(),
                 row_detail::YANK_JSON.as_hint(),
