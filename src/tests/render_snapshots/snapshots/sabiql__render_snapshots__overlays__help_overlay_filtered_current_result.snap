@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 416
+assertion_line: 433
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -48,8 +48,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
 │                        │                                                                                                                 │                        │
-│                        ╰ Tab: Toggle │ Esc: Close ───────────────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Esc: Browse ────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Tab:Toggle  Esc:Close
+Esc:Browse

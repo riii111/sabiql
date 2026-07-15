@@ -110,8 +110,12 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
             state.ui.help.move_filter_cursor(*direction);
             DispatchResult::handled()
         }
-        Action::ToggleHelpFilterFocus => {
-            state.ui.help.toggle_filter_editing();
+        Action::EnterHelpFilter => {
+            state.ui.help.enter_filter_editing();
+            DispatchResult::handled()
+        }
+        Action::ExitHelpFilter => {
+            state.ui.help.exit_filter_editing();
             DispatchResult::handled()
         }
         Action::Scroll {

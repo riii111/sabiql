@@ -223,10 +223,12 @@ impl Footer {
                 ]
             }
             InputMode::Help => match state.ui.help.mode() {
-                HelpMode::Viewing => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
-                HelpMode::EditingFilter => {
-                    vec![help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()]
-                }
+                HelpMode::Viewing => vec![
+                    help::H_SCROLL.as_hint(),
+                    help::ENTER_FILTER.as_hint(),
+                    help::CLOSE.as_hint(),
+                ],
+                HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
             },
             InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
@@ -502,14 +504,18 @@ mod tests {
 
         assert_eq!(
             Footer::get_context_hints(&state, &services),
-            vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()]
+            vec![
+                help::H_SCROLL.as_hint(),
+                help::ENTER_FILTER.as_hint(),
+                help::CLOSE.as_hint(),
+            ]
         );
 
-        state.ui.help.toggle_filter_editing();
+        state.ui.help.enter_filter_editing();
 
         assert_eq!(
             Footer::get_context_hints(&state, &services),
-            vec![help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()]
+            vec![help::ESC_VIEWING.as_hint()]
         );
     }
 

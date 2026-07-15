@@ -236,7 +236,7 @@ mod tests {
             }
             FormSurface::HelpFilter => {
                 state.modal.set_mode(InputMode::Help);
-                state.ui.help.toggle_filter_editing();
+                state.ui.help.enter_filter_editing();
                 InputTarget::HelpFilter
             }
         };
@@ -360,7 +360,7 @@ mod tests {
             }
         ));
 
-        viewing.ui.help.toggle_filter_editing();
+        viewing.ui.help.enter_filter_editing();
         let editing_action = handle_key_event(
             KeyCombo::ctrl(Key::Char('b')),
             &viewing,

@@ -229,14 +229,25 @@ pub mod help {
         bindings: &[],
     };
 
-    pub const FOCUS_FILTER: ModeRow = ModeRow {
-        key_short: "Tab",
-        key: "Tab",
-        desc_short: "Toggle",
-        description: "Toggle filter editing",
+    pub const ENTER_FILTER: ModeRow = ModeRow {
+        key_short: "Enter",
+        key: "Enter",
+        desc_short: "Filter",
+        description: "Edit filter",
         bindings: &[ExecBinding {
-            action: Action::ToggleHelpFilterFocus,
-            combos: &[KeyCombo::plain(Key::Tab)],
+            action: Action::EnterHelpFilter,
+            combos: &[KeyCombo::plain(Key::Enter)],
+        }],
+    };
+
+    pub const ESC_VIEWING: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Browse",
+        description: "Return to help browsing",
+        bindings: &[ExecBinding {
+            action: Action::ExitHelpFilter,
+            combos: &[KeyCombo::plain(Key::Esc)],
         }],
     };
 
@@ -282,9 +293,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
-    help::FOCUS_FILTER,
-    help::TYPE_FILTER,
-    help::EDIT_FILTER,
+    help::ENTER_FILTER,
     help::ESC_CLOSE,
     help::CLOSE,
 ];
@@ -295,12 +304,12 @@ pub const HELP_VIEWING_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
-    help::FOCUS_FILTER,
+    help::ENTER_FILTER,
     help::ESC_CLOSE,
     help::CLOSE,
 ];
 
-pub const HELP_EDITING_ROWS: &[ModeRow] = &[help::FOCUS_FILTER, help::EDIT_FILTER, help::ESC_CLOSE];
+pub const HELP_EDITING_ROWS: &[ModeRow] = &[help::ESC_VIEWING, help::EDIT_FILTER];
 
 // =============================================================================
 // Table Picker

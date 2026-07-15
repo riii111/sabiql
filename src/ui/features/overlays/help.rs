@@ -30,13 +30,11 @@ impl HelpOverlay {
         let document = HelpDocument::from_state(state);
         let footer = match state.ui.help.mode() {
             HelpMode::Viewing => FooterHintBar::new([
-                help::FOCUS_FILTER.as_hint(),
+                help::ENTER_FILTER.as_hint(),
                 help::ESC_CLOSE.as_hint(),
                 help::CLOSE.as_hint(),
             ]),
-            HelpMode::EditingFilter => {
-                FooterHintBar::new([help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()])
-            }
+            HelpMode::EditingFilter => FooterHintBar::new([help::ESC_VIEWING.as_hint()]),
         };
         let (_, inner) = render_modal(
             frame,

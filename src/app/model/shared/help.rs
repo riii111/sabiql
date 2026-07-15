@@ -59,11 +59,12 @@ impl HelpState {
         self.mode
     }
 
-    pub fn toggle_filter_editing(&mut self) {
-        self.mode = match self.mode {
-            HelpMode::Viewing => HelpMode::EditingFilter,
-            HelpMode::EditingFilter => HelpMode::Viewing,
-        };
+    pub fn enter_filter_editing(&mut self) {
+        self.mode = HelpMode::EditingFilter;
+    }
+
+    pub fn exit_filter_editing(&mut self) {
+        self.mode = HelpMode::Viewing;
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -389,10 +390,22 @@ mod tests {
     #[test]
     fn filter_mode_resets_when_help_is_closed() {
         let mut state = HelpState::default();
-        state.toggle_filter_editing();
+        state.enter_filter_editing();
 
         state.close();
 
         assert_eq!(state.mode(), HelpMode::Viewing);
+    }
+
+    #[test]
+    fn filter_mode_returns_to_viewing_without_clearing_the_filter() {
+        let mut state = HelpState::default();
+        state.insert_filter_char('c');
+        state.enter_filter_editing();
+
+        state.exit_filter_editing();
+
+        assert_eq!(state.mode(), HelpMode::Viewing);
+        assert_eq!(state.filter().content(), "c");
     }
 }

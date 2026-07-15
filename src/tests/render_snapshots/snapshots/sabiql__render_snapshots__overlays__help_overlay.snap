@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 414
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -47,8 +48,8 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │                                                                                                                ││                        │
 │                        │▸ Data Actions                                                                                                  ││                        │
 │                        │  r                                            Reload metadata                                                  ▼│                        │
-│                        ╰ Tab: Toggle │ Esc: Close │ ?: Close ────────────────────────────────────────────────────────────────────────────╯                        │
+│                        ╰ Enter: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-←→:H-Scroll  ?:Close
+←→:H-Scroll  Enter:Filter  ?:Close

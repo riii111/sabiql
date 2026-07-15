@@ -147,7 +147,7 @@ mod tests {
             let mut state = create_test_state();
             open_help(&mut state);
 
-            super::dispatch_modal(&mut state, &Action::ToggleHelpFilterFocus, Instant::now());
+            super::dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
             super::dispatch_modal(
                 &mut state,
                 &Action::TextInput {
@@ -186,6 +186,21 @@ mod tests {
             );
             assert_eq!(state.ui.help.filter().content(), "x");
             assert_eq!(state.ui.help.filter().cursor(), 1);
+        }
+
+        #[test]
+        fn exiting_help_filter_keeps_the_help_modal_open() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+            super::dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
+
+            super::dispatch_modal(&mut state, &Action::ExitHelpFilter, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::Help);
+            assert_eq!(
+                state.ui.help.mode(),
+                crate::model::shared::help::HelpMode::Viewing
+            );
         }
     }
 

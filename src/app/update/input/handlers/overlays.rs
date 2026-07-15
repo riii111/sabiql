@@ -132,10 +132,27 @@ mod tests {
         }
 
         #[test]
-        fn tab_toggles_filter_focus() {
+        fn enter_starts_filter_editing() {
+            let result = handle_help_keys(combo(Key::Enter), InputInteraction::Viewing);
+
+            assert!(matches!(result, Action::EnterHelpFilter));
+        }
+
+        #[test]
+        fn esc_returns_to_viewing_while_editing() {
+            let result = handle_help_keys(
+                combo(Key::Esc),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
+            );
+
+            assert!(matches!(result, Action::ExitHelpFilter));
+        }
+
+        #[test]
+        fn tab_is_ignored_while_viewing() {
             let result = handle_help_keys(combo(Key::Tab), InputInteraction::Viewing);
 
-            assert!(matches!(result, Action::ToggleHelpFilterFocus));
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]
