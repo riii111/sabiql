@@ -544,5 +544,32 @@ mod tests {
             assert_eq!(state.result_interaction.cell_edit().draft_value(), "ac");
             assert_eq!(state.result_interaction.cell_edit().input.cursor(), 1);
         }
+
+        #[test]
+        fn kill_then_yank_restores_cell_edit_text() {
+            let mut state = state_in_cell_edit("before after", 7);
+
+            reduce_edit(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::ResultCellEdit,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                },
+                Instant::now(),
+            );
+            reduce_edit(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::ResultCellEdit,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state.result_interaction.cell_edit().draft_value(),
+                "before after"
+            );
+            assert_eq!(state.kill_buffer(), Some("after"));
+        }
     }
 }

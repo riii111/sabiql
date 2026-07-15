@@ -189,6 +189,64 @@ mod tests {
         }
     }
 
+    mod readline_edits {
+        use super::*;
+        use crate::update::action::TextKillDirection;
+
+        fn kill_then_yank(state: &mut AppState, target: InputTarget) {
+            super::dispatch_modal(
+                state,
+                &Action::TextKill {
+                    target,
+                    direction: TextKillDirection::ToLineStart,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(state, &Action::TextYank { target }, Instant::now());
+        }
+
+        #[test]
+        fn er_filter_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.ui.er_picker.insert_filter_str("users");
+
+            kill_then_yank(&mut state, InputTarget::ErFilter);
+
+            assert_eq!(state.ui.er_picker.filter_input().content(), "users");
+            assert_eq!(state.kill_buffer(), Some("users"));
+        }
+
+        #[test]
+        fn query_history_filter_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.query_history_picker.insert_filter_str("SELECT");
+
+            kill_then_yank(&mut state, InputTarget::QueryHistoryFilter);
+
+            assert_eq!(
+                state.query_history_picker.filter_input().content(),
+                "SELECT"
+            );
+            assert_eq!(state.kill_buffer(), Some("SELECT"));
+        }
+
+        #[test]
+        fn settings_browser_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.settings.switch_next_section();
+            state.settings.switch_next_section();
+            state.settings.start_custom_browser_edit();
+            for ch in "Firefox".chars() {
+                state.settings.input_custom_browser(ch);
+            }
+
+            kill_then_yank(&mut state, InputTarget::SettingsErBrowser);
+
+            assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
+            assert_eq!(state.kill_buffer(), Some("Firefox"));
+        }
+    }
+
     mod settings {
         use super::*;
         use crate::model::shared::theme_id::ThemeId;

@@ -810,6 +810,36 @@ mod tests {
         }
 
         #[test]
+        fn kill_then_yank_restores_jsonb_editor_text() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content_with_cursor("before after".to_string(), 7);
+
+            reduce_jsonb(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                },
+                Instant::now(),
+            );
+            reduce_jsonb(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::JsonbEdit,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.jsonb_detail.editor().content(), "before after");
+            assert_eq!(state.kill_buffer(), Some("after"));
+        }
+
+        #[test]
         fn reenter_edit_with_pending_changes_preserves_existing_cursor() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
@@ -989,6 +1019,42 @@ mod tests {
                 !state.jsonb_detail.search().matches.is_empty(),
                 "should find matches for 'THEME'"
             );
+        }
+
+        #[test]
+        fn kill_then_yank_restores_search_query_and_matches() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
+
+            for ch in "theme".chars() {
+                reduce_jsonb(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                );
+            }
+            reduce_jsonb(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::JsonbSearch,
+                    direction: crate::update::action::TextKillDirection::ToLineStart,
+                },
+                Instant::now(),
+            );
+            reduce_jsonb(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::JsonbSearch,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.jsonb_detail.search().input.content(), "theme");
+            assert!(!state.jsonb_detail.search().matches.is_empty());
         }
 
         #[test]

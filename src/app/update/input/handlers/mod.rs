@@ -161,6 +161,8 @@ mod tests {
         SettingsBrowser,
         ConnectionSetup,
         SqlEditor,
+        SqlModalHighRisk,
+        SqlModalAnalyzeHighRisk,
         JsonbEditor,
         JsonbSearch,
         HelpFilter,
@@ -206,6 +208,25 @@ mod tests {
                 state.sql_modal.enter_editing();
                 InputTarget::SqlModal
             }
+            EditingSurface::SqlModalHighRisk => {
+                state.modal.set_mode(InputMode::SqlModal);
+                state.sql_modal.begin_confirming_high(
+                    crate::policy::write::write_guardrails::AdhocRiskDecision {
+                        risk_level: crate::policy::write::write_guardrails::RiskLevel::High,
+                        label: "DROP",
+                    },
+                    "users".to_string(),
+                );
+                InputTarget::SqlModalHighRisk
+            }
+            EditingSurface::SqlModalAnalyzeHighRisk => {
+                state.modal.set_mode(InputMode::SqlModal);
+                state.sql_modal.begin_confirming_analyze_high(
+                    "EXPLAIN DELETE FROM users".to_string(),
+                    "users".to_string(),
+                );
+                InputTarget::SqlModalAnalyzeHighRisk
+            }
             EditingSurface::JsonbEditor => {
                 state.modal.set_mode(InputMode::JsonbDetail);
                 state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
@@ -234,6 +255,8 @@ mod tests {
     #[case(EditingSurface::SettingsBrowser)]
     #[case(EditingSurface::ConnectionSetup)]
     #[case(EditingSurface::SqlEditor)]
+    #[case(EditingSurface::SqlModalHighRisk)]
+    #[case(EditingSurface::SqlModalAnalyzeHighRisk)]
     #[case(EditingSurface::JsonbEditor)]
     #[case(EditingSurface::JsonbSearch)]
     #[case(EditingSurface::HelpFilter)]
@@ -259,6 +282,8 @@ mod tests {
     #[case(InputTarget::SettingsErBrowser)]
     #[case(InputTarget::ConnectionSetup)]
     #[case(InputTarget::SqlModal)]
+    #[case(InputTarget::SqlModalHighRisk)]
+    #[case(InputTarget::SqlModalAnalyzeHighRisk)]
     #[case(InputTarget::JsonbEdit)]
     #[case(InputTarget::JsonbSearch)]
     #[case(InputTarget::HelpFilter)]
