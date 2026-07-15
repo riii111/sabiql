@@ -19,7 +19,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │  > Appearance    │Theme                                                                         │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │    Wrapped Cell  │  > Sabiql Dark    saved                                                      │                                │
+│                                │    Wrapped Cell  │  > Sabiql Dark                                                               │                                │
 │                                │    ER Diagram    │    Light                                                                     │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -39,7 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │╰────────────────────────────╯                                                │                                │
 │                                │                  │Choose a theme that fits your terminal.                                       │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────────────────────╯                                │
+│                                ╰ Enter: Close │ Tab/⇧Tab: Section │ Esc: Close ──────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Close  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Close

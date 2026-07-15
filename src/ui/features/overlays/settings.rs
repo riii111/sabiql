@@ -90,16 +90,14 @@ impl SettingsOverlay {
 
         for theme_id in ThemeId::ALL {
             let selected = state.settings.selected_theme() == theme_id;
-            let saved = state.settings.previous_theme() == theme_id;
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             content_lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<14}{saved_label}", theme_id.label()),
+                format!("  {marker} {}", theme_id.label()),
                 style,
             )));
         }
@@ -131,16 +129,14 @@ impl SettingsOverlay {
 
         for preset in KeymapPreset::ALL {
             let selected = state.settings.selected_keymap_preset() == preset;
-            let saved = state.settings.saved_keymap_preset() == preset;
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<14}{saved_label}", preset.label()),
+                format!("  {marker} {}", preset.label()),
                 style,
             )));
         }
@@ -181,14 +177,12 @@ impl SettingsOverlay {
         } else {
             "off (columns shrink to fit)"
         };
-        let scroll_style = if wrapped_cell.allow_horizontal_scroll {
-            Style::default().fg(theme.semantic.text.secondary)
-        } else {
-            theme.picker_selected_style()
-        };
         lines.push(Line::from(vec![
             Span::raw("  "),
-            Span::styled(format!("[Space] {scroll_label}"), scroll_style),
+            Span::styled(
+                format!("[Space] {scroll_label}"),
+                Style::default().fg(theme.semantic.text.primary),
+            ),
         ]));
 
         lines.push(Line::raw(""));
@@ -240,25 +234,21 @@ impl SettingsOverlay {
                 continue;
             }
             let selected = state.settings.selected_er_browser_choice() == choice;
-            let saved = saved_browser_matches(state, choice);
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<18}{saved_label}", choice.label()),
+                format!("  {marker} {}", choice.label()),
                 style,
             )));
         }
 
         let custom_selected =
             state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom;
-        let custom_saved = saved_browser_matches(state, ErBrowserChoice::Custom);
         let marker = if custom_selected { ">" } else { " " };
-        let saved_label = if custom_saved { " saved" } else { "" };
         let style = if custom_selected {
             theme.picker_selected_style()
         } else {
@@ -271,7 +261,7 @@ impl SettingsOverlay {
         } else {
             ""
         };
-        let suffix = format!("]{saved_label}{edit_label}");
+        let suffix = format!("]{edit_label}");
         let input_width = usize::from(content.width)
             .saturating_sub(prefix.chars().count() + suffix.chars().count())
             .max(1);
@@ -357,8 +347,4 @@ impl SettingsOverlay {
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
-}
-
-fn saved_browser_matches(state: &AppState, choice: ErBrowserChoice) -> bool {
-    ErBrowserChoice::from_browser_name(state.settings.saved_er_browser()) == choice
 }

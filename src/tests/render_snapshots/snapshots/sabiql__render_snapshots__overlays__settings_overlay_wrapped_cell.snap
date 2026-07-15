@@ -39,7 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ Space: Toggle │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────╯                                │
+│                                ╰ Enter: Close │ Space: Toggle │ Tab/⇧Tab: Section │ Esc: Close ──────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  Space:Toggle  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Close  j/k/↑↓:Select  Space:Toggle  Tab/⇧Tab:Section  Esc:Close

@@ -426,6 +426,15 @@ impl SettingsState {
         self.selected_wrapped_cell = wrapped_cell;
     }
 
+    pub fn apply_selection(&mut self) {
+        let er_browser = self.selected_er_browser();
+
+        self.previous_theme = self.selected_theme;
+        self.saved_keymap_preset = self.selected_keymap_preset;
+        self.saved_er_browser = er_browser;
+        self.saved_wrapped_cell = self.selected_wrapped_cell;
+    }
+
     pub fn discard_selection(&mut self) {
         self.selected_theme = self.previous_theme;
         self.selected_keymap_preset = self.saved_keymap_preset;

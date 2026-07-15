@@ -496,7 +496,7 @@ mod tests {
 
         assert!(hints.contains(&("i", "Edit")));
         assert!(hints.contains(&("Tab/⇧Tab", "Section")));
-        assert!(hints.contains(&("Esc", "Cancel")));
+        assert!(hints.contains(&("Esc", "Close")));
     }
 
     #[test]
@@ -513,7 +513,7 @@ mod tests {
 
         assert_eq!(
             hints,
-            vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
+            vec![("Enter", "Close"), ("Esc", "Done"), ("Type", "Browser")]
         );
     }
 
