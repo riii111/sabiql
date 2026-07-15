@@ -9,7 +9,6 @@ use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
@@ -18,8 +17,8 @@ use crate::app::update::input::keybindings::{
     connection_error, connection_selector, connection_setup, connection_setup_save, csv_export,
     er_picker, er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl,
     jsonb_detail, jsonb_edit, jsonb_search, overlay, query_history, query_history_picker,
-    read_only, result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
-    table_picker, table_picker as table_picker_key,
+    read_only, result_active, settings, sql_modal, sql_modal_confirming, table_picker,
+    table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -257,17 +256,11 @@ impl Footer {
                     vec![]
                 } else {
                     // Editing / Running
-                    let mut hints = vec![
+                    let hints = vec![
                         sql_modal::RUN.as_hint(),
                         sql_modal::MOVE.as_hint(),
                         sql_modal::ESC_NORMAL.as_hint(),
                     ];
-                    if services.db_capabilities.supports_explain()
-                        && state.sql_modal.status() == &SqlModalStatus::Editing
-                        && state.settings.saved_keymap_preset() == KeymapPreset::Default
-                    {
-                        hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
-                    }
                     hints
                 }
             }
@@ -520,14 +513,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn ide_sql_editing_footer_omits_explain_hint() {
+    #[rstest::rstest]
+    #[case(KeymapPreset::Default)]
+    #[case(KeymapPreset::Ide)]
+    fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
         let mut state = AppState::new("test".to_string());
         let mut services = AppServices::stub();
         services.db_capabilities = DbCapabilities::postgres_like();
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.settings.load_keymap_preset(preset);
 
         let hints = Footer::get_context_hints(&state, &services);
 

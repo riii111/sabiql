@@ -98,7 +98,7 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::settings::SettingsSection;
+    use crate::model::shared::settings::{KeymapPreset, SettingsSection};
     use crate::ports::inbound::Key;
     use crate::update::action::ModalKind;
     use crate::update::action::{
@@ -326,6 +326,20 @@ mod tests {
                 "{combo:?} should be unbound"
             );
         }
+    }
+
+    #[rstest]
+    #[case(KeymapPreset::Default)]
+    #[case(KeymapPreset::Ide)]
+    fn sql_editing_ctrl_e_is_unbound_for_each_preset(#[case] preset: KeymapPreset) {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::SqlModal);
+        state.sql_modal.enter_editing();
+        state.settings.load_keymap_preset(preset);
+
+        let result = handle_key_event(KeyCombo::ctrl(Key::Char('e')), &state, &AppServices::stub());
+
+        assert!(matches!(result, Action::None));
     }
 
     #[test]
