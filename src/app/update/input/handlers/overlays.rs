@@ -131,13 +131,18 @@ mod tests {
             ));
         }
 
-        #[rstest]
-        #[case(Key::Char('/'))]
-        #[case(Key::Enter)]
-        fn filter_entry_keys_start_filter_editing(#[case] key: Key) {
-            let result = handle_help_keys(combo(key), InputInteraction::Viewing);
+        #[test]
+        fn slash_starts_filter_editing() {
+            let result = handle_help_keys(combo(Key::Char('/')), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::EnterHelpFilter));
+        }
+
+        #[test]
+        fn enter_does_not_start_filter_editing() {
+            let result = handle_help_keys(combo(Key::Enter), InputInteraction::Viewing);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

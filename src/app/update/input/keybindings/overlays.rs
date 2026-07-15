@@ -244,7 +244,7 @@ pub mod help {
         description: "Edit filter",
         bindings: &[ExecBinding {
             action: Action::EnterHelpFilter,
-            combos: &[KeyCombo::plain(Key::Char('/')), KeyCombo::plain(Key::Enter)],
+            combos: &[KeyCombo::plain(Key::Char('/'))],
         }],
     };
 
