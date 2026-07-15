@@ -95,51 +95,6 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 
 Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
 
-## Development
-
-With Nix and `nix-direnv`:
-
-`direnv` uses `nix-direnv` to cache the development shell and keep only the current local profile and flake-input links active. Configure `nix-direnv` in your direnv installation before allowing this repository:
-
-```bash
-nix profile install nixpkgs#direnv nixpkgs#nix-direnv
-```
-
-Then source the installed `nix-direnv` `direnvrc` from your user direnv configuration.
-
-For a user-profile installation, add this line to `~/.config/direnv/direnvrc`:
-
-```bash
-source "$HOME/.nix-profile/share/nix-direnv/direnvrc"
-```
-
-```bash
-direnv allow
-cargo nextest run --workspace
-nix build
-```
-
-Without direnv, enter the shell explicitly:
-
-```bash
-nix develop
-```
-
-To inspect the repository-local cache and any matching GC roots without changing the Nix store:
-
-```bash
-./scripts/nix-dev-env.sh diagnose
-```
-
-If the local cache is stale, exit shells using this repository and remove only its cache:
-
-```bash
-./scripts/nix-dev-env.sh clean --confirm
-direnv allow
-```
-
-This cleanup rebuilds the local environment on the next `direnv allow`. It does not delete Nix profile generations or run system-wide garbage collection. Use `nix-store --gc --print-roots` and `nix store gc --dry-run` separately when reviewing global Nix storage.
-
 ## Roadmap
 
 - [x] Connection management UI
