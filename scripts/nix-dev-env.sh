@@ -11,10 +11,17 @@ clean          Remove only this repository's .direnv cache.
 EOF
 }
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+repo_root=$(cd -- "$script_dir/.." && pwd -P)
+git_root=$(git -C "$repo_root" rev-parse --show-toplevel 2>/dev/null) || {
   echo "Run this command from inside the sabiql repository." >&2
   exit 1
 }
+
+if [[ "$git_root" != "$repo_root" ]]; then
+  echo "The diagnostic script must remain inside the sabiql repository." >&2
+  exit 1
+fi
 
 layout_dir="$repo_root/.direnv"
 command_name="${1:-diagnose}"
