@@ -407,34 +407,14 @@ impl ResultPane {
                         let is_editing_cell = editing_cell
                             .as_ref()
                             .is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
-                        let mut cell;
-                        if let Some(e) = &editing_cell
+                        let mut cell = if let Some(e) = &editing_cell
                             && is_editing_cell
                         {
-                            if e.actively_editing {
-                                let line = cell_edit_line_with_cursor(
-                                    e.draft,
-                                    e.cursor,
-                                    col_width as usize,
-                                    theme,
-                                );
-                                cell = Cell::from(line).style(
-                                    Style::default()
-                                        .bg(theme.component.table.result_cell_active_bg)
-                                        .fg(theme.component.table.cell_edit_fg),
-                                );
-                            } else {
-                                let display = truncate_cell(e.draft, col_width as usize);
-                                cell = Cell::from(display).style(
-                                    Style::default()
-                                        .bg(theme.component.table.result_cell_active_bg)
-                                        .fg(theme.semantic.status.pending),
-                                );
-                            }
+                            render_editing_cell(e, col_width, theme)
                         } else {
                             let display = truncate_cell(val, col_width as usize);
-                            cell = Cell::from(display);
-                        }
+                            Cell::from(display)
+                        };
                         if !is_editing_cell {
                             if is_row_flash || flash_scope == Some(Some(orig_idx)) {
                                 cell = cell.style(
@@ -644,12 +624,7 @@ impl ResultPane {
                             editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == col_idx);
                         let mut cell = if is_editing {
                             let e = editing_cell.expect("checked above");
-                            let display = truncate_cell(e.draft, col_width as usize);
-                            Cell::from(display).style(
-                                Style::default()
-                                    .bg(theme.component.table.result_cell_active_bg)
-                                    .fg(theme.component.table.cell_edit_fg),
-                            )
+                            render_editing_cell(e, col_width, theme)
                         } else {
                             let effective_max_lines = effective_row_line_cap(
                                 settings.max_lines_per_row,
@@ -866,26 +841,7 @@ impl ResultPane {
                             editing_cell.is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
                         let mut cell = if is_editing_cell {
                             let e = editing_cell.expect("checked above");
-                            if e.actively_editing {
-                                let line = cell_edit_line_with_cursor(
-                                    e.draft,
-                                    e.cursor,
-                                    col_width as usize,
-                                    theme,
-                                );
-                                Cell::from(line).style(
-                                    Style::default()
-                                        .bg(theme.component.table.result_cell_active_bg)
-                                        .fg(theme.component.table.cell_edit_fg),
-                                )
-                            } else {
-                                let display = truncate_cell(e.draft, col_width as usize);
-                                Cell::from(display).style(
-                                    Style::default()
-                                        .bg(theme.component.table.result_cell_active_bg)
-                                        .fg(theme.semantic.status.pending),
-                                )
-                            }
+                            render_editing_cell(e, col_width, theme)
                         } else {
                             let effective_max_lines = effective_row_line_cap(
                                 settings.max_lines_per_row,
@@ -976,6 +932,37 @@ impl ResultPane {
         );
 
         (plan, corrected_cell_vertical_offset, measured_layout)
+    }
+}
+
+fn render_editing_cell(
+    editing: &EditingCellView<'_>,
+    col_width: u16,
+    theme: &ThemePalette,
+) -> Cell<'static> {
+    let content = editing_cell_content(editing, col_width, theme);
+    let foreground = if editing.actively_editing {
+        theme.component.table.cell_edit_fg
+    } else {
+        theme.semantic.status.pending
+    };
+
+    Cell::from(content).style(
+        Style::default()
+            .bg(theme.component.table.result_cell_active_bg)
+            .fg(foreground),
+    )
+}
+
+fn editing_cell_content(
+    editing: &EditingCellView<'_>,
+    col_width: u16,
+    theme: &ThemePalette,
+) -> Line<'static> {
+    if editing.actively_editing {
+        cell_edit_line_with_cursor(editing.draft, editing.cursor, col_width as usize, theme)
+    } else {
+        Line::from(truncate_cell(editing.draft, col_width as usize))
     }
 }
 
@@ -1214,6 +1201,8 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
+    use crate::theme::DEFAULT_THEME;
+
     mod calculate_ideal_widths_tests {
         use super::*;
 
@@ -1376,6 +1365,27 @@ mod tests {
     fn extremely_narrow_wrapped_cell_uses_horizontal_scroll() {
         assert!(needs_wrapped_cell_horizontal_scroll(4, 6));
         assert!(!needs_wrapped_cell_horizontal_scroll(4, 7));
+    }
+
+    #[test]
+    fn actively_editing_cell_content_marks_cursor() {
+        let editing = EditingCellView {
+            row: 0,
+            col: 0,
+            draft: "abc",
+            actively_editing: true,
+            cursor: 1,
+        };
+
+        let line = editing_cell_content(&editing, 10, &DEFAULT_THEME);
+        let spans: Vec<String> = line
+            .spans
+            .iter()
+            .map(|span| span.content.to_string())
+            .collect();
+
+        assert_eq!(spans, ["a", "b", "c"]);
+        assert_eq!(line.spans[1].style, DEFAULT_THEME.block_cursor_style());
     }
 
     #[test]

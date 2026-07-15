@@ -163,7 +163,7 @@ mod tests {
     use crate::model::shared::cursor::CursorMove;
 
     #[test]
-    fn text_move_cursor_moves_filter_cursor() {
+    fn right_cursor_move_advances_filter_cursor() {
         let mut state = AppState::new("test".to_string());
         state.query_history_picker.insert_filter_str("abc");
         state

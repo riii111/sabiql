@@ -198,7 +198,8 @@ impl MeasuredWrappedCellLayout {
         }
         let target = target_row.min(self.row_heights.len() - 1);
         let desired_start = self.lines_before(target).saturating_sub(line_budget / 2);
-        self.row_offset_at_or_before(desired_start)
+        let candidate = self.row_offset_at_or_before(desired_start);
+        self.ensure_row_visible(candidate, target, line_budget)
             .min(target)
             .min(self.max_row_offset(line_budget))
     }
@@ -220,7 +221,8 @@ impl MeasuredWrappedCellLayout {
         }
         let target = target_row.min(self.row_heights.len() - 1);
         let desired_start = self.lines_before(target + 1).saturating_sub(line_budget);
-        self.row_offset_at_or_before(desired_start)
+        let candidate = self.row_offset_at_or_before(desired_start);
+        self.ensure_row_visible(candidate, target, line_budget)
             .min(target)
             .min(self.max_row_offset(line_budget))
     }
@@ -793,6 +795,20 @@ mod tests {
             assert_eq!(l.scroll_offset_for_center(50, 20), 45);
             assert_eq!(l.scroll_offset_for_top(50, 20), 50);
             assert_eq!(l.scroll_offset_for_bottom(50, 20), 41);
+        }
+
+        #[test]
+        fn center_keeps_target_visible_after_a_tall_preceding_row() {
+            let l = layout(vec![15, 1]);
+
+            assert_eq!(l.scroll_offset_for_center(1, 10), 1);
+        }
+
+        #[test]
+        fn bottom_keeps_target_visible_after_a_tall_preceding_row() {
+            let l = layout(vec![15, 1]);
+
+            assert_eq!(l.scroll_offset_for_bottom(1, 10), 1);
         }
 
         #[test]
