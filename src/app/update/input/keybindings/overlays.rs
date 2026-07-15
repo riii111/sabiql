@@ -237,14 +237,14 @@ pub mod help {
         bindings: &[],
     };
 
-    pub const ENTER_FILTER: ModeRow = ModeRow {
-        key_short: "Enter",
-        key: "Enter",
+    pub const START_FILTER: ModeRow = ModeRow {
+        key_short: "/",
+        key: "/",
         desc_short: "Filter",
         description: "Edit filter",
         bindings: &[ExecBinding {
             action: Action::EnterHelpFilter,
-            combos: &[KeyCombo::plain(Key::Enter)],
+            combos: &[KeyCombo::plain(Key::Char('/')), KeyCombo::plain(Key::Enter)],
         }],
     };
 
@@ -301,7 +301,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
-    help::ENTER_FILTER,
+    help::START_FILTER,
     help::ESC_CLOSE,
     help::CLOSE,
 ];
@@ -312,7 +312,7 @@ pub const HELP_VIEWING_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
-    help::ENTER_FILTER,
+    help::START_FILTER,
     help::ESC_CLOSE,
     help::CLOSE,
 ];

@@ -225,7 +225,7 @@ impl Footer {
             InputMode::Help => match state.ui.help.mode() {
                 HelpMode::Viewing => vec![
                     help::H_SCROLL.as_hint(),
-                    help::ENTER_FILTER.as_hint(),
+                    help::START_FILTER.as_hint(),
                     help::CLOSE.as_hint(),
                 ],
                 HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
@@ -506,7 +506,7 @@ mod tests {
             Footer::get_context_hints(&state, &services),
             vec![
                 help::H_SCROLL.as_hint(),
-                help::ENTER_FILTER.as_hint(),
+                help::START_FILTER.as_hint(),
                 help::CLOSE.as_hint(),
             ]
         );

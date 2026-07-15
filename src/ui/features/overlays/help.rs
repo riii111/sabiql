@@ -32,7 +32,7 @@ impl HelpOverlay {
         let document = HelpDocument::from_state(state);
         let footer = match state.ui.help.mode() {
             HelpMode::Viewing => FooterHintBar::new([
-                help::ENTER_FILTER.as_hint(),
+                help::START_FILTER.as_hint(),
                 help::ESC_CLOSE.as_hint(),
                 help::CLOSE.as_hint(),
             ]),
