@@ -41,10 +41,20 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 
 fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -> Action {
     let interaction = resolve_input_interaction(state);
-    if let InputInteraction::Editing(target) = interaction
-        && let Some(action) = crate::update::input::keybindings::readline_action_for(&combo, target)
-    {
-        return action;
+    match interaction {
+        InputInteraction::FormEditing(target) => {
+            if let Some(action) =
+                crate::update::input::keybindings::readline_action_for(&combo, target)
+            {
+                return action;
+            }
+        }
+        InputInteraction::VimEditing(target)
+            if crate::update::input::keybindings::readline_action_for(&combo, target).is_some() =>
+        {
+            return Action::None;
+        }
+        InputInteraction::Viewing | InputInteraction::VimEditing(_) => {}
     }
 
     match state.input_mode() {
@@ -88,7 +98,6 @@ fn handle_key_event(combo: KeyCombo, state: &AppState, services: &AppServices) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::browse::jsonb_detail::JsonbDetailMode;
     use crate::model::shared::settings::SettingsSection;
     use crate::ports::inbound::Key;
     use crate::update::action::ModalKind;
@@ -152,7 +161,7 @@ mod tests {
     }
 
     #[derive(Clone, Copy)]
-    enum EditingSurface {
+    enum FormSurface {
         CommandLine,
         CellEdit,
         TableFilter,
@@ -160,38 +169,36 @@ mod tests {
         QueryHistoryFilter,
         SettingsBrowser,
         ConnectionSetup,
-        SqlEditor,
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
-        JsonbEditor,
         JsonbSearch,
         HelpFilter,
     }
 
-    fn editing_state(surface: EditingSurface) -> (AppState, InputTarget) {
+    fn form_editing_state(surface: FormSurface) -> (AppState, InputTarget) {
         let mut state = AppState::new("test".to_string());
         let target = match surface {
-            EditingSurface::CommandLine => {
+            FormSurface::CommandLine => {
                 state.modal.set_mode(InputMode::CommandLine);
                 InputTarget::CommandLine
             }
-            EditingSurface::CellEdit => {
+            FormSurface::CellEdit => {
                 state.modal.set_mode(InputMode::CellEdit);
                 InputTarget::ResultCellEdit
             }
-            EditingSurface::TableFilter => {
+            FormSurface::TableFilter => {
                 state.modal.set_mode(InputMode::TablePicker);
                 InputTarget::Filter
             }
-            EditingSurface::ErFilter => {
+            FormSurface::ErFilter => {
                 state.modal.set_mode(InputMode::ErTablePicker);
                 InputTarget::ErFilter
             }
-            EditingSurface::QueryHistoryFilter => {
+            FormSurface::QueryHistoryFilter => {
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 InputTarget::QueryHistoryFilter
             }
-            EditingSurface::SettingsBrowser => {
+            FormSurface::SettingsBrowser => {
                 state.modal.set_mode(InputMode::Settings);
                 state.settings.switch_next_section();
                 state.settings.switch_next_section();
@@ -199,16 +206,11 @@ mod tests {
                 state.settings.start_custom_browser_edit();
                 InputTarget::SettingsErBrowser
             }
-            EditingSurface::ConnectionSetup => {
+            FormSurface::ConnectionSetup => {
                 state.modal.set_mode(InputMode::ConnectionSetup);
                 InputTarget::ConnectionSetup
             }
-            EditingSurface::SqlEditor => {
-                state.modal.set_mode(InputMode::SqlModal);
-                state.sql_modal.enter_editing();
-                InputTarget::SqlModal
-            }
-            EditingSurface::SqlModalHighRisk => {
+            FormSurface::SqlModalHighRisk => {
                 state.modal.set_mode(InputMode::SqlModal);
                 state.sql_modal.begin_confirming_high(
                     crate::policy::write::write_guardrails::AdhocRiskDecision {
@@ -219,7 +221,7 @@ mod tests {
                 );
                 InputTarget::SqlModalHighRisk
             }
-            EditingSurface::SqlModalAnalyzeHighRisk => {
+            FormSurface::SqlModalAnalyzeHighRisk => {
                 state.modal.set_mode(InputMode::SqlModal);
                 state.sql_modal.begin_confirming_analyze_high(
                     "EXPLAIN DELETE FROM users".to_string(),
@@ -227,17 +229,12 @@ mod tests {
                 );
                 InputTarget::SqlModalAnalyzeHighRisk
             }
-            EditingSurface::JsonbEditor => {
-                state.modal.set_mode(InputMode::JsonbDetail);
-                state.jsonb_detail.set_mode(JsonbDetailMode::Editing);
-                InputTarget::JsonbEdit
-            }
-            EditingSurface::JsonbSearch => {
+            FormSurface::JsonbSearch => {
                 state.modal.set_mode(InputMode::JsonbDetail);
                 state.jsonb_detail.enter_search();
                 InputTarget::JsonbSearch
             }
-            EditingSurface::HelpFilter => {
+            FormSurface::HelpFilter => {
                 state.modal.set_mode(InputMode::Help);
                 state.ui.help.toggle_filter_editing();
                 InputTarget::HelpFilter
@@ -247,21 +244,19 @@ mod tests {
     }
 
     #[rstest]
-    #[case(EditingSurface::CommandLine)]
-    #[case(EditingSurface::CellEdit)]
-    #[case(EditingSurface::TableFilter)]
-    #[case(EditingSurface::ErFilter)]
-    #[case(EditingSurface::QueryHistoryFilter)]
-    #[case(EditingSurface::SettingsBrowser)]
-    #[case(EditingSurface::ConnectionSetup)]
-    #[case(EditingSurface::SqlEditor)]
-    #[case(EditingSurface::SqlModalHighRisk)]
-    #[case(EditingSurface::SqlModalAnalyzeHighRisk)]
-    #[case(EditingSurface::JsonbEditor)]
-    #[case(EditingSurface::JsonbSearch)]
-    #[case(EditingSurface::HelpFilter)]
-    fn editing_surfaces_prioritize_readline(#[case] surface: EditingSurface) {
-        let (state, target) = editing_state(surface);
+    #[case(FormSurface::CommandLine)]
+    #[case(FormSurface::CellEdit)]
+    #[case(FormSurface::TableFilter)]
+    #[case(FormSurface::ErFilter)]
+    #[case(FormSurface::QueryHistoryFilter)]
+    #[case(FormSurface::SettingsBrowser)]
+    #[case(FormSurface::ConnectionSetup)]
+    #[case(FormSurface::SqlModalHighRisk)]
+    #[case(FormSurface::SqlModalAnalyzeHighRisk)]
+    #[case(FormSurface::JsonbSearch)]
+    #[case(FormSurface::HelpFilter)]
+    fn form_editing_surfaces_prioritize_readline(#[case] surface: FormSurface) {
+        let (state, target) = form_editing_state(surface);
         let result = handle_key_event(KeyCombo::ctrl(Key::Char('a')), &state, &AppServices::stub());
 
         assert!(matches!(
@@ -281,10 +276,8 @@ mod tests {
     #[case(InputTarget::QueryHistoryFilter)]
     #[case(InputTarget::SettingsErBrowser)]
     #[case(InputTarget::ConnectionSetup)]
-    #[case(InputTarget::SqlModal)]
     #[case(InputTarget::SqlModalHighRisk)]
     #[case(InputTarget::SqlModalAnalyzeHighRisk)]
-    #[case(InputTarget::JsonbEdit)]
     #[case(InputTarget::JsonbSearch)]
     #[case(InputTarget::HelpFilter)]
     fn readline_leaves_ctrl_n_and_ctrl_p_for_existing_handlers(#[case] target: InputTarget) {
@@ -295,6 +288,42 @@ mod tests {
                     target,
                 )
                 .is_none()
+            );
+        }
+    }
+
+    #[rstest]
+    #[case(InputMode::SqlModal)]
+    #[case(InputMode::JsonbEdit)]
+    fn document_editors_do_not_intercept_readline_shortcuts(#[case] mode: InputMode) {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(mode);
+        if mode == InputMode::SqlModal {
+            state.sql_modal.enter_editing();
+        }
+
+        let readline_keys = [
+            KeyCombo::ctrl(Key::Char('a')),
+            KeyCombo::ctrl(Key::Char('e')),
+            KeyCombo::ctrl(Key::Char('b')),
+            KeyCombo::ctrl(Key::Char('f')),
+            KeyCombo::ctrl(Key::Char('h')),
+            KeyCombo::ctrl(Key::Char('d')),
+            KeyCombo::ctrl(Key::Char('k')),
+            KeyCombo::ctrl(Key::Char('u')),
+            KeyCombo::ctrl(Key::Char('w')),
+            KeyCombo::ctrl(Key::Char('y')),
+            KeyCombo::alt(Key::Char('b')),
+            KeyCombo::alt(Key::Char('f')),
+            KeyCombo::alt(Key::Char('d')),
+        ];
+
+        for combo in readline_keys {
+            let result = handle_key_event(combo, &state, &AppServices::stub());
+
+            assert!(
+                matches!(result, Action::None),
+                "{combo:?} should be unbound"
             );
         }
     }

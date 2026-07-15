@@ -17,7 +17,7 @@ pub fn handle_jsonb_detail_keys(
 ) -> Action {
     if matches!(
         interaction,
-        InputInteraction::Editing(InputTarget::JsonbSearch)
+        InputInteraction::FormEditing(InputTarget::JsonbSearch)
     ) {
         return handle_search_input(combo);
     }
@@ -329,7 +329,7 @@ mod tests {
         fn ctrl_n_still_falls_through_to_search_input() {
             let result = handle_jsonb_detail_keys(
                 combo_ctrl(Key::Char('n')),
-                InputInteraction::Editing(InputTarget::JsonbSearch),
+                InputInteraction::FormEditing(InputTarget::JsonbSearch),
                 None,
             );
 
@@ -346,7 +346,7 @@ mod tests {
         fn ctrl_p_still_falls_through_to_search_input() {
             let result = handle_jsonb_detail_keys(
                 combo_ctrl(Key::Char('p')),
-                InputInteraction::Editing(InputTarget::JsonbSearch),
+                InputInteraction::FormEditing(InputTarget::JsonbSearch),
                 None,
             );
 
@@ -363,7 +363,7 @@ mod tests {
         fn pending_prefix_is_ignored_while_search_is_active() {
             let result = handle_jsonb_detail_keys(
                 combo(Key::Char('g')),
-                InputInteraction::Editing(InputTarget::JsonbSearch),
+                InputInteraction::FormEditing(InputTarget::JsonbSearch),
                 Some(Prefix::G),
             );
 

@@ -7,8 +7,8 @@ use super::interaction::InputInteraction;
 pub fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
     match interaction {
         InputInteraction::Viewing => handle_help_viewing_keys(combo),
-        InputInteraction::Editing(InputTarget::HelpFilter) => handle_help_editing_keys(combo),
-        InputInteraction::Editing(_) => Action::None,
+        InputInteraction::FormEditing(InputTarget::HelpFilter) => handle_help_editing_keys(combo),
+        InputInteraction::FormEditing(_) | InputInteraction::VimEditing(_) => Action::None,
     }
 }
 
@@ -103,7 +103,7 @@ mod tests {
         fn question_mark_filters_help_while_editing() {
             let result = handle_help_keys(
                 combo(Key::Char('?')),
-                InputInteraction::Editing(InputTarget::HelpFilter),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
             assert!(matches!(
@@ -119,7 +119,7 @@ mod tests {
         fn editing_filter_accepts_char_input() {
             let result = handle_help_keys(
                 combo(Key::Char('a')),
-                InputInteraction::Editing(InputTarget::HelpFilter),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
             assert!(matches!(
@@ -148,7 +148,7 @@ mod tests {
         fn editing_filter_prioritizes_standard_text_keys(#[case] key: Key) {
             let result = handle_help_keys(
                 combo(key),
-                InputInteraction::Editing(InputTarget::HelpFilter),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
             match key {
@@ -218,7 +218,7 @@ mod tests {
         fn editing_filter_does_not_scroll(#[case] key: Key) {
             let result = handle_help_keys(
                 combo(key),
-                InputInteraction::Editing(InputTarget::HelpFilter),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
             assert!(matches!(result, Action::None));
@@ -289,7 +289,7 @@ mod tests {
         fn non_scroll_chars_filter_help(#[case] code: Key) {
             let result = handle_help_keys(
                 combo(code),
-                InputInteraction::Editing(InputTarget::HelpFilter),
+                InputInteraction::FormEditing(InputTarget::HelpFilter),
             );
 
             assert!(matches!(

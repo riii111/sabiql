@@ -3,6 +3,8 @@ use crate::update::action::{Action, CursorMove, InputTarget, TextKillDirection};
 use super::{Key, KeyCombo, Modifiers};
 
 pub fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Action> {
+    // InputInteraction owns whether this key set edits a form field or is suppressed for a
+    // Vim document editor, so surface policy does not leak into individual bindings.
     let action = match (combo.key, combo.modifiers) {
         (Key::Char('a'), Modifiers::CTRL) => Action::TextMoveCursor {
             target,
