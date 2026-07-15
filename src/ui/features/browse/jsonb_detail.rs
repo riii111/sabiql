@@ -67,19 +67,20 @@ impl JsonbDetail {
             theme,
         );
 
-        let (editor_area, status_area, search_area) = if state.jsonb_detail.search().active {
-            let [editor_area, status_area, search_area] = Layout::vertical([
-                Constraint::Min(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .areas(inner);
-            (editor_area, status_area, Some(search_area))
-        } else {
-            let [editor_area, status_area] =
-                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-            (editor_area, status_area, None)
-        };
+        let (editor_area, status_area, search_area) =
+            if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
+                let [editor_area, status_area, search_area] = Layout::vertical([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .areas(inner);
+                (editor_area, status_area, Some(search_area))
+            } else {
+                let [editor_area, status_area] =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+                (editor_area, status_area, None)
+            };
 
         Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
         Self::render_status(frame, status_area, state, theme);

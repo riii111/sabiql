@@ -141,6 +141,125 @@ mod tests {
             assert!(input_effects.is_empty());
             assert!(backspace_effects.is_empty());
         }
+
+        #[test]
+        fn focused_help_filter_applies_readline_edits() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+
+            super::dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: 'x',
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextMoveCursor {
+                    target: InputTarget::HelpFilter,
+                    direction: crate::update::action::CursorMove::LineStart,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::HelpFilter,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::HelpFilter,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state.ui.help.mode(),
+                crate::model::shared::help::HelpMode::EditingFilter
+            );
+            assert_eq!(state.ui.help.filter().content(), "x");
+            assert_eq!(state.ui.help.filter().cursor(), 1);
+        }
+
+        #[test]
+        fn exiting_help_filter_keeps_the_help_modal_open() {
+            let mut state = create_test_state();
+            open_help(&mut state);
+            super::dispatch_modal(&mut state, &Action::EnterHelpFilter, Instant::now());
+
+            super::dispatch_modal(&mut state, &Action::ExitHelpFilter, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::Help);
+            assert_eq!(
+                state.ui.help.mode(),
+                crate::model::shared::help::HelpMode::Viewing
+            );
+        }
+    }
+
+    mod readline_edits {
+        use super::*;
+        use crate::update::action::TextKillDirection;
+
+        fn kill_then_yank(state: &mut AppState, target: InputTarget) {
+            super::dispatch_modal(
+                state,
+                &Action::TextKill {
+                    target,
+                    direction: TextKillDirection::ToLineStart,
+                },
+                Instant::now(),
+            );
+            super::dispatch_modal(state, &Action::TextYank { target }, Instant::now());
+        }
+
+        #[test]
+        fn er_filter_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.ui.er_picker.insert_filter_str("users");
+
+            kill_then_yank(&mut state, InputTarget::ErFilter);
+
+            assert_eq!(state.ui.er_picker.filter_input().content(), "users");
+            assert_eq!(state.kill_buffer(), Some("users"));
+        }
+
+        #[test]
+        fn query_history_filter_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.query_history_picker.insert_filter_str("SELECT");
+
+            kill_then_yank(&mut state, InputTarget::QueryHistoryFilter);
+
+            assert_eq!(
+                state.query_history_picker.filter_input().content(),
+                "SELECT"
+            );
+            assert_eq!(state.kill_buffer(), Some("SELECT"));
+        }
+
+        #[test]
+        fn settings_browser_kill_then_yank_restores_text() {
+            let mut state = create_test_state();
+            state.settings.switch_next_section();
+            state.settings.switch_next_section();
+            state.settings.start_custom_browser_edit();
+            for ch in "Firefox".chars() {
+                state.settings.input_custom_browser(ch);
+            }
+
+            kill_then_yank(&mut state, InputTarget::SettingsErBrowser);
+
+            assert_eq!(state.settings.custom_er_browser().content(), "Firefox");
+            assert_eq!(state.kill_buffer(), Some("Firefox"));
+        }
     }
 
     mod settings {

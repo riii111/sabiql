@@ -6,11 +6,11 @@ use crate::cmd::effect::Effect;
 use crate::domain::ColumnAttributes;
 use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
-use crate::model::browse::jsonb_detail::JsonbDetailState;
+use crate::model::browse::jsonb_detail::{JsonbDetailMode, JsonbDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::TextInputLike;
+use crate::model::shared::text_input::{TextInputEditing, TextInputLike};
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
@@ -165,6 +165,26 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
             state.jsonb_detail.validate_editor_content();
             DispatchResult::handled()
         }
+        Action::TextKill {
+            target: InputTarget::JsonbEdit,
+            direction,
+        } => {
+            let killed = state.jsonb_detail.editor_mut().kill(*direction);
+            state.record_kill(killed);
+            update_editor_scroll(state);
+            state.jsonb_detail.validate_editor_content();
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::JsonbEdit,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.jsonb_detail.editor_mut().yank(&killed);
+                update_editor_scroll(state);
+                state.jsonb_detail.validate_editor_content();
+            }
+            DispatchResult::handled()
+        }
 
         Action::TextMoveCursor {
             target: InputTarget::JsonbEdit,
@@ -258,10 +278,28 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
             update_search_matches(state);
             DispatchResult::handled()
         }
+        Action::TextKill {
+            target: InputTarget::JsonbSearch,
+            direction,
+        } => {
+            let killed = state.jsonb_detail.search_mut().input.kill(*direction);
+            state.record_kill(killed);
+            update_search_matches(state);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::JsonbSearch,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.jsonb_detail.search_mut().input.yank(&killed);
+                update_search_matches(state);
+            }
+            DispatchResult::handled()
+        }
 
         Action::Paste(text)
             if state.input_mode() == InputMode::JsonbDetail
-                && state.jsonb_detail.search().active =>
+                && state.jsonb_detail.mode() == JsonbDetailMode::Searching =>
         {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             state.jsonb_detail.search_mut().input.insert_str(&clean);
@@ -772,6 +810,36 @@ mod tests {
         }
 
         #[test]
+        fn kill_then_yank_restores_jsonb_editor_text() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce_jsonb(&mut state, &Action::JsonbEnterEdit, Instant::now());
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content_with_cursor("before after".to_string(), 7);
+
+            reduce_jsonb(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::JsonbEdit,
+                    direction: crate::update::action::TextKillDirection::ToLineEnd,
+                },
+                Instant::now(),
+            );
+            reduce_jsonb(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::JsonbEdit,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.jsonb_detail.editor().content(), "before after");
+            assert_eq!(state.kill_buffer(), Some("after"));
+        }
+
+        #[test]
         fn reenter_edit_with_pending_changes_preserves_existing_cursor() {
             let mut state = state_with_jsonb_cell();
             open_detail(&mut state);
@@ -884,7 +952,6 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            assert!(state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Searching);
         }
 
@@ -896,7 +963,6 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbExitSearch, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
         }
 
@@ -921,7 +987,7 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbSearchSubmit, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
             let expected_cursor = state.jsonb_detail.search().matches[0];
             assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
@@ -953,6 +1019,42 @@ mod tests {
                 !state.jsonb_detail.search().matches.is_empty(),
                 "should find matches for 'THEME'"
             );
+        }
+
+        #[test]
+        fn kill_then_yank_restores_search_query_and_matches() {
+            let mut state = state_with_jsonb_cell();
+            open_detail(&mut state);
+            reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
+
+            for ch in "theme".chars() {
+                reduce_jsonb(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::JsonbSearch,
+                        ch,
+                    },
+                    Instant::now(),
+                );
+            }
+            reduce_jsonb(
+                &mut state,
+                &Action::TextKill {
+                    target: InputTarget::JsonbSearch,
+                    direction: crate::update::action::TextKillDirection::ToLineStart,
+                },
+                Instant::now(),
+            );
+            reduce_jsonb(
+                &mut state,
+                &Action::TextYank {
+                    target: InputTarget::JsonbSearch,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.jsonb_detail.search().input.content(), "theme");
+            assert!(!state.jsonb_detail.search().matches.is_empty());
         }
 
         #[test]
@@ -1119,7 +1221,7 @@ mod tests {
 
             reduce_app(&mut state, Action::JsonbSearchNext, now, &services);
             reduce_app(&mut state, Action::JsonbSearchSubmit, now, &services);
-            assert!(!state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
 
             let effects = reduce_app(&mut state, Action::JsonbYankAll, now, &services);
             assert!(matches!(

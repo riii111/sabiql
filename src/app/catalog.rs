@@ -97,8 +97,9 @@ impl HelpDocument {
     }
 
     pub fn content_width(&self) -> usize {
+        let filter_label = "Filter: ";
         let filter_width =
-            UnicodeWidthStr::width("Filter: ") + UnicodeWidthStr::width(self.filter.as_str()) + 1;
+            UnicodeWidthStr::width(filter_label) + UnicodeWidthStr::width(self.filter.as_str()) + 1;
         let key_column_width = self.key_column_width();
         self.sections
             .iter()
@@ -799,7 +800,9 @@ mod tests {
 
         let mut jsonb_state = AppState::new("test".to_string());
         jsonb_state.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_state.jsonb_detail.search_mut().active = true;
+        jsonb_state
+            .jsonb_detail
+            .set_mode(crate::model::browse::jsonb_detail::JsonbDetailMode::Searching);
         let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
 
         assert_eq!(

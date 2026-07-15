@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 186
 expression: output
 ---
 test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
@@ -42,7 +43,7 @@ test_project | - | - | no dsn | localhost:5432/test
 │                │                                                                                                                                  │               │
 │                │ ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │               │
 │                │  [INSERT]                                                                                                                 Ready  │               │
-│                ╰ ⌥Enter/F5: Run │ ^E: Explain │ ^L: Clear │ ^O: History │ Esc: Normal ────────────────────────────────────────────────────────────╯               │
+│                ╰ ⌥Enter/F5: Run │ ^L: Clear │ ^O: History │ Esc: Normal ──────────────────────────────────────────────────────────────────────────╯               │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-⌥Enter/F5:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal
+⌥Enter/F5:Run  ↑↓←→:Move  Esc:Normal

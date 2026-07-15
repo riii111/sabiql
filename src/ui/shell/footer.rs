@@ -7,8 +7,8 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::services::AppServices;
@@ -17,8 +17,8 @@ use crate::app::update::input::keybindings::{
     connection_error, connection_selector, connection_setup, connection_setup_save, csv_export,
     er_picker, er_picker_select_all, exit_read_only, footer_nav, global, help, inspector_ddl,
     jsonb_detail, jsonb_edit, jsonb_search, overlay, query_history, query_history_picker,
-    read_only, result_active, settings, sql_modal, sql_modal_confirming, sql_modal_plan,
-    table_picker, table_picker as table_picker_key,
+    read_only, result_active, settings, sql_modal, sql_modal_confirming, table_picker,
+    table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -222,7 +222,14 @@ impl Footer {
                     command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::Help => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
+            InputMode::Help => match state.ui.help.mode() {
+                HelpMode::Viewing => vec![
+                    help::H_SCROLL.as_hint(),
+                    help::START_FILTER.as_hint(),
+                    help::CLOSE.as_hint(),
+                ],
+                HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
+            },
             InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
@@ -251,17 +258,11 @@ impl Footer {
                     vec![]
                 } else {
                     // Editing / Running
-                    let mut hints = vec![
+                    let hints = vec![
                         sql_modal::RUN.as_hint(),
                         sql_modal::MOVE.as_hint(),
                         sql_modal::ESC_NORMAL.as_hint(),
                     ];
-                    if services.db_capabilities.supports_explain()
-                        && state.sql_modal.status() == &SqlModalStatus::Editing
-                        && state.settings.saved_keymap_preset() == KeymapPreset::Default
-                    {
-                        hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
-                    }
                     hints
                 }
             }
@@ -308,7 +309,10 @@ impl Footer {
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if state.jsonb_detail.search().active {
+                if matches!(
+                    state.jsonb_detail.mode(),
+                    crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
+                ) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
                         jsonb_search::CONFIRM.as_hint(),
@@ -387,7 +391,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
+    use crate::app::update::input::keybindings::{connection_setup, global, help, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -493,13 +497,38 @@ mod tests {
     }
 
     #[test]
-    fn ide_sql_editing_footer_omits_explain_hint() {
+    fn help_footer_hints_follow_help_mode() {
+        let mut state = AppState::new("test".to_string());
+        let services = AppServices::stub();
+        state.modal.set_mode(InputMode::Help);
+
+        assert_eq!(
+            Footer::get_context_hints(&state, &services),
+            vec![
+                help::H_SCROLL.as_hint(),
+                help::START_FILTER.as_hint(),
+                help::CLOSE.as_hint(),
+            ]
+        );
+
+        state.ui.help.enter_filter_editing();
+
+        assert_eq!(
+            Footer::get_context_hints(&state, &services),
+            vec![help::ESC_VIEWING.as_hint()]
+        );
+    }
+
+    #[rstest::rstest]
+    #[case(KeymapPreset::Default)]
+    #[case(KeymapPreset::Ide)]
+    fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
         let mut state = AppState::new("test".to_string());
         let mut services = AppServices::stub();
         services.db_capabilities = DbCapabilities::postgres_like();
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.settings.load_keymap_preset(preset);
 
         let hints = Footer::get_context_hints(&state, &services);
 

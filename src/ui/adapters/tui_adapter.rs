@@ -54,11 +54,35 @@ impl Renderer for TuiAdapter<'_> {
 fn uses_insert_cursor(state: &AppState) -> bool {
     match state.input_mode() {
         InputMode::JsonbEdit => true,
-        InputMode::JsonbDetail => state.jsonb_detail.search().active,
+        InputMode::JsonbDetail => matches!(
+            state.jsonb_detail.mode(),
+            crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
+        ),
+        InputMode::Help => matches!(
+            state.ui.help.mode(),
+            crate::app::model::shared::help::HelpMode::EditingFilter
+        ),
         InputMode::SqlModal => matches!(
             state.sql_modal.status(),
             crate::app::model::sql_editor::modal::SqlModalStatus::Editing
         ),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_filter_uses_insert_cursor() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Help);
+
+        assert!(!uses_insert_cursor(&state));
+
+        state.ui.help.enter_filter_editing();
+
+        assert!(uses_insert_cursor(&state));
     }
 }

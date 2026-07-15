@@ -295,12 +295,7 @@ pub fn handle_sql_modal_keys_with_prefix(
         return Action::OpenModal(ModalKind::QueryHistoryPicker);
     }
 
-    if keymap_preset == KeymapPreset::Default && ctrl_only && combo.key == Key::Char('e') {
-        return Action::ExplainRequest;
-    }
-
-    if keymap_preset == KeymapPreset::Ide && ctrl_only && matches!(combo.key, Key::Char('o' | 'e'))
-    {
+    if keymap_preset == KeymapPreset::Ide && ctrl_only && combo.key == Key::Char('o') {
         return Action::None;
     }
 
@@ -930,20 +925,6 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
 
-        #[test]
-        fn ide_editing_ctrl_explain_key_is_ignored() {
-            let result = handle_sql_modal_keys_with_prefix(
-                combo_ctrl(Key::Char('e')),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-                None,
-                KeymapPreset::Ide,
-            );
-
-            assert!(matches!(result, Action::None));
-        }
-
         #[rstest]
         #[case(Key::Char('a'))]
         #[case(Key::Char('e'))]
@@ -1185,18 +1166,6 @@ mod tests {
 
     mod editing_commands {
         use super::*;
-
-        #[test]
-        fn editing_mode_ctrl_e_requests_explain() {
-            let result = handle_sql_modal_keys(
-                combo_ctrl(Key::Char('e')),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::ExplainRequest);
-        }
 
         #[test]
         fn editing_mode_ctrl_alt_e_does_not_request_explain() {
