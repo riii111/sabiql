@@ -3,6 +3,7 @@ use crate::model::shared::cursor::CursorMove;
 use super::text_input::{
     TextInputEditing, TextInputLike, TextInputState, TextKillDirection, next_word_start,
     previous_word_start, readline_forward_word_end, readline_previous_whitespace_boundary,
+    readline_previous_word_start,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -177,6 +178,11 @@ impl MultiLineInputState {
             }
             CursorMove::WordBackward => {
                 let previous = previous_word_start(self.content(), self.cursor());
+                self.set_cursor_and_sync(previous);
+                self.preferred_col = None;
+            }
+            CursorMove::ReadlineWordStart => {
+                let previous = readline_previous_word_start(self.content(), self.cursor());
                 self.set_cursor_and_sync(previous);
                 self.preferred_col = None;
             }

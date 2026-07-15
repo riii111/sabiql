@@ -37,7 +37,7 @@ pub fn readline_action_for(combo: &KeyCombo, target: InputTarget) -> Option<Acti
         (Key::Char('y'), Modifiers::CTRL) => Action::TextYank { target },
         (Key::Char('b'), Modifiers::ALT) => Action::TextMoveCursor {
             target,
-            direction: CursorMove::WordBackward,
+            direction: CursorMove::ReadlineWordStart,
         },
         (Key::Char('f'), Modifiers::ALT) => Action::TextMoveCursor {
             target,
@@ -69,7 +69,7 @@ mod tests {
     #[case(KeyCombo::ctrl(Key::Char('u')), Some((None, Some(TextKillDirection::ToLineStart))))]
     #[case(KeyCombo::ctrl(Key::Char('w')), Some((None, Some(TextKillDirection::ReadlinePreviousWhitespace))))]
     #[case(KeyCombo::ctrl(Key::Char('y')), None)]
-    #[case(KeyCombo::alt(Key::Char('b')), Some((Some(CursorMove::WordBackward), None)))]
+    #[case(KeyCombo::alt(Key::Char('b')), Some((Some(CursorMove::ReadlineWordStart), None)))]
     #[case(KeyCombo::alt(Key::Char('f')), Some((Some(CursorMove::ReadlineWordEnd), None)))]
     #[case(KeyCombo::alt(Key::Char('d')), Some((None, Some(TextKillDirection::ReadlineWordEnd))))]
     fn maps_readline_keys(

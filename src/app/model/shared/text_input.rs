@@ -168,6 +168,9 @@ impl TextInputState {
             CursorMove::WordBackward => {
                 self.cursor = previous_word_start(&self.content, self.cursor);
             }
+            CursorMove::ReadlineWordStart => {
+                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+            }
             CursorMove::ReadlineWordEnd => {
                 self.cursor = readline_forward_word_end(&self.content, self.cursor);
             }
@@ -366,39 +369,45 @@ pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
 }
 
 pub(super) fn readline_forward_word_end(content: &str, cursor: usize) -> usize {
-    let mut idx = cursor.min(content.chars().count());
-    let mut chars = content.chars().skip(idx);
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
 
-    while let Some(ch) = chars.next()
-        && ch.is_whitespace()
-    {
+    while idx < chars.len() && !chars[idx].is_alphanumeric() {
+        idx += 1;
+    }
+    while idx < chars.len() && chars[idx].is_alphanumeric() {
         idx += 1;
     }
 
-    if let Some(ch) = content.chars().nth(idx)
-        && !ch.is_whitespace()
-    {
-        idx += 1;
-        for ch in content.chars().skip(idx) {
-            if ch.is_whitespace() {
-                break;
-            }
-            idx += 1;
-        }
+    idx
+}
+
+pub(super) fn readline_previous_word_start(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
+
+    while idx > 0 && !chars[idx - 1].is_alphanumeric() {
+        idx -= 1;
+    }
+    while idx > 0 && chars[idx - 1].is_alphanumeric() {
+        idx -= 1;
     }
 
     idx
 }
 
 pub(super) fn readline_previous_whitespace_boundary(content: &str, cursor: usize) -> usize {
-    content
-        .chars()
-        .enumerate()
-        .take(cursor)
-        .filter(|(_, ch)| ch.is_whitespace())
-        .map(|(idx, _)| idx + 1)
-        .last()
-        .unwrap_or(0)
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
+
+    while idx > 0 && chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    while idx > 0 && !chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+
+    idx
 }
 
 #[cfg(test)]
@@ -710,10 +719,10 @@ mod tests {
         }
 
         #[rstest]
-        #[case("foo.bar baz", 0, 7)]
-        #[case("foo.bar baz", 7, 11)]
+        #[case("foo.bar baz", 0, 3)]
+        #[case("foo.bar baz", 3, 7)]
         #[case("  日本語", 0, 5)]
-        fn readline_word_forward_moves_to_the_end_of_the_current_or_next_whitespace_delimited_word(
+        fn readline_word_forward_moves_to_the_end_of_the_current_or_next_alphanumeric_word(
             #[case] content: &str,
             #[case] cursor: usize,
             #[case] expected: usize,
@@ -721,6 +730,22 @@ mod tests {
             let mut s = state_with(content, cursor);
 
             s.move_cursor(CursorMove::ReadlineWordEnd);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
+        #[case("foo.bar", 4, 0)]
+        #[case("foo.bar", 7, 4)]
+        #[case("  日本語", 5, 2)]
+        fn readline_word_backward_moves_to_the_start_of_the_current_or_previous_alphanumeric_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(CursorMove::ReadlineWordStart);
 
             assert_eq!(s.cursor(), expected);
         }
@@ -962,6 +987,7 @@ mod tests {
         #[case("foo.bar", 7, "foo.bar", "")]
         #[case("alpha 日本語", 9, "日本語", "alpha ")]
         #[case("foo bar", 7, "bar", "foo ")]
+        #[case("foo ", 4, "foo ", "")]
         fn previous_word_kills_to_the_previous_whitespace_boundary(
             #[case] content: &str,
             #[case] cursor: usize,
@@ -978,7 +1004,7 @@ mod tests {
         }
 
         #[rstest]
-        #[case("foo.bar  baz", 0, "foo.bar", "  baz")]
+        #[case("foo.bar  baz", 0, "foo", ".bar  baz")]
         #[case("foo  日本語", 3, "  日本語", "foo")]
         fn next_word_kills_through_the_end_of_a_whitespace_delimited_word(
             #[case] content: &str,
