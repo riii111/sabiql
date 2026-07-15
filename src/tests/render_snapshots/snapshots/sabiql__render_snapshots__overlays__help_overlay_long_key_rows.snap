@@ -47,7 +47,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Enter                                        Toggle dropdown (SSL field)                                      ││                        │
 │                        │  Ctrl+N / Ctrl+P / ↑ / ↓                      Dropdown navigation                                              ││                        │
 │                        │  Enter                                        Confirm selection                                                ▼│                        │
-│                        ╰ type: Filter │ Backspace: Edit │ Esc: Close │ ?: Close ─────────────────────────────────────────────────────────╯                        │
+│                        ╰ Tab: Toggle │ Esc: Close │ ?: Close ────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

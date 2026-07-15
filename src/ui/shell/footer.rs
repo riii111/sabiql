@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
@@ -222,7 +223,12 @@ impl Footer {
                     command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::Help => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
+            InputMode::Help => match state.ui.help.mode() {
+                HelpMode::Viewing => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
+                HelpMode::EditingFilter => {
+                    vec![help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()]
+                }
+            },
             InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
@@ -390,7 +396,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::services::AppServices;
-    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
+    use crate::app::update::input::keybindings::{connection_setup, global, help, result_active};
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -492,6 +498,25 @@ mod tests {
         assert_eq!(
             hints,
             vec![("Enter", "Apply"), ("Esc", "Done"), ("Type", "Browser")]
+        );
+    }
+
+    #[test]
+    fn help_footer_hints_follow_help_mode() {
+        let mut state = AppState::new("test".to_string());
+        let services = AppServices::stub();
+        state.modal.set_mode(InputMode::Help);
+
+        assert_eq!(
+            Footer::get_context_hints(&state, &services),
+            vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()]
+        );
+
+        state.ui.help.toggle_filter_editing();
+
+        assert_eq!(
+            Footer::get_context_hints(&state, &services),
+            vec![help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()]
         );
     }
 

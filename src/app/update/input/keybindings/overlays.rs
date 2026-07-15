@@ -232,7 +232,7 @@ pub mod help {
     pub const FOCUS_FILTER: ModeRow = ModeRow {
         key_short: "Tab",
         key: "Tab",
-        desc_short: "Focus",
+        desc_short: "Toggle",
         description: "Toggle filter editing",
         bindings: &[ExecBinding {
             action: Action::ToggleHelpFilterFocus,
@@ -300,12 +300,7 @@ pub const HELP_VIEWING_ROWS: &[ModeRow] = &[
     help::CLOSE,
 ];
 
-pub const HELP_EDITING_ROWS: &[ModeRow] = &[
-    help::FOCUS_FILTER,
-    help::EDIT_FILTER,
-    help::ESC_CLOSE,
-    help::CLOSE,
-];
+pub const HELP_EDITING_ROWS: &[ModeRow] = &[help::FOCUS_FILTER, help::EDIT_FILTER, help::ESC_CLOSE];
 
 // =============================================================================
 // Table Picker

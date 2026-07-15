@@ -100,6 +100,22 @@ mod tests {
         }
 
         #[test]
+        fn question_mark_filters_help_while_editing() {
+            let result = handle_help_keys(
+                combo(Key::Char('?')),
+                InputInteraction::Editing(InputTarget::HelpFilter),
+            );
+
+            assert!(matches!(
+                result,
+                Action::TextInput {
+                    target: InputTarget::HelpFilter,
+                    ch: '?',
+                }
+            ));
+        }
+
+        #[test]
         fn editing_filter_accepts_char_input() {
             let result = handle_help_keys(
                 combo(Key::Char('a')),

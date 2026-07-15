@@ -9,11 +9,12 @@ use crate::theme::ThemePalette;
 
 use crate::app::catalog::{HelpDocument, HelpRow};
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::ui_state::{
     HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
     help_viewport_layout_for,
 };
-use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH};
+use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, help};
 
 use crate::primitives::atoms::scroll_indicator::{
     HorizontalScrollParams, VerticalScrollParams, clamp_scroll_offset,
@@ -27,12 +28,16 @@ pub struct HelpOverlay;
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = FooterHintBar::new([
-            ("type", "Filter"),
-            ("Backspace", "Edit"),
-            ("Esc", "Close"),
-            ("?", "Close"),
-        ]);
+        let footer = match state.ui.help.mode() {
+            HelpMode::Viewing => FooterHintBar::new([
+                help::FOCUS_FILTER.as_hint(),
+                help::ESC_CLOSE.as_hint(),
+                help::CLOSE.as_hint(),
+            ]),
+            HelpMode::EditingFilter => {
+                FooterHintBar::new([help::FOCUS_FILTER.as_hint(), help::ESC_CLOSE.as_hint()])
+            }
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),
