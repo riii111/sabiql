@@ -61,6 +61,8 @@ impl RowDetail {
         );
         let mut lines: Vec<Line> = content
             .lines()
+            .skip(scroll_offset)
+            .take(viewport.content_area.height as usize)
             .map(|line| {
                 if line.starts_with("  ") {
                     Line::from(Span::styled(
@@ -87,7 +89,7 @@ impl RowDetail {
         apply_yank_flash(&mut lines, flash_active, theme);
 
         let paragraph = Paragraph::new(lines)
-            .scroll((to_u16(scroll_offset), to_u16(horizontal_offset)))
+            .scroll((0, to_u16(horizontal_offset)))
             .style(Style::default().fg(theme.semantic.text.primary));
 
         frame.render_widget(paragraph, viewport.content_area);
