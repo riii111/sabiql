@@ -10,13 +10,13 @@ fi
 
 [[ -d "$layout_dir" ]] || exit 0
 
-for profile in "$layout_dir"/flake-tmp-profile.*; do
+for profile in "$layout_dir"/flake-tmp-profile.* "$layout_dir"/nix-tmp-profile.*; do
   [[ -e "$profile" || -L "$profile" ]] || continue
   profile_name=${profile##*/}
-  if [[ ! "$profile_name" =~ ^(flake-tmp-profile\.([0-9]+))(-[0-9]+-link)?$ ]]; then
+  if [[ ! "$profile_name" =~ ^((flake|nix)-tmp-profile\.([0-9]+))(-[0-9]+-link)?$ ]]; then
     continue
   fi
-  pid=${BASH_REMATCH[2]}
+  pid=${BASH_REMATCH[3]}
   if kill -0 "$pid" 2>/dev/null; then
     continue
   fi
