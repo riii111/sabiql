@@ -95,22 +95,6 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 
 Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. `psql` is still required.
 
-## Development
-
-With Nix:
-
-```bash
-direnv allow
-cargo nextest run --workspace
-nix build
-```
-
-Without direnv, enter the shell explicitly:
-
-```bash
-nix develop
-```
-
 ## Roadmap
 
 - [x] Connection management UI
