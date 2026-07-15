@@ -256,9 +256,7 @@ mod tests {
             for line in &lines {
                 assert!(
                     UnicodeWidthStr::width(line.as_str()) <= width as usize,
-                    "line {:?} exceeds width {}",
-                    line,
-                    width
+                    "line {line:?} exceeds width {width}"
                 );
             }
         }
