@@ -9,6 +9,7 @@ use super::key_sequence::KeySequenceState;
 use super::picker::PickerState;
 use super::theme_id::ThemeId;
 use super::viewport::{ColumnWidthsCache, ViewportPlan};
+use super::wrapped_cell::{MeasuredWrappedCellLayout, WrappedCellSettings};
 use unicode_width::UnicodeWidthStr;
 
 pub use super::picker::clamp_scroll_offset;
@@ -196,6 +197,9 @@ pub struct UiState {
     pub result_viewport_plan: ViewportPlan,
     pub result_widths_cache: ColumnWidthsCache,
     pub result_pane_height: u16,
+    pub wrapped_cell: WrappedCellSettings,
+    pub wrapped_cell_enabled: bool,
+    pub result_wrapped_cell_layout: Option<MeasuredWrappedCellLayout>,
     pub jsonb_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,
@@ -230,6 +234,21 @@ impl UiState {
 
     pub fn set_theme(&mut self, theme_id: ThemeId) {
         self.theme_id = theme_id;
+    }
+
+    pub fn effective_wrapped_cell(&self) -> WrappedCellSettings {
+        if self.wrapped_cell_enabled {
+            self.wrapped_cell
+        } else {
+            WrappedCellSettings {
+                allow_horizontal_scroll: true,
+                max_lines_per_row: self.wrapped_cell.max_lines_per_row,
+            }
+        }
+    }
+
+    pub fn toggle_wrapped_cell(&mut self) {
+        self.wrapped_cell_enabled = !self.wrapped_cell_enabled;
     }
 
     pub fn result_visible_rows(&self) -> usize {

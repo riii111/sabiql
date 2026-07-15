@@ -63,6 +63,7 @@ pub enum ScrollTarget {
     Explorer,
     JsonbDetail,
     RowDetail,
+    Cell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -353,6 +354,7 @@ pub enum Action {
     SettingsPreviousSection,
     SettingsStartCustomBrowserEdit,
     SettingsStopCustomBrowserEdit,
+    SettingsToggleWrappedCellScroll,
     SettingsApply,
     SettingsCancel,
     SettingsSaved(AppSettings),
@@ -528,6 +530,7 @@ pub enum Action {
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,
     ToggleReadOnly,
+    ToggleWrappedCell,
 
     // Query history
     QueryHistoryLoaded(

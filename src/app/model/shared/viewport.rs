@@ -448,6 +448,7 @@ pub fn calculate_prev_column_offset(current_offset: usize) -> usize {
 pub struct ColumnWidthsCache {
     pub ideal_widths: Vec<u16>,
     pub header_min_widths: Vec<u16>,
+    pub wrapped_ideal_widths: Option<Vec<u16>>,
     generation: u64,
 }
 
@@ -456,6 +457,7 @@ impl ColumnWidthsCache {
         Self {
             ideal_widths,
             header_min_widths,
+            wrapped_ideal_widths: None,
             generation,
         }
     }

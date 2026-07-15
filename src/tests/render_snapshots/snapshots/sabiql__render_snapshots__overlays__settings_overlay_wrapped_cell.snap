@@ -17,17 +17,19 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                ╭ Settings ───────────────────────────────────────────────────────────────────────────────────────╮                                │
 │                                │                  │                                                                              │                                │
-│                                │    Appearance    │ER Diagram                                                                    │                                │
-│                                │    Keymap        │                                                                              │                                │
-│                                │    Wrapped Cell  │Browser                                                                       │                                │
-│                                │  > ER Diagram    │                                                                              │                                │
-│                                │                  │  > System default                                                            │                                │
-│                                │                  │    Google Chrome                                                             │                                │
-│                                │                  │    Firefox                                                                   │                                │
-│                                │                  │    Safari                                                                    │                                │
-│                                │                  │    Microsoft Edge                                                            │                                │
-│                                │                  │    Brave                                                                     │────────────────────────────────┘
-│                                │                  │    Other: []                                                                 │────────────────────────────────┐
+│                                │    Appearance    │Wrapped Cell Mode                                                             │                                │
+│                                │    Keymap        │Wrap wide result cells; optionally shrink columns to avoid horizontal         │                                │
+│                                │  > Wrapped Cell  │scrolling.                                                                    │                                │
+│                                │    ER Diagram    │                                                                              │                                │
+│                                │                  │Allow horizontal scroll                                                       │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │  [Space] off (columns shrink to fit)                                         │                                │
+│                                │                  │                                                                              │                                │
+│                                │                  │Max lines per row                                                             │                                │
+│                                │                  │                                                                              │────────────────────────────────┘
+│                                │                  │  [j/k] 5 lines                                                               │────────────────────────────────┐
+│                                │                  │                                                                              │                                │
+│                                │                  │Toggle Wrapped Cell Mode at any time with Alt+L.                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -37,9 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │                                                                              │                                │
-│                                ╰ Enter: Close │ Tab/⇧Tab: Section │ Esc: Close ──────────────────────────────────────────────────╯                                │
+│                                ╰ Enter: Close │ Space: Toggle │ Tab/⇧Tab: Section │ Esc: Close ──────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Close  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Close
+Enter:Close  j/k/↑↓:Select  Space:Toggle  Tab/⇧Tab:Section  Esc:Close

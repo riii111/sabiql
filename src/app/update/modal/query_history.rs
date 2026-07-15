@@ -156,3 +156,30 @@ pub(super) fn reduce_query_history_picker(
         _ => DispatchResult::pass(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::shared::cursor::CursorMove;
+
+    #[test]
+    fn right_cursor_move_advances_filter_cursor() {
+        let mut state = AppState::new("test".to_string());
+        state.query_history_picker.insert_filter_str("abc");
+        state
+            .query_history_picker
+            .move_filter_cursor(CursorMove::LineStart);
+
+        let result = reduce_query_history_picker(
+            &mut state,
+            &Action::TextMoveCursor {
+                target: InputTarget::QueryHistoryFilter,
+                direction: CursorMove::Right,
+            },
+            Instant::now(),
+        );
+
+        assert!(result.is_handled());
+        assert_eq!(state.query_history_picker.filter_input().cursor(), 1);
+    }
+}

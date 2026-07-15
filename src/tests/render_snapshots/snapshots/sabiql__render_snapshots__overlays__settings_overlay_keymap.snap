@@ -19,9 +19,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │Keymap                                                                        │                                │
 │                                │  > Keymap        │                                                                              │                                │
-│                                │    ER Diagram    │Keymap preset                                                                 │                                │
-│                                │                  │                                                                              │                                │
-│                                │                  │  > Default        saved                                                      │                                │
+│                                │    Wrapped Cell  │Keymap preset                                                                 │                                │
+│                                │    ER Diagram    │                                                                              │                                │
+│                                │                  │  > Default                                                                   │                                │
 │                                │                  │    IDE                                                                       │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -39,7 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ Tab/⇧Tab: Section │ Esc: Cancel ─────────────────────────────────────────────────╯                                │
+│                                ╰ Enter: Close │ Tab/⇧Tab: Section │ Esc: Close ──────────────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Close  j/k/↑↓:Select  Tab/⇧Tab:Section  Esc:Close

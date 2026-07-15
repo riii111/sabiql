@@ -2,12 +2,14 @@ use std::sync::Arc;
 
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::shared::theme_id::ThemeId;
+use crate::model::shared::wrapped_cell::WrappedCellSettings;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppSettings {
     pub theme_id: ThemeId,
     pub keymap_preset: KeymapPreset,
     pub er_browser: Option<String>,
+    pub wrapped_cell: WrappedCellSettings,
 }
 
 impl Default for AppSettings {
@@ -16,6 +18,7 @@ impl Default for AppSettings {
             theme_id: ThemeId::Default,
             keymap_preset: KeymapPreset::Default,
             er_browser: None,
+            wrapped_cell: WrappedCellSettings::default(),
         }
     }
 }

@@ -104,6 +104,15 @@ pub mod global {
         combos: &[KeyCombo::plain(Key::Char('f'))],
     };
 
+    pub const WRAPPED_CELL: KeyBinding = KeyBinding {
+        key_short: "⌥L",
+        key: "Alt+L",
+        desc_short: "WrappedCell",
+        description: "Toggle Wrapped Cell Mode",
+        action: Action::ToggleWrappedCell,
+        combos: &[KeyCombo::alt(Key::Char('l'))],
+    };
+
     pub const PANE_SWITCH: KeyBinding = KeyBinding {
         key_short: "1/2/3",
         key: "1/2/3",
@@ -243,6 +252,7 @@ pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE,
     global::FOCUS,
     global::EXIT_FOCUS,
+    global::WRAPPED_CELL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,
@@ -264,6 +274,7 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::COMMAND_PALETTE_IDE,
     global::FOCUS,
     global::EXIT_FOCUS,
+    global::WRAPPED_CELL,
     global::PANE_SWITCH,
     global::INSPECTOR_TABS,
     global::RELOAD,
@@ -328,6 +339,19 @@ pub fn query_history(preset: KeymapPreset) -> &'static KeyBinding {
     match preset {
         KeymapPreset::Default => &global::QUERY_HISTORY,
         KeymapPreset::Ide => &global::QUERY_HISTORY_IDE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapped_cell_binding_uses_plain_alt_l() {
+        assert_eq!(
+            global::WRAPPED_CELL.combos,
+            &[KeyCombo::alt(Key::Char('l'))]
+        );
     }
 }
 

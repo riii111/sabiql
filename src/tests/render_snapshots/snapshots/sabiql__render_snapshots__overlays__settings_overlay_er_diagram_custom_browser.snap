@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 503
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -20,15 +19,15 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │    Appearance    │ER Diagram                                                                    │                                │
 │                                │    Keymap        │                                                                              │                                │
-│                                │  > ER Diagram    │Browser                                                                       │                                │
-│                                │                  │                                                                              │                                │
+│                                │    Wrapped Cell  │Browser                                                                       │                                │
+│                                │  > ER Diagram    │                                                                              │                                │
 │                                │                  │    System default                                                            │                                │
 │                                │                  │    Google Chrome                                                             │                                │
 │                                │                  │    Firefox                                                                   │                                │
 │                                │                  │    Safari                                                                    │                                │
 │                                │                  │    Microsoft Edge                                                            │                                │
 │                                │                  │    Brave                                                                     │────────────────────────────────┘
-│                                │                  │  > Other: [Brave Browser] saved                                              │────────────────────────────────┐
+│                                │                  │  > Other: [Brave Browser]                                                    │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
@@ -40,7 +39,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
 │                                │                  │                                                                              │                                │
-│                                ╰ Enter: Apply │ i: Edit │ Tab/⇧Tab: Section │ Esc: Cancel ───────────────────────────────────────╯                                │
+│                                ╰ Enter: Close │ i: Edit │ Tab/⇧Tab: Section │ Esc: Close ────────────────────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -52,4 +51,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Apply  j/k/↑↓:Select  i:Edit  Tab/⇧Tab:Section  Esc:Cancel
+Enter:Close  j/k/↑↓:Select  i:Edit  Tab/⇧Tab:Section  Esc:Close

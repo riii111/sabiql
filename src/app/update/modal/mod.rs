@@ -250,6 +250,7 @@ mod tests {
             let mut state = create_test_state();
             state.settings.switch_next_section();
             state.settings.switch_next_section();
+            state.settings.switch_next_section();
             state.settings.start_custom_browser_edit();
             for ch in "Firefox".chars() {
                 state.settings.input_custom_browser(ch);
@@ -289,7 +290,7 @@ mod tests {
             }
 
             #[test]
-            fn navigates_without_applying() {
+            fn selection_applies_and_saves_immediately() {
                 let mut state = create_test_state();
                 super::dispatch_modal(
                     &mut state,
@@ -297,16 +298,23 @@ mod tests {
                     Instant::now(),
                 );
 
-                super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                let effects =
+                    super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now())
+                        .into_effects()
+                        .expect("reducer should handle action");
 
                 assert_eq!(state.settings.selected_theme(), ThemeId::Light);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert!(matches!(
+                    effects.as_slice(),
+                    [Effect::SaveSettings { settings }] if settings.theme_id == ThemeId::Light
+                ));
             }
 
             #[rstest]
             #[case(Action::SettingsCancel)]
             #[case(Action::CloseModal(ModalKind::Settings))]
-            fn cancel_discards_selection(#[case] action: Action) {
+            fn close_keeps_applied_selection(#[case] action: Action) {
                 let mut state = create_test_state();
                 super::dispatch_modal(
                     &mut state,
@@ -320,13 +328,13 @@ mod tests {
                     .expect("reducer should handle action");
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
-                assert_eq!(state.settings.selected_theme(), ThemeId::Default);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
+                assert_eq!(state.settings.selected_theme(), ThemeId::Light);
+                assert_eq!(state.ui.theme_id(), ThemeId::Light);
                 assert!(effects.is_empty());
             }
 
             #[test]
-            fn apply_emits_settings_save_effect() {
+            fn enter_closes_settings_without_saving_again() {
                 let mut state = create_test_state();
                 super::dispatch_modal(
                     &mut state,
@@ -340,17 +348,13 @@ mod tests {
                         .into_effects()
                         .expect("reducer should handle action");
 
-                assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.ui.theme_id(), ThemeId::Default);
-                assert!(matches!(
-                    effects.as_slice(),
-                    [Effect::SaveSettings { settings }]
-                        if settings.theme_id == ThemeId::Light && settings.er_browser.is_none()
-                ));
+                assert_eq!(state.input_mode(), InputMode::Normal);
+                assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert!(effects.is_empty());
             }
 
             #[test]
-            fn apply_emits_er_browser_save_effect() {
+            fn er_browser_selection_saves_immediately() {
                 let mut state = create_test_state();
                 super::dispatch_modal(
                     &mut state,
@@ -359,19 +363,44 @@ mod tests {
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
 
                 let effects =
-                    super::dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
+                    super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now())
                         .into_effects()
                         .expect("reducer should handle action");
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
-                assert_eq!(state.settings.saved_er_browser(), None);
                 assert!(matches!(
                     effects.as_slice(),
                     [Effect::SaveSettings { settings }]
                         if settings.er_browser.as_deref() == Some("Google Chrome")
+                ));
+            }
+
+            #[test]
+            fn wrapped_cell_toggle_saves_immediately() {
+                let mut state = create_test_state();
+                super::dispatch_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::Settings),
+                    Instant::now(),
+                );
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::SettingsToggleWrappedCellScroll,
+                    Instant::now(),
+                )
+                .into_effects()
+                .expect("reducer should handle action");
+
+                assert!(state.ui.wrapped_cell.allow_horizontal_scroll);
+                assert!(matches!(
+                    effects.as_slice(),
+                    [Effect::SaveSettings { settings }] if settings.wrapped_cell.allow_horizontal_scroll
                 ));
             }
 
@@ -385,24 +414,22 @@ mod tests {
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(
                     &mut state,
                     &Action::SettingsStartCustomBrowserEdit,
                     Instant::now(),
                 );
-                super::dispatch_modal(
+                let effects = super::dispatch_modal(
                     &mut state,
                     &Action::TextInput {
                         target: InputTarget::SettingsErBrowser,
                         ch: 'B',
                     },
                     Instant::now(),
-                );
-
-                let effects =
-                    super::dispatch_modal(&mut state, &Action::SettingsApply, Instant::now())
-                        .into_effects()
-                        .expect("reducer should handle action");
+                )
+                .into_effects()
+                .expect("reducer should handle action");
 
                 assert_eq!(state.input_mode(), InputMode::Settings);
                 assert!(matches!(
@@ -413,7 +440,7 @@ mod tests {
             }
 
             #[test]
-            fn save_success_commits_pending_settings() {
+            fn save_success_does_not_overwrite_newer_selection() {
                 let mut state = create_test_state();
                 super::dispatch_modal(
                     &mut state,
@@ -421,24 +448,29 @@ mod tests {
                     Instant::now(),
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
-                super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
+                let wrapped_cell = crate::model::shared::wrapped_cell::WrappedCellSettings {
+                    allow_horizontal_scroll: true,
+                    max_lines_per_row: Some(8),
+                };
                 let effects = super::dispatch_modal(
                     &mut state,
                     &Action::SettingsSaved(AppSettings {
                         theme_id: ThemeId::Light,
                         keymap_preset: KeymapPreset::Ide,
                         er_browser: Some("Google Chrome".to_string()),
+                        wrapped_cell,
                     }),
                     Instant::now(),
                 )
                 .unwrap();
 
                 assert_eq!(state.ui.theme_id(), ThemeId::Light);
+                assert_ne!(state.ui.wrapped_cell, wrapped_cell);
                 assert_eq!(state.settings.previous_theme(), ThemeId::Light);
-                assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Ide);
-                assert_eq!(state.settings.saved_er_browser(), Some("Google Chrome"));
+                assert_eq!(state.settings.saved_keymap_preset(), KeymapPreset::Default);
+                assert_eq!(state.settings.saved_er_browser(), None);
+                assert_ne!(state.settings.saved_wrapped_cell(), wrapped_cell);
                 assert!(
                     state
                         .messages

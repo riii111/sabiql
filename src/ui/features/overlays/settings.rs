@@ -45,6 +45,7 @@ impl SettingsOverlay {
         match state.settings.section() {
             SettingsSection::Appearance => Self::render_appearance(frame, content, state, theme),
             SettingsSection::Keymap => Self::render_keymap(frame, content, state, theme),
+            SettingsSection::WrappedCell => Self::render_wrapped_cell(frame, content, state, theme),
             SettingsSection::ErDiagram => Self::render_er_diagram(frame, content, state, theme),
         }
     }
@@ -89,16 +90,14 @@ impl SettingsOverlay {
 
         for theme_id in ThemeId::ALL {
             let selected = state.settings.selected_theme() == theme_id;
-            let saved = state.settings.previous_theme() == theme_id;
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             content_lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<14}{saved_label}", theme_id.label()),
+                format!("  {marker} {}", theme_id.label()),
                 style,
             )));
         }
@@ -130,19 +129,85 @@ impl SettingsOverlay {
 
         for preset in KeymapPreset::ALL {
             let selected = state.settings.selected_keymap_preset() == preset;
-            let saved = state.settings.saved_keymap_preset() == preset;
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<14}{saved_label}", preset.label()),
+                format!("  {marker} {}", preset.label()),
                 style,
             )));
         }
+
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
+    }
+
+    fn render_wrapped_cell(
+        frame: &mut Frame,
+        content: Rect,
+        state: &AppState,
+        theme: &ThemePalette,
+    ) {
+        let wrapped_cell = state.settings.selected_wrapped_cell();
+
+        let mut lines = vec![
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Wrapped Cell Mode",
+                Style::default()
+                    .fg(theme.semantic.text.primary)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                "Wrap wide result cells; optionally shrink columns to avoid horizontal scrolling.",
+                Style::default().fg(theme.semantic.text.secondary),
+            )),
+            Line::raw(""),
+            Line::from(Span::styled(
+                "Allow horizontal scroll",
+                Style::default().fg(theme.semantic.text.primary),
+            )),
+            Line::raw(""),
+        ];
+
+        let scroll_label = if wrapped_cell.allow_horizontal_scroll {
+            "on (default widths)"
+        } else {
+            "off (columns shrink to fit)"
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("[Space] {scroll_label}"),
+                Style::default().fg(theme.semantic.text.primary),
+            ),
+        ]));
+
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "Max lines per row",
+            Style::default().fg(theme.semantic.text.primary),
+        )));
+        lines.push(Line::raw(""));
+        let lines_label = match wrapped_cell.max_lines_per_row {
+            None => "no limit".to_string(),
+            Some(n) => format!("{n} lines"),
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(
+                format!("[j/k] {lines_label}"),
+                theme.picker_selected_style(),
+            ),
+        ]));
+
+        lines.push(Line::raw(""));
+        lines.push(Line::from(Span::styled(
+            "Toggle Wrapped Cell Mode at any time with Alt+L.",
+            Style::default().fg(theme.semantic.text.muted),
+        )));
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), content);
     }
@@ -169,25 +234,21 @@ impl SettingsOverlay {
                 continue;
             }
             let selected = state.settings.selected_er_browser_choice() == choice;
-            let saved = saved_browser_matches(state, choice);
             let marker = if selected { ">" } else { " " };
-            let saved_label = if saved { " saved" } else { "" };
             let style = if selected {
                 theme.picker_selected_style()
             } else {
                 Style::default().fg(theme.semantic.text.secondary)
             };
             lines.push(Line::from(Span::styled(
-                format!("  {marker} {:<18}{saved_label}", choice.label()),
+                format!("  {marker} {}", choice.label()),
                 style,
             )));
         }
 
         let custom_selected =
             state.settings.selected_er_browser_choice() == ErBrowserChoice::Custom;
-        let custom_saved = saved_browser_matches(state, ErBrowserChoice::Custom);
         let marker = if custom_selected { ">" } else { " " };
-        let saved_label = if custom_saved { " saved" } else { "" };
         let style = if custom_selected {
             theme.picker_selected_style()
         } else {
@@ -200,7 +261,7 @@ impl SettingsOverlay {
         } else {
             ""
         };
-        let suffix = format!("]{saved_label}{edit_label}");
+        let suffix = format!("]{edit_label}");
         let input_width = usize::from(content.width)
             .saturating_sub(prefix.chars().count() + suffix.chars().count())
             .max(1);
@@ -286,8 +347,4 @@ impl SettingsOverlay {
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
     }
-}
-
-fn saved_browser_matches(state: &AppState, choice: ErBrowserChoice) -> bool {
-    ErBrowserChoice::from_browser_name(state.settings.saved_er_browser()) == choice
 }

@@ -21,11 +21,11 @@ pub(super) fn reduce_settings(
         }
         Action::SettingsSelectNext => {
             state.settings.select_next();
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::SettingsSelectPrevious => {
             state.settings.select_previous();
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::SettingsNextSection => {
             state.settings.switch_next_section();
@@ -43,24 +43,28 @@ pub(super) fn reduce_settings(
             state.settings.stop_custom_browser_edit();
             DispatchResult::handled()
         }
+        Action::SettingsToggleWrappedCellScroll => {
+            state.settings.toggle_wrapped_cell_horizontal();
+            save_selected_settings(state)
+        }
         Action::TextInput {
             target: InputTarget::SettingsErBrowser,
             ch,
         } => {
             state.settings.input_custom_browser(*ch);
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::TextBackspace {
             target: InputTarget::SettingsErBrowser,
         } => {
             state.settings.backspace_custom_browser();
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::TextDelete {
             target: InputTarget::SettingsErBrowser,
         } => {
             state.settings.delete_custom_browser();
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::TextKill {
             target: InputTarget::SettingsErBrowser,
@@ -72,7 +76,7 @@ pub(super) fn reduce_settings(
             {
                 state.record_kill(killed);
             }
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::TextYank {
             target: InputTarget::SettingsErBrowser,
@@ -82,7 +86,7 @@ pub(super) fn reduce_settings(
                     .settings
                     .edit_custom_browser(|input| input.yank(&killed));
             }
-            DispatchResult::handled()
+            save_selected_settings(state)
         }
         Action::TextMoveCursor {
             target: InputTarget::SettingsErBrowser,
@@ -91,27 +95,13 @@ pub(super) fn reduce_settings(
             state.settings.move_custom_browser_cursor(*direction);
             DispatchResult::handled()
         }
-        Action::SettingsApply => {
-            let theme_id = state.settings.selected_theme();
-            let settings = AppSettings {
-                theme_id,
-                keymap_preset: state.settings.selected_keymap_preset(),
-                er_browser: state.settings.selected_er_browser(),
-            };
-            DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
-        }
-        Action::SettingsCancel | Action::CloseModal(ModalKind::Settings) => {
-            state.settings.discard_selection();
+        Action::SettingsApply
+        | Action::SettingsCancel
+        | Action::CloseModal(ModalKind::Settings) => {
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
-        Action::SettingsSaved(settings) => {
-            state.ui.set_theme(settings.theme_id);
-            state.settings.commit_saved(
-                settings.theme_id,
-                settings.keymap_preset,
-                settings.er_browser.clone(),
-            );
+        Action::SettingsSaved(_) => {
             state
                 .messages
                 .set_success_at("Settings saved".to_string(), now);
@@ -125,4 +115,18 @@ pub(super) fn reduce_settings(
         }
         _ => DispatchResult::pass(),
     }
+}
+
+fn save_selected_settings(state: &mut AppState) -> DispatchResult {
+    let settings = AppSettings {
+        theme_id: state.settings.selected_theme(),
+        keymap_preset: state.settings.selected_keymap_preset(),
+        er_browser: state.settings.selected_er_browser(),
+        wrapped_cell: state.settings.selected_wrapped_cell(),
+    };
+    state.ui.set_theme(settings.theme_id);
+    state.ui.wrapped_cell = settings.wrapped_cell;
+    state.settings.apply_selection();
+
+    DispatchResult::handled_with(vec![Effect::SaveSettings { settings }])
 }

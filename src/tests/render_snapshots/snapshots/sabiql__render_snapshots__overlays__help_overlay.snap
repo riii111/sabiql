@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 414
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -23,12 +22,13 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  F1                                           Open Command Palette                                             ││                        │
 │                        │  :                                            Enter command line                                               ││                        │
 │                        │  f                                            Toggle Focus mode                                                ││                        │
+│                        │  Alt+L                                        Toggle Wrapped Cell Mode                                         ││                        │
 │                        │  Ctrl+R                                       Enable Read-Only mode                                            ││                        │
 │                        │                                                                                                                ││                        │
 │                        │▸ Navigation                                                                                                    ││                        │
-│                        │  j / ↓ / k / ↑                                Move down / up / scroll                                          ││                        │
-│                        │  g / Home / G / End                           Jump to top / bottom                                             ││────────────────────────┘
-│                        │  H                                            First visible item                                               ││────────────────────────┐
+│                        │  j / ↓ / k / ↑                                Move down / up / scroll                                          ││────────────────────────┘
+│                        │  g / Home / G / End                           Jump to top / bottom                                             ││────────────────────────┐
+│                        │  H                                            First visible item                                               ││                        │
 │                        │  M                                            Middle of visible items                                          ││                        │
 │                        │  L                                            Last visible item                                                ││                        │
 │                        │  zz / zt / zb                                 Scroll cursor to center/top/bottom                               ││                        │
@@ -44,8 +44,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  c                                            Open Connection Selector                                         ││                        │
 │                        │  Ctrl+O                                       Open Query History                                               ││                        │
 │                        │  1/2/3                                        Switch pane focus                                                ││                        │
-│                        │  Tab/⇧Tab                                     Inspector prev/next tab                                          ││                        │
-│                        │                                                                                                                ▼│                        │
+│                        │  Tab/⇧Tab                                     Inspector prev/next tab                                          ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │

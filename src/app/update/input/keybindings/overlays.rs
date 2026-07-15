@@ -774,8 +774,8 @@ pub mod settings {
     pub const APPLY: ModeRow = ModeRow {
         key_short: "Enter",
         key: "Enter",
-        desc_short: "Apply",
-        description: "Apply setting",
+        desc_short: "Close",
+        description: "Close settings",
         bindings: &[ExecBinding {
             action: Action::SettingsApply,
             combos: &[KeyCombo::plain(Key::Enter)],
@@ -810,6 +810,17 @@ pub mod settings {
         }],
     };
 
+    pub const TOGGLE: ModeRow = ModeRow {
+        key_short: "Space",
+        key: "Space",
+        desc_short: "Toggle",
+        description: "Toggle on/off (Wrapped Cell)",
+        bindings: &[ExecBinding {
+            action: Action::SettingsToggleWrappedCellScroll,
+            combos: &[KeyCombo::plain(Key::Char(' '))],
+        }],
+    };
+
     pub const SECTION: ModeRow = ModeRow {
         key_short: "Tab/⇧Tab",
         key: "Tab / Shift+Tab",
@@ -830,8 +841,8 @@ pub mod settings {
     pub const CANCEL: ModeRow = ModeRow {
         key_short: "Esc",
         key: "Esc",
-        desc_short: "Cancel",
-        description: "Cancel",
+        desc_short: "Close",
+        description: "Close settings",
         bindings: &[ExecBinding {
             action: Action::SettingsCancel,
             combos: &[KeyCombo::plain(Key::Esc)],
@@ -843,6 +854,7 @@ pub const SETTINGS_ROWS: &[ModeRow] = &[
     settings::APPLY,
     settings::SELECT,
     settings::EDIT,
+    settings::TOGGLE,
     settings::SECTION,
     settings::CANCEL,
 ];

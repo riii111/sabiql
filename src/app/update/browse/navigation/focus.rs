@@ -46,6 +46,10 @@ pub fn reduce_focus(
             }
             DispatchResult::handled()
         }
+        Action::ToggleWrappedCell => {
+            state.ui.toggle_wrapped_cell();
+            DispatchResult::handled()
+        }
         Action::InspectorNextTab => {
             state.ui.inspector_tab = services
                 .db_capabilities

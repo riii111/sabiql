@@ -1,21 +1,29 @@
 use super::text_input::TextInputState;
 use super::theme_id::ThemeId;
+use super::wrapped_cell::WrappedCellSettings;
 use crate::model::shared::cursor::CursorMove;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
     Keymap,
+    WrappedCell,
     ErDiagram,
 }
 
 impl SettingsSection {
-    pub const ALL: [Self; 3] = [Self::Appearance, Self::Keymap, Self::ErDiagram];
+    pub const ALL: [Self; 4] = [
+        Self::Appearance,
+        Self::Keymap,
+        Self::WrappedCell,
+        Self::ErDiagram,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Appearance => "Appearance",
             Self::Keymap => "Keymap",
+            Self::WrappedCell => "Wrapped Cell",
             Self::ErDiagram => "ER Diagram",
         }
     }
@@ -183,6 +191,8 @@ pub struct SettingsState {
     selected_er_browser_choice: ErBrowserChoice,
     custom_er_browser: TextInputState,
     editing_custom_er_browser: bool,
+    saved_wrapped_cell: WrappedCellSettings,
+    selected_wrapped_cell: WrappedCellSettings,
     section: SettingsSection,
 }
 
@@ -197,6 +207,8 @@ impl Default for SettingsState {
             selected_er_browser_choice: ErBrowserChoice::SystemDefault,
             custom_er_browser: TextInputState::default(),
             editing_custom_er_browser: false,
+            saved_wrapped_cell: WrappedCellSettings::default(),
+            selected_wrapped_cell: WrappedCellSettings::default(),
             section: SettingsSection::Appearance,
         }
     }
@@ -208,6 +220,36 @@ impl SettingsState {
         self.selected_er_browser_choice =
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
+    }
+
+    pub fn load_wrapped_cell(&mut self, settings: WrappedCellSettings) {
+        self.saved_wrapped_cell = settings;
+        self.selected_wrapped_cell = settings;
+    }
+
+    pub fn saved_wrapped_cell(&self) -> WrappedCellSettings {
+        self.saved_wrapped_cell
+    }
+
+    pub fn selected_wrapped_cell(&self) -> WrappedCellSettings {
+        self.selected_wrapped_cell
+    }
+
+    /// Update the horizontal scroll setting for the currently selected
+    /// wrapped-cell config (deferred until Apply).
+    pub fn toggle_wrapped_cell_horizontal(&mut self) {
+        self.selected_wrapped_cell.allow_horizontal_scroll =
+            !self.selected_wrapped_cell.allow_horizontal_scroll;
+    }
+
+    pub fn cycle_wrapped_cell_max_lines_next(&mut self) {
+        self.selected_wrapped_cell.max_lines_per_row =
+            next_max_lines(self.selected_wrapped_cell.max_lines_per_row);
+    }
+
+    pub fn cycle_wrapped_cell_max_lines_prev(&mut self) {
+        self.selected_wrapped_cell.max_lines_per_row =
+            prev_max_lines(self.selected_wrapped_cell.max_lines_per_row);
     }
 
     pub fn load_keymap_preset(&mut self, keymap_preset: KeymapPreset) {
@@ -223,6 +265,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.selected_wrapped_cell = self.saved_wrapped_cell;
         self.section = SettingsSection::Appearance;
     }
 
@@ -292,6 +335,9 @@ impl SettingsState {
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.next();
             }
+            SettingsSection::WrappedCell => {
+                self.cycle_wrapped_cell_max_lines_next();
+            }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
                 self.selected_er_browser_choice = self.selected_er_browser_choice.next();
@@ -306,6 +352,9 @@ impl SettingsState {
             }
             SettingsSection::Keymap => {
                 self.selected_keymap_preset = self.selected_keymap_preset.previous();
+            }
+            SettingsSection::WrappedCell => {
+                self.cycle_wrapped_cell_max_lines_prev();
             }
             SettingsSection::ErDiagram => {
                 self.editing_custom_er_browser = false;
@@ -362,6 +411,7 @@ impl SettingsState {
         theme: ThemeId,
         keymap_preset: KeymapPreset,
         er_browser: Option<String>,
+        wrapped_cell: WrappedCellSettings,
     ) {
         self.previous_theme = theme;
         self.selected_theme = theme;
@@ -372,6 +422,17 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.saved_wrapped_cell = wrapped_cell;
+        self.selected_wrapped_cell = wrapped_cell;
+    }
+
+    pub fn apply_selection(&mut self) {
+        let er_browser = self.selected_er_browser();
+
+        self.previous_theme = self.selected_theme;
+        self.saved_keymap_preset = self.selected_keymap_preset;
+        self.saved_er_browser = er_browser;
+        self.saved_wrapped_cell = self.selected_wrapped_cell;
     }
 
     pub fn discard_selection(&mut self) {
@@ -381,6 +442,7 @@ impl SettingsState {
             ErBrowserChoice::from_browser_name(self.saved_er_browser.as_deref());
         self.custom_er_browser = custom_input_for(self.saved_er_browser.as_deref());
         self.editing_custom_er_browser = false;
+        self.selected_wrapped_cell = self.saved_wrapped_cell;
     }
 }
 
@@ -388,6 +450,24 @@ fn normalize_browser(browser: Option<String>) -> Option<String> {
     browser
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+const MAX_LINES_LADDER: [Option<u16>; 6] = [None, Some(3), Some(5), Some(10), Some(20), Some(50)];
+
+fn next_max_lines(current: Option<u16>) -> Option<u16> {
+    let idx = MAX_LINES_LADDER
+        .iter()
+        .position(|&v| v == current)
+        .unwrap_or(0);
+    MAX_LINES_LADDER[(idx + 1) % MAX_LINES_LADDER.len()]
+}
+
+fn prev_max_lines(current: Option<u16>) -> Option<u16> {
+    let idx = MAX_LINES_LADDER
+        .iter()
+        .position(|&v| v == current)
+        .unwrap_or(0);
+    MAX_LINES_LADDER[(idx + MAX_LINES_LADDER.len() - 1) % MAX_LINES_LADDER.len()]
 }
 
 fn custom_input_for(browser: Option<&str>) -> TextInputState {
@@ -413,6 +493,21 @@ mod tests {
 
         assert_eq!(state.previous_theme(), ThemeId::Light);
         assert_eq!(state.selected_theme(), ThemeId::Light);
+    }
+
+    #[test]
+    fn next_max_lines_wraps_from_none_to_first_cap() {
+        assert_eq!(next_max_lines(None), Some(3));
+    }
+
+    #[test]
+    fn next_max_lines_wraps_from_last_cap_to_none() {
+        assert_eq!(next_max_lines(Some(50)), None);
+    }
+
+    #[test]
+    fn prev_max_lines_wraps_from_none_to_last_cap() {
+        assert_eq!(prev_max_lines(None), Some(50));
     }
 
     #[test]
@@ -477,6 +572,7 @@ mod tests {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.switch_next_section();
+        state.switch_next_section();
         state.start_custom_browser_edit();
 
         assert_eq!(state.selected_er_browser(), None);
@@ -485,6 +581,7 @@ mod tests {
     #[test]
     fn known_browser_choice_returns_logical_browser_name() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.switch_next_section();
         state.select_next();
@@ -567,6 +664,7 @@ mod tests {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.switch_next_section();
+        state.switch_next_section();
         state.select_next();
 
         state.move_custom_browser_cursor(CursorMove::Left);
@@ -580,6 +678,7 @@ mod tests {
     #[test]
     fn custom_browser_input_requires_edit_mode() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.switch_next_section();
         state.select_previous();

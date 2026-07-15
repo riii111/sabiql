@@ -202,12 +202,13 @@ impl MainLayout {
         theme: &ThemePalette,
     ) -> RenderOutput {
         if state.ui.is_focus_mode() {
-            let (result_plan, result_widths_cache) =
-                ResultPane::render(frame, main_area, state, now, theme);
+            let result_geometry = ResultPane::render(frame, main_area, state, now, theme);
             RenderOutput {
                 inspector_viewport_plan: ViewportPlan::default(),
-                result_viewport_plan: result_plan,
-                result_widths_cache,
+                result_viewport_plan: result_geometry.plan,
+                result_widths_cache: result_geometry.widths_cache,
+                result_cell_vertical_offset: result_geometry.cell_vertical_offset,
+                result_wrapped_cell_layout: result_geometry.wrapped_cell_layout,
                 explorer_pane_height: 0,
                 explorer_content_width: 0,
                 inspector_pane_height: 0,
@@ -227,13 +228,14 @@ impl MainLayout {
 
             let inspector_plan =
                 Inspector::render(frame, inspector_area, state, services, now, theme);
-            let (result_plan, result_widths_cache) =
-                ResultPane::render(frame, result_area, state, now, theme);
+            let result_geometry = ResultPane::render(frame, result_area, state, now, theme);
 
             RenderOutput {
                 inspector_viewport_plan: inspector_plan,
-                result_viewport_plan: result_plan,
-                result_widths_cache,
+                result_viewport_plan: result_geometry.plan,
+                result_widths_cache: result_geometry.widths_cache,
+                result_cell_vertical_offset: result_geometry.cell_vertical_offset,
+                result_wrapped_cell_layout: result_geometry.wrapped_cell_layout,
                 explorer_pane_height: left_area.height,
                 explorer_content_width: explorer_content_width_from_pane_width(left_area.width),
                 inspector_pane_height: inspector_area.height,

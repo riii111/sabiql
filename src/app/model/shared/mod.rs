@@ -18,3 +18,4 @@ pub mod text_input;
 pub mod theme_id;
 pub mod ui_state;
 pub mod viewport;
+pub mod wrapped_cell;

@@ -99,7 +99,9 @@ fn explorer_navigation(navigation: VimNavigation) -> Action {
         VimNavigation::MoveLineStart
         | VimNavigation::MoveLineEnd
         | VimNavigation::MoveWordForward
-        | VimNavigation::MoveWordBackward => Action::None,
+        | VimNavigation::MoveWordBackward
+        | VimNavigation::ScrollCellUp
+        | VimNavigation::ScrollCellDown => Action::None,
         VimNavigation::ViewportTop => Action::Select(SelectMotion::ViewportTop),
         VimNavigation::ViewportMiddle => Action::Select(SelectMotion::ViewportMiddle),
         VimNavigation::ViewportBottom => Action::Select(SelectMotion::ViewportBottom),
@@ -160,7 +162,9 @@ fn inspector_navigation(navigation: VimNavigation) -> Action {
         | VimNavigation::ViewportBottom
         | VimNavigation::ScrollCursorCenter
         | VimNavigation::ScrollCursorTop
-        | VimNavigation::ScrollCursorBottom => Action::None,
+        | VimNavigation::ScrollCursorBottom
+        | VimNavigation::ScrollCellUp
+        | VimNavigation::ScrollCellDown => Action::None,
         VimNavigation::MoveLeft => scroll(
             ScrollTarget::Inspector,
             ScrollDirection::Left,
@@ -194,6 +198,12 @@ fn inspector_navigation(navigation: VimNavigation) -> Action {
     }
 }
 
+#[allow(
+    clippy::match_same_arms,
+    reason = "ScrollCellUp/Down's fallback arm must stay after the guarded \
+              CellActive arms above, so it can't be merged with the unrelated \
+              MoveLineStart no-op arm without changing match order"
+)]
 fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action {
     match navigation {
         VimNavigation::MoveDown => scroll(
@@ -286,6 +296,15 @@ fn result_navigation(navigation: VimNavigation, ctx: ResultVimContext) -> Action
         VimNavigation::ScrollCursorBottom => {
             scroll_to_cursor(ScrollToCursorTarget::Result, CursorPosition::Bottom)
         }
+        VimNavigation::ScrollCellDown if ctx.mode == ResultNavMode::CellActive => scroll(
+            ScrollTarget::Cell,
+            ScrollDirection::Down,
+            ScrollAmount::Line,
+        ),
+        VimNavigation::ScrollCellUp if ctx.mode == ResultNavMode::CellActive => {
+            scroll(ScrollTarget::Cell, ScrollDirection::Up, ScrollAmount::Line)
+        }
+        VimNavigation::ScrollCellDown | VimNavigation::ScrollCellUp => Action::None,
     }
 }
 
@@ -363,6 +382,33 @@ mod tests {
         );
 
         assert!(matches!(action, Some(Action::None)));
+    }
+
+    #[rstest]
+    #[case(VimNavigation::ScrollCellDown, ScrollDirection::Down)]
+    #[case(VimNavigation::ScrollCellUp, ScrollDirection::Up)]
+    fn result_cell_scroll_only_fires_in_cell_active(
+        #[case] navigation: VimNavigation,
+        #[case] direction: ScrollDirection,
+    ) {
+        let active = action_for_command(
+            VimCommand::Navigation(navigation),
+            browse_result(result_ctx(ResultNavMode::CellActive)),
+        );
+        assert!(matches!(
+            active,
+            Some(Action::Scroll {
+                target: ScrollTarget::Cell,
+                direction: actual_direction,
+                amount: ScrollAmount::Line,
+            }) if actual_direction == direction
+        ));
+
+        let scroll_mode = action_for_command(
+            VimCommand::Navigation(navigation),
+            browse_result(result_ctx(ResultNavMode::Scroll)),
+        );
+        assert!(matches!(scroll_mode, Some(Action::None)));
     }
 
     #[rstest]
