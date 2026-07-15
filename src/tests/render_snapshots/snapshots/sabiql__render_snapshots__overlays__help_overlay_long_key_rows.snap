@@ -32,7 +32,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Home / End                                   Jump to top / bottom                                             ┃│                        │
 │                        │  Ctrl+D / Ctrl+U                              Scroll half page down / up                                       ┃│                        │
 │                        │  Ctrl+F / Ctrl+B / PageDown / PageUp          Scroll full page down / up                                       ││                        │
-│                        │  ← / →                                        Scroll left / right                                              ││                        │
+│                        │  h / l / ← / →                                Scroll left / right                                              ││                        │
 │                        │  /                                            Edit filter                                                      ││                        │
 │                        │  Esc                                          Close help                                                       ││                        │
 │                        │  ?                                            Close help                                                       ││                        │
@@ -52,4 +52,4 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-←→:H-Scroll  /:Filter  ?:Close
+h/l/←/→:H-Scroll  /:Filter  ?:Close

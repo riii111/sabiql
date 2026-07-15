@@ -205,8 +205,8 @@ pub mod help {
     };
 
     pub const H_SCROLL: ModeRow = ModeRow {
-        key_short: "←→",
-        key: "← / →",
+        key_short: "h/l/←/→",
+        key: "h / l / ← / →",
         desc_short: "H-Scroll",
         description: "Scroll left / right",
         bindings: &[
@@ -216,7 +216,7 @@ pub mod help {
                     direction: ScrollDirection::Left,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Left)],
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -224,7 +224,7 @@ pub mod help {
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Right)],
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
             },
         ],
     };

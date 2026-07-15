@@ -229,7 +229,9 @@ mod tests {
         }
 
         #[rstest]
+        #[case(Key::Char('h'), ScrollDirection::Left, ScrollAmount::Line)]
         #[case(Key::Left, ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(Key::Char('l'), ScrollDirection::Right, ScrollAmount::Line)]
         #[case(Key::Right, ScrollDirection::Right, ScrollAmount::Line)]
         #[case(Key::Home, ScrollDirection::Up, ScrollAmount::ToStart)]
         #[case(Key::End, ScrollDirection::Down, ScrollAmount::ToEnd)]
@@ -300,7 +302,9 @@ mod tests {
             ScrollAmount::FullPage
         )]
         #[case(combo(Key::PageUp), ScrollDirection::Up, ScrollAmount::FullPage)]
+        #[case(combo(Key::Char('h')), ScrollDirection::Left, ScrollAmount::Line)]
         #[case(combo(Key::Left), ScrollDirection::Left, ScrollAmount::Line)]
+        #[case(combo(Key::Char('l')), ScrollDirection::Right, ScrollAmount::Line)]
         #[case(combo(Key::Right), ScrollDirection::Right, ScrollAmount::Line)]
         fn supported_help_scroll_keys_map_to_expected_action(
             #[case] combo: KeyCombo,
