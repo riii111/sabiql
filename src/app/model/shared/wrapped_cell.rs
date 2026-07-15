@@ -8,6 +8,8 @@
 //! This module is pure: it takes widths/text/available space and returns the
 //! computed layout. Rendering lives in the UI layer; this is the geometry.
 
+use std::hash::{Hash, Hasher};
+
 use unicode_width::UnicodeWidthStr;
 
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
@@ -66,15 +68,27 @@ pub struct WrappedCellLayout {
 ///
 /// The per-row heights only change when one of these changes: a new result
 /// (`result_generation`), a pane resize (`inner_width`, which drives the
-/// shrunk column widths), or a Wrapped Cell setting toggle. During plain
-/// vertical scrolling none of these move, so the cached vector is reused and
-/// the O(rows) measurement is skipped entirely.
+/// shrunk column widths), a Wrapped Cell setting toggle, or the visible
+/// horizontal viewport. During plain vertical scrolling none of these move,
+/// so the cached vector is reused and the O(rows) measurement is skipped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WrappedCellLayoutKey {
     pub result_generation: u64,
     pub inner_width: u16,
     pub allow_horizontal_scroll: bool,
     pub max_lines_per_row: Option<u16>,
+    pub viewport_fingerprint: u64,
+}
+
+impl WrappedCellLayoutKey {
+    #[must_use]
+    pub fn with_viewport(mut self, indices: &[usize], widths: &[u16]) -> Self {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        indices.hash(&mut hasher);
+        widths.hash(&mut hasher);
+        self.viewport_fingerprint = hasher.finish();
+        self
+    }
 }
 
 /// Per-row line heights measured by the renderer for line-based scroll math.
@@ -271,14 +285,25 @@ pub fn compute_layout(
     }
 }
 
-/// Proportionally shrink ideal widths so the total (with separators) fits
-/// inside `available_width`, preserving ratios and using 4 as the normal floor.
+/// Shrink ideal widths to fit `available_width`, preserving their ratios.
+///
+/// Columns normally have a minimum width of 4. If one width per column and
+/// its separators cannot fit, returns an empty layout for horizontal scrolling.
 #[must_use]
 pub fn shrink_columns_to_fit(ideal_widths: &[u16], available_width: u16) -> Vec<u16> {
     const MIN_COL_WIDTH: u16 = 4;
 
+    if ideal_widths.is_empty() {
+        return ideal_widths.to_vec();
+    }
+
+    let minimum_total = ideal_widths.len().saturating_mul(2).saturating_sub(1);
+    if usize::from(available_width) < minimum_total {
+        return Vec::new();
+    }
+
     let total = total_width_with_separators(ideal_widths);
-    if total <= available_width || ideal_widths.is_empty() {
+    if total <= available_width {
         return ideal_widths.to_vec();
     }
 
@@ -495,6 +520,15 @@ mod tests {
             assert!(result.iter().all(|&width| width >= 1));
             let total = result.iter().sum::<u16>() + (result.len() - 1) as u16;
             assert_eq!(total, 10);
+        }
+
+        #[test]
+        fn returns_empty_when_separators_cannot_fit() {
+            let result = shrink_columns_to_fit(&[100, 100, 100, 100], 6);
+
+            assert!(result.is_empty());
+            let total = result.iter().sum::<u16>() + result.len().saturating_sub(1) as u16;
+            assert!(total <= 6);
         }
 
         #[test]
@@ -759,6 +793,20 @@ mod tests {
             assert_eq!(l.scroll_offset_for_center(50, 20), 45);
             assert_eq!(l.scroll_offset_for_top(50, 20), 50);
             assert_eq!(l.scroll_offset_for_bottom(50, 20), 41);
+        }
+
+        #[test]
+        fn viewport_changes_layout_key() {
+            let key = WrappedCellLayoutKey::default();
+
+            assert_ne!(
+                key.with_viewport(&[0, 1], &[4, 4]),
+                key.with_viewport(&[1, 2], &[4, 4])
+            );
+            assert_ne!(
+                key.with_viewport(&[0, 1], &[4, 4]),
+                key.with_viewport(&[0, 1], &[5, 4])
+            );
         }
     }
 }

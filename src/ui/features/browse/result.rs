@@ -250,7 +250,7 @@ impl ResultPane {
             stored_plan.clone()
         };
 
-        let widths_cache = if cached {
+        let mut widths_cache = if cached {
             stored_cache.clone()
         } else {
             ColumnWidthsCache::new(
@@ -263,9 +263,11 @@ impl ResultPane {
         // `ideal_widths` is based on first lines only (normal view truncates to
         // one line). Wrapped Cell wraps the full cell, so width must account for
         // the widest line — otherwise jsonb output starting with `{` gets squeezed.
-        let wrapped_cell_ideal_widths = wrapped_cell_enabled
-            .then(|| calculate_wrapped_cell_ideal_widths(&result.columns, &result.rows));
-        let wrapped_cell_widths = wrapped_cell_ideal_widths.as_deref().unwrap_or(ideal_widths);
+        let wrapped_cell_widths = if wrapped_cell_enabled {
+            cached_wrapped_cell_ideal_widths(&mut widths_cache, &result.columns, &result.rows)
+        } else {
+            ideal_widths
+        };
 
         let effective = effective_wrapped_cell;
         if wrapped_cell_enabled {
@@ -274,9 +276,11 @@ impl ResultPane {
                 inner_width: inner.width,
                 allow_horizontal_scroll: effective.allow_horizontal_scroll,
                 max_lines_per_row: effective.max_lines_per_row,
+                viewport_fingerprint: 0,
             };
-            let (plan, cell_vertical_offset, measured_layout) = if effective.allow_horizontal_scroll
-            {
+            let use_scrollable = effective.allow_horizontal_scroll
+                || needs_wrapped_cell_horizontal_scroll(result.columns.len(), inner.width);
+            let (plan, cell_vertical_offset, measured_layout) = if use_scrollable {
                 Self::render_wrapped_cell_table_scrollable(
                     frame,
                     inner,
@@ -776,24 +780,26 @@ impl ResultPane {
             );
         }
 
-        // Reuse previous frame's layout when key matches. Measure with
-        // viewport_widths (capped by select_viewport_columns) so heights match
-        // the actual rendered column widths.
-        let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
-            result
-                .rows
-                .iter()
-                .map(|row| {
-                    wrapped_cell_layout::row_layout(
-                        row,
-                        &viewport_widths,
-                        PADDING,
-                        settings.max_lines_per_row,
-                    )
-                    .height
-                })
-                .collect()
-        });
+        // Reuse previous frame's layout when key matches. Include the visible
+        // columns and widths because horizontal scrolling changes both.
+        let viewport_key = key.with_viewport(&viewport_indices, &viewport_widths);
+        let measured_layout =
+            measured_wrapped_cell_layout(stored_wrapped_cell, viewport_key, || {
+                result
+                    .rows
+                    .iter()
+                    .map(|row| {
+                        let viewport_row = project_viewport_row(row, &viewport_indices);
+                        wrapped_cell_layout::row_layout(
+                            &viewport_row,
+                            &viewport_widths,
+                            PADDING,
+                            settings.max_lines_per_row,
+                        )
+                        .height
+                    })
+                    .collect()
+            });
         let row_heights = &measured_layout.row_heights;
 
         let widths: Vec<Constraint> = viewport_widths
@@ -1081,6 +1087,32 @@ fn measured_wrapped_cell_layout(
     wrapped_cell_layout::MeasuredWrappedCellLayout::new(compute(), key)
 }
 
+fn cached_wrapped_cell_ideal_widths<'a>(
+    cache: &'a mut ColumnWidthsCache,
+    headers: &[String],
+    rows: &[Vec<String>],
+) -> &'a [u16] {
+    if cache.wrapped_ideal_widths.is_none() {
+        cache.wrapped_ideal_widths = Some(calculate_wrapped_cell_ideal_widths(headers, rows));
+    }
+    cache
+        .wrapped_ideal_widths
+        .as_deref()
+        .expect("wrapped ideal widths are initialized above")
+}
+
+fn project_viewport_row(row: &[String], indices: &[usize]) -> Vec<String> {
+    indices
+        .iter()
+        .map(|&index| row.get(index).cloned().unwrap_or_default())
+        .collect()
+}
+
+fn needs_wrapped_cell_horizontal_scroll(column_count: usize, available_width: u16) -> bool {
+    let minimum_total = column_count.saturating_mul(2).saturating_sub(1);
+    usize::from(available_width) < minimum_total
+}
+
 /// The line cap actually in effect for a row: the configured `max_lines_per_row`
 /// tightened by whatever the pane can physically display this frame.
 ///
@@ -1298,6 +1330,52 @@ mod tests {
             assert!(wrapped_cell[0] > ideal[0]);
             assert_eq!(wrapped_cell[0], 38);
         }
+
+        #[test]
+        fn cached_widths_are_reused_for_the_same_result() {
+            let headers = vec!["value".to_string()];
+            let rows = vec![vec!["short".to_string()]];
+            let changed_rows = vec![vec!["a much longer value".to_string()]];
+            let mut cache = ColumnWidthsCache::new(vec![7], vec![7], 1);
+
+            let first = cached_wrapped_cell_ideal_widths(&mut cache, &headers, &rows).to_vec();
+            let reused = cached_wrapped_cell_ideal_widths(&mut cache, &headers, &changed_rows);
+
+            assert_eq!(reused, first.as_slice());
+        }
+    }
+
+    #[test]
+    fn scrollable_measurement_projects_visible_columns() {
+        let row = vec!["a".to_string(), "x".to_string(), "1234567890".to_string()];
+        let indices = [2, 0];
+        let widths = [4, 10];
+        let projected = project_viewport_row(&row, &indices);
+
+        let projected_height =
+            wrapped_cell_layout::row_layout(&projected, &widths, PADDING, None).height;
+        let unprojected_height =
+            wrapped_cell_layout::row_layout(&row, &widths, PADDING, None).height;
+
+        assert_eq!(projected_height, 5);
+        assert_eq!(unprojected_height, 1);
+    }
+
+    #[test]
+    fn viewport_changes_invalidate_measured_layout() {
+        let key = wrapped_cell_layout::WrappedCellLayoutKey::default();
+        let first_key = key.with_viewport(&[0], &[4]);
+        let first = measured_wrapped_cell_layout(None, first_key, || vec![1]);
+        let second_key = key.with_viewport(&[1], &[4]);
+        let second = measured_wrapped_cell_layout(Some(&first), second_key, || vec![5]);
+
+        assert_eq!(second.row_heights, vec![5]);
+    }
+
+    #[test]
+    fn extremely_narrow_wrapped_cell_uses_horizontal_scroll() {
+        assert!(needs_wrapped_cell_horizontal_scroll(4, 6));
+        assert!(!needs_wrapped_cell_horizontal_scroll(4, 7));
     }
 
     #[test]
