@@ -38,6 +38,8 @@ To inspect every GC root, including roots left behind by deleted worktrees, use:
 ./scripts/nix-dev-env.sh diagnose --all-gc-roots
 ```
 
+This mode also scans the Nix `gcroots/auto` directories for dangling symlinks. Nix ignores those indirect roots during collection, so they are not included in `nix-store --gc --print-roots`; review them before removing any root manually. See the [Nix reference manual](https://nix.dev/manual/nix/latest/command-ref/nix-store/gc) for the root lifecycle.
+
 Exit shells using this repository before cleaning a stale cache. `--confirm` is required:
 
 ```bash
@@ -45,6 +47,6 @@ Exit shells using this repository before cleaning a stale cache. `--confirm` is 
 direnv allow
 ```
 
-Cleanup removes only this repository's `.direnv` cache. It does not delete Nix profile generations, affect `nix profile rollback`, or run system-wide garbage collection. Interrupted temporary profiles are removed only when their PID is no longer running; the profile and generation links for a running evaluation are retained.
+Cleanup removes only this repository's `.direnv` cache. This discards repository-local temporary profiles and their generation links, including those left by interrupted evaluations. It does not modify user or system profile generations, affect their `nix profile rollback` history, or run system-wide garbage collection. Automatic cleanup removes only recognised profile names whose PID is no longer running; unknown names remain for diagnosis or manual cleanup.
 
 Review global storage separately with `nix-store --gc --print-roots` and `nix store gc --dry-run` before taking any system-wide cleanup action.

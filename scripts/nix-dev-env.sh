@@ -3,12 +3,14 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/nix-dev-env.sh <diagnose|clean> [--confirm|--all-gc-roots]
+Usage:
+  scripts/nix-dev-env.sh diagnose [--all-gc-roots]
+  scripts/nix-dev-env.sh clean --confirm
 
 diagnose       Show the repository-local direnv cache and matching GC roots.
+  --all-gc-roots Show collector roots and dangling auto roots.
 clean          Remove only this repository's .direnv cache.
---confirm      Required for clean.
---all-gc-roots Show every GC root, including roots from deleted worktrees.
+  --confirm     Required for clean.
 EOF
 }
 
@@ -85,29 +87,57 @@ print_cache() {
 }
 
 print_gc_roots() {
+  local roots matching_roots
   if ! command -v nix-store >/dev/null 2>&1; then
     echo "GC roots: nix-store unavailable"
-    return
-  fi
-
-  local roots matching_roots
-  if ! roots=$(nix-store --gc --print-roots 2>/dev/null); then
+  elif ! roots=$(nix-store --gc --print-roots 2>/dev/null); then
     echo "GC roots: unavailable (Nix daemon access is required)"
-    return
+  elif [[ $all_gc_roots -eq 1 ]]; then
+    echo "GC roots reported by the collector:"
+    printf '%s\n' "$roots"
+  else
+    matching_roots=$(printf '%s\n' "$roots" | grep -F -- "$repo_root" || true)
+    if [[ -n "$matching_roots" ]]; then
+      echo "GC roots referencing this repository:"
+      printf '%s\n' "$matching_roots"
+    else
+      echo "GC roots referencing this repository: none"
+    fi
   fi
 
   if [[ $all_gc_roots -eq 1 ]]; then
-    echo "GC roots (all; includes deleted worktrees):"
-    printf '%s\n' "$roots"
-    return
+    print_dangling_auto_gc_roots
   fi
+}
 
-  matching_roots=$(printf '%s\n' "$roots" | grep -F -- "$repo_root" || true)
-  if [[ -n "$matching_roots" ]]; then
-    echo "GC roots referencing this repository:"
-    printf '%s\n' "$matching_roots"
-  else
-    echo "GC roots referencing this repository: none"
+print_dangling_auto_gc_roots() {
+  local state_dir auto_root_dir root target found=0
+  while IFS= read -r auto_root_dir; do
+    [[ -d "$auto_root_dir" ]] || continue
+    for root in "$auto_root_dir"/*; do
+      [[ -L "$root" && ! -e "$root" ]] || continue
+      target=$(readlink "$root")
+      if [[ $found -eq 0 ]]; then
+        echo "Dangling auto GC roots:"
+        found=1
+      fi
+      printf '%s -> %s\n' "$root" "$target"
+    done
+  done < <(
+    if [[ -n "${NIX_STATE_DIR:-}" ]]; then
+      printf '%s\n' "$NIX_STATE_DIR/gcroots/auto"
+    fi
+    printf '%s\n' "/nix/var/nix/gcroots/auto"
+    if [[ -n "${XDG_STATE_HOME:-}" ]]; then
+      state_dir="$XDG_STATE_HOME/nix"
+    else
+      state_dir="$HOME/.local/state/nix"
+    fi
+    printf '%s\n' "$state_dir/gcroots/auto"
+  )
+
+  if [[ $found -eq 0 ]]; then
+    echo "Dangling auto GC roots: none"
   fi
 }
 
@@ -134,6 +164,8 @@ clean() {
   else
     echo "Repository-local direnv cache is already absent: $layout_dir"
   fi
+  echo "Repository-local temporary profiles and generation links were discarded."
+  echo "User/system profile generations and rollback history were not changed."
   echo "Run 'direnv allow' to rebuild it."
 }
 
