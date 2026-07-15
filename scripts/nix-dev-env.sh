@@ -3,11 +3,12 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: scripts/nix-dev-env.sh <diagnose|clean> [--confirm]
+Usage: scripts/nix-dev-env.sh <diagnose|clean> [--confirm|--all-gc-roots]
 
 diagnose       Show the repository-local direnv cache and matching GC roots.
 clean          Remove only this repository's .direnv cache.
 --confirm      Required for clean.
+--all-gc-roots Show every GC root, including roots from deleted worktrees.
 EOF
 }
 
@@ -26,20 +27,27 @@ fi
 layout_dir="$repo_root/.direnv"
 command_name="${1:-diagnose}"
 confirm=0
+all_gc_roots=0
 
 if [[ $# -gt 0 ]]; then
   shift
 fi
 
-if [[ "${1:-}" == "--confirm" ]]; then
-  confirm=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --confirm)
+      confirm=1
+      ;;
+    --all-gc-roots)
+      all_gc_roots=1
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
   shift
-fi
-
-if [[ $# -gt 0 ]]; then
-  usage >&2
-  exit 2
-fi
+done
 
 print_versions() {
   if command -v nix >/dev/null 2>&1; then
@@ -88,6 +96,12 @@ print_gc_roots() {
     return
   fi
 
+  if [[ $all_gc_roots -eq 1 ]]; then
+    echo "GC roots (all; includes deleted worktrees):"
+    printf '%s\n' "$roots"
+    return
+  fi
+
   matching_roots=$(printf '%s\n' "$roots" | grep -F -- "$repo_root" || true)
   if [[ -n "$matching_roots" ]]; then
     echo "GC roots referencing this repository:"
@@ -125,9 +139,17 @@ clean() {
 
 case "$command_name" in
   diagnose)
+    if [[ $confirm -ne 0 ]]; then
+      usage >&2
+      exit 2
+    fi
     diagnose
     ;;
   clean)
+    if [[ $all_gc_roots -ne 0 ]]; then
+      usage >&2
+      exit 2
+    fi
     clean
     ;;
   -h|--help|help)
