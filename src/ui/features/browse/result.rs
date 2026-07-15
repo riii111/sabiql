@@ -490,9 +490,6 @@ impl ResultPane {
         }
     }
 
-    /// Compute the row background color based on row state (flash, staged,
-    /// active, striped). Shared between the non-scrollable and scrollable
-    /// render paths.
     fn row_background(
         row_idx: usize,
         scroll_offset: usize,
@@ -514,9 +511,6 @@ impl ResultPane {
         }
     }
 
-    /// Render the result table in Wrapped Cell Mode: all columns fit within
-    /// `inner.width`, cell text wraps, and rows expand vertically.
-    ///
     /// Returns the (unused) viewport plan so the caller can keep a consistent
     /// return shape; wrapped-cell never produces a horizontal scrollbar.
     #[allow(
@@ -546,7 +540,6 @@ impl ResultPane {
     ) {
         let column_widths = wrapped_cell_layout::shrink_columns_to_fit(ideal_widths, inner.width);
 
-        // Reuse previous frame's layout when key matches.
         let measured_layout = measured_wrapped_cell_layout(stored_wrapped_cell, key, || {
             result
                 .rows
