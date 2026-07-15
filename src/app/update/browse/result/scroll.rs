@@ -24,11 +24,13 @@ pub(super) fn result_max_scroll(state: &AppState) -> usize {
 }
 
 fn wrapped_cell_layout(state: &AppState) -> Option<&MeasuredWrappedCellLayout> {
+    let row_count = result_row_count(state);
     state
         .ui
         .result_wrapped_cell_layout
         .as_ref()
         .filter(|l| !l.row_heights.is_empty())
+        .filter(|l| l.row_heights.len() == row_count)
 }
 
 fn ensure_row_visible(state: &mut AppState) {
@@ -63,6 +65,27 @@ fn move_row_or_scroll(state: &mut AppState, new_row: usize, scroll_fn: impl FnOn
 
 fn page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
     amount.page_delta(state.result_visible_rows())
+}
+
+fn scroll_to_cursor_offset(
+    state: &AppState,
+    row: usize,
+    visible: usize,
+    position: CursorPosition,
+) -> usize {
+    let max_scroll = result_max_scroll(state);
+    let fallback = match position {
+        CursorPosition::Center => row.saturating_sub(visible / 2),
+        CursorPosition::Top => row,
+        CursorPosition::Bottom => row.saturating_sub(visible.saturating_sub(1)),
+    };
+    wrapped_cell_layout(state)
+        .map_or(fallback, |layout| match position {
+            CursorPosition::Center => layout.scroll_offset_for_center(row, visible),
+            CursorPosition::Top => layout.scroll_offset_for_top(row, visible),
+            CursorPosition::Bottom => layout.scroll_offset_for_bottom(row, visible),
+        })
+        .min(max_scroll)
 }
 
 fn scroll_result_by(state: &mut AppState, direction: ScrollDirection, delta: usize) {
@@ -209,9 +232,8 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
                     state.result_interaction.scroll_offset =
-                        row.saturating_sub(visible / 2).min(max_scroll);
+                        scroll_to_cursor_offset(state, row, visible, CursorPosition::Center);
                 }
             }
             DispatchResult::handled()
@@ -224,8 +246,8 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
-                    state.result_interaction.scroll_offset = row.min(max_scroll);
+                    state.result_interaction.scroll_offset =
+                        scroll_to_cursor_offset(state, row, visible, CursorPosition::Top);
                 }
             }
             DispatchResult::handled()
@@ -238,10 +260,8 @@ pub fn reduce_scroll(state: &mut AppState, action: &Action) -> DispatchResult {
             if let Some(row) = state.result_interaction.selection().row() {
                 let visible = state.result_visible_rows();
                 if visible > 0 {
-                    let max_scroll = result_max_scroll(state);
-                    state.result_interaction.scroll_offset = row
-                        .saturating_sub(visible.saturating_sub(1))
-                        .min(max_scroll);
+                    state.result_interaction.scroll_offset =
+                        scroll_to_cursor_offset(state, row, visible, CursorPosition::Bottom);
                 }
             }
             DispatchResult::handled()
@@ -358,6 +378,20 @@ mod tests {
             down_line(&mut state);
             assert_eq!(state.result_interaction.selection().row(), Some(4));
             assert_eq!(state.result_interaction.scroll_offset, 1);
+        }
+
+        #[test]
+        fn ignores_layout_from_a_different_result() {
+            let mut state = state_with_result_rows(20, 9);
+            state.ui.result_wrapped_cell_layout = Some(MeasuredWrappedCellLayout::new(
+                vec![2; 2],
+                WrappedCellLayoutKey::default(),
+            ));
+
+            assert_eq!(
+                result_max_scroll(&state),
+                result_row_count(&state).saturating_sub(state.result_visible_rows(),)
+            );
         }
     }
 
@@ -906,6 +940,27 @@ mod tests {
             // row=95, clamped to max_scroll=80
             assert_eq!(state.result_interaction.scroll_offset, 80);
             assert_eq!(state.ui.key_sequence, KeySequenceState::Idle);
+        }
+
+        #[test]
+        fn wrapped_cell_scroll_cursor_uses_line_based_offsets() {
+            let mut state = state_with_result_rows(100, 25);
+            state.ui.result_wrapped_cell_layout = Some(MeasuredWrappedCellLayout::new(
+                vec![2; 100],
+                crate::model::shared::wrapped_cell::WrappedCellLayoutKey::default(),
+            ));
+            state.result_interaction.activate_cell(50, 0);
+            state.ui.key_sequence = KeySequenceState::WaitingSecondKey(Prefix::Z);
+
+            reduce_scroll(
+                &mut state,
+                &Action::ScrollToCursor {
+                    target: ScrollToCursorTarget::Result,
+                    position: CursorPosition::Center,
+                },
+            );
+
+            assert_eq!(state.result_interaction.scroll_offset, 45);
         }
     }
 }

@@ -91,6 +91,8 @@ impl SettingsStore for TomlSettingsStore {
                 er_browser: None,
                 wrapped_cell_allow_horizontal_scroll: None,
                 wrapped_cell_max_lines_per_row: None,
+                low_scroll_allow_horizontal_scroll: None,
+                low_scroll_max_lines_per_row: None,
                 connections: vec![],
             });
         set_app_settings(&mut config, settings);
@@ -107,6 +109,9 @@ fn get_config_dir() -> Result<PathBuf, SettingsStoreError> {
 }
 
 fn app_settings(config: ConnectionConfigFile) -> AppSettings {
+    let wrapped_cell_allow_horizontal_scroll =
+        config.effective_wrapped_cell_allow_horizontal_scroll();
+    let wrapped_cell_max_lines_per_row = config.effective_wrapped_cell_max_lines_per_row();
     AppSettings {
         theme_id: config
             .theme
@@ -120,8 +125,8 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
             .unwrap_or(KeymapPreset::Default),
         er_browser: config.er_browser,
         wrapped_cell: WrappedCellSettings {
-            allow_horizontal_scroll: config.wrapped_cell_allow_horizontal_scroll.unwrap_or(false),
-            max_lines_per_row: config.wrapped_cell_max_lines_per_row.filter(|&n| n > 0),
+            allow_horizontal_scroll: wrapped_cell_allow_horizontal_scroll.unwrap_or(false),
+            max_lines_per_row: wrapped_cell_max_lines_per_row.filter(|&n| n > 0),
         },
     }
 }
@@ -176,6 +181,48 @@ mod tests {
         assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
         assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
         assert_eq!(settings.wrapped_cell, wrapped);
+    }
+
+    #[test]
+    fn legacy_low_scroll_keys_load_into_wrapped_cell_settings() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join(CONFIG_FILE_NAME),
+            "version = 2\nlow_scroll_allow_horizontal_scroll = true\nlow_scroll_max_lines_per_row = 5\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        let settings = store.load().unwrap();
+
+        assert_eq!(
+            settings.wrapped_cell,
+            WrappedCellSettings {
+                allow_horizontal_scroll: true,
+                max_lines_per_row: Some(5),
+            }
+        );
+    }
+
+    #[test]
+    fn new_wrapped_cell_keys_take_precedence_over_legacy_keys() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join(CONFIG_FILE_NAME),
+            "version = 2\nwrapped_cell_allow_horizontal_scroll = false\nwrapped_cell_max_lines_per_row = 10\nlow_scroll_allow_horizontal_scroll = true\nlow_scroll_max_lines_per_row = 5\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        let settings = store.load().unwrap();
+
+        assert_eq!(
+            settings.wrapped_cell,
+            WrappedCellSettings {
+                allow_horizontal_scroll: false,
+                max_lines_per_row: Some(10),
+            }
+        );
     }
 
     #[test]

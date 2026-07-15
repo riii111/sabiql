@@ -250,6 +250,7 @@ mod tests {
             let mut state = create_test_state();
             state.settings.switch_next_section();
             state.settings.switch_next_section();
+            state.settings.switch_next_section();
             state.settings.start_custom_browser_edit();
             for ch in "Firefox".chars() {
                 state.settings.input_custom_browser(ch);
@@ -359,6 +360,7 @@ mod tests {
                 );
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsSelectNext, Instant::now());
 
                 let effects =
@@ -383,6 +385,7 @@ mod tests {
                     &Action::OpenModal(ModalKind::Settings),
                     Instant::now(),
                 );
+                super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(&mut state, &Action::SettingsNextSection, Instant::now());
                 super::dispatch_modal(

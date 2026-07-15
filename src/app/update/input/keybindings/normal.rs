@@ -110,7 +110,7 @@ pub mod global {
         desc_short: "WrappedCell",
         description: "Toggle Wrapped Cell Mode",
         action: Action::ToggleWrappedCell,
-        combos: &[KeyCombo::alt(Key::Char('L'))],
+        combos: &[KeyCombo::alt(Key::Char('l'))],
     };
 
     pub const PANE_SWITCH: KeyBinding = KeyBinding {
@@ -339,6 +339,19 @@ pub fn query_history(preset: KeymapPreset) -> &'static KeyBinding {
     match preset {
         KeymapPreset::Default => &global::QUERY_HISTORY,
         KeymapPreset::Ide => &global::QUERY_HISTORY_IDE,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapped_cell_binding_uses_plain_alt_l() {
+        assert_eq!(
+            global::WRAPPED_CELL.combos,
+            &[KeyCombo::alt(Key::Char('l'))]
+        );
     }
 }
 

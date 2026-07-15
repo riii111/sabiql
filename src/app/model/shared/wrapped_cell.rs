@@ -11,7 +11,7 @@
 use unicode_width::UnicodeWidthStr;
 
 fn wrapped_line_count(text: &str, width: u16) -> u16 {
-    if width == 0 {
+    if width == 0 || text.is_empty() {
         return 0;
     }
 
@@ -120,6 +120,12 @@ impl MeasuredWrappedCellLayout {
         self.line_prefix[idx]
     }
 
+    fn row_offset_at_or_before(&self, line: usize) -> usize {
+        self.line_prefix
+            .partition_point(|&start| start <= line)
+            .saturating_sub(1)
+    }
+
     /// Clamp `scroll_offset` so `target_row` stays visible, using prefix sums
     /// for O(log n) visibility math instead of O(n) row walks.
     #[must_use]
@@ -169,6 +175,40 @@ impl MeasuredWrappedCellLayout {
         self.line_prefix
             .partition_point(|&lines| lines < threshold)
             .min(n - 1)
+    }
+
+    #[must_use]
+    pub fn scroll_offset_for_center(&self, target_row: usize, line_budget: usize) -> usize {
+        if line_budget == 0 || self.row_heights.is_empty() {
+            return 0;
+        }
+        let target = target_row.min(self.row_heights.len() - 1);
+        let desired_start = self.lines_before(target).saturating_sub(line_budget / 2);
+        self.row_offset_at_or_before(desired_start)
+            .min(target)
+            .min(self.max_row_offset(line_budget))
+    }
+
+    #[must_use]
+    pub fn scroll_offset_for_top(&self, target_row: usize, line_budget: usize) -> usize {
+        if line_budget == 0 || self.row_heights.is_empty() {
+            return 0;
+        }
+        target_row
+            .min(self.row_heights.len() - 1)
+            .min(self.max_row_offset(line_budget))
+    }
+
+    #[must_use]
+    pub fn scroll_offset_for_bottom(&self, target_row: usize, line_budget: usize) -> usize {
+        if line_budget == 0 || self.row_heights.is_empty() {
+            return 0;
+        }
+        let target = target_row.min(self.row_heights.len() - 1);
+        let desired_start = self.lines_before(target + 1).saturating_sub(line_budget);
+        self.row_offset_at_or_before(desired_start)
+            .min(target)
+            .min(self.max_row_offset(line_budget))
     }
 }
 
@@ -232,7 +272,7 @@ pub fn compute_layout(
 }
 
 /// Proportionally shrink ideal widths so the total (with separators) fits
-/// inside `available_width`, preserving ratios and never dropping below 4.
+/// inside `available_width`, preserving ratios and using 4 as the normal floor.
 #[must_use]
 pub fn shrink_columns_to_fit(ideal_widths: &[u16], available_width: u16) -> Vec<u16> {
     const MIN_COL_WIDTH: u16 = 4;
@@ -259,22 +299,20 @@ fn distribute_budget(ideal: &[u16], budget: u16, min_width: u16) -> Vec<u16> {
         // Budget too tight for even minimum widths — scale down proportionally
         // so we still fit within the pane.
         let min_sum: u32 = min_width as u32 * n as u32;
-        let separator_overhead = (n.saturating_sub(1) as u16).min(budget);
-        let content_budget = budget.saturating_sub(separator_overhead);
-        if content_budget == 0 {
+        if budget == 0 {
             let per_col = budget.saturating_div(n.max(1) as u16);
             return vec![per_col.max(1); n];
         }
         let mut scaled: Vec<u16> = ideal
             .iter()
             .map(|&w| {
-                let s = (u32::from(w) * u32::from(content_budget))
+                let s = (u32::from(w) * u32::from(budget))
                     .checked_div(min_sum)
                     .unwrap_or_else(|| u32::from(min_width)) as u16;
                 s.max(1)
             })
             .collect();
-        reconcile_to_budget(&mut scaled, content_budget, 1);
+        reconcile_to_budget(&mut scaled, budget, 1);
         return scaled;
     }
 
@@ -449,12 +487,14 @@ mod tests {
         }
 
         #[test]
-        fn never_below_min_width() {
+        fn scales_below_min_width_when_budget_is_too_tight() {
             let widths = vec![100, 100, 100, 100];
 
             let result = shrink_columns_to_fit(&widths, 10);
 
-            assert_eq!(result, vec![4, 4, 4, 4]);
+            assert!(result.iter().all(|&width| width >= 1));
+            let total = result.iter().sum::<u16>() + (result.len() - 1) as u16;
+            assert_eq!(total, 10);
         }
 
         #[test]
@@ -582,7 +622,7 @@ mod tests {
         #[test]
         fn empty_cell_row_has_min_height_one() {
             let headers = vec!["a".to_string()];
-            let rows = vec![vec!["".to_string()]];
+            let rows = vec![vec![String::new()]];
             let ideal = vec![12];
 
             let layout = compute_layout(&headers, &rows, &ideal, 12, &settings(false, None), 2);
@@ -710,6 +750,15 @@ mod tests {
             let l = layout(vec![1, 1, 5]);
 
             assert_eq!(l.max_row_offset(4), 2);
+        }
+
+        #[test]
+        fn scroll_to_cursor_uses_line_positions() {
+            let l = layout(vec![2; 100]);
+
+            assert_eq!(l.scroll_offset_for_center(50, 20), 45);
+            assert_eq!(l.scroll_offset_for_top(50, 20), 50);
+            assert_eq!(l.scroll_offset_for_bottom(50, 20), 41);
         }
     }
 }

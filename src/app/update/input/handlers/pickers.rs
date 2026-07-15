@@ -259,6 +259,7 @@ mod tests {
             let mut state = settings_state();
             state.settings.switch_next_section();
             state.settings.switch_next_section();
+            state.settings.switch_next_section();
             state.settings.start_custom_browser_edit();
             state
         }

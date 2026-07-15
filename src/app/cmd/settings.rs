@@ -96,10 +96,7 @@ mod tests {
             store.saved.lock().unwrap()[0].keymap_preset,
             KeymapPreset::Ide
         );
-        assert_eq!(
-            store.saved.lock().unwrap()[0].wrapped_cell,
-            wrapped_cell
-        );
+        assert_eq!(store.saved.lock().unwrap()[0].wrapped_cell, wrapped_cell);
         assert!(matches!(
             rx.recv().await,
             Some(Action::SettingsSaved(settings))

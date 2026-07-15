@@ -24,7 +24,23 @@ pub struct ConnectionConfigFile {
     pub wrapped_cell_allow_horizontal_scroll: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub wrapped_cell_max_lines_per_row: Option<u16>,
+    #[serde(default, skip_serializing)]
+    pub low_scroll_allow_horizontal_scroll: Option<bool>,
+    #[serde(default, skip_serializing)]
+    pub low_scroll_max_lines_per_row: Option<u16>,
     pub connections: Vec<ConnectionConfigEntry>,
+}
+
+impl ConnectionConfigFile {
+    pub fn effective_wrapped_cell_allow_horizontal_scroll(&self) -> Option<bool> {
+        self.wrapped_cell_allow_horizontal_scroll
+            .or(self.low_scroll_allow_horizontal_scroll)
+    }
+
+    pub fn effective_wrapped_cell_max_lines_per_row(&self) -> Option<u16> {
+        self.wrapped_cell_max_lines_per_row
+            .or(self.low_scroll_max_lines_per_row)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +66,8 @@ impl From<&[ConnectionProfile]> for ConnectionConfigFile {
             er_browser: None,
             wrapped_cell_allow_horizontal_scroll: None,
             wrapped_cell_max_lines_per_row: None,
+            low_scroll_allow_horizontal_scroll: None,
+            low_scroll_max_lines_per_row: None,
             connections: profiles
                 .iter()
                 .map(|p| ConnectionConfigEntry {

@@ -75,6 +75,15 @@ mod tests {
     }
 
     #[test]
+    fn alt_lowercase_char_translates_without_shift() {
+        let event = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::ALT);
+
+        let combo = translate(event);
+
+        assert_eq!(combo, KeyCombo::alt(Key::Char('l')));
+    }
+
+    #[test]
     fn backtab_translates_with_shift() {
         let event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
 

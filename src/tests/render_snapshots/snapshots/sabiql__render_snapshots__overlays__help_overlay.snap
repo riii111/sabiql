@@ -1,6 +1,5 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
-assertion_line: 414
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -45,8 +44,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  c                                            Open Connection Selector                                         ││                        │
 │                        │  Ctrl+O                                       Open Query History                                               ││                        │
 │                        │  1/2/3                                        Switch pane focus                                                ││                        │
-│                        │  Tab/⇧Tab                                     Inspector prev/next tab                                          ││                        │
-│                        │                                                                                                                ▼│                        │
+│                        │  Tab/⇧Tab                                     Inspector prev/next tab                                          ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │

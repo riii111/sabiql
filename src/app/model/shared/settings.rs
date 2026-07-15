@@ -487,6 +487,21 @@ mod tests {
     }
 
     #[test]
+    fn next_max_lines_wraps_from_none_to_first_cap() {
+        assert_eq!(next_max_lines(None), Some(3));
+    }
+
+    #[test]
+    fn next_max_lines_wraps_from_last_cap_to_none() {
+        assert_eq!(next_max_lines(Some(50)), None);
+    }
+
+    #[test]
+    fn prev_max_lines_wraps_from_none_to_last_cap() {
+        assert_eq!(prev_max_lines(None), Some(50));
+    }
+
+    #[test]
     fn selection_moves_between_themes() {
         let mut state = SettingsState::default();
         state.open(ThemeId::Default);
@@ -548,6 +563,7 @@ mod tests {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.switch_next_section();
+        state.switch_next_section();
         state.start_custom_browser_edit();
 
         assert_eq!(state.selected_er_browser(), None);
@@ -556,6 +572,7 @@ mod tests {
     #[test]
     fn known_browser_choice_returns_logical_browser_name() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.switch_next_section();
         state.select_next();
@@ -638,6 +655,7 @@ mod tests {
         let mut state = SettingsState::default();
         state.switch_next_section();
         state.switch_next_section();
+        state.switch_next_section();
         state.select_next();
 
         state.move_custom_browser_cursor(CursorMove::Left);
@@ -651,6 +669,7 @@ mod tests {
     #[test]
     fn custom_browser_input_requires_edit_mode() {
         let mut state = SettingsState::default();
+        state.switch_next_section();
         state.switch_next_section();
         state.switch_next_section();
         state.select_previous();

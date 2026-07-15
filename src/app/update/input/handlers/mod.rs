@@ -202,6 +202,7 @@ mod tests {
                 state.modal.set_mode(InputMode::Settings);
                 state.settings.switch_next_section();
                 state.settings.switch_next_section();
+                state.settings.switch_next_section();
                 assert_eq!(state.settings.section(), SettingsSection::ErDiagram);
                 state.settings.start_custom_browser_edit();
                 InputTarget::SettingsErBrowser

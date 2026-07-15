@@ -53,12 +53,15 @@ impl TomlConnectionStore {
     fn write_all(&self, profiles: &[ConnectionProfile]) -> Result<(), ConnectionStoreError> {
         let mut config = ConnectionConfigFile::from(profiles);
         if let Some(existing_config) = self.load_config_file()? {
+            let wrapped_cell_allow_horizontal_scroll =
+                existing_config.effective_wrapped_cell_allow_horizontal_scroll();
+            let wrapped_cell_max_lines_per_row =
+                existing_config.effective_wrapped_cell_max_lines_per_row();
             config.theme = existing_config.theme;
             config.keymap_preset = existing_config.keymap_preset;
             config.er_browser = existing_config.er_browser;
-            config.wrapped_cell_allow_horizontal_scroll =
-                existing_config.wrapped_cell_allow_horizontal_scroll;
-            config.wrapped_cell_max_lines_per_row = existing_config.wrapped_cell_max_lines_per_row;
+            config.wrapped_cell_allow_horizontal_scroll = wrapped_cell_allow_horizontal_scroll;
+            config.wrapped_cell_max_lines_per_row = wrapped_cell_max_lines_per_row;
         }
         let content = toml::to_string_pretty(&config)?;
         let content_with_header = render_config_file(&content);

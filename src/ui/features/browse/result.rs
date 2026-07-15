@@ -57,7 +57,7 @@ struct ResultTableParams<'a> {
     yank_flash: Option<YankFlash>,
     cell_vertical_offset: usize,
     now: Instant,
-    wrapped_cell: WrappedCellSettings,
+    effective_wrapped_cell: WrappedCellSettings,
     wrapped_cell_enabled: bool,
     /// Wrapped Cell Mode layout measured on the previous frame, reused when its
     /// key still matches so per-row heights are not re-measured every draw.
@@ -124,7 +124,7 @@ impl ResultPane {
                         yank_flash: state.result_interaction.yank_flash,
                         cell_vertical_offset: state.result_interaction.cell_vertical_offset,
                         now,
-                        wrapped_cell: state.ui.wrapped_cell,
+                        effective_wrapped_cell: state.ui.effective_wrapped_cell(),
                         wrapped_cell_enabled: state.ui.wrapped_cell_enabled,
                         stored_wrapped_cell: state.ui.result_wrapped_cell_layout.as_ref(),
                     },
@@ -213,7 +213,7 @@ impl ResultPane {
             yank_flash,
             cell_vertical_offset,
             now,
-            wrapped_cell,
+            effective_wrapped_cell,
             wrapped_cell_enabled,
             stored_wrapped_cell,
         } = params;
@@ -267,7 +267,7 @@ impl ResultPane {
             .then(|| calculate_wrapped_cell_ideal_widths(&result.columns, &result.rows));
         let wrapped_cell_widths = wrapped_cell_ideal_widths.as_deref().unwrap_or(ideal_widths);
 
-        let effective = effective_wrapped_cell(wrapped_cell, wrapped_cell_enabled);
+        let effective = effective_wrapped_cell;
         if wrapped_cell_enabled {
             let wrapped_cell_key = wrapped_cell_layout::WrappedCellLayoutKey {
                 result_generation,
@@ -769,7 +769,11 @@ impl ResultPane {
         let (viewport_indices, viewport_widths) = select_viewport_columns(&config, &ctx);
 
         if viewport_indices.is_empty() {
-            return (plan, 0, wrapped_cell_layout::MeasuredWrappedCellLayout::default());
+            return (
+                plan,
+                0,
+                wrapped_cell_layout::MeasuredWrappedCellLayout::default(),
+            );
         }
 
         // Reuse previous frame's layout when key matches. Measure with
@@ -1054,21 +1058,8 @@ fn calculate_ideal_widths_inner(
 }
 
 /// The runtime-effective Wrapped Cell settings for the result pane: the
-/// persisted config only applies when the runtime toggle (`L`) is on; when off,
+/// persisted config only applies when the runtime toggle (`Alt+L`) is on; when off,
 /// horizontal scrolling is always allowed so the normal viewport path runs.
-/// Mirrors `UiState::effective_wrapped_cell` to keep the call site in render
-/// consistent with the model layer.
-fn effective_wrapped_cell(settings: WrappedCellSettings, enabled: bool) -> WrappedCellSettings {
-    if enabled {
-        settings
-    } else {
-        WrappedCellSettings {
-            allow_horizontal_scroll: true,
-            max_lines_per_row: settings.max_lines_per_row,
-        }
-    }
-}
-
 /// Reuse the previous frame's measured Wrapped Cell layout when its key still
 /// matches, otherwise measure fresh via `compute`.
 ///
@@ -1172,9 +1163,12 @@ fn append_ellipsis(line: &mut String, width: u16) {
         line.push_str(ellipsis);
         return;
     }
-    // If width is 0 or too small for even the ellipsis, truncate to fit dots.
     if max == 0 {
         *line = String::new();
+        return;
+    }
+    if ellipsis_width > max {
+        *line = crate::primitives::utils::text_utils::take_within_width(ellipsis, max);
         return;
     }
     let budget = max.saturating_sub(ellipsis_width);
@@ -1447,6 +1441,18 @@ mod tests {
 
     mod cell_vertical_scroll {
         use super::*;
+
+        #[rstest]
+        #[case(0, "")]
+        #[case(1, ".")]
+        #[case(2, "..")]
+        fn append_ellipsis_stays_within_narrow_width(#[case] width: u16, #[case] expected: &str) {
+            let mut line = String::from("long");
+
+            append_ellipsis(&mut line, width);
+
+            assert_eq!(line, expected);
+        }
 
         #[test]
         fn wrapped_cell_lines_skip_drops_leading_lines() {
