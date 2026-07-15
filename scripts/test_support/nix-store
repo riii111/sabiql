@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+if [[ "${NIX_TEST_GC_ROOTS_FAILURE:-0}" == 1 ]]; then
+  exit 1
+fi
+
+printf '%s\n' "${NIX_TEST_GC_ROOTS:-}"
