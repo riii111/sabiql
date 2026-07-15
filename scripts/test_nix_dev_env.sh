@@ -11,19 +11,22 @@ profile_dir="$tmp_dir/.direnv"
 mkdir -p "$profile_dir"
 live_pid=$$
 dead_pid=999999999
+touch "$profile_dir/profile-target"
+ln -s profile-target "$profile_dir/flake-tmp-profile.$live_pid"
+ln -s profile-target "$profile_dir/flake-tmp-profile.$live_pid-1-link"
+ln -s missing-target "$profile_dir/flake-tmp-profile.$dead_pid"
+ln -s missing-target "$profile_dir/flake-tmp-profile.$dead_pid-1-link"
 touch \
-  "$profile_dir/flake-tmp-profile.$live_pid" \
-  "$profile_dir/flake-tmp-profile.$live_pid-1-link" \
-  "$profile_dir/flake-tmp-profile.$dead_pid" \
-  "$profile_dir/flake-tmp-profile.$dead_pid-1-link" \
   "$profile_dir/flake-tmp-profile.invalid"
 
 "$cleanup_script" "$profile_dir"
 
-[[ -e "$profile_dir/flake-tmp-profile.$live_pid" ]]
-[[ -e "$profile_dir/flake-tmp-profile.$live_pid-1-link" ]]
+[[ -L "$profile_dir/flake-tmp-profile.$live_pid" ]]
+[[ -L "$profile_dir/flake-tmp-profile.$live_pid-1-link" ]]
 [[ ! -e "$profile_dir/flake-tmp-profile.$dead_pid" ]]
+[[ ! -L "$profile_dir/flake-tmp-profile.$dead_pid" ]]
 [[ ! -e "$profile_dir/flake-tmp-profile.$dead_pid-1-link" ]]
+[[ ! -L "$profile_dir/flake-tmp-profile.$dead_pid-1-link" ]]
 [[ ! -e "$profile_dir/flake-tmp-profile.invalid" ]]
 
 repo_fixture="$tmp_dir/repo"
