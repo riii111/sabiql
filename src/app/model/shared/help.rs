@@ -61,6 +61,7 @@ impl HelpState {
 
     pub fn enter_filter_editing(&mut self) {
         self.mode = HelpMode::EditingFilter;
+        self.reset_offsets();
     }
 
     pub fn exit_filter_editing(&mut self) {
@@ -407,5 +408,18 @@ mod tests {
 
         assert_eq!(state.mode(), HelpMode::Viewing);
         assert_eq!(state.filter().content(), "c");
+    }
+
+    #[test]
+    fn entering_filter_mode_resets_scroll_offsets() {
+        let mut state = HelpState::default();
+        state.set_scroll_offset(10);
+        state.set_horizontal_offset(4);
+
+        state.enter_filter_editing();
+
+        assert_eq!(state.mode(), HelpMode::EditingFilter);
+        assert_eq!(state.scroll_offset(), 0);
+        assert_eq!(state.horizontal_offset(), 0);
     }
 }
