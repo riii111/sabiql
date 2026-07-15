@@ -490,7 +490,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help.scroll_offset(), 9);
+            assert_eq!(state.ui.help.scroll_offset(), 8);
             assert!(effects.is_empty());
         }
 
@@ -512,7 +512,7 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.help.scroll_offset(), 18);
+            assert_eq!(state.ui.help.scroll_offset(), 16);
             assert!(effects.is_empty());
         }
 

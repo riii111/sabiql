@@ -94,8 +94,8 @@ pub mod help {
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
     pub const SCROLL: ModeRow = ModeRow {
-        key_short: "^N/^P/↑↓",
-        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
+        key_short: "^N/^P/jk/↑↓",
+        key: "Ctrl+N / Ctrl+P / j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         bindings: &[
@@ -105,7 +105,11 @@ pub mod help {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
+                combos: &[
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -113,7 +117,11 @@ pub mod help {
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
+                combos: &[
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     };

@@ -102,7 +102,7 @@ mod tests {
     use crate::ports::inbound::Key;
     use crate::update::action::ModalKind;
     use crate::update::action::{
-        CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
+        CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget, TextKillDirection,
     };
     use rstest::rstest;
 
@@ -343,11 +343,11 @@ mod tests {
     }
 
     #[test]
-    fn help_routes_scroll_while_viewing_and_readline_while_editing() {
+    fn help_routes_ctrl_u_to_scroll_while_viewing_and_readline_while_editing() {
         let mut viewing = AppState::new("test".to_string());
         viewing.modal.set_mode(InputMode::Help);
         let viewing_action = handle_key_event(
-            KeyCombo::ctrl(Key::Char('b')),
+            KeyCombo::ctrl(Key::Char('u')),
             &viewing,
             &AppServices::stub(),
         );
@@ -356,21 +356,21 @@ mod tests {
             Action::Scroll {
                 target: ScrollTarget::Help,
                 direction: ScrollDirection::Up,
-                amount: ScrollAmount::FullPage,
+                amount: ScrollAmount::HalfPage,
             }
         ));
 
         viewing.ui.help.enter_filter_editing();
         let editing_action = handle_key_event(
-            KeyCombo::ctrl(Key::Char('b')),
+            KeyCombo::ctrl(Key::Char('u')),
             &viewing,
             &AppServices::stub(),
         );
         assert!(matches!(
             editing_action,
-            Action::TextMoveCursor {
+            Action::TextKill {
                 target: InputTarget::HelpFilter,
-                direction: CursorMove::Left,
+                direction: TextKillDirection::ToLineStart,
             }
         ));
     }

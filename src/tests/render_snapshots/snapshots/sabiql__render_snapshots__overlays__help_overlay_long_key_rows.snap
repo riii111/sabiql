@@ -23,16 +23,16 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Enter                                        Execute the confirmed statement                                  ││                        │
 │                        │  Esc                                          Cancel and return to editor                                      ││                        │
 │                        │                                                                                                                ││                        │
-│                        │▸ Search / Filter                                                                                               ││                        │
+│                        │▸ Search / Filter                                                                                               ┃│                        │
 │                        │  type                                         Type to filter                                                   ┃│                        │
 │                        │  type                                         Type to search                                                   ┃│                        │
 │                        │  Enter                                        Confirm search                                                   ┃│                        │
 │                        │  Esc                                          Cancel search                                                    ┃│────────────────────────┘
-│                        │  Ctrl+N / Ctrl+P / ↑ / ↓                      Scroll down / up                                                 ┃│────────────────────────┐
+│                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓              Scroll down / up                                                 ┃│────────────────────────┐
 │                        │  Home / End                                   Jump to top / bottom                                             ┃│                        │
 │                        │  Ctrl+D / Ctrl+U                              Scroll half page down / up                                       ┃│                        │
-│                        │  Ctrl+F / Ctrl+B / PageDown / PageUp          Scroll full page down / up                                       ┃│                        │
-│                        │  ← / →                                        Scroll left / right                                              ┃│                        │
+│                        │  Ctrl+F / Ctrl+B / PageDown / PageUp          Scroll full page down / up                                       ││                        │
+│                        │  ← / →                                        Scroll left / right                                              ││                        │
 │                        │  Enter                                        Edit filter                                                      ││                        │
 │                        │  Esc                                          Close help                                                       ││                        │
 │                        │  ?                                            Close help                                                       ││                        │
@@ -45,9 +45,9 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Esc                                          Cancel                                                           ││                        │
 │                        │  Enter                                        Toggle dropdown (SSL field)                                      ││                        │
 │                        │  Ctrl+N / Ctrl+P / ↑ / ↓                      Dropdown navigation                                              ││                        │
-│                        │  Enter                                        Confirm selection                                                ││                        │
-│                        │  Ctrl+N / Ctrl+P / ↑ / ↓ / j / k              Select connection                                                ││                        │
-│                        │  n                                            New connection                                                   ▼│                        │
+│                        │  Enter                                        Confirm selection                                                ▼│                        │
+│                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
+│                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ Enter: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

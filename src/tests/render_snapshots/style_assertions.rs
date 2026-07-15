@@ -570,6 +570,43 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
     );
 }
 
+#[test]
+fn help_uses_block_cursor_while_browsing_and_terminal_cursor_while_filtering() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::Help);
+
+    let browsing_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_block_cursor = has_cell(&browsing_buffer, |cell| {
+        cell.bg == DEFAULT_THEME.semantic.cursor.bg
+            && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
+    });
+
+    state.ui.help.enter_filter_editing();
+
+    let filtering_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_block_cursor_while_filtering = has_cell(&filtering_buffer, |cell| {
+        cell.bg == DEFAULT_THEME.semantic.cursor.bg
+            && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
+    });
+    let terminal_cursor = render_and_get_cursor_position(&mut terminal, &mut state);
+    let (modal_x, modal_y) = help_modal_origin();
+
+    assert!(
+        has_block_cursor,
+        "Expected block cursor while browsing help"
+    );
+    assert!(
+        !has_block_cursor_while_filtering,
+        "Expected no block cursor while filtering help"
+    );
+    assert!(
+        terminal_cursor.x > modal_x && terminal_cursor.y > modal_y,
+        "Expected terminal cursor inside the help filter"
+    );
+}
+
 fn sql_modal_block_cursor_position(buffer: &ratatui::buffer::Buffer) -> Option<(u16, u16)> {
     (0..TEST_HEIGHT)
         .flat_map(|y| (0..TEST_WIDTH).map(move |x| (x, y)))

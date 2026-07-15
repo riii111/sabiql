@@ -3,7 +3,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::{HelpMode, HelpOrigin, JsonbHelpMode, SqlHelpMode};
+use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
 #[allow(
     clippy::wildcard_imports,
@@ -15,7 +15,6 @@ use crate::update::input::keybindings::*;
 pub struct HelpDocument {
     filter: String,
     filter_cursor: usize,
-    mode: HelpMode,
     sections: Vec<HelpSection>,
 }
 
@@ -31,7 +30,6 @@ impl HelpDocument {
             filter.content(),
             filter.cursor(),
             state.settings.saved_keymap_preset(),
-            state.ui.help.mode(),
         )
     }
 
@@ -40,13 +38,7 @@ impl HelpDocument {
     }
 
     pub fn new_with_cursor(origin: HelpOrigin, filter: &str, filter_cursor: usize) -> Self {
-        Self::new_with_cursor_and_preset(
-            origin,
-            filter,
-            filter_cursor,
-            origin.keymap_preset(),
-            HelpMode::Viewing,
-        )
+        Self::new_with_cursor_and_preset(origin, filter, filter_cursor, origin.keymap_preset())
     }
 
     fn new_with_cursor_and_preset(
@@ -54,7 +46,6 @@ impl HelpDocument {
         filter: &str,
         filter_cursor: usize,
         keymap_preset: KeymapPreset,
-        mode: HelpMode,
     ) -> Self {
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(origin)];
@@ -77,7 +68,6 @@ impl HelpDocument {
         Self {
             filter: filter.to_string(),
             filter_cursor: filter_cursor.min(filter.chars().count()),
-            mode,
             sections,
         }
     }
@@ -88,10 +78,6 @@ impl HelpDocument {
 
     pub fn filter_cursor(&self) -> usize {
         self.filter_cursor
-    }
-
-    pub fn is_filter_editing(&self) -> bool {
-        self.mode == HelpMode::EditingFilter
     }
 
     pub fn sections(&self) -> &[HelpSection] {
@@ -111,11 +97,7 @@ impl HelpDocument {
     }
 
     pub fn content_width(&self) -> usize {
-        let filter_label = if self.is_filter_editing() {
-            "Filter (editing): "
-        } else {
-            "Filter: "
-        };
+        let filter_label = "Filter: ";
         let filter_width =
             UnicodeWidthStr::width(filter_label) + UnicodeWidthStr::width(self.filter.as_str()) + 1;
         let key_column_width = self.key_column_width();

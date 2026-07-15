@@ -253,8 +253,10 @@ mod tests {
 
         #[rstest]
         #[case(combo(Key::Down), ScrollDirection::Down, ScrollAmount::Line)]
+        #[case(combo(Key::Char('j')), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('n')), ScrollDirection::Down, ScrollAmount::Line)]
         #[case(combo(Key::Up), ScrollDirection::Up, ScrollAmount::Line)]
+        #[case(combo(Key::Char('k')), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo_ctrl(Key::Char('p')), ScrollDirection::Up, ScrollAmount::Line)]
         #[case(combo(Key::Home), ScrollDirection::Up, ScrollAmount::ToStart)]
         #[case(combo(Key::End), ScrollDirection::Down, ScrollAmount::ToEnd)]
