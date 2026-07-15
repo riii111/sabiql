@@ -24,12 +24,22 @@ fn wrapped_line_count(text: &str, width: u16) -> u16 {
     })
 }
 
+pub const DEFAULT_MAX_LINES_PER_ROW: u16 = 5;
+
 /// Wrapped Cell Mode settings: persisted config stored in the settings UI.
-/// Default disables horizontal scroll (columns shrink to fit) with no row cap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WrappedCellSettings {
     pub allow_horizontal_scroll: bool,
     pub max_lines_per_row: Option<u16>,
+}
+
+impl Default for WrappedCellSettings {
+    fn default() -> Self {
+        Self {
+            allow_horizontal_scroll: false,
+            max_lines_per_row: Some(DEFAULT_MAX_LINES_PER_ROW),
+        }
+    }
 }
 
 impl WrappedCellSettings {
@@ -452,11 +462,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn default_disables_scroll_and_no_cap() {
+        fn default_disables_scroll_and_caps_rows_at_five_lines() {
             let s = WrappedCellSettings::default();
 
             assert!(!s.allow_horizontal_scroll);
-            assert_eq!(s.max_lines_per_row, None);
+            assert_eq!(s.max_lines_per_row, Some(DEFAULT_MAX_LINES_PER_ROW));
         }
 
         #[rstest]

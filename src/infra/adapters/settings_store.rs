@@ -6,7 +6,7 @@ use super::app_config_file::{
 };
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
-use crate::app::model::shared::wrapped_cell::WrappedCellSettings;
+use crate::app::model::shared::wrapped_cell::{DEFAULT_MAX_LINES_PER_ROW, WrappedCellSettings};
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
 use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
 
@@ -126,7 +126,8 @@ fn app_settings(config: ConnectionConfigFile) -> AppSettings {
         er_browser: config.er_browser,
         wrapped_cell: WrappedCellSettings {
             allow_horizontal_scroll: wrapped_cell_allow_horizontal_scroll.unwrap_or(false),
-            max_lines_per_row: wrapped_cell_max_lines_per_row.filter(|&n| n > 0),
+            max_lines_per_row: wrapped_cell_max_lines_per_row
+                .map_or(Some(DEFAULT_MAX_LINES_PER_ROW), |n| (n > 0).then_some(n)),
         },
     }
 }
@@ -137,7 +138,8 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
     config.er_browser = settings.er_browser;
     config.wrapped_cell_allow_horizontal_scroll =
         Some(settings.wrapped_cell.allow_horizontal_scroll);
-    config.wrapped_cell_max_lines_per_row = settings.wrapped_cell.max_lines_per_row;
+    config.wrapped_cell_max_lines_per_row =
+        Some(settings.wrapped_cell.max_lines_per_row.unwrap_or(0));
 }
 
 #[cfg(test)]
@@ -156,6 +158,7 @@ mod tests {
 
         assert_eq!(settings.theme_id, ThemeId::Default);
         assert_eq!(settings.keymap_preset, KeymapPreset::Default);
+        assert_eq!(settings.wrapped_cell.max_lines_per_row, Some(5));
     }
 
     #[test]
@@ -181,6 +184,44 @@ mod tests {
         assert_eq!(settings.keymap_preset, KeymapPreset::Ide);
         assert_eq!(settings.er_browser.as_deref(), Some("Google Chrome"));
         assert_eq!(settings.wrapped_cell, wrapped);
+    }
+
+    #[test]
+    fn no_limit_round_trips_as_explicit_zero() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        store
+            .save(AppSettings {
+                theme_id: ThemeId::Default,
+                keymap_preset: KeymapPreset::Default,
+                er_browser: None,
+                wrapped_cell: WrappedCellSettings {
+                    allow_horizontal_scroll: false,
+                    max_lines_per_row: None,
+                },
+            })
+            .unwrap();
+
+        let content = fs::read_to_string(temp_dir.path().join(CONFIG_FILE_NAME)).unwrap();
+        assert!(content.contains("wrapped_cell_max_lines_per_row = 0"));
+        assert_eq!(store.load().unwrap().wrapped_cell.max_lines_per_row, None);
+    }
+
+    #[test]
+    fn missing_max_lines_uses_default_cap() {
+        let temp_dir = TempDir::new().unwrap();
+        fs::write(
+            temp_dir.path().join(CONFIG_FILE_NAME),
+            "version = 2\nconnections = []\n",
+        )
+        .unwrap();
+        let store = TomlSettingsStore::with_config_dir(temp_dir.path().to_path_buf());
+
+        assert_eq!(
+            store.load().unwrap().wrapped_cell.max_lines_per_row,
+            Some(5)
+        );
     }
 
     #[test]

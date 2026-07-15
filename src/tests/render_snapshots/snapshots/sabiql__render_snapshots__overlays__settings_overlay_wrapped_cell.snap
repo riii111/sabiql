@@ -27,7 +27,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                  │                                                                              │                                │
 │                                │                  │Max lines per row                                                             │                                │
 │                                │                  │                                                                              │────────────────────────────────┘
-│                                │                  │  [j/k] no limit                                                              │────────────────────────────────┐
+│                                │                  │  [j/k] 5 lines                                                               │────────────────────────────────┐
 │                                │                  │                                                                              │                                │
 │                                │                  │Toggle Wrapped Cell Mode at any time with Alt+L.                              │                                │
 │                                │                  │                                                                              │                                │
