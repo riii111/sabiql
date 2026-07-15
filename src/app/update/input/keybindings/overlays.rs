@@ -1292,6 +1292,9 @@ pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
     row_detail::CLOSE,
 ];
 
+pub const ROW_DETAIL_FOOTER_ROWS: &[ModeRow] =
+    &[row_detail::YANK, row_detail::YANK_JSON, row_detail::CLOSE];
+
 // =============================================================================
 // JSONB Search (active search input)
 // =============================================================================

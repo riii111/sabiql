@@ -44,11 +44,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
 │                │                                                                                                                                  │               │
-│                ╰ y: Copy │ Y: Copy JSON │ j/k/⇟/⇞/⌃F/⌃B: Scroll │ h/l/←/→: H-Scroll │ ⌃D/⌃U: Half Page │ g/G: Top/Btm │ Esc: Close ───────────────╯               │
+│                ╰ y: Copy │ Y: Copy JSON │ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────╯               │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-y:Copy  Y:Copy JSON  j/k/⇟/⇞/⌃F/⌃B:Scroll  h/l/←/→:H-Scroll  ⌃D/⌃U:Half Page  g/G:Top/Btm  Esc:Close
+y:Copy  Y:Copy JSON  Esc:Close
