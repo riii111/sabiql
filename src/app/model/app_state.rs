@@ -29,6 +29,7 @@ pub struct AppState {
     pub should_quit: bool,
     pub command_line_input: crate::model::shared::text_input::TextInputState,
     pub command_line_visible_width: usize,
+    kill_buffer: Option<String>,
 
     pub render_dirty: bool,
 
@@ -62,6 +63,7 @@ impl AppState {
             should_quit: false,
             command_line_input: crate::model::shared::text_input::TextInputState::default(),
             command_line_visible_width: 70,
+            kill_buffer: None,
             render_dirty: true,
             session: BrowseSession::default(),
             runtime: RuntimeState::new(project_name),
@@ -90,6 +92,16 @@ impl AppState {
 
     pub fn input_mode(&self) -> InputMode {
         self.modal.active_mode()
+    }
+
+    pub fn record_kill(&mut self, text: String) {
+        if !text.is_empty() {
+            self.kill_buffer = Some(text);
+        }
+    }
+
+    pub fn kill_buffer(&self) -> Option<&str> {
+        self.kill_buffer.as_deref()
     }
 
     #[inline]

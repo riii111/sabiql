@@ -4,6 +4,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use sabiql_app::model::shared::help::HelpOrigin;
 use sabiql_app::model::shared::multi_line_input::MultiLineInputState;
+use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{ConnectionId, QueryResult};
@@ -193,6 +194,21 @@ fn sql_modal_cursor_at_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state.sql_modal.editor.set_content("SELECT 1".to_string());
     state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn sql_modal_ide_editing() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state.sql_modal.editor.set_content("SELECT 1".to_string());
+    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.settings.load_keymap_preset(KeymapPreset::Ide);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -409,6 +425,7 @@ fn help_overlay_filtered_current_result() {
     for ch in "copy".chars() {
         state.ui.help.insert_filter_char(ch);
     }
+    state.ui.help.enter_filter_editing();
     state.modal.set_mode(InputMode::Help);
 
     let output = render_to_string(&mut terminal, &mut state);

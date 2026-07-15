@@ -24,6 +24,19 @@ pub trait TextInputLike {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKillDirection {
+    ToLineEnd,
+    ToLineStart,
+    ReadlineWordEnd,
+    ReadlinePreviousWhitespace,
+}
+
+pub trait TextInputEditing {
+    fn kill(&mut self, direction: TextKillDirection) -> String;
+    fn yank(&mut self, text: &str);
+}
+
 impl TextInputState {
     pub fn new(content: impl Into<String>, cursor: usize) -> Self {
         let content = content.into();
@@ -105,6 +118,28 @@ impl TextInputState {
         self.char_count -= 1;
     }
 
+    pub fn kill_to_line_end(&mut self) -> String {
+        self.remove_range(self.cursor, self.char_count)
+    }
+
+    pub fn kill_to_line_start(&mut self) -> String {
+        self.remove_range(0, self.cursor)
+    }
+
+    pub fn kill_next_word(&mut self) -> String {
+        self.remove_range(
+            self.cursor,
+            readline_forward_word_end(&self.content, self.cursor),
+        )
+    }
+
+    pub fn kill_previous_word(&mut self) -> String {
+        self.remove_range(
+            readline_previous_whitespace_boundary(&self.content, self.cursor),
+            self.cursor,
+        )
+    }
+
     pub fn move_cursor(&mut self, movement: CursorMove) {
         match movement {
             CursorMove::Left => {
@@ -132,6 +167,12 @@ impl TextInputState {
             }
             CursorMove::WordBackward => {
                 self.cursor = previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::ReadlineWordStart => {
+                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::ReadlineWordEnd => {
+                self.cursor = readline_forward_word_end(&self.content, self.cursor);
             }
             CursorMove::Up
             | CursorMove::Down
@@ -184,11 +225,43 @@ impl TextInputState {
     pub fn char_count(&self) -> usize {
         self.char_count
     }
+
+    pub(crate) fn remove_range(&mut self, start: usize, end: usize) -> String {
+        let start = start.min(self.char_count);
+        let end = end.min(self.char_count);
+        if start >= end {
+            return String::new();
+        }
+
+        let start_byte = char_to_byte_index(&self.content, start);
+        let end_byte = char_to_byte_index(&self.content, end);
+        let removed = self.content[start_byte..end_byte].to_string();
+        self.content.replace_range(start_byte..end_byte, "");
+        self.char_count -= end - start;
+        self.cursor = start;
+        self.viewport_offset = 0;
+        removed
+    }
 }
 
 impl TextInputLike for TextInputState {
     fn text_input(&self) -> &TextInputState {
         self
+    }
+}
+
+impl TextInputEditing for TextInputState {
+    fn kill(&mut self, direction: TextKillDirection) -> String {
+        match direction {
+            TextKillDirection::ToLineEnd => self.kill_to_line_end(),
+            TextKillDirection::ToLineStart => self.kill_to_line_start(),
+            TextKillDirection::ReadlineWordEnd => self.kill_next_word(),
+            TextKillDirection::ReadlinePreviousWhitespace => self.kill_previous_word(),
+        }
+    }
+
+    fn yank(&mut self, text: &str) {
+        self.insert_str(text);
     }
 }
 
@@ -293,6 +366,48 @@ pub(super) fn previous_word_start(content: &str, cursor: usize) -> usize {
     }
 
     last_non_whitespace_run_start.unwrap_or(0)
+}
+
+pub(super) fn readline_forward_word_end(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
+
+    while idx < chars.len() && !chars[idx].is_alphanumeric() {
+        idx += 1;
+    }
+    while idx < chars.len() && chars[idx].is_alphanumeric() {
+        idx += 1;
+    }
+
+    idx
+}
+
+pub(super) fn readline_previous_word_start(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
+
+    while idx > 0 && !chars[idx - 1].is_alphanumeric() {
+        idx -= 1;
+    }
+    while idx > 0 && chars[idx - 1].is_alphanumeric() {
+        idx -= 1;
+    }
+
+    idx
+}
+
+pub(super) fn readline_previous_whitespace_boundary(content: &str, cursor: usize) -> usize {
+    let chars: Vec<char> = content.chars().collect();
+    let mut idx = cursor.min(chars.len());
+
+    while idx > 0 && chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+    while idx > 0 && !chars[idx - 1].is_whitespace() {
+        idx -= 1;
+    }
+
+    idx
 }
 
 #[cfg(test)]
@@ -604,6 +719,38 @@ mod tests {
         }
 
         #[rstest]
+        #[case("foo.bar baz", 0, 3)]
+        #[case("foo.bar baz", 3, 7)]
+        #[case("  日本語", 0, 5)]
+        fn readline_word_forward_moves_to_the_end_of_the_current_or_next_alphanumeric_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(CursorMove::ReadlineWordEnd);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
+        #[case("foo.bar", 4, 0)]
+        #[case("foo.bar", 7, 4)]
+        #[case("  日本語", 5, 2)]
+        fn readline_word_backward_moves_to_the_start_of_the_current_or_previous_alphanumeric_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected: usize,
+        ) {
+            let mut s = state_with(content, cursor);
+
+            s.move_cursor(CursorMove::ReadlineWordStart);
+
+            assert_eq!(s.cursor(), expected);
+        }
+
+        #[rstest]
         #[case("foo bar", 7, CursorMove::WordBackward, 4)]
         #[case("foo.bar", 7, CursorMove::WordBackward, 4)]
         #[case("  foo", 4, CursorMove::WordBackward, 2)]
@@ -830,6 +977,48 @@ mod tests {
 
             assert_eq!(s.cursor(), 1);
             assert_eq!(s.viewport_offset(), 0);
+        }
+    }
+
+    mod kill {
+        use super::*;
+
+        #[rstest]
+        #[case("foo.bar", 7, "foo.bar", "")]
+        #[case("alpha 日本語", 9, "日本語", "alpha ")]
+        #[case("foo bar", 7, "bar", "foo ")]
+        #[case("foo ", 4, "foo ", "")]
+        fn previous_word_kills_to_the_previous_whitespace_boundary(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_killed: &str,
+            #[case] expected_content: &str,
+        ) {
+            let mut input = TextInputState::new(content, cursor);
+
+            let killed = input.kill_previous_word();
+
+            assert_eq!(killed, expected_killed);
+            assert_eq!(input.content(), expected_content);
+            assert_eq!(input.cursor(), expected_content.chars().count());
+        }
+
+        #[rstest]
+        #[case("foo.bar  baz", 0, "foo", ".bar  baz")]
+        #[case("foo  日本語", 3, "  日本語", "foo")]
+        fn next_word_kills_through_the_end_of_a_whitespace_delimited_word(
+            #[case] content: &str,
+            #[case] cursor: usize,
+            #[case] expected_killed: &str,
+            #[case] expected_content: &str,
+        ) {
+            let mut input = TextInputState::new(content, cursor);
+
+            let killed = input.kill_next_word();
+
+            assert_eq!(killed, expected_killed);
+            assert_eq!(input.content(), expected_content);
+            assert_eq!(input.cursor(), cursor.min(expected_content.chars().count()));
         }
     }
 }

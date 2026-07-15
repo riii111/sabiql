@@ -22,7 +22,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │         │  line 11: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx││         │
 │         │  line 12: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx▼│         │
 │         │ x   0% ◀︎══════════════════════════════════════─────────────────────────────▶︎ │         │
-│         ╰ y: Copy │ Y: Copy JSON │ j/k/⇟/⇞/⌃F/⌃B: Scroll │ h/l/←/→: H-Scroll │ ⌃D/⌃U: H╯         │
+│         ╰ y: Copy │ Y: Copy JSON │ Esc: Close ─────────────────────────────────────────╯         │
 │                       ││                                                                         │
 └───────────────────────┘└─────────────────────────────────────────────────────────────────────────┘
-y:Copy  Y:Copy JSON  j/k/⇟/⇞/⌃F/⌃B:Scroll  h/l/←/→:H-Scroll  ⌃D/⌃U:Half Page  g/G:Top/Btm  Esc:Close
+y:Copy  Y:Copy JSON  Esc:Close

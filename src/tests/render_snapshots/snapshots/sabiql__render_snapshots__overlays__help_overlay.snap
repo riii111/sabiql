@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 414
 expression: output
 ---
 test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
@@ -17,7 +18,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │                                                                                                                ┃│                        │
 │                        │▸ Common                                                                                                        ┃│                        │
 │                        │  ?                                            Toggle help                                                      ┃│                        │
-│                        │  q                                            Quit application                                                 ┃│                        │
+│                        │  q                                            Quit application                                                 ││                        │
 │                        │  ,                                            Open Settings                                                    ││                        │
 │                        │  F1                                           Open Command Palette                                             ││                        │
 │                        │  :                                            Enter command line                                               ││                        │
@@ -45,10 +46,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                        │  Ctrl+O                                       Open Query History                                               ││                        │
 │                        │  1/2/3                                        Switch pane focus                                                ││                        │
 │                        │  Tab/⇧Tab                                     Inspector prev/next tab                                          ││                        │
-│                        │                                                                                                                ││                        │
-│                        │▸ Data Actions                                                                                                  ▼│                        │
-│                        ╰ type: Filter │ Backspace: Edit │ Esc: Close │ ?: Close ─────────────────────────────────────────────────────────╯                        │
+│                        │                                                                                                                ▼│                        │
+│                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
+│                        │ [BROWSE]                                                                                                        │                        │
+│                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-←→:H-Scroll  ?:Close
+/:Filter  ?:Close

@@ -25,6 +25,7 @@ pub const EXPLORER_SCROLLBAR_RESERVED_WIDTH: u16 = 1;
 // Help modal height as a percent of the available terminal height.
 pub const HELP_MODAL_WIDTH_PERCENT: u16 = 70;
 pub const HELP_MODAL_HEIGHT_PERCENT: u16 = 80;
+pub const HELP_MODE_STATUS_HEIGHT: usize = 2;
 // Top and bottom modal border rows subtracted from the inner visible area.
 pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
 pub const MODAL_HORIZONTAL_BORDER_OVERHEAD: usize = 2;
@@ -300,7 +301,7 @@ impl UiState {
         content_width: usize,
     ) -> HelpViewportLayout {
         let base_rows = (self.terminal_height as usize * HELP_MODAL_HEIGHT_PERCENT as usize / 100)
-            .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD);
+            .saturating_sub(MODAL_VERTICAL_BORDER_OVERHEAD + HELP_MODE_STATUS_HEIGHT);
         let base_columns = (self.terminal_width as usize * HELP_MODAL_WIDTH_PERCENT as usize / 100)
             .saturating_sub(MODAL_HORIZONTAL_BORDER_OVERHEAD);
 
@@ -715,7 +716,7 @@ mod tests {
                 ..Default::default()
             };
 
-            assert_eq!(state.help_visible_rows(total_lines, content_width), 16);
+            assert_eq!(state.help_visible_rows(total_lines, content_width), 14);
         }
 
         #[test]

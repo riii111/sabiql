@@ -94,8 +94,8 @@ pub mod help {
     use crate::update::input::keybindings::{ExecBinding, Key, KeyCombo, ModeRow};
 
     pub const SCROLL: ModeRow = ModeRow {
-        key_short: "^N/^P/↑↓",
-        key: "Ctrl+N / Ctrl+P / ↑ / ↓",
+        key_short: "^N/^P/jk/↑↓",
+        key: "Ctrl+N / Ctrl+P / j / k / ↑ / ↓",
         desc_short: "Scroll",
         description: "Scroll down / up",
         bindings: &[
@@ -105,7 +105,11 @@ pub mod help {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Down), KeyCombo::ctrl(Key::Char('n'))],
+                combos: &[
+                    KeyCombo::plain(Key::Down),
+                    KeyCombo::plain(Key::Char('j')),
+                    KeyCombo::ctrl(Key::Char('n')),
+                ],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -113,7 +117,11 @@ pub mod help {
                     direction: ScrollDirection::Up,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Up), KeyCombo::ctrl(Key::Char('p'))],
+                combos: &[
+                    KeyCombo::plain(Key::Up),
+                    KeyCombo::plain(Key::Char('k')),
+                    KeyCombo::ctrl(Key::Char('p')),
+                ],
             },
         ],
     };
@@ -197,8 +205,8 @@ pub mod help {
     };
 
     pub const H_SCROLL: ModeRow = ModeRow {
-        key_short: "←→",
-        key: "← / →",
+        key_short: "h/l/←/→",
+        key: "h / l / ← / →",
         desc_short: "H-Scroll",
         description: "Scroll left / right",
         bindings: &[
@@ -208,7 +216,7 @@ pub mod help {
                     direction: ScrollDirection::Left,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Left)],
+                combos: &[KeyCombo::plain(Key::Char('h')), KeyCombo::plain(Key::Left)],
             },
             ExecBinding {
                 action: Action::Scroll {
@@ -216,7 +224,7 @@ pub mod help {
                     direction: ScrollDirection::Right,
                     amount: ScrollAmount::Line,
                 },
-                combos: &[KeyCombo::plain(Key::Right)],
+                combos: &[KeyCombo::plain(Key::Char('l')), KeyCombo::plain(Key::Right)],
             },
         ],
     };
@@ -227,6 +235,28 @@ pub mod help {
         desc_short: "Filter",
         description: "Filter help",
         bindings: &[],
+    };
+
+    pub const START_FILTER: ModeRow = ModeRow {
+        key_short: "/",
+        key: "/",
+        desc_short: "Filter",
+        description: "Edit filter",
+        bindings: &[ExecBinding {
+            action: Action::EnterHelpFilter,
+            combos: &[KeyCombo::plain(Key::Char('/'))],
+        }],
+    };
+
+    pub const ESC_VIEWING: ModeRow = ModeRow {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Browse",
+        description: "Return to help browsing",
+        bindings: &[ExecBinding {
+            action: Action::ExitHelpFilter,
+            combos: &[KeyCombo::plain(Key::Esc)],
+        }],
     };
 
     pub const EDIT_FILTER: ModeRow = ModeRow {
@@ -271,11 +301,23 @@ pub const HELP_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
-    help::TYPE_FILTER,
-    help::EDIT_FILTER,
+    help::START_FILTER,
     help::ESC_CLOSE,
     help::CLOSE,
 ];
+
+pub const HELP_VIEWING_ROWS: &[ModeRow] = &[
+    help::SCROLL,
+    help::TOP_BOTTOM,
+    help::HALF_PAGE,
+    help::FULL_PAGE,
+    help::H_SCROLL,
+    help::START_FILTER,
+    help::ESC_CLOSE,
+    help::CLOSE,
+];
+
+pub const HELP_EDITING_ROWS: &[ModeRow] = &[help::ESC_VIEWING, help::EDIT_FILTER];
 
 // =============================================================================
 // Table Picker
@@ -416,13 +458,13 @@ pub mod er_picker {
     };
 
     pub const SELECT_ALL: ModeRow = ModeRow {
-        key_short: "^A",
-        key: "Ctrl+A",
+        key_short: "⌥A",
+        key: "Alt+A",
         desc_short: "All",
         description: "Select/deselect all tables",
         bindings: &[ExecBinding {
             action: Action::ErSelectAll,
-            combos: &[KeyCombo::ctrl(Key::Char('a'))],
+            combos: &[KeyCombo::alt(Key::Char('a'))],
         }],
     };
 
@@ -1261,6 +1303,9 @@ pub const ROW_DETAIL_ROWS: &[ModeRow] = &[
     row_detail::JUMP,
     row_detail::CLOSE,
 ];
+
+pub const ROW_DETAIL_FOOTER_ROWS: &[ModeRow] =
+    &[row_detail::YANK, row_detail::YANK_JSON, row_detail::CLOSE];
 
 // =============================================================================
 // JSONB Search (active search input)

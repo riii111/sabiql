@@ -4,6 +4,7 @@ use crate::catalog::HelpDocument;
 use crate::model::app_state::AppState;
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::TextInputEditing;
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
@@ -75,6 +76,46 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
             target: InputTarget::HelpFilter,
         } => {
             state.ui.help.backspace_filter();
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::HelpFilter,
+        } => {
+            state
+                .ui
+                .help
+                .edit_filter(crate::model::shared::text_input::TextInputState::delete);
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::HelpFilter,
+            direction,
+        } => {
+            let killed = state.ui.help.edit_filter(|input| input.kill(*direction));
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::HelpFilter,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state.ui.help.edit_filter(|input| input.yank(&killed));
+            }
+            DispatchResult::handled()
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::HelpFilter,
+            direction,
+        } => {
+            state.ui.help.move_filter_cursor(*direction);
+            DispatchResult::handled()
+        }
+        Action::EnterHelpFilter => {
+            state.ui.help.enter_filter_editing();
+            DispatchResult::handled()
+        }
+        Action::ExitHelpFilter => {
+            state.ui.help.exit_filter_editing();
             DispatchResult::handled()
         }
         Action::Scroll {

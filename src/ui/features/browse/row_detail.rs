@@ -6,7 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::update::input::keybindings::{ModeRow, ROW_DETAIL_ROWS};
+use crate::app::update::input::keybindings::{ModeRow, ROW_DETAIL_FOOTER_ROWS};
 use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::atoms::scroll_indicator::{
     HorizontalScrollParams, VerticalScrollParams, clamp_scroll_offset,
@@ -34,7 +34,7 @@ impl RowDetail {
         }
 
         let title = " Row Detail ";
-        let hints = ROW_DETAIL_ROWS.iter().map(ModeRow::as_hint);
+        let hints = ROW_DETAIL_FOOTER_ROWS.iter().map(ModeRow::as_hint);
 
         let (_area, inner) = render_modal(
             frame,

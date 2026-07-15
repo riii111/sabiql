@@ -398,6 +398,14 @@ impl SettingsState {
         }
     }
 
+    pub fn edit_custom_browser<R>(
+        &mut self,
+        edit: impl FnOnce(&mut TextInputState) -> R,
+    ) -> Option<R> {
+        self.is_editing_custom_er_browser()
+            .then(|| edit(&mut self.custom_er_browser))
+    }
+
     pub fn commit_saved(
         &mut self,
         theme: ThemeId,
