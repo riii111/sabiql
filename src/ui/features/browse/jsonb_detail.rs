@@ -67,7 +67,10 @@ impl JsonbDetail {
             theme,
         );
 
-        let (editor_area, status_area, search_area) = if state.jsonb_detail.search().active {
+        let (editor_area, status_area, search_area) = if matches!(
+            state.jsonb_detail.mode(),
+            crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
+        ) {
             let [editor_area, status_area, search_area] = Layout::vertical([
                 Constraint::Min(1),
                 Constraint::Length(1),

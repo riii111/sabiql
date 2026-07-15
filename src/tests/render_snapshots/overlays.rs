@@ -409,6 +409,7 @@ fn help_overlay_filtered_current_result() {
     for ch in "copy".chars() {
         state.ui.help.insert_filter_char(ch);
     }
+    state.ui.help.toggle_filter_editing();
     state.modal.set_mode(InputMode::Help);
 
     let output = render_to_string(&mut terminal, &mut state);

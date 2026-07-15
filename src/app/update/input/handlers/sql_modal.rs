@@ -5,8 +5,8 @@ use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::update::input::keybindings::{
-    Key, KeyCombo, Modifiers, readline_action_for, sql_modal_compare_explain,
-    sql_modal_normal_query_history, sql_modal_plan_explain,
+    Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
+    sql_modal_plan_explain,
 };
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
@@ -179,9 +179,6 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if matches!(status, SqlModalStatus::ConfirmingHigh { .. }) {
-        if let Some(action) = readline_action_for(&combo, InputTarget::SqlModalHighRisk) {
-            return action;
-        }
         let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
         return match combo.key {
             Key::Char(c) if plain => Action::TextInput {
@@ -214,9 +211,6 @@ pub fn handle_sql_modal_keys_with_prefix(
     }
 
     if matches!(status, SqlModalStatus::ConfirmingAnalyzeHigh { .. }) {
-        if let Some(action) = readline_action_for(&combo, InputTarget::SqlModalAnalyzeHighRisk) {
-            return action;
-        }
         let plain = !combo.modifiers.intersects(Modifiers::CTRL | Modifiers::ALT);
         return match combo.key {
             Key::Up if plain => Action::Scroll {
@@ -329,10 +323,6 @@ pub fn handle_sql_modal_keys_with_prefix(
         &combo,
         VimSurfaceContext::SqlModal(SqlModalVimContext::QueryEditing),
     ) {
-        return action;
-    }
-
-    if let Some(action) = readline_action_for(&combo, InputTarget::SqlModal) {
         return action;
     }
 
@@ -935,26 +925,6 @@ mod tests {
             assert!(matches!(result, Action::None));
         }
 
-        #[test]
-        fn ide_editing_ctrl_e_moves_to_line_end() {
-            let result = handle_sql_modal_keys_with_prefix(
-                combo_ctrl(Key::Char('e')),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-                None,
-                KeymapPreset::Ide,
-            );
-
-            assert!(matches!(
-                result,
-                Action::TextMoveCursor {
-                    target: InputTarget::SqlModal,
-                    direction: CursorMove::LineEnd,
-                }
-            ));
-        }
-
         #[rstest]
         #[case(Key::Char('a'))]
         #[case(Key::Char('e'))]
@@ -1196,18 +1166,6 @@ mod tests {
 
     mod editing_commands {
         use super::*;
-
-        #[test]
-        fn editing_mode_ctrl_e_moves_to_line_end() {
-            let result = handle_sql_modal_keys(
-                combo_ctrl(Key::Char('e')),
-                false,
-                &SqlModalStatus::Editing,
-                SqlModalTab::Sql,
-            );
-
-            assert_action(result, Expected::SqlModalMoveCursor(CursorMove::LineEnd));
-        }
 
         #[test]
         fn editing_mode_ctrl_alt_e_does_not_request_explain() {

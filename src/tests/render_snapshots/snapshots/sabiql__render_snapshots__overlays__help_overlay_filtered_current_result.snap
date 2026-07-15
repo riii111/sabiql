@@ -9,7 +9,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │  public.posts                         ││(select a table)                                                                                                          │
 │  public.comments                      ││                                                                                                                          │
 │                        ╭ Help ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮                        │
-│                        │Filter: copy                                                                                                     │                        │
+│                        │Filter (editing): copy                                                                                           │                        │
 │                        │                                                                                                                 │                        │
 │                        │▸ Current: Result Pane                                                                                           │                        │
 │                        │  Y     Copy the active cell value to clipboard                                                                  │                        │

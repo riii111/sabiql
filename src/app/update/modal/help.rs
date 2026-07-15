@@ -111,7 +111,7 @@ pub(super) fn reduce_help(state: &mut AppState, action: &Action, _now: Instant) 
             DispatchResult::handled()
         }
         Action::ToggleHelpFilterFocus => {
-            state.ui.help.toggle_filter_focus();
+            state.ui.help.toggle_filter_editing();
             DispatchResult::handled()
         }
         Action::Scroll {

@@ -136,8 +136,13 @@ impl HelpOverlay {
     }
 
     fn filter_line(document: &HelpDocument, theme: &ThemePalette) -> Line<'static> {
+        let label = if document.is_filter_editing() {
+            "Filter (editing): "
+        } else {
+            "Filter: "
+        };
         let mut spans = vec![Span::styled(
-            "Filter: ",
+            label,
             Style::default().fg(theme.semantic.text.secondary),
         )];
         spans.extend(text_cursor_spans(

@@ -35,12 +35,6 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         };
     }
 
-    if state.connection_setup.focused_input().is_some()
-        && let Some(action) = keybindings::readline_action_for(&combo, InputTarget::ConnectionSetup)
-    {
-        return action;
-    }
-
     match combo.key {
         Key::Tab => Action::ConnectionSetupNextField,
         Key::BackTab => Action::ConnectionSetupPrevField,
@@ -231,21 +225,6 @@ mod tests {
                 result,
                 Action::TextBackspace {
                     target: InputTarget::ConnectionSetup
-                }
-            ));
-        }
-
-        #[test]
-        fn ctrl_u_kills_text_in_the_focused_input() {
-            let state = setup_state();
-
-            let result = handle_connection_setup_keys(combo_ctrl(Key::Char('u')), &state);
-
-            assert!(matches!(
-                result,
-                Action::TextKill {
-                    target: InputTarget::ConnectionSetup,
-                    direction: crate::update::action::TextKillDirection::ToLineStart,
                 }
             ));
         }

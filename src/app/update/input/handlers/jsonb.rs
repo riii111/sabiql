@@ -1,19 +1,24 @@
 use crate::model::shared::key_sequence::Prefix;
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{
-    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers, readline_action_for,
+    JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
 };
 use crate::update::input::keymap;
 use crate::update::input::vim::{
     JsonbDetailVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
+use super::interaction::InputInteraction;
+
 pub fn handle_jsonb_detail_keys(
     combo: KeyCombo,
-    is_searching: bool,
+    interaction: InputInteraction,
     pending_prefix: Option<Prefix>,
 ) -> Action {
-    if is_searching {
+    if matches!(
+        interaction,
+        InputInteraction::Editing(InputTarget::JsonbSearch)
+    ) {
         return handle_search_input(combo);
     }
 
@@ -72,10 +77,6 @@ fn handle_search_input(combo: KeyCombo) -> Action {
     if let Some(action) = keymap::resolve(&combo, JSONB_SEARCH_KEYS) {
         return action;
     }
-    if let Some(action) = readline_action_for(&combo, InputTarget::JsonbSearch) {
-        return action;
-    }
-
     // Text input fallthrough
     match combo.key {
         Key::Char(c) => Action::TextInput {
@@ -119,10 +120,6 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
     if let Some(action) = JSONB_EDIT.resolve(&combo) {
         return action;
     }
-    if let Some(action) = readline_action_for(&combo, InputTarget::JsonbEdit) {
-        return action;
-    }
-
     match combo.key {
         Key::Char(c) => Action::TextInput {
             target: InputTarget::JsonbEdit,
@@ -190,7 +187,11 @@ mod tests {
 
         #[test]
         fn ctrl_n_moves_cursor_down_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), false, None);
+            let result = handle_jsonb_detail_keys(
+                combo_ctrl(Key::Char('n')),
+                InputInteraction::Viewing,
+                None,
+            );
 
             assert!(matches!(
                 result,
@@ -203,7 +204,11 @@ mod tests {
 
         #[test]
         fn ctrl_p_moves_cursor_up_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), false, None);
+            let result = handle_jsonb_detail_keys(
+                combo_ctrl(Key::Char('p')),
+                InputInteraction::Viewing,
+                None,
+            );
 
             assert!(matches!(
                 result,
@@ -216,14 +221,16 @@ mod tests {
 
         #[test]
         fn enter_is_ignored_in_viewing_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::Enter), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Enter), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::None));
         }
 
         #[test]
         fn h_moves_cursor_left_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('h')), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Char('h')), InputInteraction::Viewing, None);
 
             assert!(matches!(
                 result,
@@ -236,7 +243,8 @@ mod tests {
 
         #[test]
         fn home_moves_cursor_to_line_start_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::Home), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Home), InputInteraction::Viewing, None);
 
             assert!(matches!(
                 result,
@@ -249,7 +257,7 @@ mod tests {
 
         #[test]
         fn end_moves_cursor_to_line_end_in_normal_mode() {
-            let result = handle_jsonb_detail_keys(combo(Key::End), false, None);
+            let result = handle_jsonb_detail_keys(combo(Key::End), InputInteraction::Viewing, None);
 
             assert!(matches!(
                 result,
@@ -262,28 +270,35 @@ mod tests {
 
         #[test]
         fn n_moves_to_next_search_match() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('n')), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Char('n')), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::JsonbSearchNext));
         }
 
         #[test]
         fn upper_n_moves_to_previous_search_match() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('N')), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Char('N')), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::JsonbSearchPrev));
         }
 
         #[test]
         fn g_begins_key_sequence() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), false, None);
+            let result =
+                handle_jsonb_detail_keys(combo(Key::Char('g')), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::BeginKeySequence(Prefix::G)));
         }
 
         #[test]
         fn gg_moves_to_first_line() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), false, Some(Prefix::G));
+            let result = handle_jsonb_detail_keys(
+                combo(Key::Char('g')),
+                InputInteraction::Viewing,
+                Some(Prefix::G),
+            );
 
             assert!(matches!(
                 result,
@@ -296,7 +311,11 @@ mod tests {
 
         #[test]
         fn unknown_prefixed_key_cancels_sequence() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('x')), false, Some(Prefix::G));
+            let result = handle_jsonb_detail_keys(
+                combo(Key::Char('x')),
+                InputInteraction::Viewing,
+                Some(Prefix::G),
+            );
 
             assert!(matches!(result, Action::CancelKeySequence));
         }
@@ -308,7 +327,11 @@ mod tests {
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('n')), true, None);
+            let result = handle_jsonb_detail_keys(
+                combo_ctrl(Key::Char('n')),
+                InputInteraction::Editing(InputTarget::JsonbSearch),
+                None,
+            );
 
             assert!(matches!(
                 result,
@@ -321,7 +344,11 @@ mod tests {
 
         #[test]
         fn ctrl_p_still_falls_through_to_search_input() {
-            let result = handle_jsonb_detail_keys(combo_ctrl(Key::Char('p')), true, None);
+            let result = handle_jsonb_detail_keys(
+                combo_ctrl(Key::Char('p')),
+                InputInteraction::Editing(InputTarget::JsonbSearch),
+                None,
+            );
 
             assert!(matches!(
                 result,
@@ -334,7 +361,11 @@ mod tests {
 
         #[test]
         fn pending_prefix_is_ignored_while_search_is_active() {
-            let result = handle_jsonb_detail_keys(combo(Key::Char('g')), true, Some(Prefix::G));
+            let result = handle_jsonb_detail_keys(
+                combo(Key::Char('g')),
+                InputInteraction::Editing(InputTarget::JsonbSearch),
+                Some(Prefix::G),
+            );
 
             assert!(matches!(
                 result,
@@ -392,19 +423,6 @@ mod tests {
                 Action::TextMoveCursor {
                     target: InputTarget::JsonbEdit,
                     direction: CursorMove::Up,
-                }
-            ));
-        }
-
-        #[test]
-        fn alt_d_kills_the_next_word() {
-            let result = handle_jsonb_edit_keys(KeyCombo::alt(Key::Char('d')));
-
-            assert!(matches!(
-                result,
-                Action::TextKill {
-                    target: InputTarget::JsonbEdit,
-                    direction: crate::update::action::TextKillDirection::ReadlineWordEnd,
                 }
             ));
         }

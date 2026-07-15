@@ -308,7 +308,10 @@ impl Footer {
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if state.jsonb_detail.search().active {
+                if matches!(
+                    state.jsonb_detail.mode(),
+                    crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
+                ) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
                         jsonb_search::CONFIRM.as_hint(),

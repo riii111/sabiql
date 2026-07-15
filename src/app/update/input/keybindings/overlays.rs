@@ -229,6 +229,17 @@ pub mod help {
         bindings: &[],
     };
 
+    pub const FOCUS_FILTER: ModeRow = ModeRow {
+        key_short: "Tab",
+        key: "Tab",
+        desc_short: "Focus",
+        description: "Toggle filter editing",
+        bindings: &[ExecBinding {
+            action: Action::ToggleHelpFilterFocus,
+            combos: &[KeyCombo::plain(Key::Tab)],
+        }],
+    };
+
     pub const EDIT_FILTER: ModeRow = ModeRow {
         key_short: "Backspace",
         key: "Backspace",
@@ -271,6 +282,7 @@ pub const HELP_ROWS: &[ModeRow] = &[
     help::HALF_PAGE,
     help::FULL_PAGE,
     help::H_SCROLL,
+    help::FOCUS_FILTER,
     help::TYPE_FILTER,
     help::EDIT_FILTER,
     help::ESC_CLOSE,

@@ -6,7 +6,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::ColumnAttributes;
 use crate::domain::QuerySource;
 use crate::model::app_state::AppState;
-use crate::model::browse::jsonb_detail::JsonbDetailState;
+use crate::model::browse::jsonb_detail::{JsonbDetailMode, JsonbDetailState};
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
@@ -299,7 +299,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
 
         Action::Paste(text)
             if state.input_mode() == InputMode::JsonbDetail
-                && state.jsonb_detail.search().active =>
+                && state.jsonb_detail.mode() == JsonbDetailMode::Searching =>
         {
             let clean: String = text.chars().filter(|c| *c != '\n' && *c != '\r').collect();
             state.jsonb_detail.search_mut().input.insert_str(&clean);
@@ -922,7 +922,6 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbEnterSearch, Instant::now());
 
-            assert!(state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Searching);
         }
 
@@ -934,7 +933,6 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbExitSearch, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
         }
 
@@ -959,7 +957,7 @@ mod tests {
 
             reduce_jsonb(&mut state, &Action::JsonbSearchSubmit, Instant::now());
 
-            assert!(!state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
             let expected_cursor = state.jsonb_detail.search().matches[0];
             assert_eq!(state.jsonb_detail.editor().cursor(), expected_cursor);
             assert_eq!(
@@ -1157,7 +1155,7 @@ mod tests {
 
             reduce_app(&mut state, Action::JsonbSearchNext, now, &services);
             reduce_app(&mut state, Action::JsonbSearchSubmit, now, &services);
-            assert!(!state.jsonb_detail.search().active);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
 
             let effects = reduce_app(&mut state, Action::JsonbYankAll, now, &services);
             assert!(matches!(

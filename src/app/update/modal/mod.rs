@@ -180,7 +180,10 @@ mod tests {
                 Instant::now(),
             );
 
-            assert!(state.ui.help.filter_focused());
+            assert_eq!(
+                state.ui.help.mode(),
+                crate::model::shared::help::HelpMode::EditingFilter
+            );
             assert_eq!(state.ui.help.filter().content(), "x");
             assert_eq!(state.ui.help.filter().cursor(), 1);
         }

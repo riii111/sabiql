@@ -14,7 +14,6 @@ pub struct JsonbSearchState {
     pub input: TextInputState,
     pub matches: Vec<usize>,
     pub current_match: usize,
-    pub active: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -119,19 +118,16 @@ impl JsonbDetailState {
 
     pub fn enter_search(&mut self) {
         self.mode = JsonbDetailMode::Searching;
-        self.search.active = true;
         self.search.input.set_content(String::new());
         self.search.matches.clear();
         self.search.current_match = 0;
     }
 
     pub fn exit_search(&mut self) {
-        self.search.active = false;
         self.mode = JsonbDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
-        self.search.active = false;
         self.validation_error = None;
         self.mode = JsonbDetailMode::Editing;
     }
@@ -171,7 +167,7 @@ impl JsonbDetailState {
 
 #[cfg(test)]
 mod tests {
-    use super::JsonbDetailState;
+    use super::{JsonbDetailMode, JsonbDetailState};
     use crate::model::shared::text_input::TextInputLike;
 
     #[test]
@@ -225,6 +221,6 @@ mod tests {
 
         state.enter_edit();
 
-        assert!(!state.search().active);
+        assert_eq!(state.mode(), JsonbDetailMode::Editing);
     }
 }

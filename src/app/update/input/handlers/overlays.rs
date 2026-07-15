@@ -1,22 +1,20 @@
 use crate::update::action::{Action, InputTarget};
-use crate::update::input::keybindings::{self, KeyCombo, Modifiers};
+use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
-pub fn handle_help_keys(combo: KeyCombo, filter_focused: bool) -> Action {
-    if matches!(combo.key, keybindings::Key::Tab) {
-        return Action::ToggleHelpFilterFocus;
-    }
-    if filter_focused
-        && let Some(action) = keybindings::readline_action_for(&combo, InputTarget::HelpFilter)
-    {
-        return action;
-    }
+use super::interaction::InputInteraction;
+
+pub fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
     if let Some(action) = keybindings::HELP.resolve(&combo) {
         return action;
     }
 
-    match (combo.key, combo.modifiers) {
-        (keybindings::Key::Char(ch), Modifiers::NONE | Modifiers::SHIFT) => Action::TextInput {
+    match (interaction, combo.key, combo.modifiers) {
+        (
+            InputInteraction::Editing(InputTarget::HelpFilter),
+            Key::Char(ch),
+            Modifiers::NONE | Modifiers::SHIFT,
+        ) => Action::TextInput {
             target: InputTarget::HelpFilter,
             ch,
         },
@@ -60,21 +58,24 @@ mod tests {
 
         #[test]
         fn esc_closes_help() {
-            let result = handle_help_keys(combo(Key::Esc), false);
+            let result = handle_help_keys(combo(Key::Esc), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
         #[test]
         fn question_mark_closes_help() {
-            let result = handle_help_keys(combo(Key::Char('?')), false);
+            let result = handle_help_keys(combo(Key::Char('?')), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::CloseModal(ModalKind::Help)));
         }
 
         #[test]
-        fn char_falls_through_to_filter_input() {
-            let result = handle_help_keys(combo(Key::Char('a')), false);
+        fn editing_filter_accepts_char_input() {
+            let result = handle_help_keys(
+                combo(Key::Char('a')),
+                InputInteraction::Editing(InputTarget::HelpFilter),
+            );
 
             assert!(matches!(
                 result,
@@ -87,66 +88,9 @@ mod tests {
 
         #[test]
         fn tab_toggles_filter_focus() {
-            let result = handle_help_keys(combo(Key::Tab), false);
+            let result = handle_help_keys(combo(Key::Tab), InputInteraction::Viewing);
 
             assert!(matches!(result, Action::ToggleHelpFilterFocus));
-        }
-
-        #[rstest]
-        #[case(
-            KeyCombo::ctrl(Key::Char('b')),
-            crate::update::action::CursorMove::Left
-        )]
-        #[case(
-            KeyCombo::ctrl(Key::Char('f')),
-            crate::update::action::CursorMove::Right
-        )]
-        #[case(
-            KeyCombo::ctrl(Key::Char('a')),
-            crate::update::action::CursorMove::LineStart
-        )]
-        #[case(
-            KeyCombo::alt(Key::Char('f')),
-            crate::update::action::CursorMove::ReadlineWordEnd
-        )]
-        fn focused_filter_prioritizes_readline_cursor_edits(
-            #[case] combo: KeyCombo,
-            #[case] expected: crate::update::action::CursorMove,
-        ) {
-            let result = handle_help_keys(combo, true);
-
-            assert!(matches!(
-                result,
-                Action::TextMoveCursor {
-                    target: InputTarget::HelpFilter,
-                    direction,
-                } if direction == expected
-            ));
-        }
-
-        #[test]
-        fn focused_filter_prioritizes_ctrl_d_over_scrolling() {
-            let result = handle_help_keys(KeyCombo::ctrl(Key::Char('d')), true);
-
-            assert!(matches!(
-                result,
-                Action::TextDelete {
-                    target: InputTarget::HelpFilter,
-                }
-            ));
-        }
-
-        #[test]
-        fn focused_filter_prioritizes_ctrl_u_over_scrolling() {
-            let result = handle_help_keys(KeyCombo::ctrl(Key::Char('u')), true);
-
-            assert!(matches!(
-                result,
-                Action::TextKill {
-                    target: InputTarget::HelpFilter,
-                    direction: crate::update::action::TextKillDirection::ToLineStart,
-                }
-            ));
         }
 
         #[rstest]
@@ -154,7 +98,7 @@ mod tests {
         #[case(KeyCombo::alt(Key::Char('a')))]
         #[case(KeyCombo::ctrl_alt(Key::Char('a')))]
         fn modified_chars_do_not_filter_help(#[case] combo: KeyCombo) {
-            let result = handle_help_keys(combo, false);
+            let result = handle_help_keys(combo, InputInteraction::Viewing);
 
             assert!(matches!(result, Action::None));
         }
@@ -195,7 +139,7 @@ mod tests {
             #[case] direction: ScrollDirection,
             #[case] amount: ScrollAmount,
         ) {
-            let result = handle_help_keys(combo, false);
+            let result = handle_help_keys(combo, InputInteraction::Viewing);
 
             assert_help_scroll(result, direction, amount);
         }
@@ -212,7 +156,10 @@ mod tests {
         #[case(Key::Char('h'))]
         #[case(Key::Char('l'))]
         fn non_scroll_chars_filter_help(#[case] code: Key) {
-            let result = handle_help_keys(combo(code), false);
+            let result = handle_help_keys(
+                combo(code),
+                InputInteraction::Editing(InputTarget::HelpFilter),
+            );
 
             assert!(matches!(
                 result,
