@@ -462,14 +462,14 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn alt_a_selects_all_for_both_presets() {
-            for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-                let state = state_with_preset(preset);
-                let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
+        #[rstest]
+        #[case(KeymapPreset::Default)]
+        #[case(KeymapPreset::Ide)]
+        fn alt_a_selects_all_for_both_presets(#[case] preset: KeymapPreset) {
+            let state = state_with_preset(preset);
+            let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
 
-                assert!(matches!(result, Action::ErSelectAll));
-            }
+            assert!(matches!(result, Action::ErSelectAll));
         }
 
         #[test]
