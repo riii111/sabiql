@@ -118,27 +118,24 @@ clean() {
   if [[ -e "$layout_dir" || -L "$layout_dir" ]]; then
     rm -rf -- "$layout_dir"
     echo "Removed repository-local direnv cache: $layout_dir"
+    echo "Repository-local temporary profiles and generation links were discarded."
   else
     echo "Repository-local direnv cache is already absent: $layout_dir"
+    echo "No repository-local temporary profiles or generation links were present."
   fi
-  echo "Repository-local temporary profiles and generation links were discarded."
   echo "User/system profile generations and rollback history were not changed."
   echo "Run 'direnv allow' to rebuild it."
 }
 
 case "$command_name" in
   diagnose)
-    if [[ $confirm -ne 0 || $# -ne 0 ]]; then
+    if [[ $confirm -ne 0 ]]; then
       usage >&2
       exit 2
     fi
     diagnose
     ;;
   clean)
-    if [[ $# -ne 0 ]]; then
-      usage >&2
-      exit 2
-    fi
     clean
     ;;
   -h|--help|help)
