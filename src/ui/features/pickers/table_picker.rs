@@ -4,18 +4,14 @@ use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
-use crate::features::pickers::PickerRenderMetrics;
+use crate::app::model::shared::render_output::PickerLayout;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
 pub struct TablePicker;
 
 impl TablePicker {
-    pub fn render(
-        frame: &mut Frame,
-        state: &AppState,
-        theme: &ThemePalette,
-    ) -> PickerRenderMetrics {
+    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
         let filtered_count = state.filtered_tables().len();
         let (_, inner) = render_modal(
             frame,
@@ -59,7 +55,7 @@ impl TablePicker {
             .with_selected(selected)
             .with_offset(state.ui.table_picker.scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        PickerRenderMetrics {
+        PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,
         }
