@@ -6,7 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::render_output::RowDetailRenderMetrics;
+use crate::app::model::shared::render_output::RowDetailLayout;
 use crate::app::update::input::keybindings::{ModeRow, ROW_DETAIL_FOOTER_ROWS};
 use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::atoms::scroll_indicator::{
@@ -24,7 +24,7 @@ impl RowDetail {
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
-    ) -> Option<RowDetailRenderMetrics> {
+    ) -> Option<RowDetailLayout> {
         if !state.row_detail.is_active() {
             return None;
         }
@@ -116,7 +116,7 @@ impl RowDetail {
             );
         }
 
-        Some(RowDetailRenderMetrics {
+        Some(RowDetailLayout {
             visible_rows: viewport.content_area.height as usize,
             visible_columns: viewport.content_area.width as usize,
         })

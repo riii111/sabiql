@@ -1,83 +1,83 @@
 use crate::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
 
-/// Feedback measured during a draw. Owned by the model so state write-back
+/// Layout data produced during a draw. Owned by the model so state write-back
 /// stays port-agnostic; the renderer port re-exports this type as its output.
 #[derive(Default)]
 pub struct RenderOutput {
-    pub browse: BrowseRenderMetrics,
-    pub input: InputRenderMetrics,
-    pub pickers: PickersRenderMetrics,
-    pub details: DetailRenderMetrics,
-    pub overlays: OverlayRenderMetrics,
+    pub browse: BrowseLayout,
+    pub input: InputLayout,
+    pub pickers: PickerLayouts,
+    pub details: DetailLayout,
+    pub overlays: OverlayLayout,
 }
 
 #[derive(Default)]
-pub struct BrowseRenderMetrics {
-    pub explorer: ExplorerRenderMetrics,
-    pub inspector: InspectorRenderMetrics,
-    pub result: ResultRenderMetrics,
+pub struct BrowseLayout {
+    pub explorer: ExplorerLayout,
+    pub inspector: InspectorLayout,
+    pub result: ResultLayout,
 }
 
 #[derive(Default)]
-pub struct ExplorerRenderMetrics {
+pub struct ExplorerLayout {
     pub pane_height: u16,
     pub content_width: usize,
 }
 
 #[derive(Default)]
-pub struct InspectorRenderMetrics {
+pub struct InspectorLayout {
     pub viewport_plan: ViewportPlan,
     pub pane_height: u16,
 }
 
 #[derive(Default)]
-pub struct ResultRenderMetrics {
+pub struct ResultLayout {
     pub viewport_plan: ViewportPlan,
     pub widths_cache: ColumnWidthsCache,
     pub pane_height: u16,
 }
 
 #[derive(Default)]
-pub struct InputRenderMetrics {
+pub struct InputLayout {
     pub command_line_visible_width: Option<usize>,
 }
 
 #[derive(Default)]
-pub struct PickersRenderMetrics {
+pub struct PickerLayouts {
     pub connection_list_pane_height: Option<u16>,
-    pub table: Option<PickerRenderMetrics>,
-    pub er: Option<PickerRenderMetrics>,
-    pub query_history: Option<PickerRenderMetrics>,
+    pub table: Option<PickerLayout>,
+    pub er: Option<PickerLayout>,
+    pub query_history: Option<PickerLayout>,
 }
 
-pub struct PickerRenderMetrics {
+pub struct PickerLayout {
     pub pane_height: u16,
     pub filter_visible_width: usize,
 }
 
 #[derive(Default)]
-pub struct DetailRenderMetrics {
-    pub jsonb: Option<JsonbDetailRenderMetrics>,
-    pub row: Option<RowDetailRenderMetrics>,
+pub struct DetailLayout {
+    pub jsonb: Option<JsonbDetailLayout>,
+    pub row: Option<RowDetailLayout>,
 }
 
-pub struct JsonbDetailRenderMetrics {
+pub struct JsonbDetailLayout {
     pub editor_visible_rows: usize,
 }
 
-pub struct RowDetailRenderMetrics {
+pub struct RowDetailLayout {
     pub visible_rows: usize,
     pub visible_columns: usize,
 }
 
 #[derive(Default)]
-pub struct OverlayRenderMetrics {
-    pub confirm_preview: ConfirmPreviewRenderMetrics,
+pub struct OverlayLayout {
+    pub confirm_preview: ConfirmPreviewLayout,
     pub explain_compare_viewport_height: Option<u16>,
 }
 
 #[derive(Default)]
-pub struct ConfirmPreviewRenderMetrics {
+pub struct ConfirmPreviewLayout {
     pub viewport_height: Option<u16>,
     pub content_height: Option<u16>,
     pub scroll: u16,

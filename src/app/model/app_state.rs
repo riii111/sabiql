@@ -19,8 +19,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
 use crate::model::shared::render_output::{
-    BrowseRenderMetrics, DetailRenderMetrics, InputRenderMetrics, OverlayRenderMetrics,
-    PickersRenderMetrics, RenderOutput,
+    BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
 };
 use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
@@ -124,24 +123,24 @@ impl AppState {
         self.flash_timers.clear_expired(now);
     }
 
-    /// Writes back feedback measured during a draw. Inspector viewport plans
-    /// are skipped in focus mode to keep the pre-focus plan restorable.
+    /// Applies layout data produced during a draw. Inspector viewport plans are
+    /// skipped in focus mode to keep the pre-focus plan restorable.
     pub fn apply_render_output(&mut self, output: RenderOutput) {
-        self.apply_browse_render_metrics(output.browse);
-        self.apply_input_render_metrics(output.input);
-        self.apply_picker_render_metrics(output.pickers);
-        self.apply_detail_render_metrics(output.details);
-        self.apply_overlay_render_metrics(output.overlays);
+        self.apply_browse_layout(output.browse);
+        self.apply_input_layout(output.input);
+        self.apply_picker_layouts(output.pickers);
+        self.apply_detail_layout(output.details);
+        self.apply_overlay_layout(output.overlays);
     }
 
-    fn apply_browse_render_metrics(&mut self, metrics: BrowseRenderMetrics) {
+    fn apply_browse_layout(&mut self, layout: BrowseLayout) {
         if !self.ui.is_focus_mode() {
-            self.ui.inspector_viewport_plan = metrics.inspector.viewport_plan;
+            self.ui.inspector_viewport_plan = layout.inspector.viewport_plan;
         }
-        self.ui.result_viewport_plan = metrics.result.viewport_plan;
-        self.ui.result_widths_cache = metrics.result.widths_cache;
-        self.ui.explorer_pane_height = metrics.explorer.pane_height;
-        self.ui.explorer_content_width = metrics.explorer.content_width;
+        self.ui.result_viewport_plan = layout.result.viewport_plan;
+        self.ui.result_widths_cache = layout.result.widths_cache;
+        self.ui.explorer_pane_height = layout.explorer.pane_height;
+        self.ui.explorer_content_width = layout.explorer.content_width;
         let max_name_width = self
             .tables()
             .iter()
@@ -150,42 +149,42 @@ impl AppState {
             .unwrap_or(0);
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
-        self.ui.inspector_pane_height = metrics.inspector.pane_height;
-        self.ui.result_pane_height = metrics.result.pane_height;
+        self.ui.inspector_pane_height = layout.inspector.pane_height;
+        self.ui.result_pane_height = layout.result.pane_height;
     }
 
-    fn apply_input_render_metrics(&mut self, metrics: InputRenderMetrics) {
-        if let Some(width) = metrics.command_line_visible_width {
+    fn apply_input_layout(&mut self, layout: InputLayout) {
+        if let Some(width) = layout.command_line_visible_width {
             self.command_line_visible_width = width;
         }
     }
 
-    fn apply_picker_render_metrics(&mut self, metrics: PickersRenderMetrics) {
-        if let Some(height) = metrics.connection_list_pane_height {
+    fn apply_picker_layouts(&mut self, layouts: PickerLayouts) {
+        if let Some(height) = layouts.connection_list_pane_height {
             self.ui.connection_list_pane_height = height;
         }
-        if let Some(table) = metrics.table {
+        if let Some(table) = layouts.table {
             self.ui.table_picker.pane_height = table.pane_height;
             self.ui.table_picker.filter_visible_width = table.filter_visible_width;
         }
-        if let Some(er) = metrics.er {
+        if let Some(er) = layouts.er {
             self.ui.er_picker.pane_height = er.pane_height;
             self.ui.er_picker.filter_visible_width = er.filter_visible_width;
         }
-        if let Some(query_history) = metrics.query_history {
+        if let Some(query_history) = layouts.query_history {
             self.query_history_picker.pane_height = query_history.pane_height;
             self.query_history_picker.filter_visible_width = query_history.filter_visible_width;
         }
     }
 
-    fn apply_detail_render_metrics(&mut self, metrics: DetailRenderMetrics) {
-        if let Some(jsonb) = metrics.jsonb {
+    fn apply_detail_layout(&mut self, layout: DetailLayout) {
+        if let Some(jsonb) = layout.jsonb {
             self.ui.jsonb_detail_editor_visible_rows = jsonb.editor_visible_rows;
             self.jsonb_detail
                 .editor_mut()
                 .update_scroll(jsonb.editor_visible_rows);
         }
-        if let Some(row) = metrics.row {
+        if let Some(row) = layout.row {
             self.ui.row_detail_content_visible_rows = row.visible_rows;
             self.ui.row_detail_content_visible_columns = row.visible_columns;
             self.row_detail.clamp_scroll(
@@ -195,11 +194,11 @@ impl AppState {
         }
     }
 
-    fn apply_overlay_render_metrics(&mut self, metrics: OverlayRenderMetrics) {
-        self.confirm_dialog.preview_viewport_height = metrics.confirm_preview.viewport_height;
-        self.confirm_dialog.preview_content_height = metrics.confirm_preview.content_height;
-        self.confirm_dialog.preview_scroll = metrics.confirm_preview.scroll;
-        if let Some(height) = metrics.explain_compare_viewport_height {
+    fn apply_overlay_layout(&mut self, layout: OverlayLayout) {
+        self.confirm_dialog.preview_viewport_height = layout.confirm_preview.viewport_height;
+        self.confirm_dialog.preview_content_height = layout.confirm_preview.content_height;
+        self.confirm_dialog.preview_scroll = layout.confirm_preview.scroll;
+        if let Some(height) = layout.explain_compare_viewport_height {
             self.explain.compare_viewport_height = Some(height);
         }
     }
@@ -334,7 +333,7 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::model::shared::render_output::{
-        ConfirmPreviewRenderMetrics, InspectorRenderMetrics, RowDetailRenderMetrics,
+        ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
     };
     use crate::model::shared::viewport::ViewportPlan;
     use crate::update::action::Action;
@@ -475,12 +474,12 @@ mod tests {
             state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
             state.row_detail.scroll_down_by(10, 1);
             let output = RenderOutput {
-                details: DetailRenderMetrics {
-                    row: Some(RowDetailRenderMetrics {
+                details: DetailLayout {
+                    row: Some(RowDetailLayout {
                         visible_rows: 3,
                         visible_columns: 80,
                     }),
-                    ..DetailRenderMetrics::default()
+                    ..DetailLayout::default()
                 },
                 ..RenderOutput::default()
             };
@@ -502,15 +501,15 @@ mod tests {
             };
             state.toggle_focus();
             let output = RenderOutput {
-                browse: BrowseRenderMetrics {
-                    inspector: InspectorRenderMetrics {
+                browse: BrowseLayout {
+                    inspector: InspectorLayout {
                         viewport_plan: ViewportPlan {
                             column_count: 9,
                             ..ViewportPlan::default()
                         },
                         pane_height: 30,
                     },
-                    ..BrowseRenderMetrics::default()
+                    ..BrowseLayout::default()
                 },
                 ..RenderOutput::default()
             };
@@ -522,25 +521,25 @@ mod tests {
         }
     }
 
-    mod render_feedback {
+    mod render_output {
         use super::*;
 
         #[test]
-        fn confirm_preview_metrics_are_written() {
+        fn confirm_preview_layout_is_applied() {
             let mut state = make_state();
-            let measured = RenderOutput {
-                overlays: OverlayRenderMetrics {
-                    confirm_preview: ConfirmPreviewRenderMetrics {
+            let output = RenderOutput {
+                overlays: OverlayLayout {
+                    confirm_preview: ConfirmPreviewLayout {
                         viewport_height: Some(10),
                         content_height: Some(25),
                         scroll: 4,
                     },
-                    ..OverlayRenderMetrics::default()
+                    ..OverlayLayout::default()
                 },
                 ..RenderOutput::default()
             };
 
-            state.apply_render_output(measured);
+            state.apply_render_output(output);
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
             assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
@@ -548,7 +547,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_preview_metrics_clear_without_measurement() {
+        fn confirm_preview_layout_is_reset_when_not_rendered() {
             let mut state = make_state();
             state.confirm_dialog.preview_viewport_height = Some(10);
             state.confirm_dialog.preview_content_height = Some(25);
@@ -562,17 +561,17 @@ mod tests {
         }
 
         #[test]
-        fn explain_compare_height_changes_only_when_measured() {
+        fn explain_compare_height_changes_only_when_present() {
             let mut state = make_state();
-            let measured = RenderOutput {
-                overlays: OverlayRenderMetrics {
+            let output = RenderOutput {
+                overlays: OverlayLayout {
                     explain_compare_viewport_height: Some(12),
-                    ..OverlayRenderMetrics::default()
+                    ..OverlayLayout::default()
                 },
                 ..RenderOutput::default()
             };
 
-            state.apply_render_output(measured);
+            state.apply_render_output(output);
             state.apply_render_output(RenderOutput::default());
 
             assert_eq!(state.explain.compare_viewport_height, Some(12));

@@ -8,7 +8,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::render_output::JsonbDetailRenderMetrics;
+use crate::app::model::shared::render_output::JsonbDetailLayout;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -28,7 +28,7 @@ impl JsonbDetail {
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
-    ) -> Option<JsonbDetailRenderMetrics> {
+    ) -> Option<JsonbDetailLayout> {
         if !state.jsonb_detail.is_active() {
             return None;
         }
@@ -86,7 +86,7 @@ impl JsonbDetail {
             Self::render_search(frame, search_area, state, theme);
         }
 
-        Some(JsonbDetailRenderMetrics {
+        Some(JsonbDetailLayout {
             editor_visible_rows: editor_area.height as usize,
         })
     }

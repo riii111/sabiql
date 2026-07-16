@@ -6,9 +6,8 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::render_output::{
-    BrowseRenderMetrics, ConfirmPreviewRenderMetrics, DetailRenderMetrics, ExplorerRenderMetrics,
-    InputRenderMetrics, InspectorRenderMetrics, OverlayRenderMetrics, PickersRenderMetrics,
-    ResultRenderMetrics,
+    BrowseLayout, ConfirmPreviewLayout, DetailLayout, ExplorerLayout, InputLayout, InspectorLayout,
+    OverlayLayout, PickerLayouts, ResultLayout,
 };
 use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
 use crate::app::ports::outbound::RenderOutput;
@@ -113,7 +112,7 @@ impl MainLayout {
 
         let confirm_preview = match state.input_mode() {
             InputMode::ConfirmDialog => ConfirmDialog::render(frame, state, theme),
-            _ => ConfirmPreviewRenderMetrics::default(),
+            _ => ConfirmPreviewLayout::default(),
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
@@ -145,20 +144,20 @@ impl MainLayout {
 
         RenderOutput {
             browse,
-            input: InputRenderMetrics {
+            input: InputLayout {
                 command_line_visible_width: Some(command_line_visible_width),
             },
-            pickers: PickersRenderMetrics {
+            pickers: PickerLayouts {
                 connection_list_pane_height,
                 table: table_picker,
                 er: er_picker,
                 query_history: query_history_picker,
             },
-            details: DetailRenderMetrics {
+            details: DetailLayout {
                 jsonb: jsonb_detail,
                 row: row_detail,
             },
-            overlays: OverlayRenderMetrics {
+            overlays: OverlayLayout {
                 confirm_preview,
                 explain_compare_viewport_height,
             },
@@ -172,14 +171,14 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
-    ) -> BrowseRenderMetrics {
+    ) -> BrowseLayout {
         if state.ui.is_focus_mode() {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, main_area, state, now, theme);
-            BrowseRenderMetrics {
-                explorer: ExplorerRenderMetrics::default(),
-                inspector: InspectorRenderMetrics::default(),
-                result: ResultRenderMetrics {
+            BrowseLayout {
+                explorer: ExplorerLayout::default(),
+                inspector: InspectorLayout::default(),
+                result: ResultLayout {
                     viewport_plan: result_plan,
                     widths_cache: result_widths_cache,
                     pane_height: main_area.height,
@@ -201,16 +200,16 @@ impl MainLayout {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, result_area, state, now, theme);
 
-            BrowseRenderMetrics {
-                explorer: ExplorerRenderMetrics {
+            BrowseLayout {
+                explorer: ExplorerLayout {
                     pane_height: left_area.height,
                     content_width: explorer_content_width_from_pane_width(left_area.width),
                 },
-                inspector: InspectorRenderMetrics {
+                inspector: InspectorLayout {
                     viewport_plan: inspector_plan,
                     pane_height: inspector_area.height,
                 },
-                result: ResultRenderMetrics {
+                result: ResultLayout {
                     viewport_plan: result_plan,
                     widths_cache: result_widths_cache,
                     pane_height: result_area.height,
