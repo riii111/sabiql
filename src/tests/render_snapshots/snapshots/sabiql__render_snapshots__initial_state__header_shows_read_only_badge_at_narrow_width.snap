@@ -1,0 +1,23 @@
+---
+source: src/tests/render_snapshots/initial_state.rs
+expression: output
+---
+test_proje… ▸ … ▸ - connected | user: app_user | localhost:5432/test | READ-ONLY
+┌ [1] Explorer ────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                 
+│> public.users    │┌ [2] Inspector ───────────────────────────────────────────┐
+│  public.posts    ││(select a table)                                          │
+│  public.comments ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  │└──────────────────────────────────────────────────────────┘
+│                  │┌ [3] Result ──────────────────────────────────────────────┐
+│                  ││(select a table to preview)                               │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+│                  ││                                                          │
+└──────────────────┘└──────────────────────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Wri
