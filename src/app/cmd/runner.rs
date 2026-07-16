@@ -259,6 +259,9 @@ mod tests {
     use super::*;
     use crate::cmd::test_support::*;
     use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::model::shared::render_output::{
+        BrowseRenderMetrics, DetailRenderMetrics, ExplorerRenderMetrics, JsonbDetailRenderMetrics,
+    };
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
@@ -298,7 +301,13 @@ mod tests {
                 _now: Instant,
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
-                    explorer_content_width: self.explorer_content_width,
+                    browse: BrowseRenderMetrics {
+                        explorer: ExplorerRenderMetrics {
+                            content_width: self.explorer_content_width,
+                            ..ExplorerRenderMetrics::default()
+                        },
+                        ..BrowseRenderMetrics::default()
+                    },
                     ..RenderOutput::default()
                 })
             }
@@ -312,7 +321,12 @@ mod tests {
                 _now: Instant,
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
-                    jsonb_detail_editor_visible_rows: Some(self.visible_rows),
+                    details: DetailRenderMetrics {
+                        jsonb: Some(JsonbDetailRenderMetrics {
+                            editor_visible_rows: self.visible_rows,
+                        }),
+                        ..DetailRenderMetrics::default()
+                    },
                     ..RenderOutput::default()
                 })
             }

@@ -4,7 +4,7 @@ use ratatui::style::Style;
 use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
-use crate::features::pickers::PickerRenderMetrics;
+use crate::app::model::shared::render_output::PickerRenderMetrics;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 

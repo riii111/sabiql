@@ -5,12 +5,11 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::render_output::PickerRenderMetrics;
 use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
-use crate::theme::ThemePalette;
-
-use crate::features::pickers::PickerRenderMetrics;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
+use crate::theme::ThemePalette;
 
 pub struct ErTablePicker;
 

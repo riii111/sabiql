@@ -4,6 +4,7 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::confirm_dialog::ConfirmIntent;
+use crate::app::model::shared::render_output::ConfirmPreviewRenderMetrics;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
@@ -14,18 +15,12 @@ use crate::theme::ThemePalette;
 
 pub struct ConfirmDialog;
 
-pub struct ConfirmPreviewMetrics {
-    pub viewport_height: Option<u16>,
-    pub content_height: Option<u16>,
-    pub scroll: u16,
-}
-
 impl ConfirmDialog {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
         theme: &ThemePalette,
-    ) -> ConfirmPreviewMetrics {
+    ) -> ConfirmPreviewRenderMetrics {
         if state.result_interaction.pending_write_preview().is_some() {
             Self::render_write_preview(frame, state, theme)
         } else {
@@ -45,7 +40,7 @@ impl ConfirmDialog {
         frame: &mut Frame,
         state: &AppState,
         theme: &ThemePalette,
-    ) -> ConfirmPreviewMetrics {
+    ) -> ConfirmPreviewRenderMetrics {
         let dialog = &state.confirm_dialog;
         let hint = FooterHintBar::new([("Enter", "Confirm"), ("Esc", "Cancel")]);
 
@@ -97,7 +92,7 @@ impl ConfirmDialog {
             .alignment(Alignment::Left)
             .wrap(Wrap { trim: false });
         frame.render_widget(message_para, inner);
-        ConfirmPreviewMetrics {
+        ConfirmPreviewRenderMetrics {
             viewport_height: None,
             content_height: None,
             scroll: 0,
@@ -108,7 +103,7 @@ impl ConfirmDialog {
         frame: &mut Frame,
         state: &AppState,
         theme: &ThemePalette,
-    ) -> ConfirmPreviewMetrics {
+    ) -> ConfirmPreviewRenderMetrics {
         let preview = state
             .result_interaction
             .pending_write_preview()
@@ -265,7 +260,7 @@ impl ConfirmDialog {
             .wrap(Wrap { trim: false })
             .scroll((scroll, 0));
         frame.render_widget(para, inner);
-        ConfirmPreviewMetrics {
+        ConfirmPreviewRenderMetrics {
             viewport_height: Some(inner.height),
             content_height: Some(wrapped_height),
             scroll,

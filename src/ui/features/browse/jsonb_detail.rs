@@ -8,6 +8,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::render_output::JsonbDetailRenderMetrics;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -19,9 +20,6 @@ use crate::primitives::atoms::{
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct JsonbDetailRenderMetrics {
-    pub editor_visible_rows: usize,
-}
 pub struct JsonbDetail;
 
 impl JsonbDetail {

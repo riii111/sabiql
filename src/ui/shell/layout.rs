@@ -5,22 +5,25 @@ use ratatui::layout::{Constraint, Layout, Rect};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::shared::render_output::{
+    BrowseRenderMetrics, ConfirmPreviewRenderMetrics, DetailRenderMetrics, ExplorerRenderMetrics,
+    InputRenderMetrics, InspectorRenderMetrics, OverlayRenderMetrics, PickersRenderMetrics,
+    ResultRenderMetrics,
+};
 use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
-use crate::app::model::shared::viewport::ViewportPlan;
 use crate::app::ports::outbound::RenderOutput;
 use crate::app::services::AppServices;
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
-use crate::features::browse::jsonb_detail::{JsonbDetail, JsonbDetailRenderMetrics};
+use crate::features::browse::jsonb_detail::JsonbDetail;
 use crate::features::browse::result::ResultPane;
-use crate::features::browse::row_detail::{RowDetail, RowDetailRenderMetrics};
+use crate::features::browse::row_detail::RowDetail;
 use crate::features::connections::error::ConnectionError;
 use crate::features::connections::selector::ConnectionSelector;
 use crate::features::connections::setup::ConnectionSetup;
-use crate::features::overlays::confirm_dialog::{ConfirmDialog, ConfirmPreviewMetrics};
+use crate::features::overlays::confirm_dialog::ConfirmDialog;
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::overlays::settings::SettingsOverlay;
-use crate::features::pickers::PickerRenderMetrics;
 use crate::features::pickers::command_palette::CommandPalette;
 use crate::features::pickers::er_table_picker::ErTablePicker;
 use crate::features::pickers::query_history_picker::QueryHistoryPicker;
@@ -84,7 +87,7 @@ impl MainLayout {
         .areas(area);
 
         Header::render(frame, header_area, state, theme);
-        let output = Self::render_browse_mode(frame, main_area, state, services, now, theme);
+        let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
 
         Footer::render(frame, footer_area, state, services, time_ms, theme);
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
@@ -93,46 +96,24 @@ impl MainLayout {
             _ => None,
         };
 
-        let split_metrics = |metrics: PickerRenderMetrics| {
-            (
-                Some(metrics.pane_height),
-                Some(metrics.filter_visible_width),
-            )
+        let table_picker = match state.input_mode() {
+            InputMode::TablePicker => Some(TablePicker::render(frame, state, theme)),
+            _ => None,
         };
 
-        let (table_picker_pane_height, table_picker_filter_visible_width) = match state.input_mode()
-        {
-            InputMode::TablePicker => split_metrics(TablePicker::render(frame, state, theme)),
-            _ => (None, None),
+        let er_picker = match state.input_mode() {
+            InputMode::ErTablePicker => Some(ErTablePicker::render(frame, state, theme)),
+            _ => None,
         };
 
-        let (er_picker_pane_height, er_picker_filter_visible_width) = match state.input_mode() {
-            InputMode::ErTablePicker => split_metrics(ErTablePicker::render(frame, state, theme)),
-            _ => (None, None),
+        let query_history_picker = match state.input_mode() {
+            InputMode::QueryHistoryPicker => Some(QueryHistoryPicker::render(frame, state, theme)),
+            _ => None,
         };
 
-        let (query_history_picker_pane_height, query_history_picker_filter_visible_width) =
-            match state.input_mode() {
-                InputMode::QueryHistoryPicker => {
-                    split_metrics(QueryHistoryPicker::render(frame, state, theme))
-                }
-                _ => (None, None),
-            };
-
-        let (
-            confirm_preview_viewport_height,
-            confirm_preview_content_height,
-            confirm_preview_scroll,
-        ) = match state.input_mode() {
-            InputMode::ConfirmDialog => {
-                let ConfirmPreviewMetrics {
-                    viewport_height,
-                    content_height,
-                    scroll,
-                } = ConfirmDialog::render(frame, state, theme);
-                (viewport_height, content_height, scroll)
-            }
-            _ => (None, None, 0),
+        let confirm_preview = match state.input_mode() {
+            InputMode::ConfirmDialog => ConfirmDialog::render(frame, state, theme),
+            _ => ConfirmPreviewRenderMetrics::default(),
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
@@ -141,28 +122,17 @@ impl MainLayout {
             None
         };
 
-        let jsonb_detail_editor_visible_rows = match state.input_mode() {
+        let jsonb_detail = match state.input_mode() {
             InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now, theme).map(
-                    |JsonbDetailRenderMetrics {
-                         editor_visible_rows,
-                     }| editor_visible_rows,
-                )
+                JsonbDetail::render(frame, state, now, theme)
             }
             _ => None,
         };
 
-        let (row_detail_content_visible_rows, row_detail_content_visible_columns) =
-            match state.input_mode() {
-                InputMode::RowDetail => RowDetail::render(frame, state, now, theme).map_or(
-                    (None, None),
-                    |RowDetailRenderMetrics {
-                         visible_rows,
-                         visible_columns,
-                     }| (Some(visible_rows), Some(visible_columns)),
-                ),
-                _ => (None, None),
-            };
+        let row_detail = match state.input_mode() {
+            InputMode::RowDetail => RowDetail::render(frame, state, now, theme),
+            _ => None,
+        };
 
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
@@ -174,22 +144,24 @@ impl MainLayout {
         }
 
         RenderOutput {
-            command_line_visible_width: Some(command_line_visible_width),
-            connection_list_pane_height,
-            table_picker_pane_height,
-            table_picker_filter_visible_width,
-            er_picker_pane_height,
-            er_picker_filter_visible_width,
-            query_history_picker_pane_height,
-            query_history_picker_filter_visible_width,
-            jsonb_detail_editor_visible_rows,
-            row_detail_content_visible_rows,
-            row_detail_content_visible_columns,
-            confirm_preview_viewport_height,
-            confirm_preview_content_height,
-            confirm_preview_scroll,
-            explain_compare_viewport_height,
-            ..output
+            browse,
+            input: InputRenderMetrics {
+                command_line_visible_width: Some(command_line_visible_width),
+            },
+            pickers: PickersRenderMetrics {
+                connection_list_pane_height,
+                table: table_picker,
+                er: er_picker,
+                query_history: query_history_picker,
+            },
+            details: DetailRenderMetrics {
+                jsonb: jsonb_detail,
+                row: row_detail,
+            },
+            overlays: OverlayRenderMetrics {
+                confirm_preview,
+                explain_compare_viewport_height,
+            },
         }
     }
 
@@ -200,19 +172,18 @@ impl MainLayout {
         services: &AppServices,
         now: Instant,
         theme: &ThemePalette,
-    ) -> RenderOutput {
+    ) -> BrowseRenderMetrics {
         if state.ui.is_focus_mode() {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, main_area, state, now, theme);
-            RenderOutput {
-                inspector_viewport_plan: ViewportPlan::default(),
-                result_viewport_plan: result_plan,
-                result_widths_cache,
-                explorer_pane_height: 0,
-                explorer_content_width: 0,
-                inspector_pane_height: 0,
-                result_pane_height: main_area.height,
-                ..RenderOutput::default()
+            BrowseRenderMetrics {
+                explorer: ExplorerRenderMetrics::default(),
+                inspector: InspectorRenderMetrics::default(),
+                result: ResultRenderMetrics {
+                    viewport_plan: result_plan,
+                    widths_cache: result_widths_cache,
+                    pane_height: main_area.height,
+                },
             }
         } else {
             let [left_area, right_area] =
@@ -230,15 +201,20 @@ impl MainLayout {
             let (result_plan, result_widths_cache) =
                 ResultPane::render(frame, result_area, state, now, theme);
 
-            RenderOutput {
-                inspector_viewport_plan: inspector_plan,
-                result_viewport_plan: result_plan,
-                result_widths_cache,
-                explorer_pane_height: left_area.height,
-                explorer_content_width: explorer_content_width_from_pane_width(left_area.width),
-                inspector_pane_height: inspector_area.height,
-                result_pane_height: result_area.height,
-                ..RenderOutput::default()
+            BrowseRenderMetrics {
+                explorer: ExplorerRenderMetrics {
+                    pane_height: left_area.height,
+                    content_width: explorer_content_width_from_pane_width(left_area.width),
+                },
+                inspector: InspectorRenderMetrics {
+                    viewport_plan: inspector_plan,
+                    pane_height: inspector_area.height,
+                },
+                result: ResultRenderMetrics {
+                    viewport_plan: result_plan,
+                    widths_cache: result_widths_cache,
+                    pane_height: result_area.height,
+                },
             }
         }
     }

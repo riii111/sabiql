@@ -6,6 +6,7 @@ use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::render_output::RowDetailRenderMetrics;
 use crate::app::update::input::keybindings::{ModeRow, ROW_DETAIL_FOOTER_ROWS};
 use crate::primitives::atoms::apply_yank_flash;
 use crate::primitives::atoms::scroll_indicator::{
@@ -14,11 +15,6 @@ use crate::primitives::atoms::scroll_indicator::{
 };
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
-
-pub struct RowDetailRenderMetrics {
-    pub visible_rows: usize,
-    pub visible_columns: usize,
-}
 
 pub struct RowDetail;
 
