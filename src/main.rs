@@ -66,153 +66,8 @@ enum Command {
     Update,
 }
 
-struct Runtime {
-    state: AppState,
-    tui: TuiRunner,
-    effect_runner: EffectRunner,
-    completion_engine: RefCell<CompletionEngine>,
-    services: AppServices,
-}
-
-impl Runtime {
-    async fn process_action(&mut self, action: Action) -> Result<()> {
-        let now = Instant::now();
-        let is_animation_tick = matches!(action, Action::Render);
-        if is_animation_tick {
-            self.state.clear_expired_timers(now);
-        }
-        let mut effects = reduce(&mut self.state, action, now, &self.services);
-        if self.state.render_dirty {
-            if !is_animation_tick {
-                self.state.clear_expired_timers(now);
-            }
-            effects.push(Effect::Render);
-        }
-        self.flush_effects(effects).await
-    }
-
-    async fn flush_effects(&mut self, effects: Vec<Effect>) -> Result<()> {
-        let mut tui_adapter = TuiAdapter::new(&mut self.tui);
-        let mut pending = self
-            .effect_runner
-            .run(
-                effects,
-                &mut tui_adapter,
-                &mut self.state,
-                &self.completion_engine,
-                &self.services,
-            )
-            .await?;
-        self.state.clear_dirty();
-
-        let mut depth = 0;
-        while !pending.is_empty() && depth < MAX_DEPTH {
-            depth += 1;
-            let mut next = Vec::new();
-            for action in pending {
-                let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now, &self.services);
-                if self.state.render_dirty {
-                    self.state.clear_expired_timers(now);
-                    effects.push(Effect::Render);
-                }
-                let mut tui_adapter = TuiAdapter::new(&mut self.tui);
-                next.extend(
-                    self.effect_runner
-                        .run(
-                            effects,
-                            &mut tui_adapter,
-                            &mut self.state,
-                            &self.completion_engine,
-                            &self.services,
-                        )
-                        .await?,
-                );
-                self.state.clear_dirty();
-            }
-            pending = next;
-        }
-        if depth >= MAX_DEPTH && !pending.is_empty() {
-            dispatch_overflow_fallback(
-                &mut self.state,
-                self.effect_runner.action_tx(),
-                pending,
-                Instant::now(),
-            );
-            // Render immediately: the main loop's next wakeup is the message expiry
-            // itself, so without this draw the message would never become visible.
-            let mut tui_adapter = TuiAdapter::new(&mut self.tui);
-            self.effect_runner
-                .run(
-                    vec![Effect::Render],
-                    &mut tui_adapter,
-                    &mut self.state,
-                    &self.completion_engine,
-                    &self.services,
-                )
-                .await?;
-            self.state.clear_dirty();
-        }
-        Ok(())
-    }
-
-    async fn drain_and_process_terminal_events(&mut self, first_action: Action) -> Result<()> {
-        if !first_action.is_scroll() {
-            return self.process_action(first_action).await;
-        }
-
-        let now = Instant::now();
-        let mut effects = reduce(&mut self.state, first_action, now, &self.services);
-        if !effects.is_empty() {
-            if self.state.render_dirty {
-                self.state.clear_expired_timers(now);
-                effects.push(Effect::Render);
-            }
-            return self.flush_effects(effects).await;
-        }
-
-        let mut drained = 0;
-        while drained < MAX_DRAIN {
-            let Some(event) = self.tui.try_next_event() else {
-                break;
-            };
-            drained += 1;
-            let action = handle_event(event, &self.state, &self.services);
-            if action.is_none() {
-                continue;
-            }
-
-            if action.is_scroll() {
-                let now = Instant::now();
-                let mut effects = reduce(&mut self.state, action, now, &self.services);
-                if !effects.is_empty() {
-                    if self.state.render_dirty {
-                        self.state.clear_expired_timers(now);
-                        effects.push(Effect::Render);
-                    }
-                    self.flush_effects(effects).await?;
-                    break;
-                }
-            } else {
-                if self.state.render_dirty {
-                    self.state.clear_dirty();
-                    self.process_action(Action::Render).await?;
-                }
-                self.process_action(action).await?;
-                if self.state.should_quit {
-                    return Ok(());
-                }
-            }
-        }
-
-        if self.state.render_dirty {
-            self.state.clear_dirty();
-            self.process_action(Action::Render).await?;
-        }
-
-        Ok(())
-    }
-}
+const MAX_DEPTH: usize = 16;
+const MAX_DRAIN: usize = 32;
 
 #[tokio::main]
 #[allow(
@@ -247,7 +102,6 @@ async fn main() -> Result<()> {
     let connection_store = TomlConnectionStore::new()?;
     let settings_store = TomlSettingsStore::new()?;
     let app_settings = settings_store.load().unwrap_or_default();
-    let all_profiles = connection_store.load_all();
     let connection_store = Arc::new(connection_store);
     let settings_store = Arc::new(settings_store);
 
@@ -298,9 +152,10 @@ async fn main() -> Result<()> {
         .load_keymap_preset(app_settings.keymap_preset);
     state.settings.load_er_browser(app_settings.er_browser);
 
+    let all_profiles = connection_store.load_all();
     match all_profiles {
         Ok(profiles) if profiles.is_empty() => {
-            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
+            load_service_entries(&mut state, pg_service_entry_reader.as_ref());
             if state.service_entries().is_empty() {
                 state.connection_setup.is_first_run = true;
                 state.modal.set_mode(InputMode::ConnectionSetup);
@@ -316,7 +171,7 @@ async fn main() -> Result<()> {
                     .cmp(&b.display_name().to_lowercase())
             });
             state.set_connections(profiles);
-            load_service_entries(&mut state, Some(&*pg_service_entry_reader));
+            load_service_entries(&mut state, pg_service_entry_reader.as_ref());
 
             state.modal.set_mode(InputMode::ConnectionSelector);
             state.ui.set_connection_list_selection(Some(0));
@@ -340,6 +195,10 @@ async fn main() -> Result<()> {
     let mut tui = TuiRunner::new()?;
     tui.enter()?;
 
+    let initial_size = tui.terminal().size()?;
+    state.ui.terminal_width = initial_size.width;
+    state.ui.terminal_height = initial_size.height;
+
     let mut runtime = Runtime {
         state,
         tui,
@@ -347,10 +206,6 @@ async fn main() -> Result<()> {
         completion_engine,
         services,
     };
-
-    let initial_size = runtime.tui.terminal().size()?;
-    runtime.state.ui.terminal_width = initial_size.width;
-    runtime.state.ui.terminal_height = initial_size.height;
 
     if runtime.state.session.dsn.is_some() && runtime.state.input_mode() == InputMode::Normal {
         runtime.process_action(Action::TryConnect).await?;
@@ -367,7 +222,7 @@ async fn main() -> Result<()> {
             Some(event) = runtime.tui.next_event() => {
                 let action = handle_event(event, &runtime.state, &runtime.services);
                 if !action.is_none() {
-                    runtime.drain_and_process_terminal_events(action).await?;
+                    runtime.process_terminal_event_burst(action).await?;
                 }
             }
             Some(action) = action_rx.recv() => {
@@ -405,7 +260,138 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-const MAX_DEPTH: usize = 16;
+struct Runtime {
+    state: AppState,
+    tui: TuiRunner,
+    effect_runner: EffectRunner,
+    completion_engine: RefCell<CompletionEngine>,
+    services: AppServices,
+}
+
+impl Runtime {
+    async fn process_action(&mut self, action: Action) -> Result<()> {
+        let now = Instant::now();
+        let is_animation_tick = matches!(action, Action::Render);
+        if is_animation_tick {
+            self.state.clear_expired_timers(now);
+        }
+        let mut effects = reduce(&mut self.state, action, now, &self.services);
+        if self.state.render_dirty {
+            if !is_animation_tick {
+                self.state.clear_expired_timers(now);
+            }
+            effects.push(Effect::Render);
+        }
+        self.flush_effects(effects).await
+    }
+
+    async fn run_effects(&mut self, effects: Vec<Effect>) -> Result<Vec<Action>> {
+        let mut tui_adapter = TuiAdapter::new(&mut self.tui);
+        let pending = self
+            .effect_runner
+            .run(
+                effects,
+                &mut tui_adapter,
+                &mut self.state,
+                &self.completion_engine,
+                &self.services,
+            )
+            .await?;
+        self.state.clear_dirty();
+        Ok(pending)
+    }
+
+    async fn flush_effects(&mut self, effects: Vec<Effect>) -> Result<()> {
+        let mut pending = self.run_effects(effects).await?;
+
+        let mut depth = 0;
+        while !pending.is_empty() && depth < MAX_DEPTH {
+            depth += 1;
+            let mut next = Vec::new();
+            for action in pending {
+                let now = Instant::now();
+                let mut effects = reduce(&mut self.state, action, now, &self.services);
+                if self.state.render_dirty {
+                    self.state.clear_expired_timers(now);
+                    effects.push(Effect::Render);
+                }
+                next.extend(self.run_effects(effects).await?);
+            }
+            pending = next;
+        }
+        if depth >= MAX_DEPTH && !pending.is_empty() {
+            dispatch_overflow_fallback(
+                &mut self.state,
+                self.effect_runner.action_tx(),
+                pending,
+                Instant::now(),
+            );
+            // Render immediately: the main loop's next wakeup is the message expiry
+            // itself, so without this draw the message would never become visible.
+            self.run_effects(vec![Effect::Render]).await?;
+        }
+        Ok(())
+    }
+
+    async fn process_terminal_event_burst(&mut self, first_action: Action) -> Result<()> {
+        if !first_action.is_scroll() {
+            return self.process_action(first_action).await;
+        }
+
+        let now = Instant::now();
+        let mut effects = reduce(&mut self.state, first_action, now, &self.services);
+        if !effects.is_empty() {
+            if self.state.render_dirty {
+                self.state.clear_expired_timers(now);
+                effects.push(Effect::Render);
+            }
+            return self.flush_effects(effects).await;
+        }
+
+        // Keep effect-free scroll actions in state so a terminal burst produces
+        // one render instead of one render per input event.
+        let mut drained = 0;
+        while drained < MAX_DRAIN {
+            let Some(event) = self.tui.try_next_event() else {
+                break;
+            };
+            drained += 1;
+            let action = handle_event(event, &self.state, &self.services);
+            if action.is_none() {
+                continue;
+            }
+
+            if action.is_scroll() {
+                let now = Instant::now();
+                let mut effects = reduce(&mut self.state, action, now, &self.services);
+                if !effects.is_empty() {
+                    if self.state.render_dirty {
+                        self.state.clear_expired_timers(now);
+                        effects.push(Effect::Render);
+                    }
+                    self.flush_effects(effects).await?;
+                    break;
+                }
+            } else {
+                if self.state.render_dirty {
+                    self.state.clear_dirty();
+                    self.process_action(Action::Render).await?;
+                }
+                self.process_action(action).await?;
+                if self.state.should_quit {
+                    return Ok(());
+                }
+            }
+        }
+
+        if self.state.render_dirty {
+            self.state.clear_dirty();
+            self.process_action(Action::Render).await?;
+        }
+
+        Ok(())
+    }
+}
 
 /// Last-resort handling when DispatchActions recursion exceeds the depth
 /// limit: re-queue through the action channel and surface the failure as a
@@ -435,13 +421,7 @@ fn dispatch_overflow_fallback(
     state.messages.set_error_at(message, now);
 }
 
-const MAX_DRAIN: usize = 32;
-
-fn load_service_entries(state: &mut AppState, reader: Option<&dyn PgServiceEntryReader>) {
-    let Some(reader) = reader else {
-        return;
-    };
-
+fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
     match reader.read_services() {
         Ok((services, path)) if !services.is_empty() => {
             state.set_service_entries(services);
