@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | l…
+te… ▸ … ▸ - no dsn | localhost:5432/test
 ┌╭ Confirm UPDATE: users ─────────────╮]
 ││                                    │┐
 ││ ✓ LOW RISK                         ││

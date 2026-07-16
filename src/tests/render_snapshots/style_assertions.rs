@@ -343,6 +343,27 @@ fn header_status_uses_success_warning_and_error_colors() {
 }
 
 #[test]
+fn read_only_header_uses_warning_badge_style() {
+    let mut state = connected_state();
+    state.session.dsn = Some("postgresql://localhost/test".to_string());
+    state.session.read_only = true;
+    let mut terminal = create_test_terminal();
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let start = find_row0_text_start(&buffer, "READ-ONLY")
+        .expect("Expected READ-ONLY badge text in header");
+
+    for offset in 0.."READ-ONLY".len() {
+        let cell = buffer
+            .cell((start + offset as u16, 0))
+            .expect("READ-ONLY badge cell in row 0");
+        assert_eq!(cell.fg, Color::Black);
+        assert_eq!(cell.bg, DEFAULT_THEME.semantic.status.warning);
+        assert!(cell.modifier.contains(Modifier::BOLD));
+    }
+}
+
+#[test]
 fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut state = connected_state();
     let now = test_instant();

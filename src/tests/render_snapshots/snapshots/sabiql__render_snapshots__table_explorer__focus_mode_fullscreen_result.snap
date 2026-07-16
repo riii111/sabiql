@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+test_project ▸ test_db ▸ -                                                                                                               no dsn | localhost:5432/test
 ┌ [3] Result (2 rows, 15ms) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │id   name    email                                                                                                                                                 │
 │1    Alice   alice@example.com                                                                                                                                     │
