@@ -333,7 +333,10 @@ mod tests {
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
-    use crate::model::shared::render_output::RowDetailRenderMetrics;
+    use crate::model::shared::render_output::{
+        ConfirmPreviewRenderMetrics, InspectorRenderMetrics, RowDetailRenderMetrics,
+    };
+    use crate::model::shared::viewport::ViewportPlan;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
@@ -488,6 +491,74 @@ mod tests {
                 state.row_detail.scroll_offset(),
                 state.row_detail.line_count().saturating_sub(3)
             );
+        }
+
+        #[test]
+        fn focus_mode_preserves_inspector_viewport_plan() {
+            let mut state = make_state();
+            state.ui.inspector_viewport_plan = ViewportPlan {
+                column_count: 2,
+                ..ViewportPlan::default()
+            };
+            state.toggle_focus();
+            let output = RenderOutput {
+                browse: BrowseRenderMetrics {
+                    inspector: InspectorRenderMetrics {
+                        viewport_plan: ViewportPlan {
+                            column_count: 9,
+                            ..ViewportPlan::default()
+                        },
+                        pane_height: 30,
+                    },
+                    ..BrowseRenderMetrics::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.ui.inspector_viewport_plan.column_count, 2);
+            assert_eq!(state.ui.inspector_pane_height, 30);
+        }
+
+        #[test]
+        fn confirm_preview_metrics_are_replaced_on_each_render() {
+            let mut state = make_state();
+            let measured = RenderOutput {
+                overlays: OverlayRenderMetrics {
+                    confirm_preview: ConfirmPreviewRenderMetrics {
+                        viewport_height: Some(10),
+                        content_height: Some(25),
+                        scroll: 4,
+                    },
+                    ..OverlayRenderMetrics::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(measured);
+            state.apply_render_output(RenderOutput::default());
+
+            assert_eq!(state.confirm_dialog.preview_viewport_height, None);
+            assert_eq!(state.confirm_dialog.preview_content_height, None);
+            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+        }
+
+        #[test]
+        fn explain_compare_height_changes_only_when_measured() {
+            let mut state = make_state();
+            let measured = RenderOutput {
+                overlays: OverlayRenderMetrics {
+                    explain_compare_viewport_height: Some(12),
+                    ..OverlayRenderMetrics::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(measured);
+            state.apply_render_output(RenderOutput::default());
+
+            assert_eq!(state.explain.compare_viewport_height, Some(12));
         }
     }
 
