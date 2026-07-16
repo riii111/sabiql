@@ -497,7 +497,7 @@ fn result_pane_row_detail_shows_scrollbars() {
 fn result_pane_row_detail_renders_tail_beyond_u16_range() {
     let (mut state, now) = row_detail_state();
     let mut terminal = create_test_terminal_sized(100, 25);
-    let body = (0..65_550)
+    let body = (0..66_000)
         .map(|i| format!("line {i}"))
         .collect::<Vec<_>>()
         .join("\n");
@@ -522,7 +522,8 @@ fn result_pane_row_detail_renders_tail_beyond_u16_range() {
 
     let output = render_to_string(&mut terminal, &mut state);
 
-    assert!(output.contains("line 65549"));
+    assert!(state.row_detail.scroll_offset() > usize::from(u16::MAX));
+    assert!(output.contains("line 65999"));
 }
 
 #[test]
