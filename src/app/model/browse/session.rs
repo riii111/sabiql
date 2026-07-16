@@ -126,9 +126,9 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Error(error);
         self.is_reloading = false;
         self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
         if !self.connection_state.is_connected() {
             self.effective_user = None;
+            self.effective_user_run.clear_active();
             self.connection_state = ConnectionState::Failed;
         }
     }

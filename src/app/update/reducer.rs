@@ -1003,6 +1003,70 @@ mod tests {
         }
 
         #[test]
+        fn reload_failure_keeps_pending_effective_user_fetch_alive() {
+            let mut state = create_test_state();
+            let metadata_action =
+                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
+            let metadata_effects = reduce(
+                &mut state,
+                metadata_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            let user_run_id = metadata_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchEffectiveUser { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("metadata load should start user fetch");
+
+            let reload_effects = reduce(
+                &mut state,
+                Action::ReloadMetadata,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            let reload_run_id = match &reload_effects[0] {
+                Effect::Sequence(effects) => effects
+                    .iter()
+                    .find_map(|effect| match effect {
+                        Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                        _ => None,
+                    })
+                    .expect("reload should start metadata fetch"),
+                other => panic!("expected reload sequence, got {other:?}"),
+            };
+
+            reduce(
+                &mut state,
+                Action::MetadataFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: reload_run_id,
+                    error: DbOperationError::ConnectionFailed("reload failed".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.session.connection_state().is_connected());
+            assert!(state.session.is_current_effective_user_run(user_run_id));
+
+            reduce(
+                &mut state,
+                Action::EffectiveUserLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: user_run_id,
+                    effective_user: Some("postgres".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.effective_user(), Some("postgres"));
+        }
+
+        #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
             state.ui.explorer_selected = 3;
