@@ -10,6 +10,8 @@ use crate::domain::MetadataState;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
+const HEADER_SEPARATOR_WIDTH: usize = 3;
+
 pub struct Header;
 
 impl Header {
@@ -57,7 +59,7 @@ impl Header {
             items.push(HeaderItem::new(
                 "READ-ONLY",
                 Style::default().fg(theme.semantic.status.warning),
-                usize::MAX,
+                usize::MAX - 1,
             ));
         }
 
@@ -91,8 +93,24 @@ impl HeaderItem {
 }
 
 fn fit_header_items(mut items: Vec<HeaderItem>, max_width: usize) -> Vec<HeaderItem> {
-    let separator_width = 3_usize;
-    let separators_width = separator_width.saturating_mul(items.len().saturating_sub(1));
+    let mut keep = vec![true; items.len()];
+    let mut item_count = items.len();
+    let mut removal_order: Vec<usize> = (0..items.len()).collect();
+    removal_order.sort_by_key(|&index| items[index].truncation_rank);
+    for index in removal_order {
+        if min_header_width(item_count) <= max_width {
+            break;
+        }
+        keep[index] = false;
+        item_count -= 1;
+    }
+    items = items
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, item)| keep[index].then_some(item))
+        .collect();
+
+    let separators_width = HEADER_SEPARATOR_WIDTH.saturating_mul(items.len().saturating_sub(1));
     let mut widths: Vec<usize> = items
         .iter()
         .map(|item| UnicodeWidthStr::width(item.content.as_str()))
@@ -116,6 +134,10 @@ fn fit_header_items(mut items: Vec<HeaderItem>, max_width: usize) -> Vec<HeaderI
         item.content = truncate_to_width_with(&item.content, width, "…");
     }
     items
+}
+
+fn min_header_width(item_count: usize) -> usize {
+    item_count.saturating_add(HEADER_SEPARATOR_WIDTH.saturating_mul(item_count.saturating_sub(1)))
 }
 
 #[cfg(test)]
@@ -143,5 +165,27 @@ mod tests {
 
         assert!(text.contains("user: postgres"));
         assert!(UnicodeWidthStr::width(text.as_str()) <= 50);
+    }
+
+    #[test]
+    fn drops_items_when_separators_cannot_fit() {
+        let items = fit_header_items(
+            vec![
+                HeaderItem::new("project", Style::default(), 3),
+                HeaderItem::new("database", Style::default(), 2),
+                HeaderItem::new("table", Style::default(), 1),
+                HeaderItem::new("connected", Style::default(), usize::MAX),
+                HeaderItem::new("connection", Style::default(), 0),
+            ],
+            2,
+        );
+        let text = items
+            .iter()
+            .map(|item| item.content.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        assert_eq!(items.len(), 1);
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 2);
     }
 }
