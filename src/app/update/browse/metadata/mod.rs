@@ -431,7 +431,6 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             let qualified = "public.users".to_string();
-            state.sql_modal.start_table_prefetch(qualified.clone());
             state.sql_modal.fail_table_prefetch(
                 qualified.clone(),
                 FailedPrefetchEntry {
@@ -440,6 +439,9 @@ mod tests {
                     retry_count: 1,
                 },
             );
+            state.sql_modal.start_table_prefetch(qualified.clone());
+
+            assert!(state.sql_modal.is_table_prefetching(&qualified));
 
             let now = Instant::now();
             dispatch_metadata(
@@ -456,6 +458,7 @@ mod tests {
 
             let entry = state.sql_modal.failed_prefetch(&qualified).unwrap();
             assert_eq!(entry.retry_count, 2);
+            assert!(!state.sql_modal.is_table_prefetching(&qualified));
             assert_eq!(
                 entry.error,
                 "Query failed: new error. Review the database error details and SQL."
