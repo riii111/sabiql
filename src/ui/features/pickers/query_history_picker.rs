@@ -3,13 +3,12 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap};
-
-use crate::app::model::app_state::AppState;
-use crate::app::model::sql_editor::query_history::GroupedEntry;
-use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
 use unicode_width::UnicodeWidthStr;
 
-use crate::features::pickers::PickerRenderMetrics;
+use crate::app::model::app_state::AppState;
+use crate::app::model::shared::render_output::PickerLayout;
+use crate::app::model::sql_editor::query_history::GroupedEntry;
+use crate::domain::query_history::{Iso8601Timestamp, QueryResultStatus};
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::{StatusTone, ThemePalette};
@@ -79,11 +78,7 @@ struct PreviewData<'a> {
 pub struct QueryHistoryPicker;
 
 impl QueryHistoryPicker {
-    pub fn render(
-        frame: &mut Frame,
-        state: &AppState,
-        theme: &ThemePalette,
-    ) -> PickerRenderMetrics {
+    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
         let filter_is_empty = state
             .query_history_picker
             .filter_input()
@@ -162,7 +157,7 @@ impl QueryHistoryPicker {
             if let Some(pa) = preview_area {
                 render_empty_preview(frame, pa, theme);
             }
-            return PickerRenderMetrics {
+            return PickerLayout {
                 pane_height: list_area.height,
                 filter_visible_width: visible_width,
             };
@@ -201,7 +196,7 @@ impl QueryHistoryPicker {
             .with_selected(Some(selected_idx))
             .with_offset(scroll_offset);
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        PickerRenderMetrics {
+        PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,
         }
