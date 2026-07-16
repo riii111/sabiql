@@ -50,3 +50,18 @@ fn header_truncates_connection_name_at_narrow_width() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn header_shows_read_only_badge_at_narrow_width() {
+    let mut state = connected_state();
+    state.session.dsn = Some("postgresql://localhost/test".to_string());
+    state.session.read_only = true;
+    state
+        .session
+        .mark_effective_user_loaded(Some("app_user".to_string()));
+    let mut terminal = create_test_terminal_sized(80, 20);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}

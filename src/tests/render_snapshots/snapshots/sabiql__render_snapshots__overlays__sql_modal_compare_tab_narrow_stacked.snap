@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/te…
+test_project ▸ - ▸ -  no dsn | localhost:5432/test
 ┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [RLS] [Trig]
 │ Press 'r' │┌ [2] Inspector ────────────────────┐
 │           ││(select a table)                   │
