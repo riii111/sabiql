@@ -2359,7 +2359,86 @@ mod tests {
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
             );
-            assert_eq!(effects.len(), 1);
+            assert_eq!(effects.len(), 2);
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
+            );
+        }
+
+        #[test]
+        fn switch_connection_reloads_missing_effective_user_after_round_trip() {
+            let mut state = create_test_state();
+            let conn_a = ConnectionId::new();
+            let conn_b = ConnectionId::new();
+            let dsn_a = "postgres://localhost/a".to_string();
+
+            state.session.active_connection_id = Some(conn_a.clone());
+            state.session.dsn = Some(dsn_a.clone());
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
+            let old_a_run_id = state.session.begin_effective_user_fetch();
+
+            reduce(
+                &mut state,
+                Action::SwitchConnection(ConnectionTarget {
+                    id: conn_b,
+                    dsn: "postgres://localhost/b".to_string(),
+                    name: "B".to_string(),
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let effects = reduce(
+                &mut state,
+                Action::SwitchConnection(ConnectionTarget {
+                    id: conn_a,
+                    dsn: dsn_a.clone(),
+                    name: "A".to_string(),
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let new_a_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchEffectiveUser { dsn, run_id }
+                        if dsn.as_str() == dsn_a.as_str() =>
+                    {
+                        Some(run_id.to_owned())
+                    }
+                    _ => None,
+                })
+                .expect("cached user miss should trigger a refetch");
+            assert_ne!(new_a_run_id, old_a_run_id);
+
+            reduce(
+                &mut state,
+                Action::EffectiveUserLoaded {
+                    dsn: dsn_a.clone(),
+                    run_id: old_a_run_id,
+                    effective_user: Some("old_a_user".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.session.effective_user().is_none());
+
+            reduce(
+                &mut state,
+                Action::EffectiveUserLoaded {
+                    dsn: dsn_a,
+                    run_id: new_a_run_id,
+                    effective_user: Some("a_user".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert_eq!(state.session.effective_user(), Some("a_user"));
         }
     }
 

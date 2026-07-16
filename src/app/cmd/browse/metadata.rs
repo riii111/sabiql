@@ -470,7 +470,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn effective_user_provider_error_is_reported_as_unknown() {
+        async fn effective_user_provider_error_is_reported_as_absent() {
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider
                 .expect_fetch_effective_user()

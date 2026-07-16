@@ -44,7 +44,15 @@ pub(super) fn reduce_connection_lifecycle(
                 state.session.dsn = Some(dsn.clone());
                 state.session.active_connection_name = Some(name.clone());
                 state.session.read_only = false;
-                DispatchResult::handled_with(vec![Effect::ClearCompletionEngineCache])
+                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                if state.session.effective_user().is_none() {
+                    let run_id = state.session.begin_effective_user_fetch();
+                    effects.push(Effect::FetchEffectiveUser {
+                        dsn: dsn.clone(),
+                        run_id,
+                    });
+                }
+                DispatchResult::handled_with(effects)
             } else {
                 // No cache: reset and fetch metadata
                 state.session.reset(&mut state.query);
