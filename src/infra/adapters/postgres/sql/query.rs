@@ -93,6 +93,10 @@ impl PostgresAdapter {
         "
     }
 
+    pub(in crate::adapters::postgres) fn effective_user_query() -> &'static str {
+        "SELECT current_user"
+    }
+
     pub(in crate::adapters::postgres) fn columns_query(schema: &str, table: &str) -> String {
         format!(
             r"
@@ -372,6 +376,14 @@ impl PostgresAdapter {
 #[cfg(test)]
 mod tests {
     use crate::adapters::postgres::PostgresAdapter;
+
+    #[test]
+    fn effective_user_query_selects_current_user() {
+        assert_eq!(
+            PostgresAdapter::effective_user_query(),
+            "SELECT current_user"
+        );
+    }
 
     mod preview_query {
         use super::*;

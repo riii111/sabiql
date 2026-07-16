@@ -947,6 +947,62 @@ mod tests {
         }
 
         #[test]
+        fn metadata_loaded_starts_effective_user_fetch() {
+            let mut state = create_test_state();
+            let action =
+                metadata_loaded_action(&mut state, DatabaseMetadata::new("test".to_string()));
+
+            let effects = reduce(&mut state, action, Instant::now(), &AppServices::stub());
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
+            );
+        }
+
+        #[test]
+        fn effective_user_loaded_updates_session_state() {
+            let mut state = create_test_state();
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let run_id = state.session.begin_effective_user_fetch();
+
+            reduce(
+                &mut state,
+                Action::EffectiveUserLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    effective_user: Some("postgres".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.effective_user(), Some("postgres"));
+        }
+
+        #[test]
+        fn stale_effective_user_loaded_does_not_replace_current_state() {
+            let mut state = create_test_state();
+            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let old_run_id = state.session.begin_effective_user_fetch();
+            let _ = state.session.begin_effective_user_fetch();
+
+            reduce(
+                &mut state,
+                Action::EffectiveUserLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: old_run_id,
+                    effective_user: Some("old_user".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.session.effective_user().is_none());
+        }
+
+        #[test]
         fn metadata_loaded_with_tables_selects_first() {
             let mut state = create_test_state();
             state.ui.explorer_selected = 3;
