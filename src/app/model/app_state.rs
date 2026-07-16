@@ -18,7 +18,9 @@ use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
-use crate::model::shared::render_output::RenderOutput;
+use crate::model::shared::render_output::{
+    BrowseLayout, DetailLayout, InputLayout, OverlayLayout, PickerLayouts, RenderOutput,
+};
 use crate::model::shared::settings::SettingsState;
 use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
@@ -121,16 +123,24 @@ impl AppState {
         self.flash_timers.clear_expired(now);
     }
 
-    /// Writes back the pane geometry measured during a draw. Inspector viewport
-    /// plans are skipped in focus mode to keep the pre-focus plan restorable.
+    /// Applies layout data produced during a draw. Inspector viewport plans are
+    /// skipped in focus mode to keep the pre-focus plan restorable.
     pub fn apply_render_output(&mut self, output: RenderOutput) {
+        self.apply_browse_layout(output.browse);
+        self.apply_input_layout(output.input);
+        self.apply_picker_layouts(output.pickers);
+        self.apply_detail_layout(output.details);
+        self.apply_overlay_layout(output.overlays);
+    }
+
+    fn apply_browse_layout(&mut self, layout: BrowseLayout) {
         if !self.ui.is_focus_mode() {
-            self.ui.inspector_viewport_plan = output.inspector_viewport_plan;
+            self.ui.inspector_viewport_plan = layout.inspector.viewport_plan;
         }
-        self.ui.result_viewport_plan = output.result_viewport_plan;
-        self.ui.result_widths_cache = output.result_widths_cache;
-        self.ui.explorer_pane_height = output.explorer_pane_height;
-        self.ui.explorer_content_width = output.explorer_content_width;
+        self.ui.result_viewport_plan = layout.result.viewport_plan;
+        self.ui.result_widths_cache = layout.result.widths_cache;
+        self.ui.explorer_pane_height = layout.explorer.pane_height;
+        self.ui.explorer_content_width = layout.explorer.content_width;
         let max_name_width = self
             .tables()
             .iter()
@@ -139,54 +149,56 @@ impl AppState {
             .unwrap_or(0);
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width);
         self.ui.explorer_horizontal_offset = self.ui.explorer_horizontal_offset.min(max_offset);
-        self.ui.inspector_pane_height = output.inspector_pane_height;
-        self.ui.result_pane_height = output.result_pane_height;
-        if let Some(width) = output.command_line_visible_width {
+        self.ui.inspector_pane_height = layout.inspector.pane_height;
+        self.ui.result_pane_height = layout.result.pane_height;
+    }
+
+    fn apply_input_layout(&mut self, layout: InputLayout) {
+        if let Some(width) = layout.command_line_visible_width {
             self.command_line_visible_width = width;
         }
-        if let Some(height) = output.connection_list_pane_height {
+    }
+
+    fn apply_picker_layouts(&mut self, layouts: PickerLayouts) {
+        if let Some(height) = layouts.connection_list_pane_height {
             self.ui.connection_list_pane_height = height;
         }
-        if let Some(height) = output.table_picker_pane_height {
-            self.ui.table_picker.pane_height = height;
+        if let Some(table) = layouts.table {
+            self.ui.table_picker.pane_height = table.pane_height;
+            self.ui.table_picker.filter_visible_width = table.filter_visible_width;
         }
-        if let Some(width) = output.table_picker_filter_visible_width {
-            self.ui.table_picker.filter_visible_width = width;
+        if let Some(er) = layouts.er {
+            self.ui.er_picker.pane_height = er.pane_height;
+            self.ui.er_picker.filter_visible_width = er.filter_visible_width;
         }
-        if let Some(height) = output.er_picker_pane_height {
-            self.ui.er_picker.pane_height = height;
+        if let Some(query_history) = layouts.query_history {
+            self.query_history_picker.pane_height = query_history.pane_height;
+            self.query_history_picker.filter_visible_width = query_history.filter_visible_width;
         }
-        if let Some(width) = output.er_picker_filter_visible_width {
-            self.ui.er_picker.filter_visible_width = width;
+    }
+
+    fn apply_detail_layout(&mut self, layout: DetailLayout) {
+        if let Some(jsonb) = layout.jsonb {
+            self.ui.jsonb_detail_editor_visible_rows = jsonb.editor_visible_rows;
+            self.jsonb_detail
+                .editor_mut()
+                .update_scroll(jsonb.editor_visible_rows);
         }
-        if let Some(height) = output.query_history_picker_pane_height {
-            self.query_history_picker.pane_height = height;
-        }
-        if let Some(width) = output.query_history_picker_filter_visible_width {
-            self.query_history_picker.filter_visible_width = width;
-        }
-        if let Some(visible_rows) = output.jsonb_detail_editor_visible_rows {
-            self.ui.jsonb_detail_editor_visible_rows = visible_rows;
-            self.jsonb_detail.editor_mut().update_scroll(visible_rows);
-        }
-        if let Some(visible_rows) = output.row_detail_content_visible_rows {
-            self.ui.row_detail_content_visible_rows = visible_rows;
-        }
-        if let Some(visible_columns) = output.row_detail_content_visible_columns {
-            self.ui.row_detail_content_visible_columns = visible_columns;
-        }
-        if output.row_detail_content_visible_rows.is_some()
-            || output.row_detail_content_visible_columns.is_some()
-        {
+        if let Some(row) = layout.row {
+            self.ui.row_detail_content_visible_rows = row.visible_rows;
+            self.ui.row_detail_content_visible_columns = row.visible_columns;
             self.row_detail.clamp_scroll(
                 self.ui.row_detail_content_visible_rows,
                 self.ui.row_detail_content_visible_columns,
             );
         }
-        self.confirm_dialog.preview_viewport_height = output.confirm_preview_viewport_height;
-        self.confirm_dialog.preview_content_height = output.confirm_preview_content_height;
-        self.confirm_dialog.preview_scroll = output.confirm_preview_scroll;
-        if let Some(height) = output.explain_compare_viewport_height {
+    }
+
+    fn apply_overlay_layout(&mut self, layout: OverlayLayout) {
+        self.confirm_dialog.preview_viewport_height = layout.confirm_preview.viewport_height;
+        self.confirm_dialog.preview_content_height = layout.confirm_preview.content_height;
+        self.confirm_dialog.preview_scroll = layout.confirm_preview.scroll;
+        if let Some(height) = layout.explain_compare_viewport_height {
             self.explain.compare_viewport_height = Some(height);
         }
     }
@@ -320,6 +332,10 @@ mod tests {
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
+    use crate::model::shared::render_output::{
+        ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
+    };
+    use crate::model::shared::viewport::ViewportPlan;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
@@ -458,7 +474,13 @@ mod tests {
             state.row_detail = RowDetailState::open(&["id".to_string()], &["1".to_string()]);
             state.row_detail.scroll_down_by(10, 1);
             let output = RenderOutput {
-                row_detail_content_visible_rows: Some(3),
+                details: DetailLayout {
+                    row: Some(RowDetailLayout {
+                        visible_rows: 3,
+                        visible_columns: 80,
+                    }),
+                    ..DetailLayout::default()
+                },
                 ..RenderOutput::default()
             };
 
@@ -468,6 +490,91 @@ mod tests {
                 state.row_detail.scroll_offset(),
                 state.row_detail.line_count().saturating_sub(3)
             );
+        }
+
+        #[test]
+        fn focus_mode_preserves_inspector_viewport_plan() {
+            let mut state = make_state();
+            state.ui.inspector_viewport_plan = ViewportPlan {
+                column_count: 2,
+                ..ViewportPlan::default()
+            };
+            state.toggle_focus();
+            let output = RenderOutput {
+                browse: BrowseLayout {
+                    inspector: InspectorLayout {
+                        viewport_plan: ViewportPlan {
+                            column_count: 9,
+                            ..ViewportPlan::default()
+                        },
+                        pane_height: 30,
+                    },
+                    ..BrowseLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.ui.inspector_viewport_plan.column_count, 2);
+            assert_eq!(state.ui.inspector_pane_height, 30);
+        }
+    }
+
+    mod render_output {
+        use super::*;
+
+        #[test]
+        fn confirm_preview_layout_is_applied() {
+            let mut state = make_state();
+            let output = RenderOutput {
+                overlays: OverlayLayout {
+                    confirm_preview: ConfirmPreviewLayout {
+                        viewport_height: Some(10),
+                        content_height: Some(25),
+                        scroll: 4,
+                    },
+                    ..OverlayLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+
+            assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
+            assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
+            assert_eq!(state.confirm_dialog.preview_scroll, 4);
+        }
+
+        #[test]
+        fn confirm_preview_layout_is_reset_when_not_rendered() {
+            let mut state = make_state();
+            state.confirm_dialog.preview_viewport_height = Some(10);
+            state.confirm_dialog.preview_content_height = Some(25);
+            state.confirm_dialog.preview_scroll = 4;
+
+            state.apply_render_output(RenderOutput::default());
+
+            assert_eq!(state.confirm_dialog.preview_viewport_height, None);
+            assert_eq!(state.confirm_dialog.preview_content_height, None);
+            assert_eq!(state.confirm_dialog.preview_scroll, 0);
+        }
+
+        #[test]
+        fn explain_compare_height_changes_only_when_present() {
+            let mut state = make_state();
+            let output = RenderOutput {
+                overlays: OverlayLayout {
+                    explain_compare_viewport_height: Some(12),
+                    ..OverlayLayout::default()
+                },
+                ..RenderOutput::default()
+            };
+
+            state.apply_render_output(output);
+            state.apply_render_output(RenderOutput::default());
+
+            assert_eq!(state.explain.compare_viewport_height, Some(12));
         }
     }
 

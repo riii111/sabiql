@@ -69,28 +69,7 @@ pub fn render_and_get_buffer_at_with_theme(
                 now,
                 theme,
             );
-            state.ui.inspector_viewport_plan = output.inspector_viewport_plan;
-            state.ui.result_viewport_plan = output.result_viewport_plan;
-            state.ui.result_widths_cache = output.result_widths_cache;
-            state.ui.inspector_pane_height = output.inspector_pane_height;
-            state.ui.result_pane_height = output.result_pane_height;
-            if let Some(rows) = output.jsonb_detail_editor_visible_rows {
-                state.ui.jsonb_detail_editor_visible_rows = rows;
-            }
-            if let Some(rows) = output.row_detail_content_visible_rows {
-                state.ui.row_detail_content_visible_rows = rows;
-            }
-            if let Some(columns) = output.row_detail_content_visible_columns {
-                state.ui.row_detail_content_visible_columns = columns;
-            }
-            if output.row_detail_content_visible_rows.is_some()
-                || output.row_detail_content_visible_columns.is_some()
-            {
-                state.row_detail.clamp_scroll(
-                    state.ui.row_detail_content_visible_rows,
-                    state.ui.row_detail_content_visible_columns,
-                );
-            }
+            state.apply_render_output(output);
         })
         .unwrap();
 

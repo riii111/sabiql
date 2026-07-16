@@ -745,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn line_count_uses_rendered_section_metrics() {
+    fn line_count_uses_rendered_section_dimensions() {
         let document = HelpDocument::new(
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
