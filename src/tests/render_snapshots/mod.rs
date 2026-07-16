@@ -2,8 +2,8 @@ use crate::tests::harness;
 
 use harness::fixtures;
 use harness::{
-    create_test_state, create_test_terminal, create_test_terminal_sized, render_and_get_buffer_at,
-    render_to_string, test_instant,
+    connected_state, create_test_state, create_test_terminal, create_test_terminal_sized,
+    render_and_get_buffer_at, render_to_string, test_instant,
 };
 
 use std::sync::Arc;

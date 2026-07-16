@@ -78,6 +78,14 @@ impl MetadataProvider for PostgresAdapter {
         Ok(metadata)
     }
 
+    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+        let raw_user = self
+            .execute_query(dsn, Self::effective_user_query())
+            .await?;
+        let user = raw_user.trim();
+        Ok((!user.is_empty()).then(|| user.to_string()))
+    }
+
     async fn fetch_table_signatures(
         &self,
         dsn: &str,

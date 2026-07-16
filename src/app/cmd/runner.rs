@@ -180,6 +180,7 @@ impl EffectRunner {
             }
 
             e @ (Effect::FetchMetadata { .. }
+            | Effect::FetchEffectiveUser { .. }
             | Effect::FetchTableDetail { .. }
             | Effect::PrefetchTableDetail { .. }
             | Effect::ProcessPrefetchQueue { .. }

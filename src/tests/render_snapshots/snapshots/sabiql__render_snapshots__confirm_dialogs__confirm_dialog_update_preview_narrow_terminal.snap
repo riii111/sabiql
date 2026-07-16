@@ -1,8 +1,8 @@
 ---
-source: tests/render_snapshots/confirm_dialogs.rs
+source: src/tests/render_snapshots/confirm_dialogs.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | lo
+test_project | test_db | - | no dsn | l…
 ┌╭ Confirm UPDATE: users ─────────────╮]
 ││                                    │┐
 ││ ✓ LOW RISK                         ││

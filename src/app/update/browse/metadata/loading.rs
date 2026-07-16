@@ -29,8 +29,12 @@ pub(super) fn reduce_loading(
 
             let has_tables = !metadata.table_summaries.is_empty();
             state.session.mark_connected(Arc::clone(metadata));
+            let effective_user_run_id = state.session.begin_effective_user_fetch();
 
-            let mut effects = vec![];
+            let mut effects = vec![Effect::FetchEffectiveUser {
+                dsn: dsn.clone(),
+                run_id: effective_user_run_id,
+            }];
 
             if state.query.pagination.table.is_empty() {
                 state
@@ -93,6 +97,22 @@ pub(super) fn reduce_loading(
             }
 
             DispatchResult::handled_with(effects)
+        }
+        Action::EffectiveUserLoaded {
+            dsn,
+            run_id,
+            effective_user,
+        } => {
+            if state.session.dsn.as_ref() != Some(dsn)
+                || !state.session.is_current_effective_user_run(*run_id)
+            {
+                return DispatchResult::handled();
+            }
+
+            state
+                .session
+                .mark_effective_user_loaded(effective_user.clone());
+            DispatchResult::handled()
         }
         Action::MetadataFailed { dsn, run_id, error } => {
             if state.session.dsn.as_ref() != Some(dsn)
