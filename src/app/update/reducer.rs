@@ -1483,8 +1483,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+                .start_table_prefetch("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
@@ -1505,7 +1504,7 @@ mod tests {
                 effects[0],
                 Effect::CacheTableInCompletionEngine { .. }
             ));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.users"));
+            assert!(!state.sql_modal.is_table_prefetching("public.users"));
         }
 
         #[test]
@@ -1515,8 +1514,7 @@ mod tests {
             let run_id = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .queue_table_prefetch("public.orders".to_string());
             let now = Instant::now();
 
             let effects = reduce(
