@@ -66,9 +66,6 @@ enum Command {
     Update,
 }
 
-const MAX_DEPTH: usize = 16;
-const MAX_DRAIN: usize = 32;
-
 #[tokio::main]
 #[allow(
     clippy::print_stderr,
@@ -152,8 +149,7 @@ async fn main() -> Result<()> {
         .load_keymap_preset(app_settings.keymap_preset);
     state.settings.load_er_browser(app_settings.er_browser);
 
-    let all_profiles = connection_store.load_all();
-    match all_profiles {
+    match connection_store.load_all() {
         Ok(profiles) if profiles.is_empty() => {
             load_service_entries(&mut state, pg_service_entry_reader.as_ref());
             if state.service_entries().is_empty() {
@@ -260,6 +256,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+const MAX_DEPTH: usize = 16;
+const MAX_DRAIN: usize = 32;
+
 struct Runtime {
     state: AppState,
     tui: TuiRunner,
@@ -348,8 +347,8 @@ impl Runtime {
             return self.flush_effects(effects).await;
         }
 
-        // Keep effect-free scroll actions in state so a terminal burst produces
-        // one render instead of one render per input event.
+        // Effect-free scroll reduces only mutate state; defer the render to the
+        // end of the burst so N input events produce one draw, not N.
         let mut drained = 0;
         while drained < MAX_DRAIN {
             let Some(event) = self.tui.try_next_event() else {
