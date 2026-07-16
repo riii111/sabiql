@@ -673,7 +673,7 @@ mod tests {
         fn prefetch_queue_starts_empty() {
             let state = make_state();
 
-            assert!(state.sql_modal.prefetch_queue.is_empty());
+            assert!(!state.sql_modal.has_pending_prefetch());
             assert!(!state.sql_modal.is_prefetch_started());
         }
 
@@ -682,15 +682,13 @@ mod tests {
             let mut state = make_state();
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
+                .queue_table_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.orders".to_string());
+                .queue_table_prefetch("public.orders".to_string());
 
-            let first = state.sql_modal.prefetch_queue.pop_front();
-            let second = state.sql_modal.prefetch_queue.pop_front();
+            let first = state.sql_modal.take_next_prefetch();
+            let second = state.sql_modal.take_next_prefetch();
 
             assert_eq!(first, Some("public.users".to_string()));
             assert_eq!(second, Some("public.orders".to_string()));
@@ -702,11 +700,10 @@ mod tests {
 
             state
                 .sql_modal
-                .prefetching_tables
-                .insert("public.users".to_string());
+                .start_table_prefetch("public.users".to_string());
 
-            assert!(state.sql_modal.prefetching_tables.contains("public.users"));
-            assert!(!state.sql_modal.prefetching_tables.contains("public.orders"));
+            assert!(state.sql_modal.is_table_prefetching("public.users"));
+            assert!(!state.sql_modal.is_table_prefetching("public.orders"));
         }
 
         #[test]
@@ -714,7 +711,7 @@ mod tests {
             let mut state = make_state();
             let now = Instant::now();
 
-            state.sql_modal.failed_prefetch_tables.insert(
+            state.sql_modal.fail_table_prefetch(
                 "public.users".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: now,
@@ -723,17 +720,7 @@ mod tests {
                 },
             );
 
-            assert!(
-                state
-                    .sql_modal
-                    .failed_prefetch_tables
-                    .contains_key("public.users")
-            );
-            let entry = state
-                .sql_modal
-                .failed_prefetch_tables
-                .get("public.users")
-                .unwrap();
+            let entry = state.sql_modal.failed_prefetch("public.users").unwrap();
             assert_eq!(entry.failed_at, now);
             assert_eq!(entry.error, "connection timeout");
         }
@@ -748,13 +735,11 @@ mod tests {
             let _ = state.sql_modal.begin_prefetch();
             state
                 .sql_modal
-                .prefetch_queue
-                .push_back("public.users".to_string());
+                .queue_table_prefetch("public.users".to_string());
             state
                 .sql_modal
-                .prefetching_tables
-                .insert("public.orders".to_string());
-            state.sql_modal.failed_prefetch_tables.insert(
+                .start_table_prefetch("public.orders".to_string());
+            state.sql_modal.fail_table_prefetch(
                 "public.failed".to_string(),
                 crate::model::sql_editor::modal::FailedPrefetchEntry {
                     failed_at: Instant::now(),
@@ -772,9 +757,9 @@ mod tests {
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
             assert!(!state.sql_modal.is_prefetch_started());
-            assert!(state.sql_modal.prefetch_queue.is_empty());
-            assert!(state.sql_modal.prefetching_tables.is_empty());
-            assert!(state.sql_modal.failed_prefetch_tables.is_empty());
+            assert!(!state.sql_modal.has_pending_prefetch());
+            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
+            assert!(state.sql_modal.failed_prefetch("public.failed").is_none());
         }
 
         #[test]
