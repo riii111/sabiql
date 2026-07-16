@@ -145,24 +145,6 @@ impl SqlModalContext {
         self.failed_prefetch_tables.get(table)
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn prefetch_queue(&self) -> &VecDeque<String> {
-        &self.prefetch_queue
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn prefetching_tables(&self) -> &HashSet<String> {
-        &self.prefetching_tables
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn failed_prefetch_tables(&self) -> &HashMap<String, FailedPrefetchEntry> {
-        &self.failed_prefetch_tables
-    }
-
     pub fn queue_table_prefetch(&mut self, table: String) {
         if self.prefetching_tables.contains(&table) || self.is_prefetch_queued(&table) {
             return;
@@ -536,9 +518,9 @@ mod tests {
             ctx.reset_prefetch();
 
             assert!(!ctx.is_prefetch_started());
-            assert!(ctx.prefetch_queue().is_empty());
-            assert!(ctx.prefetching_tables().is_empty());
-            assert!(ctx.failed_prefetch_tables().is_empty());
+            assert!(!ctx.has_pending_prefetch());
+            assert_eq!(ctx.prefetch_in_flight_count(), 0);
+            assert!(ctx.failed_prefetch("public.failed").is_none());
         }
 
         #[test]
@@ -549,7 +531,7 @@ mod tests {
             ctx.start_table_prefetch("public.orders".to_string());
             ctx.queue_table_prefetch("public.orders".to_string());
 
-            assert_eq!(ctx.prefetch_queue().len(), 1);
+            assert!(ctx.has_pending_prefetch());
             assert!(ctx.is_prefetch_queued("public.users"));
             assert!(ctx.is_table_prefetching("public.orders"));
             assert_eq!(ctx.prefetch_in_flight_count(), 1);

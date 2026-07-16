@@ -652,7 +652,7 @@ mod tests {
             assert!(!state.sql_modal.is_prefetch_started());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
-            assert!(state.sql_modal.failed_prefetch_tables().is_empty());
+            assert!(state.sql_modal.failed_prefetch("public.failed").is_none());
         }
 
         #[test]
