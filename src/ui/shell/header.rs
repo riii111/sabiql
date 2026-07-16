@@ -217,6 +217,34 @@ mod tests {
         HeaderItem::new(content, Style::default(), truncation_rank)
     }
 
+    fn left_items() -> Vec<HeaderItem> {
+        vec![item("project", 2), item("database", 1), item("table", 0)]
+    }
+
+    fn right_items() -> Vec<HeaderItem> {
+        vec![item("connected", 2), item("READ-ONLY", 3)]
+    }
+
+    fn contents(items: &[HeaderItem]) -> Vec<&str> {
+        items.iter().map(|item| item.content.as_str()).collect()
+    }
+
+    fn assert_layout_fits(layout: &HeaderLayout, max_width: usize) {
+        let gap_width = usize::from(layout.right_width > 0 && layout.right_width < max_width);
+
+        assert_eq!(
+            layout.left_width,
+            header_items_width(&layout.left_items, LEFT_SEPARATOR)
+        );
+        assert_eq!(
+            layout.right_width,
+            header_items_width(&layout.right_items, RIGHT_SEPARATOR)
+        );
+        assert!(layout.left_width + gap_width <= layout.right_start);
+        assert!(layout.right_start + layout.right_width <= max_width);
+        assert!(layout.left_width + gap_width + layout.right_width <= max_width);
+    }
+
     #[test]
     fn keeps_right_group_at_the_right_edge_when_table_length_changes() {
         let right_items = vec![
@@ -273,16 +301,46 @@ mod tests {
 
     #[test]
     fn handles_extreme_widths_without_overlap() {
-        for width in [0, 1, 2, 4, 60] {
-            let layout = layout_header(
-                vec![item("project", 2), item("database", 1), item("table", 0)],
-                vec![item("connected", 2), item("READ-ONLY", 3)],
-                width,
-            );
+        let left_required_width = header_items_width(&left_items(), LEFT_SEPARATOR);
+        let right_required_width = header_items_width(&right_items(), RIGHT_SEPARATOR);
+        let boundary = left_required_width + right_required_width + 1;
+        let boundary_widths = [boundary - 1, boundary, boundary + 1];
+        let boundary_layouts =
+            boundary_widths.map(|width| layout_header(left_items(), right_items(), width));
 
-            let gap_width = usize::from(layout.right_width > 0 && layout.right_width < width);
-            assert!(layout.left_width + gap_width <= layout.right_start);
-            assert!(layout.right_start + layout.right_width <= width);
+        for (&width, layout) in boundary_widths.iter().zip(&boundary_layouts) {
+            assert_layout_fits(layout, width);
+
+            let repeated = layout_header(left_items(), right_items(), width);
+            assert_eq!(contents(&layout.left_items), contents(&repeated.left_items));
+            assert_eq!(
+                contents(&layout.right_items),
+                contents(&repeated.right_items)
+            );
+        }
+
+        assert_eq!(
+            contents(&boundary_layouts[0].left_items),
+            vec!["project", "database", "tab…"]
+        );
+        assert_eq!(
+            contents(&boundary_layouts[0].right_items),
+            vec!["connected", "READ-ONLY"]
+        );
+        for layout in &boundary_layouts[1..] {
+            assert_eq!(
+                contents(&layout.left_items),
+                vec!["project", "database", "table"]
+            );
+            assert_eq!(
+                contents(&layout.right_items),
+                vec!["connected", "READ-ONLY"]
+            );
+        }
+
+        for width in [0, 1, 2, 4, boundary + 12] {
+            let layout = layout_header(left_items(), right_items(), width);
+            assert_layout_fits(&layout, width);
         }
     }
 
