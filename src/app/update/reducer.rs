@@ -414,18 +414,18 @@ mod tests {
             );
         }
 
-        fn help_metrics(state: &AppState) -> (usize, usize) {
+        fn help_dimensions(state: &AppState) -> (usize, usize) {
             let document = HelpDocument::from_state(state);
             (document.line_count(), document.content_width())
         }
 
         fn help_max_scroll(state: &AppState) -> usize {
-            let (line_count, content_width) = help_metrics(state);
+            let (line_count, content_width) = help_dimensions(state);
             state.ui.help_max_scroll(line_count, content_width)
         }
 
         fn help_max_horizontal_scroll(state: &AppState) -> usize {
-            let (line_count, content_width) = help_metrics(state);
+            let (line_count, content_width) = help_dimensions(state);
             state
                 .ui
                 .help_max_horizontal_scroll(line_count, content_width)

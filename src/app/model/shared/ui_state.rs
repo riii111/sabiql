@@ -469,7 +469,7 @@ mod tests {
         }
     }
 
-    mod pane_metrics {
+    mod pane_dimensions {
         use super::*;
 
         #[test]
