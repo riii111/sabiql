@@ -3,9 +3,11 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::model::app_state::AppState;
 use crate::domain::MetadataState;
+use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
 pub struct Header;
@@ -29,31 +31,117 @@ impl Header {
             }
         };
 
-        let connection_name = state
-            .session
-            .active_connection_name
-            .as_deref()
-            .unwrap_or("-");
-
-        let mut line = Line::from(vec![
-            Span::styled(&state.runtime.project_name, item_style),
-            Span::styled(" | ", sep_style),
-            Span::styled(db_name, item_style),
-            Span::styled(" | ", sep_style),
-            Span::styled(table, Style::default().fg(theme.semantic.text.primary)),
-            Span::styled(" | ", sep_style),
-            Span::styled(status_text, Style::default().fg(status_color)),
-            Span::styled(" | ", sep_style),
-            Span::styled(connection_name, item_style),
-        ]);
+        let mut items = vec![
+            HeaderItem::new(&state.runtime.project_name, item_style, 3),
+            HeaderItem::new(db_name, item_style, 2),
+            HeaderItem::new(table, Style::default().fg(theme.semantic.text.primary), 1),
+            HeaderItem::new(status_text, Style::default().fg(status_color), usize::MAX),
+        ];
+        if let Some(effective_user) = state.session.effective_user() {
+            items.push(HeaderItem::new(
+                &format!("user: {effective_user}"),
+                item_style,
+                4,
+            ));
+        }
+        items.push(HeaderItem::new(
+            state
+                .session
+                .active_connection_name
+                .as_deref()
+                .unwrap_or("-"),
+            item_style,
+            0,
+        ));
         if state.session.read_only {
-            line.push_span(Span::styled(" | ", sep_style));
-            line.push_span(Span::styled(
+            items.push(HeaderItem::new(
                 "READ-ONLY",
                 Style::default().fg(theme.semantic.status.warning),
+                usize::MAX,
             ));
         }
 
+        let items = fit_header_items(items, area.width as usize);
+        let mut line = Line::from(Vec::with_capacity(items.len() * 2));
+        for (index, item) in items.into_iter().enumerate() {
+            if index > 0 {
+                line.push_span(Span::styled(" | ", sep_style));
+            }
+            line.push_span(Span::styled(item.content, item.style));
+        }
+
         frame.render_widget(Paragraph::new(line), area);
+    }
+}
+
+struct HeaderItem {
+    content: String,
+    style: Style,
+    truncation_rank: usize,
+}
+
+impl HeaderItem {
+    fn new(content: &str, style: Style, truncation_rank: usize) -> Self {
+        Self {
+            content: content.to_string(),
+            style,
+            truncation_rank,
+        }
+    }
+}
+
+fn fit_header_items(mut items: Vec<HeaderItem>, max_width: usize) -> Vec<HeaderItem> {
+    let separator_width = 3_usize;
+    let separators_width = separator_width.saturating_mul(items.len().saturating_sub(1));
+    let mut widths: Vec<usize> = items
+        .iter()
+        .map(|item| UnicodeWidthStr::width(item.content.as_str()))
+        .collect();
+    let total_width = separators_width + widths.iter().sum::<usize>();
+    let mut overflow = total_width.saturating_sub(max_width);
+
+    let mut truncation_order: Vec<usize> = (0..items.len()).collect();
+    truncation_order.sort_by_key(|&index| items[index].truncation_rank);
+    for index in truncation_order {
+        if overflow == 0 {
+            break;
+        }
+        let reducible = widths[index].saturating_sub(1);
+        let reduction = reducible.min(overflow);
+        widths[index] -= reduction;
+        overflow -= reduction;
+    }
+
+    for (item, width) in items.iter_mut().zip(widths) {
+        item.content = truncate_to_width_with(&item.content, width, "…");
+    }
+    items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncates_connection_name_before_effective_user() {
+        let items = fit_header_items(
+            vec![
+                HeaderItem::new("project", Style::default(), 3),
+                HeaderItem::new("database", Style::default(), 2),
+                HeaderItem::new("public.long_table_name", Style::default(), 1),
+                HeaderItem::new("connected", Style::default(), usize::MAX),
+                HeaderItem::new("user: postgres", Style::default(), 4),
+                HeaderItem::new("very-long-connection-name", Style::default(), 0),
+            ],
+            50,
+        );
+        let text = items
+            .iter()
+            .map(|item| item.content.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        assert!(text.contains("user: postgres"));
+        assert!(UnicodeWidthStr::width(text.as_str()) <= 50);
     }
 }
