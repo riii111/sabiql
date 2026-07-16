@@ -37,7 +37,11 @@ impl Header {
             HeaderItem::new(&state.runtime.project_name, item_style, 3),
             HeaderItem::new(db_name, item_style, 2),
             HeaderItem::new(table, Style::default().fg(theme.semantic.text.primary), 1),
-            HeaderItem::new(status_text, Style::default().fg(status_color), usize::MAX),
+            HeaderItem::new(
+                status_text,
+                Style::default().fg(status_color),
+                usize::MAX - 1,
+            ),
         ];
         if let Some(effective_user) = state.session.effective_user() {
             items.push(HeaderItem::new(
@@ -59,7 +63,7 @@ impl Header {
             items.push(HeaderItem::new(
                 "READ-ONLY",
                 Style::default().fg(theme.semantic.status.warning),
-                usize::MAX - 1,
+                usize::MAX,
             ));
         }
 
@@ -187,5 +191,20 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         assert!(UnicodeWidthStr::width(text.as_str()) <= 2);
+    }
+
+    #[test]
+    fn preserves_read_only_status_at_extreme_width() {
+        let items = fit_header_items(
+            vec![
+                HeaderItem::new("connected", Style::default(), usize::MAX - 1),
+                HeaderItem::new("READ-ONLY", Style::default(), usize::MAX),
+            ],
+            4,
+        );
+
+        assert_eq!(items.len(), 1);
+        assert!(items[0].content.starts_with("R"));
+        assert!(UnicodeWidthStr::width(items[0].content.as_str()) <= 4);
     }
 }
