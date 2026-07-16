@@ -1,6 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::setup::ConnectionField;
+use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
@@ -11,6 +12,7 @@ use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 pub struct HelpState {
     origin: HelpOrigin,
     filter: TextInputState,
+    mode: HelpMode,
     scroll_offset: usize,
     horizontal_offset: usize,
 }
@@ -26,6 +28,7 @@ impl Default for HelpState {
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
+            mode: HelpMode::Viewing,
             scroll_offset: 0,
             horizontal_offset: 0,
         }
@@ -36,11 +39,13 @@ impl HelpState {
     pub fn open(&mut self, origin: HelpOrigin) {
         self.origin = origin;
         self.filter.clear();
+        self.mode = HelpMode::Viewing;
         self.reset_offsets();
     }
 
     pub fn close(&mut self) {
         self.filter.clear();
+        self.mode = HelpMode::Viewing;
         self.reset_offsets();
     }
 
@@ -50,6 +55,19 @@ impl HelpState {
 
     pub fn filter(&self) -> &TextInputState {
         &self.filter
+    }
+
+    pub fn mode(&self) -> HelpMode {
+        self.mode
+    }
+
+    pub fn enter_filter_editing(&mut self) {
+        self.mode = HelpMode::EditingFilter;
+        self.reset_offsets();
+    }
+
+    pub fn exit_filter_editing(&mut self) {
+        self.mode = HelpMode::Viewing;
     }
 
     pub fn scroll_offset(&self) -> usize {
@@ -83,10 +101,27 @@ impl HelpState {
         self.reset_offsets();
     }
 
+    pub fn edit_filter<R>(&mut self, edit: impl FnOnce(&mut TextInputState) -> R) -> R {
+        let result = edit(&mut self.filter);
+        self.reset_offsets();
+        result
+    }
+
+    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
+        self.filter.move_cursor(direction);
+    }
+
     pub fn clamp_offsets(&mut self, max_scroll: usize, max_horizontal_scroll: usize) {
         self.scroll_offset = self.scroll_offset.min(max_scroll);
         self.horizontal_offset = self.horizontal_offset.min(max_horizontal_scroll);
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HelpMode {
+    #[default]
+    Viewing,
+    EditingFilter,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -289,14 +324,10 @@ pub enum JsonbHelpMode {
 
 impl JsonbHelpMode {
     fn from_state(state: &AppState) -> Self {
-        if state.jsonb_detail.search().is_active() {
-            Self::Search
-        } else {
-            match state.jsonb_detail.mode() {
-                JsonbDetailMode::Viewing => Self::Detail,
-                JsonbDetailMode::Editing => Self::Edit,
-                JsonbDetailMode::Searching => Self::Search,
-            }
+        match state.jsonb_detail.mode() {
+            JsonbDetailMode::Viewing => Self::Detail,
+            JsonbDetailMode::Editing => Self::Edit,
+            JsonbDetailMode::Searching => Self::Search,
         }
     }
 
@@ -373,6 +404,41 @@ mod tests {
         state.insert_filter_char('c');
 
         assert_eq!(state.filter().content(), "c");
+        assert_eq!(state.scroll_offset(), 0);
+        assert_eq!(state.horizontal_offset(), 0);
+    }
+
+    #[test]
+    fn filter_mode_resets_when_help_is_closed() {
+        let mut state = HelpState::default();
+        state.enter_filter_editing();
+
+        state.close();
+
+        assert_eq!(state.mode(), HelpMode::Viewing);
+    }
+
+    #[test]
+    fn filter_mode_returns_to_viewing_without_clearing_the_filter() {
+        let mut state = HelpState::default();
+        state.insert_filter_char('c');
+        state.enter_filter_editing();
+
+        state.exit_filter_editing();
+
+        assert_eq!(state.mode(), HelpMode::Viewing);
+        assert_eq!(state.filter().content(), "c");
+    }
+
+    #[test]
+    fn entering_filter_mode_resets_scroll_offsets() {
+        let mut state = HelpState::default();
+        state.set_scroll_offset(10);
+        state.set_horizontal_offset(4);
+
+        state.enter_filter_editing();
+
+        assert_eq!(state.mode(), HelpMode::EditingFilter);
         assert_eq!(state.scroll_offset(), 0);
         assert_eq!(state.horizontal_offset(), 0);
     }

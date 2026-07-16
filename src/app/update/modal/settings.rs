@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::TextInputEditing;
 use crate::ports::outbound::AppSettings;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -59,6 +60,28 @@ pub(super) fn reduce_settings(
             target: InputTarget::SettingsErBrowser,
         } => {
             state.settings.delete_custom_browser();
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::SettingsErBrowser,
+            direction,
+        } => {
+            if let Some(killed) = state
+                .settings
+                .edit_custom_browser(|input| input.kill(*direction))
+            {
+                state.record_kill(killed);
+            }
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::SettingsErBrowser,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state
+                    .settings
+                    .edit_custom_browser(|input| input.yank(&killed));
+            }
             DispatchResult::handled()
         }
         Action::TextMoveCursor {

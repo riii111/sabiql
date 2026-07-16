@@ -13,9 +13,10 @@ use ratatui::style::{Color, Modifier};
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::theme_id::ThemeId;
+use sabiql_app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT};
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, QueryResult};
+use sabiql_domain::{Column, ConnectionId, QueryResult};
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
     SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
@@ -32,13 +33,28 @@ fn has_cell(buffer: &Buffer, predicate: impl Fn(&Cell) -> bool) -> bool {
     false
 }
 
-/// Help modal uses Percentage(70) x Percentage(80), centered in TEST_WIDTH x TEST_HEIGHT.
-fn help_modal_origin() -> (u16, u16) {
-    let modal_w = TEST_WIDTH * 70 / 100;
-    let modal_h = TEST_HEIGHT * 80 / 100;
+fn has_cell_in_area(buffer: &Buffer, area: Rect, predicate: impl Fn(&Cell) -> bool) -> bool {
+    for y in area.top().max(buffer.area.top())..area.bottom().min(buffer.area.bottom()) {
+        for x in area.left().max(buffer.area.left())..area.right().min(buffer.area.right()) {
+            if buffer.cell((x, y)).is_some_and(&predicate) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn help_modal_area() -> Rect {
+    let modal_w = TEST_WIDTH * HELP_MODAL_WIDTH_PERCENT / 100;
+    let modal_h = TEST_HEIGHT * HELP_MODAL_HEIGHT_PERCENT / 100;
     let x = (TEST_WIDTH - modal_w) / 2;
     let y = (TEST_HEIGHT - modal_h) / 2;
-    (x, y)
+    Rect::new(x, y, modal_w, modal_h)
+}
+
+fn help_modal_origin() -> (u16, u16) {
+    let area = help_modal_area();
+    (area.x, area.y)
 }
 
 fn jsonb_detail_state() -> (AppState, Instant) {
@@ -322,6 +338,32 @@ fn header_status_uses_success_warning_and_error_colors() {
 }
 
 #[test]
+fn read_only_header_uses_warning_badge_style() {
+    let mut state = connected_state();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::PostgreSQL,
+        "postgresql://localhost/test",
+    );
+    state.session.enable_read_only();
+    let mut terminal = create_test_terminal();
+
+    let buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let start = find_row0_text_start(&buffer, "READ-ONLY")
+        .expect("Expected READ-ONLY badge text in header");
+
+    for offset in 0.."READ-ONLY".len() {
+        let cell = buffer
+            .cell((start + offset as u16, 0))
+            .expect("READ-ONLY badge cell in row 0");
+        assert_eq!(cell.fg, Color::Black);
+        assert_eq!(cell.bg, DEFAULT_THEME.semantic.status.warning);
+        assert!(cell.modifier.contains(Modifier::BOLD));
+    }
+}
+
+#[test]
 fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut state = connected_state();
     let now = test_instant();
@@ -568,6 +610,47 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
     assert!(
         !has_insert_glyph,
         "Expected no fake insert cursor glyph in SQL insert mode"
+    );
+}
+
+#[test]
+fn help_uses_block_cursor_while_browsing_and_terminal_cursor_while_filtering() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::Help);
+
+    let browsing_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let modal_area = help_modal_area();
+    let has_block_cursor = has_cell_in_area(&browsing_buffer, modal_area, |cell| {
+        cell.bg == DEFAULT_THEME.semantic.cursor.bg
+            && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
+    });
+
+    state.ui.help_mut().enter_filter_editing();
+
+    let filtering_buffer = render_and_get_buffer(&mut terminal, &mut state);
+    let has_block_cursor_while_filtering =
+        has_cell_in_area(&filtering_buffer, modal_area, |cell| {
+            cell.bg == DEFAULT_THEME.semantic.cursor.bg
+                && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
+        });
+    let terminal_cursor = render_and_get_cursor_position(&mut terminal, &mut state);
+
+    assert!(
+        has_block_cursor,
+        "Expected block cursor while browsing help"
+    );
+    assert!(
+        !has_block_cursor_while_filtering,
+        "Expected no block cursor while filtering help"
+    );
+    assert!(
+        terminal_cursor.x >= modal_area.left()
+            && terminal_cursor.x < modal_area.right()
+            && terminal_cursor.y >= modal_area.top()
+            && terminal_cursor.y < modal_area.bottom(),
+        "Expected terminal cursor inside the help filter"
     );
 }
 

@@ -5,20 +5,21 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::connection::list as connection_list;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
-use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::update::input::keybindings::{
-    ModeRow, ROW_DETAIL_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
+    ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
     exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
     jsonb_search, overlay, query_history, query_history_picker, read_only, result_active, settings,
-    sql_modal, sql_modal_confirming, sql_modal_plan, sqlite_diagnostics, table_picker,
+    sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
@@ -227,7 +228,10 @@ impl Footer {
                     command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::Help => vec![help::H_SCROLL.as_hint(), help::CLOSE.as_hint()],
+            InputMode::Help => match state.ui.help().mode() {
+                HelpMode::Viewing => vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()],
+                HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
+            },
             InputMode::Settings => settings_hints(state),
             InputMode::ConfirmDialog => vec![],
             InputMode::SqlModal => {
@@ -256,18 +260,11 @@ impl Footer {
                     vec![]
                 } else {
                     // Editing / Running
-                    let mut hints = vec![
+                    vec![
                         sql_modal::RUN.as_hint(),
                         sql_modal::MOVE.as_hint(),
                         sql_modal::ESC_NORMAL.as_hint(),
-                    ];
-                    if state.session.active_db_capabilities().supports_explain()
-                        && state.sql_modal.status() == &SqlModalStatus::Editing
-                        && state.settings.saved_keymap_preset() == KeymapPreset::Default
-                    {
-                        hints.insert(1, sql_modal_plan::EXPLAIN.as_hint());
-                    }
-                    hints
+                    ]
                 }
             }
             InputMode::ConnectionSetup => {
@@ -326,7 +323,7 @@ impl Footer {
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if state.jsonb_detail.search().is_active() {
+                if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
                         jsonb_search::CONFIRM.as_hint(),
@@ -365,7 +362,10 @@ impl Footer {
                     ]
                 }
             }
-            InputMode::RowDetail => ROW_DETAIL_ROWS.iter().map(ModeRow::as_hint).collect(),
+            InputMode::RowDetail => ROW_DETAIL_FOOTER_ROWS
+                .iter()
+                .map(ModeRow::as_hint)
+                .collect(),
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
                 let is_service_selected = connection_list::is_service_selected(
@@ -420,7 +420,9 @@ mod tests {
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
-    use crate::app::update::input::keybindings::{connection_setup, global, result_active};
+    use crate::app::update::input::keybindings::{
+        connection_setup, global, help, result_active, row_detail,
+    };
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
@@ -523,6 +525,23 @@ mod tests {
     }
 
     #[test]
+    fn row_detail_footer_omits_navigation_hints() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::RowDetail);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert_eq!(
+            hints,
+            vec![
+                row_detail::YANK.as_hint(),
+                row_detail::YANK_JSON.as_hint(),
+                row_detail::CLOSE.as_hint(),
+            ]
+        );
+    }
+
+    #[test]
     fn settings_custom_browser_hint_shows_edit_when_selected() {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Settings);
@@ -555,7 +574,27 @@ mod tests {
     }
 
     #[test]
-    fn ide_sql_editing_footer_omits_explain_hint() {
+    fn help_footer_hints_follow_help_mode() {
+        let mut state = AppState::new("test".to_string());
+        state.modal.set_mode(InputMode::Help);
+
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()]
+        );
+
+        state.ui.help_mut().enter_filter_editing();
+
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![help::ESC_VIEWING.as_hint()]
+        );
+    }
+
+    #[rstest::rstest]
+    #[case(KeymapPreset::Default)]
+    #[case(KeymapPreset::Ide)]
+    fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -565,7 +604,7 @@ mod tests {
         );
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-        state.settings.load_keymap_preset(KeymapPreset::Ide);
+        state.settings.load_keymap_preset(preset);
 
         let hints = Footer::get_context_hints(&state);
 

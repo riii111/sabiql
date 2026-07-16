@@ -5,21 +5,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{List, ListItem, ListState, Paragraph};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::render_output::PickerLayout;
 use crate::app::update::input::keybindings;
 use crate::domain::er::er_output_filename;
-use crate::theme::ThemePalette;
-
-use crate::features::pickers::PickerRenderMetrics;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
+use crate::theme::ThemePalette;
 
 pub struct ErTablePicker;
 
 impl ErTablePicker {
-    pub fn render(
-        frame: &mut Frame,
-        state: &AppState,
-        theme: &ThemePalette,
-    ) -> PickerRenderMetrics {
+    pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
         let selected_count = state.ui.er_selected_tables().len();
         let total_count = state.tables().len();
         let filtered_count = state.er_filtered_tables().len();
@@ -148,7 +143,7 @@ impl ErTablePicker {
             .with_selected(selected)
             .with_offset(state.ui.er_picker().scroll_offset());
         frame.render_stateful_widget(list, list_area, &mut list_state);
-        PickerRenderMetrics {
+        PickerLayout {
             pane_height: list_area.height,
             filter_visible_width: visible_width,
         }

@@ -650,6 +650,39 @@ fn result_pane_row_detail_shows_scrollbars() {
 }
 
 #[test]
+fn result_pane_row_detail_renders_tail_beyond_u16_range() {
+    let (mut state, now) = row_detail_state();
+    let mut terminal = create_test_terminal_sized(100, 25);
+    let body = (0..66_000)
+        .map(|i| format!("line {i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    state
+        .query
+        .set_current_result(Arc::new(QueryResult::success(
+            "SELECT body FROM logs LIMIT 1".to_string(),
+            vec!["body".to_string()],
+            vec![vec![body]],
+            1,
+            QuerySource::Preview,
+        )));
+    state.result_interaction.activate_cell(0, 0);
+
+    dispatch_result(
+        &mut state,
+        &Action::OpenModal(ModalKind::RowDetail),
+        &AppServices::stub(),
+        now,
+    );
+    state.row_detail.scroll_down_by(usize::MAX, 1);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(state.row_detail.scroll_offset() > usize::from(u16::MAX));
+    assert!(output.contains("line 65999"));
+}
+
+#[test]
 fn result_pane_row_detail_mode() {
     let (mut state, now) = row_detail_state();
     let mut terminal = create_test_terminal();

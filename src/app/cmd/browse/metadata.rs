@@ -36,6 +36,10 @@ pub async fn run(
             )
             .await
         }
+        Effect::FetchEffectiveUser { dsn, run_id } => {
+            fetch_effective_user(action_tx, metadata_provider, dsn, run_id);
+            Ok(())
+        }
         Effect::FetchTableDetail {
             dsn,
             schema,
@@ -162,6 +166,27 @@ async fn fetch_metadata(
     Ok(())
 }
 
+fn fetch_effective_user(
+    action_tx: &mpsc::Sender<Action>,
+    metadata_provider: &Arc<dyn MetadataProvider>,
+    dsn: String,
+    run_id: u64,
+) {
+    let provider = Arc::clone(metadata_provider);
+    let tx = action_tx.clone();
+
+    tokio::spawn(async move {
+        let effective_user = provider.fetch_effective_user(&dsn).await.ok().flatten();
+        tx.send(Action::EffectiveUserLoaded {
+            dsn,
+            run_id,
+            effective_user,
+        })
+        .await
+        .ok();
+    });
+}
+
 fn fetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
@@ -276,6 +301,7 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::cmd::test_fixtures::make_runner;
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -548,6 +574,7 @@ mod tests {
                 .expect_fetch_metadata()
                 .once()
                 .returning(|_| Err(DbOperationError::ConnectionFailed("timeout".to_string())));
+            mock_provider.expect_fetch_effective_user().never();
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
@@ -592,6 +619,59 @@ mod tests {
                 ),
                 "expected MetadataFailed, got {action:?}"
             );
+        }
+
+        #[tokio::test]
+        async fn effective_user_provider_error_is_reported_as_absent() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider
+                .expect_fetch_effective_user()
+                .once()
+                .returning(|_| {
+                    Err(DbOperationError::QueryFailed(
+                        "permission denied".to_string(),
+                    ))
+                });
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchEffectiveUser {
+                        dsn: "dsn://test".to_string(),
+                        run_id: 7,
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(matches!(
+                action,
+                Action::EffectiveUserLoaded {
+                    ref dsn,
+                    run_id: 7,
+                    effective_user: None,
+                } if dsn == "dsn://test"
+            ));
         }
     }
 

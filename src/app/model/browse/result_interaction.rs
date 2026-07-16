@@ -5,6 +5,7 @@ use super::cell_edit::CellEditState;
 use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::policy::write::write_guardrails::WritePreview;
+use crate::update::action::TextKillDirection;
 
 // Invariants:
 // - `reset_view` / `reset_interaction` clear staged deletes too.
@@ -115,6 +116,17 @@ impl ResultInteraction {
 
     pub fn cell_edit_delete(&mut self) {
         self.cell_edit.delete();
+        self.clear_write_preview();
+    }
+
+    pub fn cell_edit_kill(&mut self, direction: TextKillDirection) -> String {
+        let killed = self.cell_edit.kill(direction);
+        self.clear_write_preview();
+        killed
+    }
+
+    pub fn cell_edit_yank(&mut self, text: &str) {
+        self.cell_edit.yank(text);
         self.clear_write_preview();
     }
 

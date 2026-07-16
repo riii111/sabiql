@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/result_pane.rs
 expression: output
 ---
-test_project | test_db | - | connected | sqlite                                                                                                                      
+test_project ▸ test_db ▸ -                                                                                                                         connected | sqlite
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
 │> public.notes                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││Rows:    ~100                                                                                                             │

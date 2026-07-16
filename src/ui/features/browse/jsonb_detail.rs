@@ -7,6 +7,7 @@ use ratatui::widgets::Paragraph;
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
+use crate::app::model::shared::render_output::JsonbDetailLayout;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
@@ -19,9 +20,6 @@ use crate::primitives::atoms::{
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct JsonbDetailRenderMetrics {
-    pub editor_visible_rows: usize,
-}
 pub struct JsonbDetail;
 
 impl JsonbDetail {
@@ -30,7 +28,7 @@ impl JsonbDetail {
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
-    ) -> Option<JsonbDetailRenderMetrics> {
+    ) -> Option<JsonbDetailLayout> {
         if !state.jsonb_detail.is_active() {
             return None;
         }
@@ -67,19 +65,20 @@ impl JsonbDetail {
             theme,
         );
 
-        let (editor_area, status_area, search_area) = if state.jsonb_detail.search().is_active() {
-            let [editor_area, status_area, search_area] = Layout::vertical([
-                Constraint::Min(1),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
-            .areas(inner);
-            (editor_area, status_area, Some(search_area))
-        } else {
-            let [editor_area, status_area] =
-                Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
-            (editor_area, status_area, None)
-        };
+        let (editor_area, status_area, search_area) =
+            if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
+                let [editor_area, status_area, search_area] = Layout::vertical([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                ])
+                .areas(inner);
+                (editor_area, status_area, Some(search_area))
+            } else {
+                let [editor_area, status_area] =
+                    Layout::vertical([Constraint::Min(1), Constraint::Length(1)]).areas(inner);
+                (editor_area, status_area, None)
+            };
 
         Self::render_editor_content(frame, editor_area, state, is_editing, now, theme);
         Self::render_status(frame, status_area, state, theme);
@@ -87,7 +86,7 @@ impl JsonbDetail {
             Self::render_search(frame, search_area, state, theme);
         }
 
-        Some(JsonbDetailRenderMetrics {
+        Some(JsonbDetailLayout {
             editor_visible_rows: editor_area.height as usize,
         })
     }

@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/initial_state.rs
 expression: output
 ---
-test_project | - | - | no dsn | -                                                                                                                                    
+test_project ▸ - ▸ -                                                                                                                                       no dsn | -
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │

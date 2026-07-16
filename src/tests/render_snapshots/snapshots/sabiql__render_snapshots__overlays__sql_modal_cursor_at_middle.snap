@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/overlays.rs
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
@@ -51,4 +51,4 @@ test_project | - | - | no dsn | localhost:5432/test
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-⌥Enter/F5:Run  ^E:Explain  ↑↓←→:Move  Esc:Normal
+⌥Enter/F5:Run  ↑↓←→:Move  Esc:Normal

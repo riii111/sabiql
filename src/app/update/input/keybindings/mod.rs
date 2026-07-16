@@ -2,6 +2,7 @@ mod connections;
 mod editors;
 mod normal;
 mod overlays;
+mod readline;
 
 use crate::model::shared::settings::KeymapPreset;
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
@@ -11,6 +12,7 @@ pub use connections::*;
 pub use editors::*;
 pub use normal::*;
 pub use overlays::*;
+pub use readline::*;
 
 #[derive(Clone)]
 pub struct KeyBinding {

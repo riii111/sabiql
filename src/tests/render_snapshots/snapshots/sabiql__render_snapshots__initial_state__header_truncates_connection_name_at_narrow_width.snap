@@ -1,0 +1,23 @@
+---
+source: src/tests/render_snapshots/initial_state.rs
+expression: output
+---
+connected | user: app_user | very-long-connection-name-that…
+┌ [1] Explorer┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]  
+│> public.use │┌ [2] Inspector ────────────────────────────┐
+│  public.pos ││(select a table)                           │
+│  public.com ││                                           │
+│             ││                                           │
+│             ││                                           │
+│             ││                                           │
+│             ││                                           │
+│             │└───────────────────────────────────────────┘
+│             │┌ [3] Result ───────────────────────────────┐
+│             ││(select a table to preview)                │
+│             ││                                           │
+│             ││                                           │
+│             ││                                           │
+│             ││                                           │
+│             ││                                           │
+└─────────────┘└───────────────────────────────────────────┘
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:

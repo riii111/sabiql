@@ -163,7 +163,7 @@ impl JsonbDetailState {
 
 #[cfg(test)]
 mod tests {
-    use super::JsonbDetailState;
+    use super::{JsonbDetailMode, JsonbDetailState};
     use crate::model::shared::text_input::TextInputLike;
 
     #[test]
@@ -218,5 +218,6 @@ mod tests {
         state.enter_edit();
 
         assert!(!state.search().is_active());
+        assert_eq!(state.mode(), JsonbDetailMode::Editing);
     }
 }

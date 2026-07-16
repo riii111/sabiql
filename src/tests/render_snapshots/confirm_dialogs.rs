@@ -1,5 +1,4 @@
 use super::*;
-use harness::connected_state;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::confirm_dialog::ConfirmIntent;

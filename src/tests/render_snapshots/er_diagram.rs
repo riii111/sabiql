@@ -1,5 +1,5 @@
 use super::*;
-use harness::{connected_state, explorer_selected_state};
+use harness::explorer_selected_state;
 
 #[test]
 fn er_waiting_progress() {

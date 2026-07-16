@@ -8,6 +8,7 @@ use crate::model::shared::inspector_tab::InspectorTab;
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionCache {
     pub metadata: Option<Arc<DatabaseMetadata>>,
+    pub effective_user: Option<String>,
     pub table_detail: Option<Table>,
     pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
@@ -52,6 +53,7 @@ mod tests {
         let cache = ConnectionCache::default();
 
         assert!(cache.metadata.is_none());
+        assert!(cache.effective_user.is_none());
         assert!(cache.table_detail.is_none());
         assert!(cache.selected_table_key.is_none());
         assert!(cache.query_result.is_none());
@@ -130,12 +132,14 @@ mod tests {
 
         let cache = ConnectionCache {
             metadata: Some(metadata),
+            effective_user: Some("postgres".to_string()),
             ..Default::default()
         };
         store.save(&id, cache);
 
         let retrieved = store.get(&id).unwrap();
         assert!(retrieved.metadata.is_some());
+        assert_eq!(retrieved.effective_user.as_deref(), Some("postgres"));
         let retrieved_metadata = retrieved.metadata.as_ref().unwrap();
         assert_eq!(retrieved_metadata.database_name, "test_db");
         assert_eq!(retrieved_metadata.table_summaries.len(), 1);

@@ -811,7 +811,9 @@ mod tests {
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
             let _ = state.sql_modal.begin_prefetch();
-            state.sql_modal.enqueue_prefetch("public.users".to_string());
+            state
+                .sql_modal
+                .queue_table_prefetch("public.users".to_string());
             state
                 .session
                 .set_table_detail_raw(Some(users_table_detail()));

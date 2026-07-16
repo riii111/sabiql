@@ -46,10 +46,15 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                DispatchResult::handled_with(termination_effects(
-                    &state.query,
-                    vec![Effect::ClearCompletionEngineCache],
-                ))
+                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                if state.session.effective_user().is_none() {
+                    let run_id = state.session.begin_effective_user_fetch();
+                    effects.push(Effect::FetchEffectiveUser {
+                        dsn: dsn.clone(),
+                        run_id,
+                    });
+                }
+                DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
                 reset_for_new_connection(state, id, dsn, name, *database_type);
@@ -392,7 +397,9 @@ mod tests {
             .connection_caches
             .save(&target_id, ConnectionCache::default());
         let _ = state.sql_modal.begin_prefetch();
-        state.sql_modal.enqueue_prefetch("public.users".to_string());
+        state
+            .sql_modal
+            .queue_table_prefetch("public.users".to_string());
 
         let action = create_switch_action(&target_id, "cached_db");
         reduce(&mut state, &action);
@@ -406,7 +413,9 @@ mod tests {
         let mut state = AppState::new("test".to_string());
         let new_id = ConnectionId::new();
         let _ = state.sql_modal.begin_prefetch();
-        state.sql_modal.enqueue_prefetch("public.users".to_string());
+        state
+            .sql_modal
+            .queue_table_prefetch("public.users".to_string());
 
         let action = create_switch_action(&new_id, "fresh_db");
         reduce(&mut state, &action);

@@ -3,7 +3,7 @@ source: src/tests/render_snapshots/connection_flow.rs
 assertion_line: 114
 expression: output
 ---
-test_project | - | - | no dsn | localhost:5432/test                                                                                                                  
+test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │

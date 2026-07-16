@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/table_explorer.rs
 expression: output
 ---
-test_project | app.db | - | connected | app.db                                                                                                                       
+test_project ▸ app.db ▸ -                                                                                                                          connected | app.db
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
 │> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │

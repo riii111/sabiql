@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/er_diagram.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                                                                                                            
+test_project ▸ test_db ▸ -                                                                                                               no dsn | localhost:5432/test
 ┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
 │> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  public.posts                         ││(select a table)                                                                                                          │
@@ -44,11 +44,11 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
 │                                │                                                                                                 │                                │
-│                                ╰ 2/3 selected │ Space: Select │ ^A: All │ Enter: Generate │ Esc: Cancel ─────────────────────────╯                                │
+│                                ╰ 2/3 selected │ Space: Select │ ⌥A: All │ Enter: Generate │ Esc: Cancel ─────────────────────────╯                                │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Generate  Space:Select  ^A:All  type:Filter  Esc:Close
+Enter:Generate  Space:Select  ⌥A:All  type:Filter  Esc:Close

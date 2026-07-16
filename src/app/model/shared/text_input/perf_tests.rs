@@ -1,6 +1,9 @@
 use std::time::Instant;
 
-use super::{TextInputState, next_word_start, previous_word_start};
+use super::{
+    TextInputState, next_word_start, previous_word_start, readline_forward_word_end,
+    readline_previous_word_start,
+};
 use crate::model::shared::cursor::CursorMove;
 
 // Snapshot of the pre-cache implementation, kept only for local perf comparison.
@@ -50,6 +53,12 @@ impl BaselineTextInputState {
             }
             CursorMove::WordBackward => {
                 self.cursor = previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::ReadlineWordStart => {
+                self.cursor = readline_previous_word_start(&self.content, self.cursor);
+            }
+            CursorMove::ReadlineWordEnd => {
+                self.cursor = readline_forward_word_end(&self.content, self.cursor);
             }
             CursorMove::Up
             | CursorMove::Down

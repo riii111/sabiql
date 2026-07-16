@@ -1,5 +1,5 @@
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Rect};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
@@ -9,30 +9,35 @@ use crate::theme::ThemePalette;
 
 use crate::app::catalog::{HelpDocument, HelpRow};
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::ui_state::{
-    HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HelpViewportLayout,
-    help_viewport_layout_for,
+    HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT, HELP_MODE_STATUS_HEIGHT,
+    HelpViewportLayout, help_viewport_layout_for,
 };
-use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH};
+use crate::app::update::input::keybindings::{HELP_KEY_DESC_GAP, HELP_KEY_INDENT_WIDTH, help};
 
 use crate::primitives::atoms::scroll_indicator::{
     HorizontalScrollParams, VerticalScrollParams, clamp_scroll_offset,
     render_horizontal_scroll_indicator, render_vertical_scroll_indicator_bar,
 };
-use crate::primitives::atoms::text_cursor_spans;
+use crate::primitives::atoms::{CursorKind, set_terminal_cursor, text_cursor_spans_with_kind};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 
 pub struct HelpOverlay;
 
+const FILTER_LABEL: &str = "Filter: ";
+
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = FooterHintBar::new([
-            ("type", "Filter"),
-            ("Backspace", "Edit"),
-            ("Esc", "Close"),
-            ("?", "Close"),
-        ]);
+        let footer = match state.ui.help().mode() {
+            HelpMode::Viewing => FooterHintBar::new([
+                help::START_FILTER.as_hint(),
+                help::ESC_CLOSE.as_hint(),
+                help::CLOSE.as_hint(),
+            ]),
+            HelpMode::EditingFilter => FooterHintBar::new([help::ESC_VIEWING.as_hint()]),
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(HELP_MODAL_WIDTH_PERCENT),
@@ -42,16 +47,32 @@ impl HelpOverlay {
             theme,
         );
 
-        let help_lines = Self::document_lines(&document, theme);
+        let [document_area, mode_area] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(HELP_MODE_STATUS_HEIGHT as u16),
+        ])
+        .areas(inner);
+        let [separator_area, status_area] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(mode_area);
+
+        Self::render_mode_status(
+            frame,
+            separator_area,
+            status_area,
+            state.ui.help().mode(),
+            theme,
+        );
+
+        let help_lines = Self::document_lines(&document, state.ui.help().mode(), theme);
         let total_lines = document.line_count();
         let content_width = document.content_width();
         let viewport = help_viewport_layout_for(
-            inner.height as usize,
-            inner.width as usize,
+            document_area.height as usize,
+            document_area.width as usize,
             total_lines,
             content_width,
         );
-        let content_area = Self::content_area(inner, viewport);
+        let content_area = Self::content_area(document_area, viewport);
         let viewport_height = content_area.height as usize;
         let scroll_offset = clamp_scroll_offset(
             state.ui.help().scroll_offset(),
@@ -70,11 +91,12 @@ impl HelpOverlay {
             .scroll((scroll_offset as u16, horizontal_offset as u16));
 
         frame.render_widget(help, content_area);
+        Self::render_filter_cursor(frame, content_area, &document, state.ui.help().mode());
 
         if viewport.has_horizontal_scrollbar {
             render_horizontal_scroll_indicator(
                 frame,
-                inner,
+                document_area,
                 HorizontalScrollParams {
                     position: horizontal_offset,
                     viewport_size: viewport_width,
@@ -88,7 +110,7 @@ impl HelpOverlay {
         if viewport.has_vertical_scrollbar {
             render_vertical_scroll_indicator_bar(
                 frame,
-                inner,
+                document_area,
                 VerticalScrollParams {
                     position: scroll_offset,
                     viewport_size: viewport_height,
@@ -108,6 +130,55 @@ impl HelpOverlay {
         }
     }
 
+    fn render_mode_status(
+        frame: &mut Frame,
+        separator_area: Rect,
+        status_area: Rect,
+        mode: HelpMode,
+        theme: &ThemePalette,
+    ) {
+        let separator = "─".repeat(separator_area.width as usize);
+        frame.render_widget(
+            Paragraph::new(Line::styled(separator, theme.modal_border_style())),
+            separator_area,
+        );
+
+        let (label, style) = match mode {
+            HelpMode::Viewing => (" [BROWSE]", Style::default().fg(theme.semantic.text.dim)),
+            HelpMode::EditingFilter => (
+                " [FILTER]",
+                Style::default()
+                    .fg(theme.semantic.text.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        };
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(label, style))),
+            status_area,
+        );
+    }
+
+    fn render_filter_cursor(
+        frame: &mut Frame,
+        content_area: Rect,
+        document: &HelpDocument,
+        mode: HelpMode,
+    ) {
+        if !matches!(mode, HelpMode::EditingFilter) {
+            return;
+        }
+
+        set_terminal_cursor(
+            frame,
+            content_area,
+            document.filter(),
+            0,
+            document.filter_cursor(),
+            0,
+            FILTER_LABEL.len() as u16,
+        );
+    }
+
     fn section(title: &str, theme: &ThemePalette) -> Line<'static> {
         Line::from(vec![
             Span::styled(
@@ -123,9 +194,13 @@ impl HelpOverlay {
         ])
     }
 
-    fn document_lines(document: &HelpDocument, theme: &ThemePalette) -> Vec<Line<'static>> {
+    fn document_lines(
+        document: &HelpDocument,
+        mode: HelpMode,
+        theme: &ThemePalette,
+    ) -> Vec<Line<'static>> {
         let key_column_width = document.key_column_width();
-        let mut lines = vec![Self::filter_line(document, theme), Line::raw("")];
+        let mut lines = vec![Self::filter_line(document, mode, theme), Line::raw("")];
         for (index, section) in document.sections().iter().enumerate() {
             if index > 0 {
                 lines.push(Line::raw(""));
@@ -138,16 +213,21 @@ impl HelpOverlay {
         lines
     }
 
-    fn filter_line(document: &HelpDocument, theme: &ThemePalette) -> Line<'static> {
+    fn filter_line(document: &HelpDocument, mode: HelpMode, theme: &ThemePalette) -> Line<'static> {
+        let kind = match mode {
+            HelpMode::Viewing => CursorKind::Block,
+            HelpMode::EditingFilter => CursorKind::Insert,
+        };
         let mut spans = vec![Span::styled(
-            "Filter: ",
+            FILTER_LABEL,
             Style::default().fg(theme.semantic.text.secondary),
         )];
-        spans.extend(text_cursor_spans(
+        spans.extend(text_cursor_spans_with_kind(
             document.filter(),
             document.filter_cursor(),
             0,
             usize::MAX,
+            kind,
             theme,
         ));
         Line::from(spans)

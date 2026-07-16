@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::key_sequence::KeySequenceState;
-use crate::model::shared::text_input::{TextInputLike, TextInputState};
+use crate::model::shared::text_input::{TextInputEditing, TextInputLike, TextInputState};
 use crate::model::sql_editor::modal::{
     HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalContext, SqlModalStatus,
 };
@@ -56,6 +56,40 @@ pub(super) fn reduce_high_risk_confirmation(
         } => {
             if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
                 input.backspace();
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
+        } => {
+            if let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target) {
+                input.delete();
+                input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+            }
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
+            direction,
+        } => {
+            let killed = high_risk_input_mut(&mut state.sql_modal, *target)
+                .map(|input| {
+                    let killed = input.kill(*direction);
+                    input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
+                    killed
+                })
+                .unwrap_or_default();
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: target @ (InputTarget::SqlModalHighRisk | InputTarget::SqlModalAnalyzeHighRisk),
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned)
+                && let Some(input) = high_risk_input_mut(&mut state.sql_modal, *target)
+            {
+                input.yank(&killed);
                 input.update_viewport(HIGH_RISK_INPUT_VISIBLE_WIDTH);
             }
             DispatchResult::handled()

@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::text_input::{TextInputEditing, TextInputState};
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -77,6 +78,41 @@ pub(super) fn reduce_query_history_picker(
             target: InputTarget::QueryHistoryFilter,
         } => {
             state.query_history_picker.backspace_filter();
+            DispatchResult::handled()
+        }
+        Action::TextDelete {
+            target: InputTarget::QueryHistoryFilter,
+        } => {
+            state
+                .query_history_picker
+                .edit_filter(TextInputState::delete);
+            DispatchResult::handled()
+        }
+        Action::TextKill {
+            target: InputTarget::QueryHistoryFilter,
+            direction,
+        } => {
+            let killed = state
+                .query_history_picker
+                .edit_filter(|input| input.kill(*direction));
+            state.record_kill(killed);
+            DispatchResult::handled()
+        }
+        Action::TextYank {
+            target: InputTarget::QueryHistoryFilter,
+        } => {
+            if let Some(killed) = state.kill_buffer().map(str::to_owned) {
+                state
+                    .query_history_picker
+                    .edit_filter(|input| input.yank(&killed));
+            }
+            DispatchResult::handled()
+        }
+        Action::TextMoveCursor {
+            target: InputTarget::QueryHistoryFilter,
+            direction,
+        } => {
+            state.query_history_picker.move_filter_cursor(*direction);
             DispatchResult::handled()
         }
         Action::ListSelect {

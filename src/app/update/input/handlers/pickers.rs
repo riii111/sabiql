@@ -462,17 +462,11 @@ mod tests {
             ));
         }
 
-        #[test]
-        fn default_ctrl_a_selects_all() {
-            let state = state_with_preset(KeymapPreset::Default);
-            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
-
-            assert!(matches!(result, Action::ErSelectAll));
-        }
-
-        #[test]
-        fn ide_alt_a_selects_all() {
-            let state = state_with_preset(KeymapPreset::Ide);
+        #[rstest]
+        #[case(KeymapPreset::Default)]
+        #[case(KeymapPreset::Ide)]
+        fn alt_a_selects_all_for_both_presets(#[case] preset: KeymapPreset) {
+            let state = state_with_preset(preset);
             let result = handle_er_table_picker_keys(KeyCombo::alt(Key::Char('a')), &state);
 
             assert!(matches!(result, Action::ErSelectAll));
@@ -490,14 +484,6 @@ mod tests {
                     ch: 'A'
                 }
             ));
-        }
-
-        #[test]
-        fn ide_ctrl_a_is_ignored() {
-            let state = state_with_preset(KeymapPreset::Ide);
-            let result = handle_er_table_picker_keys(combo_ctrl(Key::Char('a')), &state);
-
-            assert!(matches!(result, Action::None));
         }
 
         #[test]

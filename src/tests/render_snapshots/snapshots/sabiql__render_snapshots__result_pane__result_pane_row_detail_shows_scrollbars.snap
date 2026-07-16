@@ -2,7 +2,7 @@
 source: src/tests/render_snapshots/result_pane.rs
 expression: output
 ---
-test_project | test_db | - | no dsn | localhost:5432/test                                           
+test_project ▸ test_db ▸ -                                              no dsn | localhost:5432/test
 ┌ [1] Explorer ─────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                
 │> public.users         │┌ [2] Inspector ──────────────────────────────────────────────────────────┐
 │  public.posts         ││(select a table)                                                         │
@@ -22,7 +22,7 @@ test_project | test_db | - | no dsn | localhost:5432/test
 │         │  line 11: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx││         │
 │         │  line 12: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx▼│         │
 │         │ x   0% ◀︎══════════════════════════════════════─────────────────────────────▶︎ │         │
-│         ╰ y: Copy │ Y: Copy JSON │ j/k/⇟/⇞/⌃F/⌃B: Scroll │ h/l/←/→: H-Scroll │ ⌃D/⌃U: H╯         │
+│         ╰ y: Copy │ Y: Copy JSON │ Esc: Close ─────────────────────────────────────────╯         │
 │                       ││                                                                         │
 └───────────────────────┘└─────────────────────────────────────────────────────────────────────────┘
-y:Copy  Y:Copy JSON  j/k/⇟/⇞/⌃F/⌃B:Scroll  h/l/←/→:H-Scroll  ⌃D/⌃U:Half Page  g/G:Top/Btm  Esc:Close
+y:Copy  Y:Copy JSON  Esc:Close

@@ -139,22 +139,6 @@ SQLite support covers browsing, editing, and ad-hoc SQL on regular database file
 - **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
 - **No JSON tree view** — Structured JSON editing is PostgreSQL-only.
 
-## Development
-
-With Nix:
-
-```bash
-direnv allow
-cargo nextest run --workspace
-nix build
-```
-
-Without direnv, enter the shell explicitly:
-
-```bash
-nix develop
-```
-
 ## Roadmap
 
 - [x] Connection management UI

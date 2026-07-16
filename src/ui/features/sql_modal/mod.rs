@@ -329,7 +329,7 @@ impl SqlModal {
                 sql_modal::QUERY_HISTORY.as_hint(),
                 sql_modal::ESC_NORMAL.as_hint(),
             ]),
-            _ => FooterHintBar::new([
+            (_, KeymapPreset::Ide) => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
                 sql_modal::CLEAR.as_hint(),
                 sql_modal::ESC_NORMAL.as_hint(),

@@ -186,6 +186,7 @@ impl EffectRunner {
             }
 
             e @ (Effect::FetchMetadata { .. }
+            | Effect::FetchEffectiveUser { .. }
             | Effect::FetchTableDetail { .. }
             | Effect::PrefetchTableDetail { .. }
             | Effect::ProcessPrefetchQueue { .. }
@@ -276,6 +277,9 @@ mod tests {
     use super::*;
     use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::model::shared::render_output::{
+        BrowseLayout, DetailLayout, ExplorerLayout, JsonbDetailLayout,
+    };
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
@@ -315,7 +319,13 @@ mod tests {
                 _now: Instant,
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
-                    explorer_content_width: self.explorer_content_width,
+                    browse: BrowseLayout {
+                        explorer: ExplorerLayout {
+                            content_width: self.explorer_content_width,
+                            ..ExplorerLayout::default()
+                        },
+                        ..BrowseLayout::default()
+                    },
                     ..RenderOutput::default()
                 })
             }
@@ -329,7 +339,12 @@ mod tests {
                 _now: Instant,
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
-                    jsonb_detail_editor_visible_rows: Some(self.visible_rows),
+                    details: DetailLayout {
+                        jsonb: Some(JsonbDetailLayout {
+                            editor_visible_rows: self.visible_rows,
+                        }),
+                        ..DetailLayout::default()
+                    },
                     ..RenderOutput::default()
                 })
             }

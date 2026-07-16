@@ -148,6 +148,8 @@ pub enum InputTarget {
     HelpFilter,
 }
 
+pub use crate::model::shared::text_input::TextKillDirection;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectMotion {
     Next,
@@ -288,10 +290,19 @@ pub enum Action {
     TextDelete {
         target: InputTarget,
     },
+    TextKill {
+        target: InputTarget,
+        direction: TextKillDirection,
+    },
+    TextYank {
+        target: InputTarget,
+    },
     TextMoveCursor {
         target: InputTarget,
         direction: CursorMove,
     },
+    EnterHelpFilter,
+    ExitHelpFilter,
     Select(SelectMotion),
     ListSelect {
         target: ListTarget,
@@ -384,6 +395,11 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         error: DbOperationError,
+    },
+    EffectiveUserLoaded {
+        dsn: String,
+        run_id: u64,
+        effective_user: Option<String>,
     },
     LoadTableDetail(TableTarget),
     TableDetailLoaded {

@@ -107,8 +107,9 @@ impl HelpDocument {
     }
 
     pub fn content_width(&self) -> usize {
+        let filter_label = "Filter: ";
         let filter_width =
-            UnicodeWidthStr::width("Filter: ") + UnicodeWidthStr::width(self.filter.as_str()) + 1;
+            UnicodeWidthStr::width(filter_label) + UnicodeWidthStr::width(self.filter.as_str()) + 1;
         let key_column_width = self.key_column_width();
         self.sections
             .iter()
@@ -635,6 +636,7 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::browse::jsonb_detail::JsonbDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
 
@@ -862,7 +864,7 @@ mod tests {
     }
 
     #[test]
-    fn line_count_uses_rendered_section_metrics() {
+    fn line_count_uses_rendered_section_dimensions() {
         let document = HelpDocument::new(
             HelpOrigin::Normal {
                 focused_pane: FocusedPane::Explorer,
@@ -924,7 +926,9 @@ mod tests {
 
         let mut jsonb_state = AppState::new("test".to_string());
         jsonb_state.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_state.jsonb_detail.search_mut().activate();
+        jsonb_state
+            .jsonb_detail
+            .set_mode(JsonbDetailMode::Searching);
         let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
 
         assert_eq!(
