@@ -1,6 +1,6 @@
 use crate::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
 
-/// Geometry measured during a draw. Owned by the model so state write-back
+/// Feedback measured during a draw. Owned by the model so state write-back
 /// stays port-agnostic; the renderer port re-exports this type as its output.
 #[derive(Default)]
 pub struct RenderOutput {

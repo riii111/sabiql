@@ -124,8 +124,8 @@ impl AppState {
         self.flash_timers.clear_expired(now);
     }
 
-    /// Writes back the pane geometry measured during a draw. Inspector viewport
-    /// plans are skipped in focus mode to keep the pre-focus plan restorable.
+    /// Writes back feedback measured during a draw. Inspector viewport plans
+    /// are skipped in focus mode to keep the pre-focus plan restorable.
     pub fn apply_render_output(&mut self, output: RenderOutput) {
         self.apply_browse_render_metrics(output.browse);
         self.apply_input_render_metrics(output.input);
@@ -520,9 +520,13 @@ mod tests {
             assert_eq!(state.ui.inspector_viewport_plan.column_count, 2);
             assert_eq!(state.ui.inspector_pane_height, 30);
         }
+    }
+
+    mod render_feedback {
+        use super::*;
 
         #[test]
-        fn confirm_preview_metrics_are_replaced_on_each_render() {
+        fn confirm_preview_metrics_are_written() {
             let mut state = make_state();
             let measured = RenderOutput {
                 overlays: OverlayRenderMetrics {
@@ -537,6 +541,19 @@ mod tests {
             };
 
             state.apply_render_output(measured);
+
+            assert_eq!(state.confirm_dialog.preview_viewport_height, Some(10));
+            assert_eq!(state.confirm_dialog.preview_content_height, Some(25));
+            assert_eq!(state.confirm_dialog.preview_scroll, 4);
+        }
+
+        #[test]
+        fn confirm_preview_metrics_clear_without_measurement() {
+            let mut state = make_state();
+            state.confirm_dialog.preview_viewport_height = Some(10);
+            state.confirm_dialog.preview_content_height = Some(25);
+            state.confirm_dialog.preview_scroll = 4;
+
             state.apply_render_output(RenderOutput::default());
 
             assert_eq!(state.confirm_dialog.preview_viewport_height, None);
