@@ -204,7 +204,7 @@ mod tests {
         );
 
         assert_eq!(items.len(), 1);
-        assert!(items[0].content.starts_with("R"));
+        assert!(items[0].content.starts_with('R'));
         assert!(UnicodeWidthStr::width(items[0].content.as_str()) <= 4);
     }
 }
