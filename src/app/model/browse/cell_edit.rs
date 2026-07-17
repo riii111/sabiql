@@ -1,6 +1,5 @@
 use crate::model::shared::cursor::CursorMove;
-use crate::model::shared::text_input::{TextInputEditing, TextInputState};
-use crate::update::action::TextKillDirection;
+use crate::model::shared::text_input::{TextInputEditing, TextInputState, TextKillDirection};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CellEditState {

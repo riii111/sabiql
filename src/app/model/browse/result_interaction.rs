@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use super::cell_edit::CellEditState;
 use crate::model::shared::cursor::CursorMove;
+use crate::model::shared::text_input::TextKillDirection;
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
 use crate::policy::write::write_guardrails::WritePreview;
-use crate::update::action::TextKillDirection;
 
 // Invariants:
 // - `reset_view` / `reset_interaction` clear staged deletes too.
