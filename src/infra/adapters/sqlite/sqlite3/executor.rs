@@ -97,7 +97,7 @@ impl SqliteCli {
         &self,
     ) -> Result<(), DbOperationError> {
         let mut cmd = self.command();
-        Self::apply_initialization_file(&mut cmd);
+        let _init_file = Self::apply_initialization_file(&mut cmd)?;
         let output = cmd
             .arg("--safe")
             .arg("--version")
@@ -230,7 +230,7 @@ impl SqliteCli {
         let mut cmd = self.command_with_program(command);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
-        Self::apply_session_options(&mut cmd, read_only);
+        let _init_file = Self::apply_session_options(&mut cmd, read_only)?;
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
 
@@ -318,7 +318,7 @@ impl SqliteCli {
         let mut cmd = self.command();
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
-        Self::apply_session_options(&mut cmd, read_only);
+        let _init_file = Self::apply_session_options(&mut cmd, read_only)?;
         for arg in args {
             cmd.arg(arg);
         }
@@ -331,8 +331,11 @@ impl SqliteCli {
             .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))
     }
 
-    fn apply_session_options(cmd: &mut Command, read_only: bool) {
-        Self::apply_initialization_file(cmd);
+    fn apply_session_options(
+        cmd: &mut Command,
+        read_only: bool,
+    ) -> Result<tempfile::TempPath, DbOperationError> {
+        let init_file = Self::apply_initialization_file(cmd)?;
         cmd.arg("--safe");
         if read_only {
             cmd.arg("-readonly");
@@ -344,10 +347,17 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-cmd").arg("PRAGMA query_only=ON");
         }
+        Ok(init_file)
     }
 
-    fn apply_initialization_file(cmd: &mut Command) {
-        cmd.arg("-init").arg(sqlite_empty_init_file());
+    fn apply_initialization_file(
+        cmd: &mut Command,
+    ) -> Result<tempfile::TempPath, DbOperationError> {
+        let init_file = tempfile::NamedTempFile::new()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+            .into_temp_path();
+        cmd.arg("-init").arg(&init_file);
+        Ok(init_file)
     }
 
     fn command(&self) -> Command {
@@ -417,14 +427,6 @@ fn safe_mode_required_error(details: &str) -> DbOperationError {
     DbOperationError::UnsupportedOperation(format!(
         "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
     ))
-}
-
-fn sqlite_empty_init_file() -> &'static str {
-    sqlite_empty_init_file_for_platform(cfg!(windows))
-}
-
-const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
-    if is_windows { "NUL" } else { "/dev/null" }
 }
 
 async fn write_sql_to_stdin(
@@ -2644,15 +2646,9 @@ world'), (2, 'done');
         }
 
         #[test]
-        fn empty_initialization_file_uses_platform_null_device() {
-            assert_eq!(sqlite_empty_init_file_for_platform(false), "/dev/null");
-            assert_eq!(sqlite_empty_init_file_for_platform(true), "NUL");
-        }
-
-        #[test]
         fn initialization_precedes_safe_read_only_and_session_options() {
             let mut cmd = Command::new("sqlite3");
-            SqliteCli::apply_session_options(&mut cmd, true);
+            let init_file = SqliteCli::apply_session_options(&mut cmd, true).unwrap();
             let args = cmd
                 .as_std()
                 .get_args()
@@ -2663,7 +2659,7 @@ world'), (2, 'done');
                 args,
                 vec![
                     "-init",
-                    sqlite_empty_init_file(),
+                    init_file.to_string_lossy().as_ref(),
                     "--safe",
                     "-readonly",
                     "-cmd",

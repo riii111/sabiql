@@ -17,6 +17,7 @@ dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 toml.workspace = true
 urlencoding.workspace = true
@@ -28,7 +29,6 @@ arboard.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
-tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
