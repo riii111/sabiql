@@ -117,6 +117,21 @@ jobs:
         run: |
           choco install sqlite --no-progress -y
           sqlite3 --version
+      - name: Diagnose SQLite CLI session
+        shell: pwsh
+        run: |
+          $database = Join-Path $env:RUNNER_TEMP 'sabiql-cli-diagnosis.sqlite'
+          Remove-Item -Force -ErrorAction SilentlyContinue $database
+          & sqlite3 $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
+          $uri = "file:/$($database.Replace('\', '/'))?mode=ro"
+          $session = @('-readonly', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', '-cmd', 'PRAGMA query_only=ON;', '-batch', '-bail', '-quote', '-header')
+          function Test-SqliteSession([string]$name, [string[]]$options) {
+            $output = 'SELECT 1 AS value;' | & sqlite3 @options @session $uri 2>&1
+            Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '\n')>"
+          }
+          Test-SqliteSession 'safe-only' @('--safe')
+          Test-SqliteSession 'safe-then-init' @('--safe', '-init', 'NUL')
+          Test-SqliteSession 'init-then-safe' @('-init', 'NUL', '--safe')
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
