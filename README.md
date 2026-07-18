@@ -85,7 +85,7 @@ On first run, enter your connection details. They are saved to your platform con
 - Linux: `~/.config/sabiql/connections.toml`
 - Windows: `%APPDATA%\sabiql\connections.toml`
 
-Windows releases are build- and unit-tested in CI. Native `psql.exe`, terminal, and Graphviz integration remain experimental.
+Windows support is experimental.
 
 Press `?` for help.
 
