@@ -123,6 +123,29 @@ jobs:
           $sqliteTools = Join-Path $sqliteTools 'tools'
           $sqliteTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $sqliteTools 'sqlite3.exe') --version
+      - name: Diagnose SQLite quote mode
+        shell: pwsh
+        run: |
+          $sqliteTools = Join-Path $env:ChocolateyInstall 'lib'
+          $sqliteTools = Join-Path $sqliteTools 'SQLite'
+          $sqlite = Join-Path (Join-Path $sqliteTools 'tools') 'sqlite3.exe'
+          $database = Join-Path $env:RUNNER_TEMP 'sabiql-quote-mode.sqlite'
+          Remove-Item -Force -ErrorAction SilentlyContinue $database
+          & $sqlite $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
+          $uriPath = $database.Replace([IO.Path]::DirectorySeparatorChar, '/')
+          $uri = "file:/$uriPath?mode=ro"
+          $sql = 'SELECT 1 AS value;'
+          $session = @('--safe', '-readonly', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', '-cmd', 'PRAGMA query_only=ON;')
+          function Test-SqliteMode([string]$name, [string[]]$options) {
+            $output = & $sqlite @options $uri $sql 2>&1
+            Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '|')>"
+          }
+          Test-SqliteMode 'json-full-session' (@($session) + @('-json'))
+          Test-SqliteMode 'csv-full-session' (@($session) + @('-batch', '-bail', '-csv', '-header'))
+          Test-SqliteMode 'quote-no-session' @('-readonly', '-batch', '-bail', '-quote', '-header')
+          Test-SqliteMode 'quote-safe' @('--safe', '-readonly', '-batch', '-bail', '-quote', '-header')
+          Test-SqliteMode 'quote-full-session' (@($session) + @('-batch', '-bail', '-quote', '-header'))
+          Test-SqliteMode 'mode-quote-full-session' (@($session) + @('-batch', '-bail', '-header', '-cmd', '.mode quote'))
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
