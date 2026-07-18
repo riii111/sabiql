@@ -232,7 +232,12 @@ impl SqliteCli {
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
-        cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
+        cmd.arg("-batch")
+            .arg("-bail")
+            .arg("-csv")
+            .arg("-header")
+            .arg("-newline")
+            .arg("\n");
         cmd.arg(sqlite_database_uri(path, read_only));
         if cfg!(windows) {
             cmd.arg(terminated_sql(&sql));
