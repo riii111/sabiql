@@ -122,34 +122,6 @@ jobs:
           $sqliteTools = Join-Path $sqliteTools 'tools'
           $sqliteTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $sqliteTools 'sqlite3.exe') --version
-      - name: Diagnose SQLite quote output by version
-        shell: pwsh
-        run: |
-          $database = Join-Path $env:RUNNER_TEMP 'sabiql-quote-version.sqlite'
-          $chocolateySqlite = Join-Path $env:ChocolateyInstall 'lib'
-          $chocolateySqlite = Join-Path $chocolateySqlite 'SQLite'
-          $chocolateySqlite = Join-Path (Join-Path $chocolateySqlite 'tools') 'sqlite3.exe'
-          Remove-Item -Force -ErrorAction SilentlyContinue $database
-          & $chocolateySqlite $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
-          $uri = [Uri]::new($database).AbsoluteUri + '?mode=ro'
-          $sql = "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker;"
-          $releases = @(
-            @{ Name = 'official-3.53.3'; Url = 'https://www.sqlite.org/2026/sqlite-tools-win-x64-3530300.zip' },
-            @{ Name = 'official-3.52.0'; Url = 'https://www.sqlite.org/2026/sqlite-tools-win-x64-3520000.zip' }
-          )
-          function Test-SqliteQuote([string]$name, [string]$sqlite) {
-            $output = & $sqlite -init NUL --safe -readonly -batch -bail -quote -header $uri $sql 2>&1
-            Write-Host "$name version=$(& $sqlite --version) output=<$($output -join '|')>"
-          }
-          Test-SqliteQuote 'chocolatey-3.53.3' $chocolateySqlite
-          foreach ($release in $releases) {
-            $archive = Join-Path $env:RUNNER_TEMP "$($release.Name).zip"
-            $destination = Join-Path $env:RUNNER_TEMP $release.Name
-            Invoke-WebRequest -Uri $release.Url -OutFile $archive
-            Expand-Archive -Path $archive -DestinationPath $destination
-            Test-SqliteQuote $release.Name (Join-Path $destination 'sqlite3.exe')
-          }
-          exit 0
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
