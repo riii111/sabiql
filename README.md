@@ -55,6 +55,10 @@ brew install riii111/sabiql/sabiql
 # Cargo (crates.io)
 cargo install sabiql
 
+# Windows x86_64 (experimental)
+# Download sabiql-x86_64-pc-windows-msvc.zip from GitHub Releases,
+# extract sabiql.exe, and add its directory to PATH.
+
 # Arch Linux (AUR)
 paru -S sabiql  # or yay -S sabiql
 
@@ -79,6 +83,9 @@ On first run, enter your connection details. They are saved to your platform con
 
 - macOS: `~/Library/Application Support/sabiql/connections.toml`
 - Linux: `~/.config/sabiql/connections.toml`
+- Windows: `%APPDATA%\sabiql\connections.toml`
+
+Windows releases are build- and unit-tested in CI. Native `psql.exe`, terminal, and Graphviz integration remain experimental.
 
 Press `?` for help.
 

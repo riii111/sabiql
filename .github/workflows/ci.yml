@@ -62,6 +62,19 @@ jobs:
       - name: Reject unreferenced snapshots
         run: cargo insta test --unreferenced=reject -p sabiql
 
+  windows-test:
+    name: Windows Test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          key: windows-test
+      - run: cargo test --workspace --all-features
+      - run: cargo test -p sabiql --no-default-features
+      - run: cargo run --all-features -- --version
+
   integration:
     name: Integration Test
     runs-on: ubuntu-latest
