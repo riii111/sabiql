@@ -47,7 +47,7 @@ struct SqliteOutput {
 fn configure_sql_input(cmd: &mut Command, sql: &str) -> Stdio {
     #[cfg(windows)]
     {
-        cmd.arg("-cmd").arg(terminated_sql(sql));
+        cmd.arg(terminated_sql(sql));
         Stdio::null()
     }
 
@@ -246,8 +246,8 @@ impl SqliteCli {
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
-        let stdin = configure_sql_input(&mut cmd, sql);
         cmd.arg(sqlite_database_uri(path, read_only));
+        let stdin = configure_sql_input(&mut cmd, sql);
 
         let mut child = cmd
             .stdin(stdin)
@@ -337,8 +337,8 @@ impl SqliteCli {
         for arg in args {
             cmd.arg(arg);
         }
-        let stdin = configure_sql_input(&mut cmd, sql);
         cmd.arg(sqlite_database_uri(path, read_only));
+        let stdin = configure_sql_input(&mut cmd, sql);
         Self::collect_output(&mut cmd, self.timeout_secs, sql, stdin).await
     }
 
