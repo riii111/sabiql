@@ -135,7 +135,7 @@ jobs:
           $sql = "SELECT 'line 1' || char(10) || 'line 2' AS body, 'ok' AS marker;"
           $releases = @(
             @{ Name = 'official-3.53.3'; Url = 'https://www.sqlite.org/2026/sqlite-tools-win-x64-3530300.zip' },
-            @{ Name = 'official-3.52.0'; Url = 'https://www.sqlite.org/2025/sqlite-tools-win-x64-3520000.zip' }
+            @{ Name = 'official-3.52.0'; Url = 'https://www.sqlite.org/2026/sqlite-tools-win-x64-3520000.zip' }
           )
           function Test-SqliteQuote([string]$name, [string]$sqlite) {
             $output = & $sqlite -init NUL --safe -readonly -batch -bail -quote -header $uri $sql 2>&1
