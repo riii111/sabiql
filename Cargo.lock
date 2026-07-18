@@ -2597,7 +2597,7 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 
 [[package]]
 name = "sabiql"
-version = "1.14.0"
+version = "1.15.0"
 dependencies = [
  "clap",
  "color-eyre",
@@ -2615,7 +2615,7 @@ dependencies = [
 
 [[package]]
 name = "sabiql-app"
-version = "1.14.0"
+version = "1.15.0"
 dependencies = [
  "async-trait",
  "color-eyre",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "sabiql-domain"
-version = "1.14.0"
+version = "1.15.0"
 dependencies = [
  "rstest",
  "serde",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "sabiql-infra"
-version = "1.14.0"
+version = "1.15.0"
 dependencies = [
  "arboard",
  "async-trait",
@@ -2667,7 +2667,7 @@ dependencies = [
 
 [[package]]
 name = "sabiql-ui"
-version = "1.14.0"
+version = "1.15.0"
 dependencies = [
  "color-eyre",
  "crossterm",
