@@ -432,7 +432,8 @@ async fn write_sql_to_stdin(
     sql: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(mut stdin) = stdin {
-        if let Err(error) = stdin.write_all(sql.as_bytes()).await
+        let execution_sql = format!("{sql}\n;\n");
+        if let Err(error) = stdin.write_all(execution_sql.as_bytes()).await
             && error.kind() != std::io::ErrorKind::BrokenPipe
         {
             return Err(error);
