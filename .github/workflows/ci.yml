@@ -134,7 +134,11 @@ jobs:
           & $sqlite $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
           $uri = [Uri]::new($database).AbsoluteUri + '?mode=ro'
           $sql = 'SELECT 1 AS value;'
-          $session = @('--safe', '-readonly', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', '-cmd', 'PRAGMA query_only=ON;')
+          $baseSession = @('-init', 'NUL', '--safe', '-readonly')
+          $timeout = @('-cmd', '.timeout 5000')
+          $foreignKeys = @('-cmd', 'PRAGMA foreign_keys=ON;')
+          $queryOnly = @('-cmd', 'PRAGMA query_only=ON;')
+          $session = @($baseSession) + @($timeout) + @($foreignKeys) + @($queryOnly)
           function Test-SqliteMode([string]$name, [string[]]$options, [string]$target = $uri) {
             $output = & $sqlite @options $target $sql 2>&1
             Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '|')>"
@@ -143,6 +147,10 @@ jobs:
           Test-SqliteMode 'csv-full-session' (@($session) + @('-batch', '-bail', '-csv', '-header'))
           Test-SqliteMode 'quote-no-session' @('-readonly', '-batch', '-bail', '-quote', '-header')
           Test-SqliteMode 'quote-safe' @('--safe', '-readonly', '-batch', '-bail', '-quote', '-header')
+          Test-SqliteMode 'quote-base-session' (@($baseSession) + @('-batch', '-bail', '-quote', '-header'))
+          Test-SqliteMode 'quote-with-timeout' (@($baseSession) + @($timeout) + @('-batch', '-bail', '-quote', '-header'))
+          Test-SqliteMode 'quote-with-foreign-keys' (@($baseSession) + @($foreignKeys) + @('-batch', '-bail', '-quote', '-header'))
+          Test-SqliteMode 'quote-with-query-only' (@($baseSession) + @($queryOnly) + @('-batch', '-bail', '-quote', '-header'))
           Test-SqliteMode 'quote-full-session' (@($session) + @('-batch', '-bail', '-quote', '-header'))
           Test-SqliteMode 'mode-quote-full-session' (@($session) + @('-batch', '-bail', '-header', '-cmd', '.mode quote'))
           Test-SqliteMode 'quote-raw-path' @('-readonly', '-batch', '-bail', '-quote', '-header') $database
