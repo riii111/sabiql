@@ -340,9 +340,9 @@ impl SqliteCli {
         cmd.arg("-cmd")
             .arg(format!(".timeout {BUSY_TIMEOUT_MS}"))
             .arg("-cmd")
-            .arg("PRAGMA foreign_keys=ON");
+            .arg("PRAGMA foreign_keys=ON;");
         if read_only {
-            cmd.arg("-cmd").arg("PRAGMA query_only=ON");
+            cmd.arg("-cmd").arg("PRAGMA query_only=ON;");
         }
     }
 
@@ -2674,9 +2674,9 @@ world'), (2, 'done');
                     "-cmd",
                     &format!(".timeout {BUSY_TIMEOUT_MS}"),
                     "-cmd",
-                    "PRAGMA foreign_keys=ON",
+                    "PRAGMA foreign_keys=ON;",
                     "-cmd",
-                    "PRAGMA query_only=ON",
+                    "PRAGMA query_only=ON;",
                 ]
             );
         }
