@@ -2,6 +2,14 @@ use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
+use std::{
+    fs::OpenOptions,
+    io::{Seek, SeekFrom, Write},
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
+
 use serde::de::DeserializeOwned;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
@@ -44,17 +52,54 @@ struct SqliteOutput {
     stderr: String,
 }
 
-fn configure_sql_input(cmd: &mut Command, sql: &str) -> Stdio {
+struct SqliteInput {
+    stdio: Stdio,
     #[cfg(windows)]
-    {
-        cmd.arg(terminated_sql(sql));
-        Stdio::null()
+    file: SqliteInputFile,
+}
+
+#[cfg(windows)]
+struct SqliteInputFile {
+    path: PathBuf,
+}
+
+#[cfg(windows)]
+impl Drop for SqliteInputFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+impl SqliteInput {
+    #[cfg(windows)]
+    fn new(sql: &str) -> Result<Self, std::io::Error> {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let path =
+            std::env::temp_dir().join(format!("sabiql-sql-input-{}-{id}.sql", std::process::id()));
+        let mut file = OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            .open(&path)?;
+        file.write_all(terminated_sql(sql).as_bytes())?;
+        file.seek(SeekFrom::Start(0))?;
+        Ok(Self {
+            stdio: Stdio::from(file),
+            file: SqliteInputFile { path },
+        })
     }
 
     #[cfg(not(windows))]
-    {
-        let _ = (cmd, sql);
-        Stdio::piped()
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "Windows uses the error path when creating the SQL input file"
+    )]
+    fn new(sql: &str) -> Result<Self, std::io::Error> {
+        let _ = sql;
+        Ok(Self {
+            stdio: Stdio::piped(),
+        })
     }
 }
 
@@ -247,10 +292,11 @@ impl SqliteCli {
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
-        let stdin = configure_sql_input(&mut cmd, sql);
+        let sqlite_input = SqliteInput::new(sql)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
         let mut child = cmd
-            .stdin(stdin)
+            .stdin(sqlite_input.stdio)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -338,7 +384,9 @@ impl SqliteCli {
             cmd.arg(arg);
         }
         cmd.arg(sqlite_database_uri(path, read_only));
-        let stdin = configure_sql_input(&mut cmd, sql);
+        let sqlite_input = SqliteInput::new(sql)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let stdin = sqlite_input.stdio;
         Self::collect_output(&mut cmd, self.timeout_secs, sql, stdin).await
     }
 
