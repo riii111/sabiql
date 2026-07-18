@@ -70,6 +70,10 @@ nix profile install github:riii111/sabiql
 # Run once with Nix, without installing
 nix run github:riii111/sabiql
 
+# Windows x86_64 (experimental)
+# Download sabiql-x86_64-pc-windows-msvc.zip from GitHub Releases,
+# extract sabiql.exe, and add its directory to PATH.
+
 # Arch Linux (AUR)
 paru -S sabiql  # or yay -S sabiql
 
@@ -102,6 +106,9 @@ On first run without a startup argument, enter your connection details. They are
 
 - macOS: `~/Library/Application Support/sabiql/connections.toml`
 - Linux: `~/.config/sabiql/connections.toml`
+- Windows: `%APPDATA%\sabiql\connections.toml`
+
+Windows support is experimental.
 
 For PostgreSQL, fill in host, port, database, and credentials. For SQLite, set **Type** to `SQLite` and enter the path to a database file (for example `/path/to/app.db`).
 

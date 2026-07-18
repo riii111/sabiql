@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::app::ports::outbound::service_file::{PgServiceEntryReader, ServiceFileError};
@@ -37,11 +37,11 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         )));
     }
 
-    if let Some(home) = home_dir() {
-        let path = home.join(".pg_service.conf");
-        if path.is_file() {
-            return Ok(path);
-        }
+    let user_service_path = user_service_file_path();
+    if let Some(path) = &user_service_path
+        && path.is_file()
+    {
+        return Ok(path.clone());
     }
 
     if let Some(output) = std::process::Command::new("pg_config")
@@ -57,13 +57,39 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         }
     }
 
-    Err(ServiceFileError::NotFound(
-        "No pg_service.conf found (checked $PGSERVICEFILE, ~/.pg_service.conf, pg_config --sysconfdir)".to_string(),
-    ))
+    Err(ServiceFileError::NotFound(service_file_not_found_message(
+        user_service_path.as_deref(),
+    )))
 }
 
-fn home_dir() -> Option<PathBuf> {
-    dirs::home_dir()
+fn service_file_not_found_message(user_service_path: Option<&Path>) -> String {
+    let user_path_hint = user_service_path.map_or_else(
+        || "the platform user config path".to_string(),
+        |path| path.display().to_string(),
+    );
+    format!(
+        "No pg_service.conf found (checked PGSERVICEFILE, {user_path_hint}, and pg_config --sysconfdir)"
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn user_service_file_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|path| windows_user_service_file_path(&path))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn user_service_file_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|path| unix_user_service_file_path(&path))
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_user_service_file_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("postgresql").join(".pg_service.conf")
+}
+
+#[cfg(any(not(target_os = "windows"), test))]
+fn unix_user_service_file_path(home_dir: &Path) -> PathBuf {
+    home_dir.join(".pg_service.conf")
 }
 
 fn parse(content: &str) -> Vec<ServiceEntry> {
@@ -300,6 +326,33 @@ application_name=myapp
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].host, Some("localhost".to_string()));
         assert_eq!(entries[0].dbname, None);
+    }
+
+    #[test]
+    fn windows_user_service_file_uses_postgresql_appdata_directory() {
+        let config_dir = PathBuf::from(r"C:\Users\test\AppData\Roaming");
+
+        let path = windows_user_service_file_path(&config_dir);
+
+        assert_eq!(path, config_dir.join("postgresql").join(".pg_service.conf"));
+    }
+
+    #[test]
+    fn unix_user_service_file_uses_home_directory() {
+        let home_dir = PathBuf::from("/home/test");
+
+        let path = unix_user_service_file_path(&home_dir);
+
+        assert_eq!(path, home_dir.join(".pg_service.conf"));
+    }
+
+    #[test]
+    fn not_found_message_includes_resolved_user_service_file_path() {
+        let path = Path::new(r"C:\Users\test\AppData\Roaming\postgresql\.pg_service.conf");
+
+        let message = service_file_not_found_message(Some(path));
+
+        assert!(message.contains(&path.display().to_string()));
     }
 
     #[test]
