@@ -117,44 +117,11 @@ jobs:
         shell: pwsh
         run: |
           choco install sqlite --no-progress -y
-          $sqliteTools = Join-Path $env:ChocolateyInstall 'libSQLite	ools'
           $sqliteTools = Join-Path $env:ChocolateyInstall 'lib'
           $sqliteTools = Join-Path $sqliteTools 'SQLite'
           $sqliteTools = Join-Path $sqliteTools 'tools'
           $sqliteTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $sqliteTools 'sqlite3.exe') --version
-      - name: Diagnose SQLite quote mode
-        shell: pwsh
-        run: |
-          $sqliteTools = Join-Path $env:ChocolateyInstall 'lib'
-          $sqliteTools = Join-Path $sqliteTools 'SQLite'
-          $sqlite = Join-Path (Join-Path $sqliteTools 'tools') 'sqlite3.exe'
-          $database = Join-Path $env:RUNNER_TEMP 'sabiql-quote-mode.sqlite'
-          Remove-Item -Force -ErrorAction SilentlyContinue $database
-          & $sqlite $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
-          $uri = [Uri]::new($database).AbsoluteUri + '?mode=ro'
-          $sql = 'SELECT 1 AS value;'
-          $baseSession = @('-init', 'NUL', '--safe', '-readonly')
-          $timeout = @('-cmd', '.timeout 5000')
-          $foreignKeys = @('-cmd', 'PRAGMA foreign_keys=ON;')
-          $queryOnly = @('-cmd', 'PRAGMA query_only=ON;')
-          $session = @($baseSession) + @($timeout) + @($foreignKeys) + @($queryOnly)
-          function Test-SqliteMode([string]$name, [string[]]$options, [string]$target = $uri) {
-            $output = & $sqlite @options $target $sql 2>&1
-            Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '|')>"
-          }
-          Test-SqliteMode 'json-full-session' (@($session) + @('-json'))
-          Test-SqliteMode 'csv-full-session' (@($session) + @('-batch', '-bail', '-csv', '-header'))
-          Test-SqliteMode 'quote-no-session' @('-readonly', '-batch', '-bail', '-quote', '-header')
-          Test-SqliteMode 'quote-safe' @('--safe', '-readonly', '-batch', '-bail', '-quote', '-header')
-          Test-SqliteMode 'quote-base-session' (@($baseSession) + @('-batch', '-bail', '-quote', '-header'))
-          Test-SqliteMode 'quote-with-timeout' (@($baseSession) + @($timeout) + @('-batch', '-bail', '-quote', '-header'))
-          Test-SqliteMode 'quote-with-foreign-keys' (@($baseSession) + @($foreignKeys) + @('-batch', '-bail', '-quote', '-header'))
-          Test-SqliteMode 'quote-with-query-only' (@($baseSession) + @($queryOnly) + @('-batch', '-bail', '-quote', '-header'))
-          Test-SqliteMode 'quote-full-session' (@($session) + @('-batch', '-bail', '-quote', '-header'))
-          Test-SqliteMode 'mode-quote-full-session' (@($session) + @('-batch', '-bail', '-header', '-cmd', '.mode quote'))
-          Test-SqliteMode 'quote-raw-path' @('-readonly', '-batch', '-bail', '-quote', '-header') $database
-          exit 0
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version

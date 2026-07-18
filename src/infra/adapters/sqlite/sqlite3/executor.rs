@@ -227,6 +227,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
+        let sql = sqlite_session_sql(sql, read_only);
         let mut cmd = self.command_with_program(command);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
@@ -234,7 +235,7 @@ impl SqliteCli {
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
         if cfg!(windows) {
-            cmd.arg(terminated_sql(sql));
+            cmd.arg(terminated_sql(&sql));
         }
 
         let mut child = cmd
@@ -256,7 +257,7 @@ impl SqliteCli {
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
-                write_sql_to_stdin(stdin, sql),
+                write_sql_to_stdin(stdin, &sql),
                 async {
                     if let Some(mut stdout) = stdout {
                         let mut buf = [0u8; 8192];
@@ -318,6 +319,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
+        let sql = sqlite_session_sql(sql, read_only);
         let mut cmd = self.command();
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
@@ -326,7 +328,7 @@ impl SqliteCli {
             cmd.arg(arg);
         }
         cmd.arg(sqlite_database_uri(path, read_only));
-        Self::collect_output(&mut cmd, self.timeout_secs, sql).await
+        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
     }
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
@@ -340,13 +342,7 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-readonly");
         }
-        cmd.arg("-cmd")
-            .arg(format!(".timeout {BUSY_TIMEOUT_MS}"))
-            .arg("-cmd")
-            .arg("PRAGMA foreign_keys=ON;");
-        if read_only {
-            cmd.arg("-cmd").arg("PRAGMA query_only=ON;");
-        }
+        cmd.arg("-cmd").arg(format!(".timeout {BUSY_TIMEOUT_MS}"));
     }
 
     fn apply_initialization_file(cmd: &mut Command) {
@@ -455,6 +451,15 @@ const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
 
 fn terminated_sql(sql: &str) -> String {
     format!("{sql}\n;\n")
+}
+
+fn sqlite_session_sql(sql: &str, read_only: bool) -> String {
+    let query_only = if read_only {
+        "PRAGMA query_only=ON;\n"
+    } else {
+        ""
+    };
+    format!("PRAGMA foreign_keys=ON;\n{query_only}{sql}")
 }
 
 fn sqlite_stdin() -> Stdio {
@@ -2669,7 +2674,7 @@ world'), (2, 'done');
         }
 
         #[test]
-        fn initialization_precedes_safe_read_only_and_session_options() {
+        fn initialization_precedes_safe_read_only_and_timeout() {
             let mut cmd = Command::new("sqlite3");
             SqliteCli::apply_session_options(&mut cmd, true);
             let args = cmd
@@ -2687,11 +2692,19 @@ world'), (2, 'done');
                     "-readonly",
                     "-cmd",
                     &format!(".timeout {BUSY_TIMEOUT_MS}"),
-                    "-cmd",
-                    "PRAGMA foreign_keys=ON;",
-                    "-cmd",
-                    "PRAGMA query_only=ON;",
                 ]
+            );
+        }
+
+        #[test]
+        fn session_pragmas_precede_user_sql() {
+            assert_eq!(
+                sqlite_session_sql("SELECT 1", true),
+                "PRAGMA foreign_keys=ON;\nPRAGMA query_only=ON;\nSELECT 1"
+            );
+            assert_eq!(
+                sqlite_session_sql("SELECT 1", false),
+                "PRAGMA foreign_keys=ON;\nSELECT 1"
             );
         }
 
