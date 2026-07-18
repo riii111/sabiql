@@ -37,10 +37,11 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         )));
     }
 
-    if let Some(path) = user_service_file_path()
+    let user_service_path = user_service_file_path();
+    if let Some(path) = &user_service_path
         && path.is_file()
     {
-        return Ok(path);
+        return Ok(path.clone());
     }
 
     if let Some(output) = std::process::Command::new("pg_config")
@@ -56,9 +57,19 @@ fn find_service_file() -> Result<PathBuf, ServiceFileError> {
         }
     }
 
-    Err(ServiceFileError::NotFound(
-        "No pg_service.conf found (checked PGSERVICEFILE, the platform user config path, and pg_config --sysconfdir)".to_string(),
-    ))
+    Err(ServiceFileError::NotFound(service_file_not_found_message(
+        user_service_path.as_deref(),
+    )))
+}
+
+fn service_file_not_found_message(user_service_path: Option<&Path>) -> String {
+    let user_path_hint = user_service_path.map_or_else(
+        || "the platform user config path".to_string(),
+        |path| path.display().to_string(),
+    );
+    format!(
+        "No pg_service.conf found (checked PGSERVICEFILE, {user_path_hint}, and pg_config --sysconfdir)"
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -333,6 +344,15 @@ application_name=myapp
         let path = unix_user_service_file_path(&home_dir);
 
         assert_eq!(path, home_dir.join(".pg_service.conf"));
+    }
+
+    #[test]
+    fn not_found_message_includes_resolved_user_service_file_path() {
+        let path = Path::new(r"C:\Users\test\AppData\Roaming\postgresql\.pg_service.conf");
+
+        let message = service_file_not_found_message(Some(path));
+
+        assert!(message.contains(&path.display().to_string()));
     }
 
     #[test]
