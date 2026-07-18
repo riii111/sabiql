@@ -126,9 +126,24 @@ jobs:
           $uri = "file:/$($database.Replace('\', '/'))?mode=ro"
           $session = @('-readonly', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', '-cmd', 'PRAGMA query_only=ON;', '-batch', '-bail', '-quote', '-header')
           function Test-SqliteSession([string]$name, [string[]]$options) {
-            $output = 'SELECT 1 AS value;' | & sqlite3 @options @session $uri 2>&1
-            Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '\n')>"
+            $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = (Get-Command sqlite3).Source
+            $startInfo.UseShellExecute = $false
+            $startInfo.RedirectStandardInput = $true
+            $startInfo.RedirectStandardOutput = $true
+            $startInfo.RedirectStandardError = $true
+            foreach ($argument in $options + $session + @($uri)) {
+              [void]$startInfo.ArgumentList.Add($argument)
+            }
+            $process = [System.Diagnostics.Process]::Start($startInfo)
+            $process.StandardInput.Write("SELECT 1 AS value;`n")
+            $process.StandardInput.Close()
+            $stdout = $process.StandardOutput.ReadToEnd()
+            $stderr = $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            Write-Host "$name exit=$($process.ExitCode) stdout=<$stdout> stderr=<$stderr>"
           }
+          Test-SqliteSession 'without-safe' @()
           Test-SqliteSession 'safe-only' @('--safe')
           Test-SqliteSession 'safe-then-init' @('--safe', '-init', 'NUL')
           Test-SqliteSession 'init-then-safe' @('-init', 'NUL', '--safe')
