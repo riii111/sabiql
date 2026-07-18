@@ -4,9 +4,7 @@ use crate::app::ports::outbound::ErExportError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum GraphvizError {
-    #[error(
-        "Graphviz (dot) not found. Please install Graphviz (e.g., brew install graphviz on macOS)"
-    )]
+    #[error("Graphviz (dot) not found. Install Graphviz and ensure dot is available on PATH")]
     NotInstalled,
     #[error("Graphviz failed (exit code {0:?}). Check DOT syntax.")]
     CommandFailed(Option<i32>),
@@ -59,7 +57,8 @@ mod tests {
 
             let message = format!("{error}");
 
-            assert!(message.contains("brew install graphviz"));
+            assert!(message.contains("Install Graphviz"));
+            assert!(message.contains("PATH"));
         }
 
         #[test]
