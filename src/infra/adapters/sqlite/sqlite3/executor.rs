@@ -97,7 +97,7 @@ impl SqliteCli {
         &self,
     ) -> Result<(), DbOperationError> {
         let mut cmd = self.command();
-        let _init_file = Self::apply_initialization_file(&mut cmd)?;
+        Self::apply_initialization_file(&mut cmd);
         let output = cmd
             .arg("--safe")
             .arg("--version")
@@ -230,7 +230,7 @@ impl SqliteCli {
         let mut cmd = self.command_with_program(command);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
-        let _init_file = Self::apply_session_options(&mut cmd, read_only)?;
+        Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
 
@@ -318,7 +318,7 @@ impl SqliteCli {
         let mut cmd = self.command();
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
-        let _init_file = Self::apply_session_options(&mut cmd, read_only)?;
+        Self::apply_session_options(&mut cmd, read_only);
         for arg in args {
             cmd.arg(arg);
         }
@@ -331,11 +331,8 @@ impl SqliteCli {
             .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))
     }
 
-    fn apply_session_options(
-        cmd: &mut Command,
-        read_only: bool,
-    ) -> Result<tempfile::TempPath, DbOperationError> {
-        let init_file = Self::apply_initialization_file(cmd)?;
+    fn apply_session_options(cmd: &mut Command, read_only: bool) {
+        Self::apply_initialization_file(cmd);
         cmd.arg("--safe");
         if read_only {
             cmd.arg("-readonly");
@@ -347,17 +344,10 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-cmd").arg("PRAGMA query_only=ON");
         }
-        Ok(init_file)
     }
 
-    fn apply_initialization_file(
-        cmd: &mut Command,
-    ) -> Result<tempfile::TempPath, DbOperationError> {
-        let init_file = tempfile::NamedTempFile::new()
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
-            .into_temp_path();
-        cmd.arg("-init").arg(&init_file);
-        Ok(init_file)
+    fn apply_initialization_file(cmd: &mut Command) {
+        cmd.arg("-init").arg(sqlite_empty_init_file());
     }
 
     fn command(&self) -> Command {
@@ -434,7 +424,8 @@ async fn write_sql_to_stdin(
     sql: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(mut stdin) = stdin {
-        if let Err(error) = stdin.write_all(sql.as_bytes()).await
+        let execution_sql = terminated_sql(sql);
+        if let Err(error) = stdin.write_all(execution_sql.as_bytes()).await
             && error.kind() != std::io::ErrorKind::BrokenPipe
         {
             return Err(error);
@@ -446,6 +437,18 @@ async fn write_sql_to_stdin(
         }
     }
     Ok(())
+}
+
+fn sqlite_empty_init_file() -> &'static str {
+    sqlite_empty_init_file_for_platform(cfg!(windows))
+}
+
+const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
+    if is_windows { "NUL" } else { "/dev/null" }
+}
+
+fn terminated_sql(sql: &str) -> String {
+    format!("{sql}\n;\n")
 }
 
 fn sqlite_database_uri(path: &str, read_only: bool) -> String {
@@ -2646,9 +2649,15 @@ world'), (2, 'done');
         }
 
         #[test]
+        fn empty_initialization_file_uses_platform_null_device() {
+            assert_eq!(sqlite_empty_init_file_for_platform(false), "/dev/null");
+            assert_eq!(sqlite_empty_init_file_for_platform(true), "NUL");
+        }
+
+        #[test]
         fn initialization_precedes_safe_read_only_and_session_options() {
             let mut cmd = Command::new("sqlite3");
-            let init_file = SqliteCli::apply_session_options(&mut cmd, true).unwrap();
+            SqliteCli::apply_session_options(&mut cmd, true);
             let args = cmd
                 .as_std()
                 .get_args()
@@ -2659,7 +2668,7 @@ world'), (2, 'done');
                 args,
                 vec![
                     "-init",
-                    init_file.to_string_lossy().as_ref(),
+                    sqlite_empty_init_file(),
                     "--safe",
                     "-readonly",
                     "-cmd",
@@ -2669,6 +2678,14 @@ world'), (2, 'done');
                     "-cmd",
                     "PRAGMA query_only=ON",
                 ]
+            );
+        }
+
+        #[test]
+        fn terminates_sql_with_a_standalone_statement_separator() {
+            assert_eq!(
+                terminated_sql("SELECT 1 -- trailing comment"),
+                "SELECT 1 -- trailing comment\n;\n"
             );
         }
 
