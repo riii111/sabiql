@@ -246,8 +246,8 @@ impl SqliteCli {
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
-        cmd.arg(sqlite_database_uri(path, read_only));
         let stdin = configure_sql_input(&mut cmd, sql);
+        cmd.arg(sqlite_database_uri(path, read_only));
 
         let mut child = cmd
             .stdin(stdin)
@@ -337,8 +337,8 @@ impl SqliteCli {
         for arg in args {
             cmd.arg(arg);
         }
-        cmd.arg(sqlite_database_uri(path, read_only));
         let stdin = configure_sql_input(&mut cmd, sql);
+        cmd.arg(sqlite_database_uri(path, read_only));
         Self::collect_output(&mut cmd, self.timeout_secs, sql, stdin).await
     }
 
