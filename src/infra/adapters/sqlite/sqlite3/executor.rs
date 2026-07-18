@@ -51,6 +51,43 @@ struct SqliteVersion {
     patch: u16,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Default)]
+struct WindowsCsvNewlineNormalizer {
+    pending_carriage_return: bool,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsCsvNewlineNormalizer {
+    fn normalize(&mut self, input: &[u8]) -> Vec<u8> {
+        let mut output = Vec::with_capacity(input.len());
+
+        for &byte in input {
+            if self.pending_carriage_return {
+                if byte == b'\n' {
+                    output.push(b'\n');
+                    self.pending_carriage_return = false;
+                    continue;
+                }
+                output.push(b'\r');
+                self.pending_carriage_return = false;
+            }
+
+            if byte == b'\r' {
+                self.pending_carriage_return = true;
+            } else {
+                output.push(byte);
+            }
+        }
+
+        output
+    }
+
+    fn finish(&self) -> Option<u8> {
+        self.pending_carriage_return.then_some(b'\r')
+    }
+}
+
 impl SqliteVersion {
     const fn new(major: u16, minor: u16, patch: u16) -> Self {
         Self {
@@ -266,12 +303,24 @@ impl SqliteCli {
                 async {
                     if let Some(mut stdout) = stdout {
                         let mut buf = [0u8; 8192];
+                        #[cfg(windows)]
+                        let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
                         loop {
                             let n = stdout.read(&mut buf).await?;
                             if n == 0 {
                                 break;
                             }
+                            #[cfg(windows)]
+                            {
+                                let output = newline_normalizer.normalize(&buf[..n]);
+                                writer.write_all(&output).await?;
+                            }
+                            #[cfg(not(windows))]
                             writer.write_all(&buf[..n]).await?;
+                        }
+                        #[cfg(windows)]
+                        if let Some(trailing_carriage_return) = newline_normalizer.finish() {
+                            writer.write_all(&[trailing_carriage_return]).await?;
                         }
                         writer.flush().await?;
                     }
@@ -713,6 +762,44 @@ mod tests {
         result
             .display_row_at(row)
             .expect("test result should contain the requested row")
+    }
+
+    #[test]
+    fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
+        let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut output = Vec::new();
+
+        for chunk in [
+            b"id,message\r".as_slice(),
+            b"\n1,\"hello\r\n".as_slice(),
+            b"world\"\r".as_slice(),
+            b"\n2,done\r\n".as_slice(),
+        ] {
+            output.extend(normalizer.normalize(chunk));
+        }
+        if let Some(trailing_carriage_return) = normalizer.finish() {
+            output.push(trailing_carriage_return);
+        }
+
+        assert_eq!(output, b"id,message\n1,\"hello\nworld\"\n2,done\n");
+    }
+
+    #[test]
+    fn windows_csv_newline_normalizer_preserves_embedded_crlf() {
+        let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut output = Vec::new();
+
+        for chunk in [
+            b"id,message\r\n1,\"first\r".as_slice(),
+            b"\r\nsecond\"\r\n".as_slice(),
+        ] {
+            output.extend(normalizer.normalize(chunk));
+        }
+        if let Some(trailing_carriage_return) = normalizer.finish() {
+            output.push(trailing_carriage_return);
+        }
+
+        assert_eq!(output, b"id,message\n1,\"first\r\nsecond\"\n");
     }
 
     mod preview {
