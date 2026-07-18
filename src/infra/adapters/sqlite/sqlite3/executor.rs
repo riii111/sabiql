@@ -233,9 +233,12 @@ impl SqliteCli {
         Self::apply_session_options(&mut cmd, read_only);
         cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
         cmd.arg(sqlite_database_uri(path, read_only));
+        if cfg!(windows) {
+            cmd.arg(terminated_sql(sql));
+        }
 
         let mut child = cmd
-            .stdin(Stdio::piped())
+            .stdin(sqlite_stdin())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -363,8 +366,11 @@ impl SqliteCli {
         timeout_secs: u64,
         sql: &str,
     ) -> Result<SqliteOutput, DbOperationError> {
+        if cfg!(windows) {
+            cmd.arg(terminated_sql(sql));
+        }
         let mut child = cmd
-            .stdin(Stdio::piped())
+            .stdin(sqlite_stdin())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -449,6 +455,14 @@ const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
 
 fn terminated_sql(sql: &str) -> String {
     format!("{sql}\n;\n")
+}
+
+fn sqlite_stdin() -> Stdio {
+    if cfg!(windows) {
+        Stdio::null()
+    } else {
+        Stdio::piped()
+    }
 }
 
 fn sqlite_database_uri(path: &str, read_only: bool) -> String {
