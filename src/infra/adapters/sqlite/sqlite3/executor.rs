@@ -47,7 +47,7 @@ struct SqliteOutput {
 fn configure_sql_input(cmd: &mut Command, sql: &str) -> Stdio {
     #[cfg(windows)]
     {
-        cmd.arg("-cmd").arg(terminated_sql(sql));
+        cmd.arg("-cmd").arg(sql);
         Stdio::null()
     }
 
