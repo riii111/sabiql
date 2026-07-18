@@ -132,12 +132,11 @@ jobs:
           $database = Join-Path $env:RUNNER_TEMP 'sabiql-quote-mode.sqlite'
           Remove-Item -Force -ErrorAction SilentlyContinue $database
           & $sqlite $database 'CREATE TABLE users(id INTEGER PRIMARY KEY);'
-          $uriPath = $database.Replace([IO.Path]::DirectorySeparatorChar, '/')
-          $uri = "file:/$uriPath?mode=ro"
+          $uri = [Uri]::new($database).AbsoluteUri + '?mode=ro'
           $sql = 'SELECT 1 AS value;'
           $session = @('--safe', '-readonly', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', '-cmd', 'PRAGMA query_only=ON;')
-          function Test-SqliteMode([string]$name, [string[]]$options) {
-            $output = & $sqlite @options $uri $sql 2>&1
+          function Test-SqliteMode([string]$name, [string[]]$options, [string]$target = $uri) {
+            $output = & $sqlite @options $target $sql 2>&1
             Write-Host "$name exit=$LASTEXITCODE output=<$($output -join '|')>"
           }
           Test-SqliteMode 'json-full-session' (@($session) + @('-json'))
@@ -146,6 +145,8 @@ jobs:
           Test-SqliteMode 'quote-safe' @('--safe', '-readonly', '-batch', '-bail', '-quote', '-header')
           Test-SqliteMode 'quote-full-session' (@($session) + @('-batch', '-bail', '-quote', '-header'))
           Test-SqliteMode 'mode-quote-full-session' (@($session) + @('-batch', '-bail', '-header', '-cmd', '.mode quote'))
+          Test-SqliteMode 'quote-raw-path' @('-readonly', '-batch', '-bail', '-quote', '-header') $database
+          exit 0
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
