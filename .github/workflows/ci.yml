@@ -117,6 +117,33 @@ jobs:
         run: |
           choco install sqlite --no-progress -y
           sqlite3 --version
+      - name: Diagnose SQLite CLI invocation
+        shell: pwsh
+        run: |
+          $db = Join-Path $env:RUNNER_TEMP 'sabiql-cli-debug.db'
+          $uriPath = '/' + ($db -replace '\\', '/')
+          $uri = 'file:' + [uri]::EscapeDataString($uriPath) + '?mode=ro'
+          sqlite3 $db 'CREATE TABLE users(id INTEGER); INSERT INTO users VALUES (1);'
+          Write-Host "database=$db"
+          Write-Host "uri=$uri"
+          Write-Host 'plain positional'
+          & sqlite3 --safe -readonly -json $db 'SELECT id FROM users'
+          Write-Host "exit=$LASTEXITCODE"
+          Write-Host 'uri positional'
+          & sqlite3 --safe -readonly -json $uri 'SELECT id FROM users'
+          Write-Host "exit=$LASTEXITCODE"
+          Write-Host 'plain stdin'
+          'SELECT id FROM users' | & sqlite3 --safe -readonly -json $db
+          Write-Host "exit=$LASTEXITCODE"
+          Write-Host 'uri stdin'
+          'SELECT id FROM users' | & sqlite3 --safe -readonly -json $uri
+          Write-Host "exit=$LASTEXITCODE"
+          Write-Host 'uri cmd before filename'
+          & sqlite3 --safe -readonly -json -cmd 'SELECT id FROM users' $uri
+          Write-Host "exit=$LASTEXITCODE"
+          Write-Host 'uri cmd after filename'
+          & sqlite3 --safe -readonly -json $uri -cmd 'SELECT id FROM users'
+          Write-Host "exit=$LASTEXITCODE"
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
