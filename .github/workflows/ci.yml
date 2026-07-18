@@ -144,6 +144,35 @@ jobs:
           Write-Host 'uri cmd after filename'
           & sqlite3 --safe -readonly -json $uri -cmd 'SELECT id FROM users'
           Write-Host "exit=$LASTEXITCODE"
+          $args = @(
+            '-init', 'NUL', '--safe', '-readonly',
+            '-cmd', '.timeout 5000',
+            '-cmd', 'PRAGMA foreign_keys=ON',
+            '-cmd', 'PRAGMA query_only=ON',
+            '-batch', '-bail', '-quote', '-header', $uri
+          )
+          $sql = @"
+          SELECT _s.* FROM (SELECT 1) AS _p LEFT JOIN (SELECT _q.*, 1 AS "__sabiql_sqlite_probe_empty" FROM (SELECT 1 AS value) AS _q) AS _s ON true
+          ;
+          SELECT 0 AS "__sabiql_sqlite_probe_result_stmt", '__sabiql_sqlite_probe' AS "__sabiql_sqlite_probe_result_marker"
+          "@
+          Write-Host 'sabiql session stdin'
+          $process = [System.Diagnostics.Process]::new()
+          $process.StartInfo.FileName = 'sqlite3'
+          $process.StartInfo.UseShellExecute = $false
+          $process.StartInfo.RedirectStandardInput = $true
+          $process.StartInfo.RedirectStandardOutput = $true
+          $process.StartInfo.RedirectStandardError = $true
+          foreach ($arg in $args) { [void]$process.StartInfo.ArgumentList.Add($arg) }
+          [void]$process.Start()
+          $process.StandardInput.Write($sql)
+          $process.StandardInput.Close()
+          $stdout = $process.StandardOutput.ReadToEnd()
+          $stderr = $process.StandardError.ReadToEnd()
+          $process.WaitForExit()
+          Write-Host "exit=$($process.ExitCode)"
+          Write-Host "stdout=$stdout"
+          Write-Host "stderr=$stderr"
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo nextest run -p sabiql --profile ci-no-default --no-default-features --show-progress=none --status-level=fail --final-status-level=fail
       - run: cargo run --all-features -- --version
