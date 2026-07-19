@@ -276,12 +276,9 @@ impl SqliteCli {
             .arg("-newline")
             .arg("\n");
         cmd.arg(sqlite_database_uri(path, read_only));
-        if cfg!(windows) {
-            cmd.arg(terminated_sql(&sql));
-        }
 
         let mut child = cmd
-            .stdin(sqlite_stdin())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -416,11 +413,8 @@ impl SqliteCli {
         timeout_secs: u64,
         sql: &str,
     ) -> Result<SqliteOutput, DbOperationError> {
-        if cfg!(windows) {
-            cmd.arg(terminated_sql(sql));
-        }
         let mut child = cmd
-            .stdin(sqlite_stdin())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
@@ -514,14 +508,6 @@ fn sqlite_session_sql(sql: &str, read_only: bool) -> String {
         ""
     };
     format!("PRAGMA foreign_keys=ON;\n{query_only}{sql}")
-}
-
-fn sqlite_stdin() -> Stdio {
-    if cfg!(windows) {
-        Stdio::null()
-    } else {
-        Stdio::piped()
-    }
 }
 
 fn sqlite_database_uri(path: &str, read_only: bool) -> String {
@@ -1067,6 +1053,20 @@ mod tests {
                 assert_eq!(result.columns, vec!["value"]);
                 assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+            }
+
+            #[tokio::test]
+            async fn runs_sql_larger_than_the_windows_command_line_limit() {
+                let (_dir, dsn) = test_support::make_sqlite_db("");
+                let adapter = SqliteAdapter::new();
+                let sql = format!("SELECT 1 AS value /* {} */", "x".repeat(32_768));
+
+                let result = adapter
+                    .execute_adhoc(&dsn, &sql, AccessMode::ReadOnly)
+                    .await
+                    .unwrap();
+
+                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
             }
 
             #[tokio::test]
@@ -2570,6 +2570,27 @@ mod tests {
             let csv = std::fs::read_to_string(path).unwrap();
 
             assert_eq!(csv, "id,name\n1,a\n2,b\n");
+        }
+
+        #[tokio::test]
+        async fn export_to_csv_runs_sql_larger_than_the_windows_command_line_limit() {
+            let (dir, dsn) = test_support::make_sqlite_db("");
+            let path = dir.path().join("long.csv");
+            let adapter = SqliteAdapter::new();
+            let sql = format!("SELECT 1 AS value /* {} */", "x".repeat(32_768));
+
+            adapter
+                .cli
+                .export_csv(
+                    SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                    &sql,
+                    &path,
+                    true,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(std::fs::read_to_string(path).unwrap(), "value\n1\n");
         }
 
         #[tokio::test]
