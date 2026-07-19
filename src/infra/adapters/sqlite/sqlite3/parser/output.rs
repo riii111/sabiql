@@ -166,17 +166,18 @@ fn decode_unistr_quoted_text(value: &str) -> Result<String, DbOperationError> {
             decoded.push('\\');
             continue;
         }
-        let length = match escape {
-            'u' => 4,
-            'U' => 8,
-            '+' => 6,
+        let (length, mut hex) = match escape {
+            'u' => (4, String::new()),
+            'U' => (8, String::new()),
+            '+' => (6, String::new()),
+            escape if escape.is_ascii_hexdigit() => (4, escape.to_string()),
             _ => {
                 return Err(DbOperationError::MetadataParseFailed(
                     "invalid SQLite unistr escape sequence".to_string(),
                 ));
             }
         };
-        let hex = chars.by_ref().take(length).collect::<String>();
+        hex.extend(chars.by_ref().take(length - hex.len()));
         if hex.len() != length {
             return Err(DbOperationError::MetadataParseFailed(
                 "invalid SQLite unistr escape sequence".to_string(),
@@ -257,7 +258,10 @@ pub(in crate::adapters::sqlite::sqlite3) fn parse_quoted_value(
         {
             return Ok(QueryValue::Text(text));
         }
-        return Ok(QueryValue::Text(decode_unistr_quoted_text(value)?));
+        return Ok(decode_unistr_quoted_text(value).map_or_else(
+            |_| QueryValue::SqlLiteral(value.to_string()),
+            QueryValue::Text,
+        ));
     }
     if value.len() >= 3
         && value.as_bytes()[1] == b'\''
@@ -690,6 +694,40 @@ mod tests {
                     .unwrap(),
                 QueryValue::Text("line 1\nline 2".to_string())
             );
+        }
+
+        #[test]
+        fn decode_unistr_quoted_text_decodes_documented_escape_forms() {
+            assert_eq!(
+                decode_unistr_quoted_text("unistr('\\U0001F600\\+01F642\\0041')").unwrap(),
+                "😀🙂A"
+            );
+        }
+
+        #[test]
+        fn decode_unistr_quoted_text_rejects_invalid_escapes() {
+            for value in [
+                "unistr('\\q')",
+                "unistr('\\u123')",
+                "unistr('\\u12xz')",
+                "unistr('\\U00110000')",
+            ] {
+                assert!(decode_unistr_quoted_text(value).is_err(), "{value}");
+            }
+        }
+
+        #[test]
+        fn quoted_to_query_result_preserves_malformed_unistr_as_sql_literal() {
+            let quoted = "'value'\nunistr('\\q')\n";
+
+            for source in [QuerySource::Preview, QuerySource::Adhoc] {
+                let result = quoted_to_query_result("SELECT 1", quoted, source, 1).unwrap();
+
+                assert_eq!(
+                    result.value_at(0, 0),
+                    Some(&QueryValue::SqlLiteral("unistr('\\q')".to_string()))
+                );
+            }
         }
 
         #[test]

@@ -59,8 +59,9 @@ struct WindowsCsvNewlineNormalizer {
 
 #[cfg(any(windows, test))]
 impl WindowsCsvNewlineNormalizer {
-    fn normalize(&mut self, input: &[u8]) -> Vec<u8> {
-        let mut output = Vec::with_capacity(input.len());
+    fn normalize<'a>(&mut self, input: &[u8], output: &'a mut Vec<u8>) -> &'a [u8] {
+        output.clear();
+        output.reserve(input.len());
 
         for &byte in input {
             if self.pending_carriage_return {
@@ -302,6 +303,8 @@ impl SqliteCli {
                         let mut buf = [0u8; 8192];
                         #[cfg(windows)]
                         let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
+                        #[cfg(windows)]
+                        let mut normalized_buf = Vec::with_capacity(buf.len());
                         loop {
                             let n = stdout.read(&mut buf).await?;
                             if n == 0 {
@@ -309,8 +312,9 @@ impl SqliteCli {
                             }
                             #[cfg(windows)]
                             {
-                                let output = newline_normalizer.normalize(&buf[..n]);
-                                writer.write_all(&output).await?;
+                                let output =
+                                    newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
+                                writer.write_all(output).await?;
                             }
                             #[cfg(not(windows))]
                             writer.write_all(&buf[..n]).await?;
@@ -753,6 +757,7 @@ mod tests {
     #[test]
     fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
         let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut normalized_buf = Vec::new();
         let mut output = Vec::new();
 
         for chunk in [
@@ -761,7 +766,7 @@ mod tests {
             b"world\"\r".as_slice(),
             b"\n2,done\r\n".as_slice(),
         ] {
-            output.extend(normalizer.normalize(chunk));
+            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
         }
         if let Some(trailing_carriage_return) = normalizer.finish() {
             output.push(trailing_carriage_return);
@@ -773,13 +778,14 @@ mod tests {
     #[test]
     fn windows_csv_newline_normalizer_preserves_embedded_crlf() {
         let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut normalized_buf = Vec::new();
         let mut output = Vec::new();
 
         for chunk in [
             b"id,message\r\n1,\"first\r".as_slice(),
             b"\r\nsecond\"\r\n".as_slice(),
         ] {
-            output.extend(normalizer.normalize(chunk));
+            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
         }
         if let Some(trailing_carriage_return) = normalizer.finish() {
             output.push(trailing_carriage_return);
