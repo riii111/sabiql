@@ -1,4 +1,5 @@
 use super::keybindings::{KeyBinding, KeyCombo, ModeRow};
+use crate::policy::FeaturePolicy;
 use crate::update::action::Action;
 
 pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
@@ -9,8 +10,41 @@ pub fn resolve(combo: &KeyCombo, bindings: &[KeyBinding]) -> Option<Action> {
         .map(|kb| kb.action.clone())
 }
 
+pub fn resolve_with_policy(
+    combo: &KeyCombo,
+    bindings: &[KeyBinding],
+    feature_policy: &FeaturePolicy,
+) -> Option<Action> {
+    bindings
+        .iter()
+        .filter(|kb| {
+            !matches!(kb.action, Action::None)
+                && feature_policy.is_enabled(kb.feature_requirement())
+        })
+        .find(|kb| kb.combos.contains(combo))
+        .map(|kb| kb.action.clone())
+}
+
 pub fn resolve_mode(combo: &KeyCombo, rows: &[ModeRow]) -> Option<Action> {
     for row in rows {
+        for eb in row.bindings {
+            if !matches!(eb.action, Action::None) && eb.combos.contains(combo) {
+                return Some(eb.action.clone());
+            }
+        }
+    }
+    None
+}
+
+pub fn resolve_mode_with_policy(
+    combo: &KeyCombo,
+    rows: &[ModeRow],
+    feature_policy: &FeaturePolicy,
+) -> Option<Action> {
+    for row in rows {
+        if !feature_policy.is_enabled(row.feature_requirement()) {
+            continue;
+        }
         for eb in row.bindings {
             if !matches!(eb.action, Action::None) && eb.combos.contains(combo) {
                 return Some(eb.action.clone());

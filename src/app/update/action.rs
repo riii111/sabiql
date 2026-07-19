@@ -8,6 +8,7 @@ use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
+use crate::policy::FeatureRequirement;
 use crate::policy::write::write_guardrails::WritePreview;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
@@ -640,6 +641,97 @@ impl Action {
 
     pub fn is_scroll(&self) -> bool {
         matches!(self, Self::Scroll { .. })
+    }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        use FeatureRequirement::{
+            ErDiagram, Explain, ExplainAnalyze, JsonbDetail, None, PlanComparison,
+            SqliteDiagnostics,
+        };
+
+        match self {
+            Self::OpenModal(ModalKind::ErTablePicker)
+            | Self::ToggleModal(ModalKind::ErTablePicker)
+            | Self::ErToggleSelection
+            | Self::ErSelectAll
+            | Self::ErConfirmSelection
+            | Self::ErOpenDiagram
+            | Self::ErGenerateFromCache
+            | Self::SmartErRefreshCompleted(_)
+            | Self::SmartErRefreshFailed(_)
+            | Self::ErDiagramOpened(_)
+            | Self::ErDiagramFailed(_)
+            | Self::ErLogWriteFailed(_)
+            | Self::TextInput {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextDelete {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextKill {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::ListSelect {
+                target: ListTarget::ErTablePicker,
+                ..
+            } => ErDiagram,
+            Self::OpenModal(ModalKind::SqliteDiagnostics)
+            | Self::ToggleModal(ModalKind::SqliteDiagnostics)
+            | Self::RunSqliteDiagnosticsQuickCheck
+            | Self::Scroll {
+                target: ScrollTarget::SqliteDiagnostics,
+                ..
+            } => SqliteDiagnostics,
+            Self::OpenModal(ModalKind::JsonbDetail)
+            | Self::ToggleModal(ModalKind::JsonbDetail)
+            | Self::JsonbYankAll
+            | Self::JsonbYankSuccess
+            | Self::JsonbEnterEdit
+            | Self::JsonbAppendInsert
+            | Self::JsonbExitEdit
+            | Self::JsonbEnterSearch
+            | Self::JsonbExitSearch
+            | Self::JsonbSearchNext
+            | Self::JsonbSearchPrev
+            | Self::JsonbSearchSubmit
+            | Self::TextInput {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextDelete {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextKill {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            } => JsonbDetail,
+            Self::ExplainRequest => Explain,
+            Self::ExplainAnalyzeRequest | Self::ExplainAnalyzeConfirm => ExplainAnalyze,
+            Self::CompareEditQuery => PlanComparison,
+            _ => None,
+        }
     }
 }
 
