@@ -37,6 +37,13 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
+            if !state.session.active_db_capabilities().supports_er_diagram() {
+                state.messages.set_error_at(
+                    "ER diagrams are not available for this connection".to_string(),
+                    now,
+                );
+                return DispatchResult::handled();
+            }
             if state.er_preparation.is_busy() {
                 return DispatchResult::handled();
             }
@@ -63,6 +70,13 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
+            if !state.session.active_db_capabilities().supports_er_diagram() {
+                state.messages.set_error_at(
+                    "ER diagrams are not available for this connection".to_string(),
+                    now,
+                );
+                return DispatchResult::handled();
+            }
             if !state.er_preparation.can_generate_from_cache() {
                 return DispatchResult::handled();
             }
