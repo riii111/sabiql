@@ -79,8 +79,8 @@ pub fn reduce_connection_lifecycle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ConnectionId;
     use crate::domain::connection::DatabaseType;
+    use crate::domain::{ConnectionId, SqliteDiagnosticsSnapshot};
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
@@ -191,7 +191,7 @@ mod tests {
         assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
     }
 
-    fn assert_reconciles_feature_state_on_switch(cached: bool) {
+    fn assert_reconciles_postgres_to_sqlite_feature_state(cached: bool) {
         let mut state = AppState::new("test".to_string());
         let current_id = ConnectionId::new();
         let target_id = ConnectionId::new();
@@ -208,7 +208,6 @@ mod tests {
         state
             .er_preparation
             .queue_pending_table("public.users".to_string());
-        let _ = state.sqlite_diagnostics.begin_fetch();
 
         if cached {
             state.connection_caches.save(
@@ -232,17 +231,69 @@ mod tests {
         assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         assert!(!state.ui.pending_er_picker());
         assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(state.er_preparation.pending_tables().is_empty());
+    }
+
+    #[test]
+    fn reconciles_postgres_to_sqlite_feature_state_without_cache() {
+        assert_reconciles_postgres_to_sqlite_feature_state(false);
+    }
+
+    #[test]
+    fn reconciles_postgres_to_sqlite_feature_state_with_cache() {
+        assert_reconciles_postgres_to_sqlite_feature_state(true);
+    }
+
+    fn assert_reconciles_sqlite_diagnostics_on_postgres_switch(cached: bool) {
+        let mut state = AppState::new("test".to_string());
+        let current_id = ConnectionId::new();
+        let target_id = ConnectionId::new();
+        state.session.activate_connection_with_dsn(
+            &current_id,
+            "current",
+            DatabaseType::SQLite,
+            "sqlite:///tmp/current.db",
+        );
+
+        let run_id = state.sqlite_diagnostics.begin_fetch();
+        state
+            .sqlite_diagnostics
+            .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
+        assert!(state.sqlite_diagnostics.snapshot().is_some());
+        let _ = state.sqlite_diagnostics.begin_quick_check();
+        assert!(state.sqlite_diagnostics.is_quick_check_running());
+
+        if cached {
+            state
+                .connection_caches
+                .save(&target_id, ConnectionCache::default());
+        }
+
+        let action = Action::SwitchConnection(ConnectionTarget {
+            id: target_id,
+            dsn: "postgres://localhost/target".to_string(),
+            name: "target".to_string(),
+            database_type: DatabaseType::PostgreSQL,
+        });
+        reduce(&mut state, &action);
+
+        assert_eq!(
+            state.session.active_database_type(),
+            Some(DatabaseType::PostgreSQL)
+        );
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
         assert!(!state.sqlite_diagnostics.is_loading());
+        assert!(!state.sqlite_diagnostics.is_quick_check_running());
     }
 
     #[test]
-    fn reconciles_feature_state_when_switching_without_cache() {
-        assert_reconciles_feature_state_on_switch(false);
+    fn reconciles_sqlite_diagnostics_when_switching_to_postgres_without_cache() {
+        assert_reconciles_sqlite_diagnostics_on_postgres_switch(false);
     }
 
     #[test]
-    fn reconciles_feature_state_when_switching_with_cache() {
-        assert_reconciles_feature_state_on_switch(true);
+    fn reconciles_sqlite_diagnostics_when_switching_to_postgres_with_cache() {
+        assert_reconciles_sqlite_diagnostics_on_postgres_switch(true);
     }
 
     #[test]
