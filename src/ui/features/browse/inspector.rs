@@ -8,8 +8,8 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
-    InspectorEmptyState, InspectorInfoRow, InspectorRlsRow, InspectorSection, InspectorTableRow,
-    InspectorViewModel,
+    InspectorColumnRow, InspectorEmptyState, InspectorForeignKeyRow, InspectorIndexRow,
+    InspectorInfoRow, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -271,7 +271,7 @@ impl Inspector {
     fn render_columns(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorTableRow],
+        rows: &[InspectorColumnRow],
         show_read_only: bool,
         scroll_offset: usize,
         horizontal_offset: usize,
@@ -285,7 +285,10 @@ impl Inspector {
         }
         headers.extend(["Default", "Comment"]);
 
-        let data_rows: Vec<Vec<String>> = rows.iter().map(|row| row.cells().to_vec()).collect();
+        let data_rows: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| column_row_cells(row, show_read_only))
+            .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
         let sample: &[Vec<String>] = if data_rows.len() > 50 {
@@ -346,12 +349,13 @@ impl Inspector {
         let max_scroll_offset = total_rows.saturating_sub(data_rows_visible);
         let clamped_scroll_offset = scroll_offset.min(max_scroll_offset);
 
-        let rows: Vec<Row> = data_rows
+        let render_rows: Vec<Row> = rows
             .iter()
             .enumerate()
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
+                let cells = column_row_cells(row, show_read_only);
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(theme.component.table.striped_row_bg)
                 } else {
@@ -360,7 +364,7 @@ impl Inspector {
 
                 Row::new(viewport_indices.iter().zip(viewport_widths.iter()).map(
                     |(&col_idx, &col_width)| {
-                        let text = row.get(col_idx).map_or("", String::as_str);
+                        let text = cells.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
                         let read_only_col_idx = show_read_only.then_some(4);
@@ -381,7 +385,7 @@ impl Inspector {
             })
             .collect();
 
-        let table_widget = RatatuiTable::new(rows, widths)
+        let table_widget = RatatuiTable::new(render_rows, widths)
             .header(header)
             .style(Style::default().fg(theme.semantic.text.primary));
         frame.render_widget(table_widget, area);
@@ -420,7 +424,7 @@ impl Inspector {
     fn render_indexes(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorTableRow],
+        rows: &[InspectorIndexRow],
         show_type: bool,
         has_details: bool,
         scroll_offset: usize,
@@ -445,7 +449,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = rows
             .iter()
             .take(50)
-            .map(|row| row.cells().to_vec())
+            .map(|row| index_row_cells(row, show_type, has_details))
             .collect();
         let col_widths = calculate_column_widths(headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -462,25 +466,26 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
+            |idx| {
+                index_row_cells(&rows[idx], show_type, has_details)
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
+            },
         );
     }
 
     fn render_foreign_keys(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorTableRow],
+        rows: &[InspectorForeignKeyRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
         let headers = ["Name", "Columns", "References"];
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
-        let data_rows: Vec<Vec<String>> = rows
-            .iter()
-            .take(50)
-            .map(|row| row.cells().to_vec())
-            .collect();
+        let data_rows: Vec<Vec<String>> = rows.iter().take(50).map(foreign_key_row_cells).collect();
         let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
@@ -496,7 +501,12 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
+            |idx| {
+                foreign_key_row_cells(&rows[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
+            },
         );
     }
 
@@ -584,7 +594,7 @@ impl Inspector {
     fn render_triggers(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorTableRow],
+        rows: &[InspectorTriggerRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
@@ -609,7 +619,12 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
+            |idx| {
+                trigger_row_cells(&rows[idx])
+                    .into_iter()
+                    .map(Cell::from)
+                    .collect()
+            },
         );
     }
 
@@ -657,6 +672,60 @@ impl Inspector {
             },
             theme,
         );
+    }
+}
+
+fn column_row_cells(row: &InspectorColumnRow, show_read_only: bool) -> Vec<String> {
+    let mut cells = vec![
+        row.name.clone(),
+        row.data_type.clone(),
+        checkmark(row.nullable),
+        checkmark(row.primary_key),
+    ];
+    if show_read_only {
+        cells.push(row.read_only_reason.clone().unwrap_or_default());
+    }
+    cells.push(row.default.clone().unwrap_or_default());
+    cells.push(row.comment.clone().unwrap_or_default());
+    cells
+}
+
+fn index_row_cells(row: &InspectorIndexRow, show_type: bool, show_details: bool) -> Vec<String> {
+    let mut cells = vec![row.name.clone(), row.columns.clone()];
+    if show_type {
+        cells.push(row.index_type.clone().unwrap_or_default());
+    }
+    cells.push(checkmark(row.unique));
+    if show_details {
+        cells.push(checkmark(row.partial));
+        cells.push(row.detail.clone().unwrap_or_default());
+    }
+    cells
+}
+
+fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
+    vec![
+        row.name.clone(),
+        row.columns.clone(),
+        row.references.clone(),
+    ]
+}
+
+fn trigger_row_cells(row: &InspectorTriggerRow) -> Vec<String> {
+    vec![
+        row.name.clone(),
+        row.timing.clone(),
+        row.events.clone(),
+        row.function_name.clone(),
+        checkmark(row.security_definer),
+    ]
+}
+
+fn checkmark(value: bool) -> String {
+    if value {
+        "✓".to_string()
+    } else {
+        String::new()
     }
 }
 

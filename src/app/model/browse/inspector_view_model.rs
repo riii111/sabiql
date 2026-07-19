@@ -18,22 +18,22 @@ pub enum InspectorSection {
         rows: Vec<InspectorInfoRow>,
     },
     Columns {
-        rows: Vec<InspectorTableRow>,
+        rows: Vec<InspectorColumnRow>,
         show_read_only: bool,
     },
     Indexes {
-        rows: Vec<InspectorTableRow>,
+        rows: Vec<InspectorIndexRow>,
         show_type: bool,
         show_details: bool,
     },
     ForeignKeys {
-        rows: Vec<InspectorTableRow>,
+        rows: Vec<InspectorForeignKeyRow>,
     },
     Rls {
         rows: Vec<InspectorRlsRow>,
     },
     Triggers {
-        rows: Vec<InspectorTableRow>,
+        rows: Vec<InspectorTriggerRow>,
     },
     Ddl {
         rows: Vec<String>,
@@ -49,18 +49,40 @@ pub enum InspectorInfoRow {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InspectorTableRow {
-    cells: Vec<String>,
+pub struct InspectorColumnRow {
+    pub name: String,
+    pub data_type: String,
+    pub nullable: bool,
+    pub primary_key: bool,
+    pub read_only_reason: Option<String>,
+    pub default: Option<String>,
+    pub comment: Option<String>,
 }
 
-impl InspectorTableRow {
-    fn new(cells: Vec<String>) -> Self {
-        Self { cells }
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectorIndexRow {
+    pub name: String,
+    pub columns: String,
+    pub index_type: Option<String>,
+    pub unique: bool,
+    pub partial: bool,
+    pub detail: Option<String>,
+}
 
-    pub fn cells(&self) -> &[String] {
-        &self.cells
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectorForeignKeyRow {
+    pub name: String,
+    pub columns: String,
+    pub references: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectorTriggerRow {
+    pub name: String,
+    pub timing: String,
+    pub events: String,
+    pub function_name: String,
+    pub security_definer: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,27 +157,14 @@ impl InspectorViewModel {
                 let rows = table
                     .columns
                     .iter()
-                    .map(|column| {
-                        let mut cells = vec![
-                            column.name.clone(),
-                            column.data_type.clone(),
-                            if column.is_nullable() {
-                                "✓".to_string()
-                            } else {
-                                String::new()
-                            },
-                            if column.is_primary_key() {
-                                "✓".to_string()
-                            } else {
-                                String::new()
-                            },
-                        ];
-                        if show_read_only {
-                            cells.push(column.read_only_reason().unwrap_or_default().to_string());
-                        }
-                        cells.push(column.default.clone().unwrap_or_default());
-                        cells.push(column.comment.clone().unwrap_or_default());
-                        InspectorTableRow::new(cells)
+                    .map(|column| InspectorColumnRow {
+                        name: column.name.clone(),
+                        data_type: column.data_type.clone(),
+                        nullable: column.is_nullable(),
+                        primary_key: column.is_primary_key(),
+                        read_only_reason: column.read_only_reason().map(ToString::to_string),
+                        default: column.default.clone(),
+                        comment: column.comment.clone(),
                     })
                     .collect();
                 (
@@ -179,7 +188,14 @@ impl InspectorViewModel {
                 let rows = table
                     .indexes
                     .iter()
-                    .map(|index| InspectorTableRow::new(index_row(index, show_type, show_details)))
+                    .map(|index| InspectorIndexRow {
+                        name: index.name.clone(),
+                        columns: index.columns.join(", "),
+                        index_type: index_type_label(index),
+                        unique: index.is_unique(),
+                        partial: index.is_partial(),
+                        detail: show_details.then(|| index_detail(index)),
+                    })
                     .collect();
                 (
                     InspectorSection::Indexes {
@@ -195,11 +211,7 @@ impl InspectorViewModel {
                 )
             }
             InspectorTab::ForeignKeys => {
-                let rows = table
-                    .foreign_keys
-                    .iter()
-                    .map(|fk| InspectorTableRow::new(foreign_key_row(fk)))
-                    .collect();
+                let rows = table.foreign_keys.iter().map(foreign_key_row).collect();
                 (
                     InspectorSection::ForeignKeys { rows },
                     table
@@ -227,23 +239,17 @@ impl InspectorViewModel {
                 let rows = table
                     .triggers
                     .iter()
-                    .map(|trigger| {
-                        InspectorTableRow::new(vec![
-                            trigger.name.clone(),
-                            trigger.timing.to_string(),
-                            trigger
-                                .events
-                                .iter()
-                                .map(ToString::to_string)
-                                .collect::<Vec<_>>()
-                                .join("/"),
-                            trigger.function_name.clone(),
-                            if trigger.security_definer {
-                                "✓".to_string()
-                            } else {
-                                String::new()
-                            },
-                        ])
+                    .map(|trigger| InspectorTriggerRow {
+                        name: trigger.name.clone(),
+                        timing: trigger.timing.to_string(),
+                        events: trigger
+                            .events
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join("/"),
+                        function_name: trigger.function_name.clone(),
+                        security_definer: trigger.security_definer,
                     })
                     .collect();
                 (
@@ -317,11 +323,11 @@ impl InspectorSection {
     pub fn row_count(&self) -> usize {
         match self {
             Self::Info { rows } => rows.len(),
-            Self::Columns { rows, .. }
-            | Self::Indexes { rows, .. }
-            | Self::ForeignKeys { rows }
-            | Self::Triggers { rows } => rows.len(),
+            Self::Columns { rows, .. } => rows.len(),
+            Self::Indexes { rows, .. } => rows.len(),
+            Self::ForeignKeys { rows } => rows.len(),
             Self::Rls { rows } => rows.len(),
+            Self::Triggers { rows } => rows.len(),
             Self::Ddl { rows } => rows.len(),
         }
     }
@@ -359,27 +365,6 @@ fn info_value(field: InspectorInfoField, table: &Table) -> Option<String> {
     }
 }
 
-fn index_row(index: &Index, show_type: bool, show_details: bool) -> Vec<String> {
-    let mut row = vec![index.name.clone(), index.columns.join(", ")];
-    if show_type {
-        row.push(index_type_label(index));
-    }
-    row.push(if index.is_unique() {
-        "✓".to_string()
-    } else {
-        String::new()
-    });
-    if show_details {
-        row.push(if index.is_partial() {
-            "✓".to_string()
-        } else {
-            String::new()
-        });
-        row.push(index_detail(index));
-    }
-    row
-}
-
 fn index_detail(index: &Index) -> String {
     if index.needs_source_definition_detail()
         && let Some(definition) = &index.definition
@@ -403,29 +388,29 @@ fn index_detail(index: &Index) -> String {
     details.join("; ")
 }
 
-fn index_type_label(index: &Index) -> String {
+fn index_type_label(index: &Index) -> Option<String> {
     match index.index_type {
-        IndexType::Unknown => String::new(),
-        _ => index.index_type.to_string(),
+        IndexType::Unknown => None,
+        _ => Some(index.index_type.to_string()),
     }
 }
 
-fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {
+fn foreign_key_row(fk: &ForeignKey) -> InspectorForeignKeyRow {
     let references = format!(
         "{}.{}({})",
         fk.to_schema,
         fk.to_table,
         fk.to_columns.join(", ")
     );
-    vec![
-        fk.name.clone(),
-        fk.from_columns.join(", "),
-        if fk.is_reference_resolved() {
+    InspectorForeignKeyRow {
+        name: fk.name.clone(),
+        columns: fk.from_columns.join(", "),
+        references: if fk.is_reference_resolved() {
             references
         } else {
             format!("{references} (unresolved)")
         },
-    ]
+    }
 }
 
 fn rls_rows(rls: &RlsInfo) -> Vec<InspectorRlsRow> {
