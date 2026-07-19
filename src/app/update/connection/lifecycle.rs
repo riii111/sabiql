@@ -86,6 +86,7 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
+    use crate::model::sql_editor::modal::SqlModalTab;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -188,6 +189,60 @@ mod tests {
         reduce(&mut state, &action);
 
         assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+    }
+
+    fn assert_reconciles_feature_state_on_switch(cached: bool) {
+        let mut state = AppState::new("test".to_string());
+        let current_id = ConnectionId::new();
+        let target_id = ConnectionId::new();
+        state.session.activate_connection_with_dsn(
+            &current_id,
+            "current",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/current",
+        );
+        state.ui.set_inspector_tab(InspectorTab::Rls);
+        state.sql_modal.set_active_tab(SqlModalTab::Compare);
+        state.ui.set_pending_er_picker(true);
+        let _ = state.er_preparation.start_waiting_run();
+        state
+            .er_preparation
+            .queue_pending_table("public.users".to_string());
+        let _ = state.sqlite_diagnostics.begin_fetch();
+
+        if cached {
+            state.connection_caches.save(
+                &target_id,
+                ConnectionCache {
+                    inspector_tab: InspectorTab::Rls,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let action = Action::SwitchConnection(ConnectionTarget {
+            id: target_id,
+            dsn: "sqlite:///tmp/app.db".to_string(),
+            name: "app.db".to_string(),
+            database_type: DatabaseType::SQLite,
+        });
+        reduce(&mut state, &action);
+
+        assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
+        assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+        assert!(!state.ui.pending_er_picker());
+        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        assert!(!state.sqlite_diagnostics.is_loading());
+    }
+
+    #[test]
+    fn reconciles_feature_state_when_switching_without_cache() {
+        assert_reconciles_feature_state_on_switch(false);
+    }
+
+    #[test]
+    fn reconciles_feature_state_when_switching_with_cache() {
+        assert_reconciles_feature_state_on_switch(true);
     }
 
     #[test]
