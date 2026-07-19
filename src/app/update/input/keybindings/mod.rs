@@ -4,7 +4,6 @@ mod normal;
 mod overlays;
 mod readline;
 
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
@@ -141,11 +140,6 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
-
-pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-    global_action_for_with_policy(combo, preset, &feature_policy)
-}
 
 pub fn global_action_for_with_policy(
     combo: &KeyCombo,
