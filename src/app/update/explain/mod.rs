@@ -40,6 +40,7 @@ mod tests {
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
     use std::time::Instant;
 
@@ -58,7 +59,7 @@ mod tests {
     }
 
     fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
-        crate::update::reducer::reduce(state, action, Instant::now(), &AppServices::stub())
+        reduce(state, action, Instant::now(), &AppServices::stub())
     }
 
     mod explain_request {

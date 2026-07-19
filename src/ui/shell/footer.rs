@@ -450,7 +450,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::update::input::keybindings::{
-        connection_setup, global, help, result_active, row_detail,
+        connection_setup, global, help, jsonb_detail, jsonb_edit, result_active, row_detail,
     };
     use rstest::rstest;
 

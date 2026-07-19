@@ -91,10 +91,11 @@ mod tests {
     use crate::domain::connection::DatabaseType;
     use crate::domain::{ConnectionId, DiagnosticField, SqliteDiagnosticsSnapshot};
     use crate::services::AppServices;
+    use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
 
     fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
-        crate::update::reducer::reduce(state, action, Instant::now(), &AppServices::stub())
+        reduce(state, action, Instant::now(), &AppServices::stub())
     }
 
     #[test]

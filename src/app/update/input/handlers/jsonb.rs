@@ -120,9 +120,11 @@ pub fn handle_jsonb_edit_keys_with_policy(
     feature_policy: &FeaturePolicy,
 ) -> Action {
     if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
-        return (combo.modifiers.is_empty() && combo.key == Key::Esc)
-            .then_some(Action::JsonbExitEdit)
-            .unwrap_or(Action::None);
+        return if combo.modifiers.is_empty() && combo.key == Key::Esc {
+            Action::JsonbExitEdit
+        } else {
+            Action::None
+        };
     }
 
     if let Some(action) = action_for_key(
