@@ -793,6 +793,14 @@ impl Action {
                 InputMode::JsonbDetail | InputMode::JsonbEdit => FeatureRequirement::JsonbDetail,
                 _ => FeatureRequirement::None,
             },
+            Self::BeginKeySequence(Prefix::G)
+                if matches!(
+                    state.input_mode(),
+                    InputMode::JsonbDetail | InputMode::JsonbEdit
+                ) =>
+            {
+                FeatureRequirement::JsonbDetail
+            }
             _ => self.feature_requirement(),
         }
     }

@@ -298,6 +298,7 @@ mod tests {
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
+        use crate::model::shared::key_sequence::Prefix;
         use crate::model::shared::text_input::TextInputLike;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
@@ -368,6 +369,15 @@ mod tests {
                 Action::Paste("after".to_string()),
             );
             assert_eq!(jsonb_edit_state.jsonb_detail.editor().content(), "before");
+
+            let mut jsonb_detail_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut jsonb_detail_state, "sqlite://test.db");
+            jsonb_detail_state.modal.set_mode(InputMode::JsonbDetail);
+            assert_unsupported_action_is_a_noop(
+                &mut jsonb_detail_state,
+                Action::BeginKeySequence(Prefix::G),
+            );
+            assert_eq!(jsonb_detail_state.ui.key_sequence(), KeySequenceState::Idle);
 
             let mut analyze_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");

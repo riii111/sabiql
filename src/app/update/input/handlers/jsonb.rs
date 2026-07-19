@@ -1,5 +1,5 @@
 use crate::model::shared::key_sequence::Prefix;
-use crate::policy::FeaturePolicy;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{
     JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
@@ -17,6 +17,10 @@ pub fn handle_jsonb_detail_keys_with_policy(
     pending_prefix: Option<Prefix>,
     feature_policy: &FeaturePolicy,
 ) -> Action {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+        return Action::None;
+    }
+
     if matches!(
         interaction,
         InputInteraction::FormEditing(InputTarget::JsonbSearch)
@@ -115,6 +119,10 @@ pub fn handle_jsonb_edit_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+        return Action::None;
+    }
+
     if let Some(action) = action_for_key(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Editing),
@@ -309,6 +317,20 @@ mod tests {
                 handle_jsonb_detail_keys(combo(Key::Char('g')), InputInteraction::Viewing, None);
 
             assert!(matches!(result, Action::BeginKeySequence(Prefix::G)));
+        }
+
+        #[test]
+        fn sqlite_jsonb_detail_ignores_g() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_jsonb_detail_keys_with_policy(
+                combo(Key::Char('g')),
+                InputInteraction::Viewing,
+                None,
+                &feature_policy,
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]
