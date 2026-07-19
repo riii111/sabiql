@@ -7,13 +7,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::inspector_view_model::{
+    InspectorEmptyState, InspectorInfoRow, InspectorRlsRow, InspectorSection, InspectorTableRow,
+    InspectorViewModel,
+};
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
-use crate::app::model::shared::inspector_view_model::{
-    InspectorDisplayRow, InspectorEmptyState, InspectorSection, InspectorViewModel,
-};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
@@ -122,7 +123,7 @@ impl Inspector {
             return ViewportPlan::default();
         }
 
-        match view_model.sections().first() {
+        match view_model.section() {
             Some(InspectorSection::Info { rows }) => {
                 Self::render_info(
                     frame,
@@ -211,17 +212,16 @@ impl Inspector {
     fn render_info(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorInfoRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
         let lines: Vec<Line> = rows
             .iter()
-            .filter_map(|row| match row {
-                InspectorDisplayRow::Info { field, value } => {
-                    Some(Self::render_info_field(*field, value.as_deref(), theme))
+            .map(|row| match row {
+                InspectorInfoRow::Field { field, value } => {
+                    Self::render_info_field(*field, value.as_deref(), theme)
                 }
-                _ => None,
             })
             .collect();
 
@@ -271,7 +271,7 @@ impl Inspector {
     fn render_columns(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorTableRow],
         show_read_only: bool,
         scroll_offset: usize,
         horizontal_offset: usize,
@@ -285,13 +285,7 @@ impl Inspector {
         }
         headers.extend(["Default", "Comment"]);
 
-        let data_rows: Vec<Vec<String>> = rows
-            .iter()
-            .filter_map(|row| match row {
-                InspectorDisplayRow::Cells(cells) => Some(cells.clone()),
-                _ => None,
-            })
-            .collect();
+        let data_rows: Vec<Vec<String>> = rows.iter().map(|row| row.cells().to_vec()).collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
         let sample: &[Vec<String>] = if data_rows.len() > 50 {
@@ -426,7 +420,7 @@ impl Inspector {
     fn render_indexes(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorTableRow],
         show_type: bool,
         has_details: bool,
         scroll_offset: usize,
@@ -451,10 +445,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = rows
             .iter()
             .take(50)
-            .filter_map(|row| match row {
-                InspectorDisplayRow::Cells(cells) => Some(cells.clone()),
-                _ => None,
-            })
+            .map(|row| row.cells().to_vec())
             .collect();
         let col_widths = calculate_column_widths(headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -471,19 +462,14 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| match &rows[idx] {
-                InspectorDisplayRow::Cells(cells) => {
-                    cells.iter().cloned().map(Cell::from).collect()
-                }
-                _ => Vec::new(),
-            },
+            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
         );
     }
 
     fn render_foreign_keys(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorTableRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
@@ -493,10 +479,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = rows
             .iter()
             .take(50)
-            .filter_map(|row| match row {
-                InspectorDisplayRow::Cells(cells) => Some(cells.clone()),
-                _ => None,
-            })
+            .map(|row| row.cells().to_vec())
             .collect();
         let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -513,26 +496,21 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| match &rows[idx] {
-                InspectorDisplayRow::Cells(cells) => {
-                    cells.iter().cloned().map(Cell::from).collect()
-                }
-                _ => Vec::new(),
-            },
+            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
         );
     }
 
     fn render_rls(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorRlsRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
         let mut lines = Vec::with_capacity(rows.len());
         for row in rows {
             match row {
-                InspectorDisplayRow::RlsStatus { enabled, force } => {
+                InspectorRlsRow::RlsStatus { enabled, force } => {
                     let status = if *enabled {
                         if *force { "Enabled (FORCE)" } else { "Enabled" }
                     } else {
@@ -550,12 +528,12 @@ impl Inspector {
                         ),
                     ]));
                 }
-                InspectorDisplayRow::RlsSpacer => lines.push(Line::from("")),
-                InspectorDisplayRow::RlsPoliciesHeading => lines.push(Line::from(Span::styled(
+                InspectorRlsRow::RlsSpacer => lines.push(Line::from("")),
+                InspectorRlsRow::RlsPoliciesHeading => lines.push(Line::from(Span::styled(
                     "Policies:",
                     Style::default().add_modifier(Modifier::BOLD),
                 ))),
-                InspectorDisplayRow::RlsPolicy {
+                InspectorRlsRow::RlsPolicy {
                     name,
                     command,
                     permissive,
@@ -569,11 +547,10 @@ impl Inspector {
                         "RESTRICTIVE"
                     }
                 ))),
-                InspectorDisplayRow::RlsPolicyQual(qual) => lines.push(Line::from(format!(
+                InspectorRlsRow::RlsPolicyQual(qual) => lines.push(Line::from(format!(
                     "    USING: {}",
                     truncate_to_width(qual, 50)
                 ))),
-                _ => {}
             }
         }
 
@@ -607,7 +584,7 @@ impl Inspector {
     fn render_triggers(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[InspectorTableRow],
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
@@ -632,19 +609,14 @@ impl Inspector {
             },
             scroll_offset,
             theme,
-            |idx| match &rows[idx] {
-                InspectorDisplayRow::Cells(cells) => {
-                    cells.iter().cloned().map(Cell::from).collect()
-                }
-                _ => Vec::new(),
-            },
+            |idx| rows[idx].cells().iter().cloned().map(Cell::from).collect(),
         );
     }
 
     fn render_ddl(
         frame: &mut Frame,
         area: Rect,
-        rows: &[InspectorDisplayRow],
+        rows: &[String],
         scroll_offset: usize,
         flash_timers: &FlashTimerStore,
         now: Instant,
@@ -662,12 +634,8 @@ impl Inspector {
 
         let mut lines: Vec<Line> = rows
             .iter()
-            .filter_map(|row| match row {
-                InspectorDisplayRow::Text(line) => Some(
-                    Line::from(line.clone())
-                        .style(Style::default().fg(theme.semantic.text.primary)),
-                ),
-                _ => None,
+            .map(|line| {
+                Line::from(line.clone()).style(Style::default().fg(theme.semantic.text.primary))
             })
             .collect();
 

@@ -1,4 +1,5 @@
 use crate::model::app_state::AppState;
+use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
@@ -7,15 +8,11 @@ use crate::update::dispatch_result::DispatchResult;
 use super::inspector_max_scroll;
 
 fn inspector_page_scroll_delta(
-    state: &AppState,
-    services: &AppServices,
+    view_model: &InspectorViewModel,
+    pane_height: u16,
     amount: ScrollAmount,
 ) -> Option<usize> {
-    let visible = state
-        .inspector_view_model(services.ddl_generator.as_ref())
-        .visible_rows(state.ui.inspector_pane_height());
-
-    amount.page_delta(visible)
+    amount.page_delta(view_model.visible_rows(pane_height))
 }
 
 pub fn reduce_inspector(
@@ -62,8 +59,11 @@ pub fn reduce_inspector(
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            if let Some(delta) = inspector_page_scroll_delta(state, services, *amount) {
-                let max = inspector_max_scroll(state, services);
+            let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+            if let Some(delta) =
+                inspector_page_scroll_delta(&view_model, state.ui.inspector_pane_height(), *amount)
+            {
+                let max = view_model.max_scroll(state.ui.inspector_pane_height());
                 state
                     .ui
                     .set_inspector_scroll_offset(direction.clamp_vertical_offset(

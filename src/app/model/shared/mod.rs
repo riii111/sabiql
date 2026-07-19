@@ -8,7 +8,6 @@ pub mod focused_pane;
 pub mod help;
 pub mod input_mode;
 pub mod inspector_tab;
-pub mod inspector_view_model;
 pub mod key_sequence;
 pub mod message;
 pub mod modal;

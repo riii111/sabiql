@@ -7,7 +7,7 @@ use crate::ports::outbound::DdlGenerator;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
     active_tab: InspectorTab,
-    sections: Vec<InspectorSection>,
+    section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
 }
@@ -15,38 +15,56 @@ pub struct InspectorViewModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InspectorSection {
     Info {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorInfoRow>,
     },
     Columns {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorTableRow>,
         show_read_only: bool,
     },
     Indexes {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorTableRow>,
         show_type: bool,
         show_details: bool,
     },
     ForeignKeys {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorTableRow>,
     },
     Rls {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorRlsRow>,
     },
     Triggers {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<InspectorTableRow>,
     },
     Ddl {
-        rows: Vec<InspectorDisplayRow>,
+        rows: Vec<String>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InspectorDisplayRow {
-    Info {
+pub enum InspectorInfoRow {
+    Field {
         field: InspectorInfoField,
         value: Option<String>,
     },
-    Cells(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InspectorTableRow {
+    cells: Vec<String>,
+}
+
+impl InspectorTableRow {
+    fn new(cells: Vec<String>) -> Self {
+        Self { cells }
+    }
+
+    pub fn cells(&self) -> &[String] {
+        &self.cells
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InspectorRlsRow {
     RlsStatus {
         enabled: bool,
         force: bool,
@@ -59,7 +77,6 @@ pub enum InspectorDisplayRow {
         permissive: bool,
     },
     RlsPolicyQual(String),
-    Text(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +105,7 @@ impl InspectorViewModel {
         let Some(table) = table else {
             return Self {
                 active_tab,
-                sections: Vec::new(),
+                section: None,
                 empty_state: Some(InspectorEmptyState::NoTableSelected),
                 unavailable_reason: None,
             };
@@ -101,7 +118,7 @@ impl InspectorViewModel {
                         .supported_inspector_info_fields()
                         .iter()
                         .copied()
-                        .map(|field| InspectorDisplayRow::Info {
+                        .map(|field| InspectorInfoRow::Field {
                             field,
                             value: info_value(field, table),
                         })
@@ -138,7 +155,7 @@ impl InspectorViewModel {
                         }
                         cells.push(column.default.clone().unwrap_or_default());
                         cells.push(column.comment.clone().unwrap_or_default());
-                        InspectorDisplayRow::Cells(cells)
+                        InspectorTableRow::new(cells)
                     })
                     .collect();
                 (
@@ -162,9 +179,7 @@ impl InspectorViewModel {
                 let rows = table
                     .indexes
                     .iter()
-                    .map(|index| {
-                        InspectorDisplayRow::Cells(index_row(index, show_type, show_details))
-                    })
+                    .map(|index| InspectorTableRow::new(index_row(index, show_type, show_details)))
                     .collect();
                 (
                     InspectorSection::Indexes {
@@ -183,7 +198,7 @@ impl InspectorViewModel {
                 let rows = table
                     .foreign_keys
                     .iter()
-                    .map(|fk| InspectorDisplayRow::Cells(foreign_key_row(fk)))
+                    .map(|fk| InspectorTableRow::new(foreign_key_row(fk)))
                     .collect();
                 (
                     InspectorSection::ForeignKeys { rows },
@@ -213,7 +228,7 @@ impl InspectorViewModel {
                     .triggers
                     .iter()
                     .map(|trigger| {
-                        InspectorDisplayRow::Cells(vec![
+                        InspectorTableRow::new(vec![
                             trigger.name.clone(),
                             trigger.timing.to_string(),
                             trigger
@@ -245,7 +260,7 @@ impl InspectorViewModel {
                     rows: ddl_generator
                         .generate_ddl(database_type, table)
                         .lines()
-                        .map(|line| InspectorDisplayRow::Text(line.to_string()))
+                        .map(str::to_string)
                         .collect(),
                 },
                 None,
@@ -255,7 +270,7 @@ impl InspectorViewModel {
 
         Self {
             active_tab,
-            sections: vec![section],
+            section: Some(section),
             empty_state,
             unavailable_reason,
         }
@@ -265,8 +280,8 @@ impl InspectorViewModel {
         self.active_tab
     }
 
-    pub fn sections(&self) -> &[InspectorSection] {
-        &self.sections
+    pub fn section(&self) -> Option<&InspectorSection> {
+        self.section.as_ref()
     }
 
     pub fn empty_state(&self) -> Option<InspectorEmptyState> {
@@ -278,12 +293,16 @@ impl InspectorViewModel {
     }
 
     pub fn row_count(&self) -> usize {
-        self.sections.iter().map(InspectorSection::row_count).sum()
+        self.section.as_ref().map_or(0, InspectorSection::row_count)
     }
 
     pub fn visible_rows(&self, pane_height: u16) -> usize {
-        match self.sections.first() {
-            Some(InspectorSection::Ddl { .. }) => pane_height.saturating_sub(3) as usize,
+        match self.section.as_ref() {
+            Some(
+                InspectorSection::Info { .. }
+                | InspectorSection::Rls { .. }
+                | InspectorSection::Ddl { .. },
+            ) => pane_height.saturating_sub(3) as usize,
             _ => pane_height.saturating_sub(5) as usize,
         }
     }
@@ -295,20 +314,16 @@ impl InspectorViewModel {
 }
 
 impl InspectorSection {
-    pub fn rows(&self) -> &[InspectorDisplayRow] {
+    pub fn row_count(&self) -> usize {
         match self {
-            Self::Info { rows }
-            | Self::Columns { rows, .. }
+            Self::Info { rows } => rows.len(),
+            Self::Columns { rows, .. }
             | Self::Indexes { rows, .. }
             | Self::ForeignKeys { rows }
-            | Self::Rls { rows }
-            | Self::Triggers { rows }
-            | Self::Ddl { rows } => rows,
+            | Self::Triggers { rows } => rows.len(),
+            Self::Rls { rows } => rows.len(),
+            Self::Ddl { rows } => rows.len(),
         }
-    }
-
-    pub fn row_count(&self) -> usize {
-        self.rows().len()
     }
 }
 
@@ -413,22 +428,22 @@ fn foreign_key_row(fk: &ForeignKey) -> Vec<String> {
     ]
 }
 
-fn rls_rows(rls: &RlsInfo) -> Vec<InspectorDisplayRow> {
-    let mut rows = vec![InspectorDisplayRow::RlsStatus {
+fn rls_rows(rls: &RlsInfo) -> Vec<InspectorRlsRow> {
+    let mut rows = vec![InspectorRlsRow::RlsStatus {
         enabled: rls.enabled,
         force: rls.force,
     }];
     if !rls.policies.is_empty() {
-        rows.push(InspectorDisplayRow::RlsSpacer);
-        rows.push(InspectorDisplayRow::RlsPoliciesHeading);
+        rows.push(InspectorRlsRow::RlsSpacer);
+        rows.push(InspectorRlsRow::RlsPoliciesHeading);
         for policy in &rls.policies {
-            rows.push(InspectorDisplayRow::RlsPolicy {
+            rows.push(InspectorRlsRow::RlsPolicy {
                 name: policy.name.clone(),
                 command: policy.cmd.to_string(),
                 permissive: policy.permissive,
             });
             if let Some(qual) = &policy.qual {
-                rows.push(InspectorDisplayRow::RlsPolicyQual(qual.clone()));
+                rows.push(InspectorRlsRow::RlsPolicyQual(qual.clone()));
             }
         }
     }
@@ -553,12 +568,8 @@ mod tests {
             assert_eq!(model.active_tab(), tab);
             assert_eq!(model.row_count(), expected_rows, "tab={tab:?}");
             assert_eq!(
-                model.row_count(),
-                model
-                    .sections()
-                    .iter()
-                    .map(InspectorSection::row_count)
-                    .sum::<usize>()
+                model.section().map_or(0, InspectorSection::row_count),
+                expected_rows
             );
         }
     }
@@ -594,16 +605,46 @@ mod tests {
     }
 
     #[test]
+    fn info_rls_and_ddl_use_the_full_inner_panel_height() {
+        let table = table();
+        let cases = [
+            (InspectorTab::Info, 5_usize),
+            (InspectorTab::Rls, 5_usize),
+            (InspectorTab::Ddl, 3_usize),
+        ];
+
+        for (tab, expected_rows) in cases {
+            let model = InspectorViewModel::build(
+                &EngineFeatureProfile::postgres_like(),
+                tab,
+                Some(&table),
+                DatabaseType::PostgreSQL,
+                &TestDdlGenerator,
+            );
+
+            assert_eq!(model.visible_rows(8), 5, "tab={tab:?}");
+            assert_eq!(
+                model.max_scroll(8),
+                expected_rows.saturating_sub(5),
+                "tab={tab:?}"
+            );
+        }
+    }
+
+    #[test]
     fn table_sections_reserve_header_and_scroll_indicator_rows() {
+        let mut table = table();
+        let column = table.columns[0].clone();
+        table.columns.resize(6, column);
         let model = InspectorViewModel::build(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Columns,
-            Some(&table()),
+            Some(&table),
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
 
-        assert_eq!(model.visible_rows(20), 15);
-        assert_eq!(model.max_scroll(20), 0);
+        assert_eq!(model.visible_rows(8), 3);
+        assert_eq!(model.max_scroll(8), 3);
     }
 }

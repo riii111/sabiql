@@ -5,6 +5,7 @@ use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::{DatabaseType, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
+use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
@@ -17,7 +18,6 @@ use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::inspector_view_model::InspectorViewModel;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
 use crate::model::shared::render_output::{
