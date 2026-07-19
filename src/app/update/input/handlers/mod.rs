@@ -11,6 +11,7 @@ mod sql_modal;
 
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::policy::FeaturePolicy;
 use crate::ports::inbound::{InputEvent, KeyCombo};
 use crate::update::action::Action;
 use crate::update::input::keybindings::readline_action_for;
@@ -26,6 +27,12 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
 }
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
+    let action = Action::Paste(text);
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
+        return Action::None;
+    }
+
     match state.input_mode() {
         InputMode::TablePicker
         | InputMode::ErTablePicker
@@ -36,12 +43,13 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::QueryHistoryPicker
         | InputMode::JsonbEdit
         | InputMode::JsonbDetail
-        | InputMode::CellDetail => Action::Paste(text),
+        | InputMode::CellDetail => action,
         _ => Action::None,
     }
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
     let interaction = resolve_input_interaction(state);
     match interaction {
         InputInteraction::FormEditing(target) => {
@@ -56,16 +64,20 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
     }
     match state.input_mode() {
         InputMode::Normal => normal::handle_normal_mode(combo, state),
-        InputMode::CommandLine => editors::handle_command_line_mode(combo),
+        InputMode::CommandLine => {
+            editors::handle_command_line_mode_with_policy(combo, &feature_policy)
+        }
         InputMode::CellEdit => editors::handle_cell_edit_keys(combo),
         InputMode::TablePicker => pickers::handle_table_picker_keys(combo),
         InputMode::CommandPalette => pickers::handle_command_palette_keys(combo),
         InputMode::Settings => pickers::handle_settings_keys(combo, state),
-        InputMode::Help => overlays::handle_help_keys(combo, interaction),
+        InputMode::Help => {
+            overlays::handle_help_keys_with_policy(combo, interaction, &feature_policy)
+        }
         InputMode::SqlModal => {
             let completion_visible = state.sql_modal.completion().visible
                 && !state.sql_modal.completion().candidates.is_empty();
-            sql_modal::handle_sql_modal_keys_with_prefix(
+            sql_modal::handle_sql_modal_keys_with_feature_policy(
                 combo,
                 completion_visible,
                 state.sql_modal.status(),
@@ -75,25 +87,25 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
                 state.settings.saved_keymap_preset(),
-                state
-                    .session
-                    .active_engine_feature_profile()
-                    .supports_explain_analyze(),
+                &feature_policy,
             )
         }
         InputMode::ConnectionSetup => connections::handle_connection_setup_keys(combo, state),
         InputMode::ConnectionError => connections::handle_connection_error_keys(combo),
         InputMode::ConfirmDialog => overlays::handle_confirm_dialog_keys(combo),
-        InputMode::SqliteDiagnostics => overlays::handle_sqlite_diagnostics_keys(combo),
+        InputMode::SqliteDiagnostics => {
+            overlays::handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
+        }
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
-        InputMode::JsonbDetail => jsonb::handle_jsonb_detail_keys(
+        InputMode::JsonbDetail => jsonb::handle_jsonb_detail_keys_with_policy(
             combo,
             interaction,
             state.ui.key_sequence().pending_prefix(),
+            &feature_policy,
         ),
-        InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys(combo),
+        InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys_with_policy(combo, &feature_policy),
         InputMode::CellDetail => {
             let is_searching = state.cell_detail.search().is_active();
             cell_detail::handle_cell_detail_keys(combo, is_searching)
@@ -120,7 +132,24 @@ mod tests {
 
     mod mode_dispatch {
         use super::*;
+        use crate::domain::{ConnectionId, DatabaseType};
         use crate::model::sql_editor::modal::SqlModalTab;
+        use crate::update::test_fixtures;
+
+        fn sqlite_connected_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                DatabaseType::SQLite,
+                "sqlite://test.db",
+            );
+            state
+        }
+
+        fn combo_ctrl_shift(key: Key) -> KeyCombo {
+            KeyCombo::ctrl_shift(key)
+        }
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -165,6 +194,41 @@ mod tests {
             let result = handle_key_event(combo(Key::Char('/')), &state);
 
             assert!(matches!(result, Action::CellDetailEnterSearch));
+        }
+
+        #[test]
+        fn engine_specific_global_features_follow_the_active_profile() {
+            let state = sqlite_connected_state();
+
+            assert!(matches!(
+                handle_key_event(combo(Key::Char('e')), &state),
+                Action::None
+            ));
+            assert!(matches!(
+                handle_key_event(combo_ctrl_shift(Key::Char('d')), &state),
+                Action::OpenModal(ModalKind::SqliteDiagnostics)
+            ));
+
+            let mut postgres_state = AppState::new("test".to_string());
+            test_fixtures::activate_postgres_connection(
+                &mut postgres_state,
+                "postgres://localhost/test",
+            );
+            assert!(matches!(
+                handle_key_event(combo_ctrl_shift(Key::Char('d')), &postgres_state),
+                Action::None
+            ));
+        }
+
+        #[test]
+        fn postgres_input_keeps_er_diagram_available() {
+            let mut state = make_state(InputMode::Normal);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+
+            assert!(matches!(
+                handle_key_event(combo(Key::Char('e')), &state),
+                Action::OpenModal(ModalKind::ErTablePicker)
+            ));
         }
     }
 
@@ -372,6 +436,7 @@ mod tests {
 
     mod paste_event {
         use super::*;
+        use crate::update::test_fixtures;
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -399,11 +464,32 @@ mod tests {
 
         #[test]
         fn er_table_picker_pastes_text() {
-            let state = make_state(InputMode::ErTablePicker);
+            let mut state = make_state(InputMode::ErTablePicker);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
 
             let result = handle_paste_event("public.users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
+        fn sqlite_ignores_er_table_picker_paste() {
+            let mut state = make_state(InputMode::ErTablePicker);
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn sqlite_ignores_jsonb_edit_paste() {
+            let mut state = make_state(InputMode::JsonbEdit);
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+
+            let result = handle_paste_event("{}".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

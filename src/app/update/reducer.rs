@@ -17,6 +17,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::KeySequenceState;
+use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
 use crate::update::query_context::termination_effects;
@@ -27,6 +28,11 @@ pub fn reduce(
     now: Instant,
     services: &AppServices,
 ) -> Vec<Effect> {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
+        return vec![];
+    }
+
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
@@ -284,6 +290,164 @@ mod tests {
             reduce(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.ui.explorer_selected(), 0);
+        }
+    }
+
+    mod feature_policy_guard {
+        use super::*;
+        use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
+        use crate::model::er_state::ErStatus;
+        use crate::model::shared::flash_timer::FlashId;
+        use crate::model::shared::key_sequence::Prefix;
+        use crate::model::shared::text_input::TextInputLike;
+        use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
+
+        fn assert_unsupported_action_is_a_noop(state: &mut AppState, action: Action) {
+            let now = Instant::now();
+            state.clear_dirty();
+            state
+                .messages
+                .set_success_at("existing message".to_string(), now);
+            state.result_interaction.start_yank_operator();
+            let er_status = state.er_preparation.status();
+            let jsonb_flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
+
+            let effects = reduce(state, action, now, &AppServices::stub());
+
+            assert!(effects.is_empty());
+            assert!(!state.render_dirty);
+            assert_eq!(state.messages.last_success(), Some("existing message"));
+            assert!(state.messages.last_error().is_none());
+            assert!(state.result_interaction.is_yank_operator_pending());
+            assert_eq!(state.er_preparation.status(), er_status);
+            assert_eq!(
+                state.flash_timers.is_active(FlashId::JsonbDetail, now),
+                jsonb_flash_active
+            );
+        }
+
+        #[test]
+        fn unsupported_er_completion_is_a_total_noop() {
+            let mut state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+            state.er_preparation.mark_rendering();
+
+            assert_unsupported_action_is_a_noop(
+                &mut state,
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    path: "diagram.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Rendering);
+        }
+
+        #[test]
+        fn unsupported_jsonb_and_analyze_actions_are_total_noops() {
+            let mut jsonb_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut jsonb_state, "sqlite://test.db");
+            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbYankSuccess);
+            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbEnterEdit);
+
+            let mut er_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut er_state, "sqlite://test.db");
+            er_state.modal.set_mode(InputMode::ErTablePicker);
+            er_state.ui.er_picker_mut().insert_filter_str("before");
+            assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
+            assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
+
+            let mut jsonb_edit_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut jsonb_edit_state, "sqlite://test.db");
+            jsonb_edit_state.modal.set_mode(InputMode::JsonbEdit);
+            jsonb_edit_state
+                .jsonb_detail
+                .editor_mut()
+                .set_content("before".to_string());
+            assert_unsupported_action_is_a_noop(
+                &mut jsonb_edit_state,
+                Action::Paste("after".to_string()),
+            );
+            assert_eq!(jsonb_edit_state.jsonb_detail.editor().content(), "before");
+
+            let mut jsonb_detail_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut jsonb_detail_state, "sqlite://test.db");
+            jsonb_detail_state.modal.set_mode(InputMode::JsonbDetail);
+            assert_unsupported_action_is_a_noop(
+                &mut jsonb_detail_state,
+                Action::BeginKeySequence(Prefix::G),
+            );
+            assert_eq!(jsonb_detail_state.ui.key_sequence(), KeySequenceState::Idle);
+
+            let mut analyze_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");
+            assert_unsupported_action_is_a_noop(&mut analyze_state, Action::ExplainAnalyzeCancel);
+            assert_unsupported_action_is_a_noop(
+                &mut analyze_state,
+                Action::TextInput {
+                    target: InputTarget::SqlModalAnalyzeHighRisk,
+                    ch: 'x',
+                },
+            );
+
+            let mut compare_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut compare_state, "sqlite://test.db");
+            assert_unsupported_action_is_a_noop(
+                &mut compare_state,
+                Action::Scroll {
+                    target: ScrollTarget::ExplainCompare,
+                    direction: ScrollDirection::Down,
+                    amount: ScrollAmount::Line,
+                },
+            );
+        }
+
+        #[test]
+        fn unsupported_completion_actions_are_total_noops() {
+            let mut explain_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut explain_state, "sqlite://test.db");
+            let now = Instant::now();
+            let _ = explain_state.query.begin_running(now);
+            assert_unsupported_action_is_a_noop(
+                &mut explain_state,
+                Action::ExplainCompleted {
+                    dsn: "sqlite://test.db".to_string(),
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
+                    plan_text: "QUERY PLAN".to_string(),
+                    is_analyze: true,
+                    execution_time_ms: 1,
+                },
+            );
+            assert!(explain_state.explain.plan_text().is_none());
+            assert_unsupported_action_is_a_noop(
+                &mut explain_state,
+                Action::ExplainFailed {
+                    dsn: "sqlite://test.db".to_string(),
+                    run_id: 1,
+                    error: DbOperationError::QueryFailed("error".to_string()),
+                    is_analyze: true,
+                },
+            );
+
+            let mut diagnostics_state = create_test_state();
+            test_fixtures::activate_postgres_connection(
+                &mut diagnostics_state,
+                "postgres://localhost/test",
+            );
+            let run_id = diagnostics_state.sqlite_diagnostics.begin_fetch();
+            assert_unsupported_action_is_a_noop(
+                &mut diagnostics_state,
+                Action::SqliteDiagnosticsCoreLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    snapshot: Box::new(SqliteDiagnosticsSnapshot {
+                        quick_check: DiagnosticField::ok("ok"),
+                        ..Default::default()
+                    }),
+                },
+            );
+            assert!(diagnostics_state.sqlite_diagnostics.is_loading());
         }
     }
 
@@ -1533,6 +1697,27 @@ mod tests {
         }
 
         #[test]
+        fn unsupported_er_open_direct_dispatch_has_no_side_effect() {
+            let mut state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+            let now = Instant::now();
+            state.clear_dirty();
+            state
+                .messages
+                .set_success_at("existing message".to_string(), now);
+            state.result_interaction.start_yank_operator();
+
+            let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
+
+            assert!(effects.is_empty());
+            assert!(!state.render_dirty);
+            assert_eq!(state.messages.last_success(), Some("existing message"));
+            assert!(state.messages.last_error().is_none());
+            assert!(state.result_interaction.is_yank_operator_pending());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        }
+
+        #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
@@ -1589,6 +1774,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 

@@ -9,21 +9,10 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_sqlite_diagnostics(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::SqliteDiagnostics) => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_sqlite_diagnostics()
-            {
-                state.messages.set_error_at(
-                    "SQLite diagnostics are not available for this connection".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
-            }
             let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
@@ -32,17 +21,6 @@ pub(super) fn reduce_sqlite_diagnostics(
             DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }])
         }
         Action::RunSqliteDiagnosticsQuickCheck => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_sqlite_diagnostics()
-            {
-                state.messages.set_error_at(
-                    "SQLite diagnostics are not available for this connection".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
-            }
             let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
@@ -112,19 +90,21 @@ mod tests {
     use super::*;
     use crate::domain::connection::DatabaseType;
     use crate::domain::{ConnectionId, DiagnosticField, SqliteDiagnosticsSnapshot};
+    use crate::services::AppServices;
+    use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
+
+    fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
+        reduce(state, action, Instant::now(), &AppServices::stub())
+    }
 
     #[test]
     fn open_starts_split_fetch_for_sqlite_connection() {
         let mut state = AppState::new("test".to_string());
         test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
 
-        let effects = reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::OpenModal(ModalKind::SqliteDiagnostics),
-            Instant::now(),
-        )
-        .unwrap();
+        let effects =
+            reduce_at_boundary(&mut state, Action::OpenModal(ModalKind::SqliteDiagnostics));
 
         assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
         assert_eq!(effects.len(), 1);
@@ -147,12 +127,7 @@ mod tests {
             },
         );
 
-        let effects = reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::RunSqliteDiagnosticsQuickCheck,
-            Instant::now(),
-        )
-        .unwrap();
+        let effects = reduce_at_boundary(&mut state, Action::RunSqliteDiagnosticsQuickCheck);
 
         assert!(state.sqlite_diagnostics.is_quick_check_running());
         assert!(matches!(
@@ -162,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn open_returns_error_for_postgres_connection() {
+    fn open_is_a_noop_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -171,23 +146,16 @@ mod tests {
             "postgres://localhost/db",
         );
 
-        let effects = reduce_sqlite_diagnostics(
-            &mut state,
-            &Action::OpenModal(ModalKind::SqliteDiagnostics),
-            Instant::now(),
-        )
-        .unwrap();
+        let effects =
+            reduce_at_boundary(&mut state, Action::OpenModal(ModalKind::SqliteDiagnostics));
 
         assert_eq!(state.input_mode(), InputMode::Normal);
         assert!(effects.is_empty());
-        assert_eq!(
-            state.messages.last_error.as_deref(),
-            Some("SQLite diagnostics are not available for this connection")
-        );
+        assert!(state.messages.last_error.is_none());
     }
 
     #[test]
-    fn quick_check_returns_error_for_postgres_connection() {
+    fn quick_check_is_a_noop_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -204,6 +172,23 @@ mod tests {
             },
         );
 
+        let effects = reduce_at_boundary(&mut state, Action::RunSqliteDiagnosticsQuickCheck);
+
+        assert!(effects.is_empty());
+        assert!(!state.sqlite_diagnostics.is_quick_check_running());
+        assert!(state.messages.last_error.is_none());
+    }
+
+    #[test]
+    fn quick_check_is_ignored_for_postgres_connection() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/db",
+        );
+
         let effects = reduce_sqlite_diagnostics(
             &mut state,
             &Action::RunSqliteDiagnosticsQuickCheck,
@@ -213,10 +198,6 @@ mod tests {
 
         assert!(effects.is_empty());
         assert!(!state.sqlite_diagnostics.is_quick_check_running());
-        assert_eq!(
-            state.messages.last_error.as_deref(),
-            Some("SQLite diagnostics are not available for this connection")
-        );
     }
 
     #[test]

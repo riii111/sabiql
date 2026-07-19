@@ -40,6 +40,7 @@ mod tests {
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
+    use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
     use std::time::Instant;
 
@@ -55,6 +56,10 @@ mod tests {
 
     fn activate_sqlite_connection(state: &mut AppState) {
         test_fixtures::activate_sqlite_connection(state, "sqlite:///tmp/app.db");
+    }
+
+    fn reduce_at_boundary(state: &mut AppState, action: Action) -> Vec<Effect> {
+        reduce(state, action, Instant::now(), &AppServices::stub())
     }
 
     mod explain_request {
@@ -104,19 +109,10 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = reduce_at_boundary(&mut state, Action::ExplainRequest);
 
             assert!(effects.is_empty());
-            assert_eq!(
-                state.explain.error.as_deref(),
-                Some("EXPLAIN is unavailable for this database")
-            );
+            assert!(state.explain.error.is_none());
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 
@@ -244,20 +240,11 @@ mod tests {
                 .set_content("DELETE FROM users".to_string());
             activate_sqlite_connection(&mut state);
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = reduce_at_boundary(&mut state, Action::ExplainAnalyzeRequest);
 
             assert!(effects.is_empty());
-            assert_eq!(
-                state.explain.error.as_deref(),
-                Some("EXPLAIN ANALYZE is not supported for SQLite")
-            );
-            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert!(state.explain.error.is_none());
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
             assert!(!matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
@@ -367,19 +354,10 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
 
-            let effects = dispatch_explain(
-                &mut state,
-                &Action::ExplainAnalyzeRequest,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = reduce_at_boundary(&mut state, Action::ExplainAnalyzeRequest);
 
             assert!(effects.is_empty());
-            assert_eq!(
-                state.explain.error.as_deref(),
-                Some("EXPLAIN is unavailable for this database")
-            );
+            assert!(state.explain.error.is_none());
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
         }
 
@@ -817,6 +795,7 @@ mod tests {
                     dsn: "dsn://test".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
+                    is_analyze: false,
                 },
                 Instant::now(),
             );
@@ -846,6 +825,7 @@ mod tests {
                     dsn: "dsn://stale".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
+                    is_analyze: false,
                 },
                 Instant::now(),
             );
@@ -880,15 +860,12 @@ mod tests {
                 state.explain.right().map(|slot| slot.full_query.as_str()),
                 Some("SELECT stale")
             );
-            reduce_explain(&mut state, &Action::CompareEditQuery, Instant::now());
+            reduce_at_boundary(&mut state, Action::CompareEditQuery);
 
             assert_eq!(state.sql_modal.editor.content(), editor_before);
             assert_eq!(state.sql_modal.status(), &status_before);
             assert_eq!(state.sql_modal.active_tab(), active_tab_before);
-            assert_eq!(
-                state.messages.last_error.as_deref(),
-                Some("Plan comparison is not available for this connection")
-            );
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

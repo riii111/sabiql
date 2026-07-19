@@ -1,23 +1,33 @@
+use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
 use super::interaction::InputInteraction;
 
-pub fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
+pub fn handle_help_keys_with_policy(
+    combo: KeyCombo,
+    interaction: InputInteraction,
+    feature_policy: &FeaturePolicy,
+) -> Action {
     match interaction {
-        InputInteraction::Viewing => handle_help_viewing_keys(combo),
-        InputInteraction::FormEditing(InputTarget::HelpFilter) => handle_help_editing_keys(combo),
+        InputInteraction::Viewing => handle_help_viewing_keys(combo, feature_policy),
+        InputInteraction::FormEditing(InputTarget::HelpFilter) => {
+            handle_help_editing_keys(combo, feature_policy)
+        }
         InputInteraction::FormEditing(_) | InputInteraction::VimEditing(_) => Action::None,
     }
 }
 
-fn handle_help_viewing_keys(combo: KeyCombo) -> Action {
-    keymap::resolve_mode(&combo, keybindings::HELP_VIEWING_ROWS).unwrap_or(Action::None)
+fn handle_help_viewing_keys(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
+    keymap::resolve_mode_with_policy(&combo, keybindings::HELP_VIEWING_ROWS, feature_policy)
+        .unwrap_or(Action::None)
 }
 
-fn handle_help_editing_keys(combo: KeyCombo) -> Action {
-    if let Some(action) = keymap::resolve_mode(&combo, keybindings::HELP_EDITING_ROWS) {
+fn handle_help_editing_keys(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
+    if let Some(action) =
+        keymap::resolve_mode_with_policy(&combo, keybindings::HELP_EDITING_ROWS, feature_policy)
+    {
         return action;
     }
 
@@ -53,15 +63,19 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
-pub fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+pub fn handle_sqlite_diagnostics_keys_with_policy(
+    combo: KeyCombo,
+    feature_policy: &FeaturePolicy,
+) -> Action {
     keybindings::SQLITE_DIAGNOSTICS
-        .resolve(&combo)
+        .resolve_with_policy(&combo, feature_policy)
         .unwrap_or(Action::None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::ModalKind;
     use crate::update::action::{
         CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -75,6 +89,16 @@ mod tests {
 
     fn combo_ctrl(k: Key) -> KeyCombo {
         KeyCombo::ctrl(k)
+    }
+
+    fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_help_keys_with_policy(combo, interaction, &feature_policy)
+    }
+
+    fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+        handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
     }
 
     mod help {

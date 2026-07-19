@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::require_er_diagram_enabled;
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -37,16 +38,8 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_er_diagram()
-            {
-                state.messages.set_error_at(
-                    "ER diagrams are not available for this connection".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
+            if let Some(result) = require_er_diagram_enabled(state, now) {
+                return result;
             }
             if state.er_preparation.is_busy() {
                 return DispatchResult::handled();
@@ -74,16 +67,8 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_er_diagram()
-            {
-                state.messages.set_error_at(
-                    "ER diagrams are not available for this connection".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
+            if let Some(result) = require_er_diagram_enabled(state, now) {
+                return result;
             }
             if !state.er_preparation.can_generate_from_cache() {
                 return DispatchResult::handled();

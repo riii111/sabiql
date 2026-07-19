@@ -1,3 +1,4 @@
+use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings;
 use crate::update::input::keybindings::{Key, KeyCombo};
@@ -39,9 +40,14 @@ pub fn handle_cell_edit_keys(combo: KeyCombo) -> Action {
     }
 }
 
-pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
+pub fn handle_command_line_mode_with_policy(
+    combo: KeyCombo,
+    feature_policy: &FeaturePolicy,
+) -> Action {
     use crate::update::action::CursorMove;
-    if let Some(action) = keymap::resolve(&combo, keybindings::COMMAND_LINE_KEYS) {
+    if let Some(action) =
+        keymap::resolve_with_policy(&combo, keybindings::COMMAND_LINE_KEYS, feature_policy)
+    {
         return action;
     }
     match combo.key {
@@ -75,11 +81,17 @@ pub fn handle_command_line_mode(combo: KeyCombo) -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::input::keybindings::Key;
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
+    }
+
+    fn handle_command_line_mode(combo: KeyCombo) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_command_line_mode_with_policy(combo, &feature_policy)
     }
 
     mod cell_edit_mode {

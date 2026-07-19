@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -11,7 +12,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     begin_explain_running, is_multi_statement, mark_explain_unavailable,
-    mark_explain_unsupported_query, reject_unsupported_explain, show_explain_error_on_plan,
+    mark_explain_unsupported_query, show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_request(
@@ -22,9 +23,6 @@ pub(super) fn reduce_request(
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
-            if reject_unsupported_explain(state) {
-                return DispatchResult::handled();
-            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return DispatchResult::handled();
@@ -46,10 +44,8 @@ pub(super) fn reduce_request(
                 .build_explain_sql(database_type, &content)
             {
                 Some(query) => query,
-                None if state
-                    .session
-                    .active_engine_feature_profile()
-                    .supports_explain() =>
+                None if FeaturePolicy::new(state.session.active_engine_feature_profile())
+                    .is_enabled(FeatureRequirement::Explain) =>
                 {
                     mark_explain_unsupported_query(state, &content);
                     return DispatchResult::handled();

@@ -399,6 +399,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::update::test_fixtures;
 
     use super::*;
     pub use crate::domain::Column;
@@ -429,6 +430,7 @@ mod tests {
 
     fn state_with_jsonb_value(cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state
             .query
             .set_current_result(Arc::new(QueryResult::success(

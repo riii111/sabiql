@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::domain::DatabaseType;
@@ -11,7 +13,25 @@ use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
     evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
 };
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
+use crate::update::dispatch_result::DispatchResult;
+
+pub(crate) fn require_er_diagram_enabled(
+    state: &mut AppState,
+    now: Instant,
+) -> Option<DispatchResult> {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+        return None;
+    }
+
+    state.messages.set_error_at(
+        "ER diagrams are not available for this connection".to_string(),
+        now,
+    );
+    Some(DispatchResult::handled())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EditGuardrailError {

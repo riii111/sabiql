@@ -5,9 +5,10 @@ mod overlays;
 mod readline;
 
 use crate::model::shared::settings::KeymapPreset;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, ModalKind};
-use crate::update::input::keymap::resolve_mode;
+use crate::update::input::keymap::{resolve_mode, resolve_mode_with_policy};
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -27,6 +28,10 @@ pub struct KeyBinding {
 impl KeyBinding {
     pub const fn as_hint(&self) -> (&'static str, &'static str) {
         (self.key_short, self.desc_short)
+    }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        self.action.feature_requirement()
     }
 }
 
@@ -51,6 +56,14 @@ impl ModeRow {
     pub const fn as_hint(&self) -> (&'static str, &'static str) {
         (self.key_short, self.desc_short)
     }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        self.bindings
+            .iter()
+            .map(|binding| binding.action.feature_requirement())
+            .find(|requirement| *requirement != FeatureRequirement::None)
+            .unwrap_or(FeatureRequirement::None)
+    }
 }
 
 pub struct ModeBindings {
@@ -60,6 +73,14 @@ pub struct ModeBindings {
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
         resolve_mode(combo, self.rows)
+    }
+
+    pub fn resolve_with_policy(
+        &self,
+        combo: &KeyCombo,
+        feature_policy: &FeaturePolicy,
+    ) -> Option<Action> {
+        resolve_mode_with_policy(combo, self.rows, feature_policy)
     }
 }
 
@@ -120,16 +141,23 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
-pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
+pub fn global_action_for_with_policy(
+    combo: &KeyCombo,
+    preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
+) -> Option<Action> {
     normal::global_keys_for(preset)
         .iter()
         .filter(|binding| {
-            !matches!(
-                &binding.action,
-                Action::OpenModal(
-                    ModalKind::SqlModal | ModalKind::ErTablePicker | ModalKind::ConnectionSelector
+            feature_policy.is_enabled(binding.feature_requirement())
+                && !matches!(
+                    &binding.action,
+                    Action::OpenModal(
+                        ModalKind::SqlModal
+                            | ModalKind::ErTablePicker
+                            | ModalKind::ConnectionSelector
+                    )
                 )
-            )
         })
         .find(|binding| binding.combos.contains(combo))
         .map(|binding| binding.action.clone())
@@ -583,5 +611,33 @@ mod tests {
                 assert_eq!(ALL_MODE_BINDINGS.len(), 13);
             }
         }
+    }
+
+    #[test]
+    fn feature_requirements_are_attached_to_feature_bindings() {
+        assert_eq!(
+            global::ER_DIAGRAM.feature_requirement(),
+            FeatureRequirement::ErDiagram
+        );
+        assert_eq!(
+            global::SQLITE_DIAGNOSTICS.feature_requirement(),
+            FeatureRequirement::SqliteDiagnostics
+        );
+        assert_eq!(
+            sql_modal_plan::EXPLAIN.feature_requirement(),
+            FeatureRequirement::Explain
+        );
+        assert_eq!(
+            sql_modal_plan::ANALYZE.feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            sql_modal_compare::EDIT_QUERY.feature_requirement(),
+            FeatureRequirement::PlanComparison
+        );
+        assert_eq!(
+            JSONB_DETAIL_ROWS[0].feature_requirement(),
+            FeatureRequirement::JsonbDetail
+        );
     }
 }
