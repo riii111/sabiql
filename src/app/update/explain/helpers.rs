@@ -114,23 +114,3 @@ pub(super) fn finish_explain_error(state: &mut AppState, error: impl Into<String
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.query.mark_idle();
 }
-
-pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
-    if feature_policy.is_enabled(FeatureRequirement::ExplainAnalyze) {
-        return false;
-    }
-
-    apply_explain_unsupported_analyze_state(state);
-    true
-}
-
-pub(super) fn reject_unsupported_explain(state: &mut AppState) -> bool {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
-    if feature_policy.is_enabled(FeatureRequirement::Explain) {
-        return false;
-    }
-
-    mark_explain_unavailable(state);
-    true
-}

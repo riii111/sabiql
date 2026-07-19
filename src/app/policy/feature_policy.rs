@@ -14,7 +14,6 @@ pub enum FeatureRequirement {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FeatureAvailability {
     Hidden,
-    Disabled(String),
     Enabled,
 }
 
