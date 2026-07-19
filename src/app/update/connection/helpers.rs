@@ -6,8 +6,9 @@ use crate::model::shared::inspector_tab::InspectorTab;
 use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
 
-fn reset_sql_and_er_state(state: &mut AppState) {
+fn reset_connection_scoped_state(state: &mut AppState) {
     state.sql_modal.reset_prefetch();
+    state.explain.reset_for_connection_change();
     state.er_preparation.reset();
     state.ui.reset_er_picker_request();
     state.sqlite_diagnostics.clear();
@@ -79,7 +80,7 @@ pub(super) fn reset_active_connection_state(state: &mut AppState) {
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
-    reset_sql_and_er_state(state);
+    reset_connection_scoped_state(state);
 }
 
 pub(super) fn restore_cache(
@@ -100,5 +101,5 @@ pub(super) fn restore_cache(
         .ui
         .set_explorer_selection(Some(cache.explorer_selected));
     state.result_interaction.reset_view();
-    reset_sql_and_er_state(state);
+    reset_connection_scoped_state(state);
 }
