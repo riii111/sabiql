@@ -194,7 +194,7 @@ impl InspectorViewModel {
                         index_type: index_type_label(index),
                         unique: index.is_unique(),
                         partial: index.is_partial(),
-                        detail: show_details.then(|| index_detail(index)),
+                        detail: index.has_index_detail().then(|| index_detail(index)),
                     })
                     .collect();
                 (
@@ -631,5 +631,47 @@ mod tests {
 
         assert_eq!(model.visible_rows(8), 3);
         assert_eq!(model.max_scroll(8), 3);
+    }
+
+    #[test]
+    fn index_details_are_kept_per_row_when_detail_columns_are_mixed() {
+        let mut table = table();
+        table.indexes = vec![
+            Index {
+                name: "users_partial_idx".to_string(),
+                columns: vec!["id".to_string()],
+                attributes: IndexAttributes::PARTIAL,
+                index_type: IndexType::BTree,
+                definition: Some(
+                    "CREATE INDEX users_partial_idx ON users (id) WHERE id > 0".to_string(),
+                ),
+            },
+            Index {
+                name: "users_plain_idx".to_string(),
+                columns: vec!["id".to_string()],
+                attributes: IndexAttributes::empty(),
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+        ];
+
+        let model = InspectorViewModel::build(
+            &EngineFeatureProfile::postgres_like(),
+            InspectorTab::Indexes,
+            Some(&table),
+            DatabaseType::PostgreSQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Indexes {
+                rows, show_details, ..
+            }) => {
+                assert!(*show_details);
+                assert!(rows[0].detail.is_some());
+                assert_eq!(rows[1].detail, None);
+            }
+            section => panic!("expected index section, got {section:?}"),
+        }
     }
 }
