@@ -173,16 +173,5 @@ mod tests {
 
             assert!(!ddl.contains("COMMENT ON"));
         }
-
-        #[test]
-        fn default_ddl_line_count_matches_generated_ddl() {
-            let adapter = PostgresAdapter::new();
-            let table = make_table(vec![make_column("col", "text", true)], None);
-
-            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
-            let count = adapter.ddl_line_count(DatabaseType::PostgreSQL, &table);
-
-            assert_eq!(count, ddl.lines().count());
-        }
     }
 }

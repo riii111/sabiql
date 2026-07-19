@@ -17,6 +17,7 @@ use crate::model::connection::setup::ConnectionSetupState;
 use crate::model::shared::confirm_dialog::ConfirmDialogState;
 use crate::model::shared::flash_timer::FlashTimerStore;
 use crate::model::shared::input_mode::InputMode;
+use crate::model::shared::inspector_view_model::InspectorViewModel;
 use crate::model::shared::message::MessageState;
 use crate::model::shared::modal::ModalState;
 use crate::model::shared::render_output::{
@@ -33,6 +34,7 @@ use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
 use crate::policy::write::write_guardrails::{PreviewWriteability, preview_writeability};
+use crate::ports::outbound::DdlGenerator;
 
 pub struct AppState {
     pub should_quit: bool,
@@ -241,12 +243,14 @@ impl AppState {
         self.ui.result_visible_rows()
     }
 
-    pub fn inspector_visible_rows(&self) -> usize {
-        self.ui.inspector_visible_rows()
-    }
-
-    pub fn inspector_ddl_visible_rows(&self) -> usize {
-        self.ui.inspector_ddl_visible_rows()
+    pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
+        InspectorViewModel::build(
+            self.session.active_engine_feature_profile(),
+            self.ui.inspector_tab(),
+            self.session.table_detail(),
+            self.session.active_database_type_or_default(),
+            ddl_generator,
+        )
     }
 
     pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
@@ -641,41 +645,6 @@ mod tests {
             let visible = state.result_visible_rows();
 
             assert_eq!(visible, 45);
-        }
-
-        #[test]
-        fn inspector_ddl_rows_exceed_standard_rows() {
-            let mut state = make_state();
-            state.ui.set_inspector_pane_height(20);
-
-            let standard = state.inspector_visible_rows();
-            let ddl = state.inspector_ddl_visible_rows();
-
-            // DDL omits the standard header rows, so it exposes two more rows.
-            assert_eq!(ddl - standard, 2);
-        }
-
-        #[rstest]
-        #[case(10, 7)]
-        #[case(15, 12)]
-        #[case(20, 17)]
-        fn inspector_ddl_rows_subtract_three(#[case] pane_height: u16, #[case] expected: usize) {
-            let mut state = make_state();
-            state.ui.set_inspector_pane_height(pane_height);
-
-            let visible = state.inspector_ddl_visible_rows();
-
-            assert_eq!(visible, expected);
-        }
-
-        #[test]
-        fn inspector_ddl_rows_clamp_small_heights() {
-            let mut state = make_state();
-            state.ui.set_inspector_pane_height(2);
-
-            let visible = state.inspector_ddl_visible_rows();
-
-            assert_eq!(visible, 0);
         }
 
         #[test]
