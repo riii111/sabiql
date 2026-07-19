@@ -34,7 +34,7 @@ pub(super) fn reduce_sqlite_diagnostics(
         Action::RunSqliteDiagnosticsQuickCheck => {
             if !state
                 .session
-                .active_db_capabilities()
+                .active_engine_feature_profile()
                 .supports_sqlite_diagnostics()
             {
                 state.messages.set_error_at(

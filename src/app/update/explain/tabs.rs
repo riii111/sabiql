@@ -9,7 +9,7 @@ pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, now: Instant) -
         Action::CompareEditQuery => {
             if !state
                 .session
-                .active_db_capabilities()
+                .active_engine_feature_profile()
                 .supports_plan_comparison()
             {
                 state.messages.set_error_at(

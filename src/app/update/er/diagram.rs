@@ -37,7 +37,11 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
-            if !state.session.active_db_capabilities().supports_er_diagram() {
+            if !state
+                .session
+                .active_engine_feature_profile()
+                .supports_er_diagram()
+            {
                 state.messages.set_error_at(
                     "ER diagrams are not available for this connection".to_string(),
                     now,
@@ -70,7 +74,11 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
-            if !state.session.active_db_capabilities().supports_er_diagram() {
+            if !state
+                .session
+                .active_engine_feature_profile()
+                .supports_er_diagram()
+            {
                 state.messages.set_error_at(
                     "ER diagrams are not available for this connection".to_string(),
                     now,
