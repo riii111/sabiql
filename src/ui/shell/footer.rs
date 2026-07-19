@@ -149,7 +149,7 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let capabilities = state.session.active_db_capabilities();
+                    let capabilities = state.session.active_engine_feature_profile();
                     let active_inspector_tab =
                         capabilities.normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];

@@ -2,7 +2,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
-use crate::model::shared::db_capabilities::DbCapabilities;
+use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
@@ -32,7 +32,7 @@ impl HelpDocument {
             filter.content(),
             filter.cursor(),
             state.settings.saved_keymap_preset(),
-            state.session.active_db_capabilities(),
+            state.session.active_engine_feature_profile(),
         )
     }
 
@@ -46,7 +46,7 @@ impl HelpDocument {
             filter,
             filter_cursor,
             origin.keymap_preset(),
-            &DbCapabilities::postgres_like(),
+            &EngineFeatureProfile::postgres_like(),
         )
     }
 
@@ -55,11 +55,11 @@ impl HelpDocument {
         filter: &str,
         filter_cursor: usize,
         keymap_preset: KeymapPreset,
-        db_capabilities: &DbCapabilities,
+        engine_feature_profile: &EngineFeatureProfile,
     ) -> Self {
         let normalized = filter.trim().to_lowercase();
-        let mut sections = vec![current_section(origin, db_capabilities)];
-        sections.extend(reference_sections(keymap_preset, db_capabilities));
+        let mut sections = vec![current_section(origin, engine_feature_profile)];
+        sections.extend(reference_sections(keymap_preset, engine_feature_profile));
 
         if !normalized.is_empty() {
             sections = sections
@@ -210,7 +210,10 @@ impl HelpRow {
     }
 }
 
-fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> HelpSection {
+fn current_section(
+    origin: HelpOrigin,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
@@ -277,7 +280,7 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
             &global::CONNECTIONS,
             &global::SQL,
         ]),
-        HelpOrigin::CommandLine => command_line_rows(db_capabilities),
+        HelpOrigin::CommandLine => command_line_rows(engine_feature_profile),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
         HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
@@ -286,7 +289,7 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
         HelpOrigin::SqlModal {
             mode,
             keymap_preset,
-        } => sql_current_rows(mode, keymap_preset, db_capabilities),
+        } => sql_current_rows(mode, keymap_preset, engine_feature_profile),
         HelpOrigin::ConnectionSetup {
             keymap_preset,
             focused_field,
@@ -312,18 +315,18 @@ fn current_section(origin: HelpOrigin, db_capabilities: &DbCapabilities) -> Help
     }
 }
 
-fn command_line_rows(db_capabilities: &DbCapabilities) -> Vec<HelpRow> {
+fn command_line_rows(engine_feature_profile: &EngineFeatureProfile) -> Vec<HelpRow> {
     rows_from_binding_iter(COMMAND_LINE_KEYS.iter().filter(|binding| {
         !matches!(
             binding.action,
-            Action::OpenModal(ModalKind::ErTablePicker) if !db_capabilities.supports_er_diagram()
+            Action::OpenModal(ModalKind::ErTablePicker) if !engine_feature_profile.supports_er_diagram()
         )
     }))
 }
 
 fn reference_sections(
     keymap_preset: KeymapPreset,
-    db_capabilities: &DbCapabilities,
+    engine_feature_profile: &EngineFeatureProfile,
 ) -> Vec<HelpSection> {
     let mut open_switch_rows = vec![
         table_picker(keymap_preset),
@@ -333,10 +336,10 @@ fn reference_sections(
         &global::PANE_SWITCH,
         &global::INSPECTOR_TABS,
     ];
-    if db_capabilities.supports_er_diagram() {
+    if engine_feature_profile.supports_er_diagram() {
         open_switch_rows.insert(2, &global::ER_DIAGRAM);
     }
-    if db_capabilities.supports_sqlite_diagnostics() {
+    if engine_feature_profile.supports_sqlite_diagnostics() {
         open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
 
@@ -349,7 +352,7 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if db_capabilities.supports_jsonb_detail() {
+    if engine_feature_profile.supports_jsonb_detail() {
         data_action_rows.extend(rows_from_mode_row_refs(&[&jsonb_detail::YANK]));
     }
 
@@ -357,43 +360,43 @@ fn reference_sections(
         &table_picker::TYPE_FILTER,
         &query_history_picker::TYPE_FILTER,
     ]);
-    if db_capabilities.supports_er_diagram() {
+    if engine_feature_profile.supports_er_diagram() {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if db_capabilities.supports_jsonb_detail() {
+    if engine_feature_profile.supports_jsonb_detail() {
         search_filter_rows.extend(rows_from_bindings(JSONB_SEARCH_KEYS));
     }
     search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
 
     let mut editing_rows = merge_rows(&[
-        sql_current_rows(SqlHelpMode::Normal, keymap_preset, db_capabilities),
-        sql_current_rows(SqlHelpMode::Insert, keymap_preset, db_capabilities),
+        sql_current_rows(SqlHelpMode::Normal, keymap_preset, engine_feature_profile),
+        sql_current_rows(SqlHelpMode::Insert, keymap_preset, engine_feature_profile),
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
     ]);
-    if db_capabilities.supports_jsonb_detail() {
+    if engine_feature_profile.supports_jsonb_detail() {
         editing_rows.extend(rows_from_mode_rows(JSONB_EDIT_ROWS));
     }
 
     let mut advanced_rows = Vec::new();
-    if db_capabilities.supports_explain() {
+    if engine_feature_profile.supports_explain() {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Plan,
             keymap_preset,
-            db_capabilities,
+            engine_feature_profile,
         ));
     }
-    if db_capabilities.supports_plan_comparison() {
+    if engine_feature_profile.supports_plan_comparison() {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Compare,
             keymap_preset,
-            db_capabilities,
+            engine_feature_profile,
         ));
     }
-    if db_capabilities.supports_er_diagram() {
+    if engine_feature_profile.supports_er_diagram() {
         advanced_rows.extend(rows_from_mode_rows(er_picker_rows(keymap_preset)));
     }
-    if db_capabilities.supports_jsonb_detail() {
+    if engine_feature_profile.supports_jsonb_detail() {
         advanced_rows.extend(rows_from_mode_rows(JSONB_DETAIL_ROWS));
     }
     advanced_rows.extend(rows_from_mode_rows(ROW_DETAIL_ROWS));
@@ -450,7 +453,7 @@ fn reference_sections(
 fn sql_current_rows(
     mode: SqlHelpMode,
     keymap_preset: KeymapPreset,
-    db_capabilities: &DbCapabilities,
+    engine_feature_profile: &EngineFeatureProfile,
 ) -> Vec<HelpRow> {
     match mode {
         SqlHelpMode::Normal => rows_from_binding_refs(&[
@@ -478,7 +481,7 @@ fn sql_current_rows(
         },
         SqlHelpMode::Plan => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if db_capabilities.supports_explain_analyze() {
+            if engine_feature_profile.supports_explain_analyze() {
                 bindings.push(&sql_modal_plan::ANALYZE);
             }
             bindings.extend([
@@ -492,7 +495,7 @@ fn sql_current_rows(
         }
         SqlHelpMode::Compare => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if db_capabilities.supports_explain_analyze() {
+            if engine_feature_profile.supports_explain_analyze() {
                 bindings.push(&sql_modal_compare::ANALYZE);
             }
             bindings.extend([

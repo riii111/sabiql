@@ -47,7 +47,11 @@ pub(super) fn mark_explain_unsupported_analyze(state: &mut AppState) {
 }
 
 fn apply_explain_unsupported_analyze_state(state: &mut AppState) {
-    if state.session.active_db_capabilities().supports_explain() {
+    if state
+        .session
+        .active_engine_feature_profile()
+        .supports_explain()
+    {
         mark_explain_unsupported_analyze(state);
     } else {
         mark_explain_unavailable(state);
@@ -74,7 +78,7 @@ pub(super) fn mark_explain_unavailable(state: &mut AppState) {
         .set_error("EXPLAIN is unavailable for this database".to_string());
     let tab = state
         .session
-        .active_db_capabilities()
+        .active_engine_feature_profile()
         .normalize_sql_modal_tab(state.sql_modal.active_tab());
     state.sql_modal.set_active_tab(tab);
 }
@@ -116,7 +120,7 @@ pub(super) fn finish_explain_error(state: &mut AppState, error: impl Into<String
 pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
     if state
         .session
-        .active_db_capabilities()
+        .active_engine_feature_profile()
         .supports_explain_analyze()
     {
         return false;
@@ -127,7 +131,11 @@ pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
 }
 
 pub(super) fn reject_unsupported_explain(state: &mut AppState) -> bool {
-    if state.session.active_db_capabilities().supports_explain() {
+    if state
+        .session
+        .active_engine_feature_profile()
+        .supports_explain()
+    {
         return false;
     }
 

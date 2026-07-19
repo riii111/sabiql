@@ -8,7 +8,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::shared::db_capabilities::{DbCapabilities, InspectorInfoField};
+use crate::app::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
 use crate::app::model::shared::focused_pane::FocusedPane;
 use crate::app::model::shared::inspector_tab::InspectorTab;
@@ -41,7 +41,7 @@ impl Inspector {
             Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(area);
         let active_tab = state
             .session
-            .active_db_capabilities()
+            .active_engine_feature_profile()
             .normalize_inspector_tab(state.ui.inspector_tab());
 
         Self::render_tab_bar(frame, tab_area, active_tab, state, theme);
@@ -66,7 +66,7 @@ impl Inspector {
     ) {
         let tabs: Vec<Span> = state
             .session
-            .active_db_capabilities()
+            .active_engine_feature_profile()
             .supported_inspector_tabs()
             .iter()
             .enumerate()
@@ -115,7 +115,7 @@ impl Inspector {
                     Self::render_info(
                         frame,
                         inner,
-                        state.session.active_db_capabilities(),
+                        state.session.active_engine_feature_profile(),
                         table,
                         state.ui.inspector_scroll_offset(),
                         theme,
@@ -198,7 +198,7 @@ impl Inspector {
     fn render_info(
         frame: &mut Frame,
         area: Rect,
-        capabilities: &DbCapabilities,
+        capabilities: &EngineFeatureProfile,
         table: &Table,
         scroll_offset: usize,
         theme: &ThemePalette,

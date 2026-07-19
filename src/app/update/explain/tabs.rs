@@ -17,7 +17,7 @@ pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, _now: Instant) 
         Action::SqlModalNextTab => {
             let tab = state
                 .session
-                .active_db_capabilities()
+                .active_engine_feature_profile()
                 .next_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
             DispatchResult::handled()
@@ -26,7 +26,7 @@ pub(super) fn reduce_tabs(state: &mut AppState, action: &Action, _now: Instant) 
         Action::SqlModalPrevTab => {
             let tab = state
                 .session
-                .active_db_capabilities()
+                .active_engine_feature_profile()
                 .prev_sql_modal_tab(state.sql_modal.active_tab());
             state.sql_modal.set_active_tab(tab);
             DispatchResult::handled()

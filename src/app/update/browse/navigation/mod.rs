@@ -13,7 +13,7 @@ use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let capabilities = state.session.active_db_capabilities();
+    let capabilities = state.session.active_engine_feature_profile();
     let active_tab = capabilities.normalize_inspector_tab(state.ui.inspector_tab());
     state
         .session
@@ -46,7 +46,7 @@ fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
     let visible = match state
         .session
-        .active_db_capabilities()
+        .active_engine_feature_profile()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),

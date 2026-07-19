@@ -1,5 +1,5 @@
 use super::keybindings::{KeyBinding, global};
-use crate::model::shared::db_capabilities::DbCapabilities;
+use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::settings::KeymapPreset;
 use crate::update::action::{Action, ModalKind};
 
@@ -47,37 +47,43 @@ fn palette_commands_for(preset: KeymapPreset) -> &'static [KeyBinding] {
     }
 }
 
-pub fn palette_command_count(preset: KeymapPreset, db_capabilities: &DbCapabilities) -> usize {
-    palette_commands(preset, db_capabilities).count()
+pub fn palette_command_count(
+    preset: KeymapPreset,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> usize {
+    palette_commands(preset, engine_feature_profile).count()
 }
 
 pub fn palette_action_for_index(
     index: usize,
     preset: KeymapPreset,
-    db_capabilities: &DbCapabilities,
+    engine_feature_profile: &EngineFeatureProfile,
 ) -> Action {
-    palette_commands(preset, db_capabilities)
+    palette_commands(preset, engine_feature_profile)
         .nth(index)
         .map_or(Action::None, |kb| kb.action.clone())
 }
 
 pub fn palette_commands(
     preset: KeymapPreset,
-    db_capabilities: &DbCapabilities,
+    engine_feature_profile: &EngineFeatureProfile,
 ) -> impl Iterator<Item = &'static KeyBinding> {
     palette_commands_for(preset)
         .iter()
-        .filter(|kb| palette_command_supported(kb, db_capabilities))
+        .filter(|kb| palette_command_supported(kb, engine_feature_profile))
 }
 
-fn palette_command_supported(kb: &KeyBinding, db_capabilities: &DbCapabilities) -> bool {
+fn palette_command_supported(
+    kb: &KeyBinding,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> bool {
     !matches!(
         kb.action,
-        Action::OpenModal(ModalKind::ErTablePicker) if !db_capabilities.supports_er_diagram()
+        Action::OpenModal(ModalKind::ErTablePicker) if !engine_feature_profile.supports_er_diagram()
     ) && !matches!(
         kb.action,
         Action::OpenModal(ModalKind::SqliteDiagnostics)
-            if !db_capabilities.supports_sqlite_diagnostics()
+            if !engine_feature_profile.supports_sqlite_diagnostics()
     )
 }
 
@@ -159,9 +165,9 @@ mod tests {
 
     #[test]
     fn palette_commands_contains_no_none_actions() {
-        let db_capabilities = DbCapabilities::postgres_like();
+        let engine_feature_profile = EngineFeatureProfile::postgres_like();
         for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-            let none_entries: Vec<_> = palette_commands(preset, &db_capabilities)
+            let none_entries: Vec<_> = palette_commands(preset, &engine_feature_profile)
                 .filter(|kb| matches!(kb.action, Action::None))
                 .collect();
 
@@ -175,8 +181,9 @@ mod tests {
 
     #[test]
     fn sqlite_palette_omits_er_diagram_command() {
-        let commands = palette_commands(KeymapPreset::Default, &DbCapabilities::sqlite_like())
-            .collect::<Vec<_>>();
+        let commands =
+            palette_commands(KeymapPreset::Default, &EngineFeatureProfile::sqlite_like())
+                .collect::<Vec<_>>();
 
         assert!(
             !commands
@@ -192,8 +199,11 @@ mod tests {
 
     #[test]
     fn postgres_palette_omits_sqlite_diagnostics_command() {
-        let commands = palette_commands(KeymapPreset::Default, &DbCapabilities::postgres_like())
-            .collect::<Vec<_>>();
+        let commands = palette_commands(
+            KeymapPreset::Default,
+            &EngineFeatureProfile::postgres_like(),
+        )
+        .collect::<Vec<_>>();
 
         assert!(
             !commands

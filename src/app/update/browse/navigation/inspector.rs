@@ -10,7 +10,7 @@ use super::inspector_max_scroll;
 fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
     let visible = match state
         .session
-        .active_db_capabilities()
+        .active_engine_feature_profile()
         .normalize_inspector_tab(state.ui.inspector_tab())
     {
         InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
@@ -110,7 +110,7 @@ pub fn reduce_inspector(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::model::shared::db_capabilities::DbCapabilities;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -287,7 +287,7 @@ mod tests {
                 let mut state = state_with_table_detail(0);
                 state.ui.set_inspector_pane_height(8);
                 state.ui.set_inspector_tab(InspectorTab::Info);
-                let expected_max = DbCapabilities::postgres_like()
+                let expected_max = EngineFeatureProfile::postgres_like()
                     .inspector_info_line_count()
                     .saturating_sub(state.inspector_visible_rows());
 
@@ -312,7 +312,7 @@ mod tests {
                 use_sqlite_tabs(&mut state);
                 state.ui.set_inspector_pane_height(7);
                 state.ui.set_inspector_tab(InspectorTab::Info);
-                let expected_max = DbCapabilities::sqlite_like()
+                let expected_max = EngineFeatureProfile::sqlite_like()
                     .inspector_info_line_count()
                     .saturating_sub(state.inspector_visible_rows());
 

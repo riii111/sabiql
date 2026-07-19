@@ -24,7 +24,7 @@ impl CommandPalette {
 
         let items: Vec<ListItem> = palette_commands(
             state.settings.saved_keymap_preset(),
-            state.session.active_db_capabilities(),
+            state.session.active_engine_feature_profile(),
         )
         .enumerate()
         .map(|(i, kb)| {
