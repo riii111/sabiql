@@ -41,17 +41,15 @@ pub fn format_for_cell_detail(
 
 #[cfg(test)]
 mod tests {
-    use super::super::handling::preview_cell_text_display_handling;
+    use super::super::handling::CellPresentationPolicy;
     use super::*;
     use crate::domain::DatabaseType;
 
     #[test]
     fn postgresql_json_column_pretty_prints() {
-        let handling = preview_cell_text_display_handling(
-            DatabaseType::PostgreSQL,
-            "json",
-            r#"{"b":2,"a":1}"#,
-        );
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "json", r#"{"b":2,"a":1}"#)
+                .display_handling();
         assert_eq!(handling, PreviewCellTextDisplayHandling::PostgreSqlJson);
         let formatted = format_for_cell_detail(r#"{"b":2,"a":1}"#, handling);
         assert_eq!(formatted.content, "{\n  \"a\": 1,\n  \"b\": 2\n}");
@@ -60,11 +58,12 @@ mod tests {
 
     #[test]
     fn sqlite_text_json_value_pretty_prints() {
-        let handling = preview_cell_text_display_handling(
+        let handling = CellPresentationPolicy::new(
             DatabaseType::SQLite,
             "TEXT",
             r#"{"items":["admin","writer"]}"#,
-        );
+        )
+        .display_handling();
         assert_eq!(
             format_for_cell_detail(r#"{"items":["admin","writer"]}"#, handling),
             CellDetailDisplay {
@@ -75,7 +74,7 @@ mod tests {
         assert_eq!(
             format_for_cell_detail(
                 "42",
-                preview_cell_text_display_handling(DatabaseType::SQLite, "TEXT", "42",)
+                CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", "42").display_handling()
             ),
             CellDetailDisplay {
                 content: "42".to_string(),
@@ -87,7 +86,8 @@ mod tests {
     #[test]
     fn sqlite_json_declared_type_stays_raw() {
         let handling =
-            preview_cell_text_display_handling(DatabaseType::SQLite, "json", r#"{"b":2,"a":1}"#);
+            CellPresentationPolicy::new(DatabaseType::SQLite, "json", r#"{"b":2,"a":1}"#)
+                .display_handling();
         let value = r#"{"b":2,"a":1}"#;
         assert_eq!(
             format_for_cell_detail(value, handling),
@@ -101,7 +101,8 @@ mod tests {
     #[test]
     fn sqlite_jsonb_declared_type_stays_raw() {
         let handling =
-            preview_cell_text_display_handling(DatabaseType::SQLite, "jsonb", r#"{"b":2,"a":1}"#);
+            CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", r#"{"b":2,"a":1}"#)
+                .display_handling();
         let value = r#"{"b":2,"a":1}"#;
         assert_eq!(
             format_for_cell_detail(value, handling),
@@ -114,11 +115,12 @@ mod tests {
 
     #[test]
     fn postgresql_text_json_container_pretty_prints() {
-        let handling = preview_cell_text_display_handling(
+        let handling = CellPresentationPolicy::new(
             DatabaseType::PostgreSQL,
             "text",
             r#"{"items":["admin","writer"]}"#,
-        );
+        )
+        .display_handling();
         assert_eq!(
             handling,
             PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText

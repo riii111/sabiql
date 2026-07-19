@@ -28,7 +28,7 @@ use crate::model::shared::ui_state::{UiState, scroll_max_offset};
 use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
-use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
+use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
@@ -414,11 +414,12 @@ impl AppState {
                 return false;
             }
 
-            let handling = preview_cell_text_diff_handling(
+            let policy = CellPresentationPolicy::new(
                 self.session.active_database_type_or_default(),
                 column.data_type.as_str(),
+                value.as_str().unwrap_or_default(),
             );
-            if uses_jsonb_detail_modal(handling) {
+            if policy.uses_jsonb_detail_modal() {
                 return true;
             }
         }
