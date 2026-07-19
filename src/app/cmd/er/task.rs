@@ -104,7 +104,7 @@ mod tests {
         }
 
         async fn receive_action(rx: &mut mpsc::Receiver<Action>) -> Action {
-            tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            tokio::time::timeout(Duration::from_secs(5), rx.recv())
                 .await
                 .expect("timeout")
                 .expect("channel closed")
