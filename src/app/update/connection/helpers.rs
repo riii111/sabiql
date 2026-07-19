@@ -11,6 +11,8 @@ fn reset_connection_scoped_state(state: &mut AppState) {
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
     state.ui.reset_er_picker_request();
+    state.ui.set_inspector_scroll_offset(0);
+    state.ui.set_inspector_horizontal_offset(0);
     state.sqlite_diagnostics.clear();
 }
 
@@ -30,8 +32,11 @@ pub(super) fn reset_for_new_connection(
     name: &str,
     database_type: DatabaseType,
 ) {
-    reset_active_connection_state(state);
     let inspector_tab = state.ui.inspector_tab();
+    let sql_modal_tab = state.sql_modal.active_tab();
+    reset_active_connection_state_inner(state);
+    state.ui.set_inspector_tab(inspector_tab);
+    state.sql_modal.set_active_tab(sql_modal_tab);
     state
         .session
         .activate_connection_with_dsn(id, name, database_type, dsn);
@@ -77,6 +82,12 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
 }
 
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
+    let inspector_tab = state.ui.inspector_tab();
+    reset_active_connection_state_inner(state);
+    reconcile_connection_state(state, inspector_tab);
+}
+
+fn reset_active_connection_state_inner(state: &mut AppState) {
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
