@@ -19,4 +19,4 @@
 ## Linear Issue Link (optional)
 <!-- (Maintainers only) Delete this entire section if there are no related Linear issues -->
 
-- https://linear.app/sabiql/issue/SAB-XXX
+- Implements https://linear.app/sabiql/issue/SAB-XXX
