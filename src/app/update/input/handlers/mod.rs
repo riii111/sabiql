@@ -27,6 +27,12 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
 }
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
+    let action = Action::Paste(text);
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
+        return Action::None;
+    }
+
     match state.input_mode() {
         InputMode::TablePicker
         | InputMode::ErTablePicker
@@ -37,7 +43,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::QueryHistoryPicker
         | InputMode::JsonbEdit
         | InputMode::JsonbDetail
-        | InputMode::CellDetail => Action::Paste(text),
+        | InputMode::CellDetail => action,
         _ => Action::None,
     }
 }
@@ -430,6 +436,7 @@ mod tests {
 
     mod paste_event {
         use super::*;
+        use crate::update::test_fixtures;
 
         fn make_state(mode: InputMode) -> AppState {
             let mut state = AppState::new("test".to_string());
@@ -457,11 +464,32 @@ mod tests {
 
         #[test]
         fn er_table_picker_pastes_text() {
-            let state = make_state(InputMode::ErTablePicker);
+            let mut state = make_state(InputMode::ErTablePicker);
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
 
             let result = handle_paste_event("public.users".to_string(), &state);
 
             assert!(matches!(result, Action::Paste(t) if t == "public.users"));
+        }
+
+        #[test]
+        fn sqlite_ignores_er_table_picker_paste() {
+            let mut state = make_state(InputMode::ErTablePicker);
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+
+            let result = handle_paste_event("public.users".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn sqlite_ignores_jsonb_edit_paste() {
+            let mut state = make_state(InputMode::JsonbEdit);
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+
+            let result = handle_paste_event("{}".to_string(), &state);
+
+            assert!(matches!(result, Action::None));
         }
 
         #[test]

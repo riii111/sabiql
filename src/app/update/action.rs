@@ -4,8 +4,10 @@ use crate::domain::connection::{
     ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
 use crate::domain::query_history::QueryHistoryEntry;
+use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
 use crate::policy::FeatureRequirement;
@@ -781,6 +783,17 @@ impl Action {
                 ..
             } => PlanComparison,
             _ => None,
+        }
+    }
+
+    pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
+        match self {
+            Self::Paste(_) => match state.input_mode() {
+                InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
+                InputMode::JsonbDetail | InputMode::JsonbEdit => FeatureRequirement::JsonbDetail,
+                _ => FeatureRequirement::None,
+            },
+            _ => self.feature_requirement(),
         }
     }
 }

@@ -29,7 +29,7 @@ pub fn reduce(
     services: &AppServices,
 ) -> Vec<Effect> {
     let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
-    if !feature_policy.is_enabled(action.feature_requirement()) {
+    if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
         return vec![];
     }
 
@@ -298,6 +298,7 @@ mod tests {
         use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
         use crate::model::er_state::ErStatus;
         use crate::model::shared::flash_timer::FlashId;
+        use crate::model::shared::text_input::TextInputLike;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
         fn assert_unsupported_action_is_a_noop(state: &mut AppState, action: Action) {
@@ -347,6 +348,26 @@ mod tests {
             test_fixtures::activate_sqlite_connection(&mut jsonb_state, "sqlite://test.db");
             assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbYankSuccess);
             assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbEnterEdit);
+
+            let mut er_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut er_state, "sqlite://test.db");
+            er_state.modal.set_mode(InputMode::ErTablePicker);
+            er_state.ui.er_picker_mut().insert_filter_str("before");
+            assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
+            assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
+
+            let mut jsonb_edit_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut jsonb_edit_state, "sqlite://test.db");
+            jsonb_edit_state.modal.set_mode(InputMode::JsonbEdit);
+            jsonb_edit_state
+                .jsonb_detail
+                .editor_mut()
+                .set_content("before".to_string());
+            assert_unsupported_action_is_a_noop(
+                &mut jsonb_edit_state,
+                Action::Paste("after".to_string()),
+            );
+            assert_eq!(jsonb_edit_state.jsonb_detail.editor().content(), "before");
 
             let mut analyze_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");
