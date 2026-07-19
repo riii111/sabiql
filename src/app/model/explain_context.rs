@@ -174,6 +174,10 @@ impl ExplainContext {
         self.history = history;
     }
 
+    pub fn reset_for_connection_change(&mut self) {
+        *self = Self::default();
+    }
+
     pub fn line_count(&self) -> usize {
         if let Some(ref text) = self.plan_text {
             text.lines().count()
@@ -212,26 +216,6 @@ impl ExplainContext {
             .compare_viewport_height
             .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl ExplainContext {
-    pub fn set_plan_text_for_test(&mut self, plan_text: Option<String>) {
-        self.plan_text = plan_text;
-    }
-
-    pub fn set_error_for_test(&mut self, error: Option<String>) {
-        self.error = error;
-    }
-
-    pub fn set_compare_slots_for_test(
-        &mut self,
-        left: Option<CompareSlot>,
-        right: Option<CompareSlot>,
-    ) {
-        self.left = left;
-        self.right = right;
     }
 }
 
@@ -346,6 +330,37 @@ mod tests {
         assert!(ctx.left().is_some());
         assert!(ctx.right().is_some());
         assert_eq!(ctx.history().len(), 2);
+    }
+
+    #[test]
+    fn connection_change_reset_clears_plan_compare_and_history() {
+        let mut ctx = ExplainContext::default();
+        ctx.set_plan(
+            "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            false,
+            0,
+            "A",
+        );
+        ctx.set_plan(
+            "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            false,
+            0,
+            "B",
+        );
+        ctx.set_error("stale error".to_string());
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_some());
+        assert!(ctx.left().is_some());
+        assert!(ctx.right().is_some());
+        assert!(!ctx.history().is_empty());
+
+        ctx.reset_for_connection_change();
+
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_none());
+        assert!(ctx.history().is_empty());
     }
 
     #[test]
