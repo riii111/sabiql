@@ -467,12 +467,6 @@ fn reference_sections(
     .collect()
 }
 
-fn jsonb_detail_available(database_type: Option<DatabaseType>) -> bool {
-    database_type.is_some_and(|database_type| {
-        CellPresentationPolicy::new(database_type, "jsonb", "").uses_jsonb_detail_modal()
-    })
-}
-
 fn sql_current_rows(
     mode: SqlHelpMode,
     keymap_preset: KeymapPreset,
