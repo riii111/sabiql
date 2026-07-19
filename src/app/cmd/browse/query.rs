@@ -166,6 +166,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             error: e,
+                            is_analyze,
                         })
                         .await
                         .ok();

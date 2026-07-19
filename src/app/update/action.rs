@@ -496,6 +496,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         error: DbOperationError,
+        is_analyze: bool,
     },
     CompareEditQuery,
 
@@ -690,6 +691,8 @@ impl Action {
             Self::OpenModal(ModalKind::SqliteDiagnostics)
             | Self::ToggleModal(ModalKind::SqliteDiagnostics)
             | Self::RunSqliteDiagnosticsQuickCheck
+            | Self::SqliteDiagnosticsCoreLoaded { .. }
+            | Self::SqliteDiagnosticsQuickCheckLoaded { .. }
             | Self::Scroll {
                 target: ScrollTarget::SqliteDiagnostics,
                 ..
@@ -727,9 +730,56 @@ impl Action {
                 target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
                 ..
             } => JsonbDetail,
-            Self::ExplainRequest => Explain,
-            Self::ExplainAnalyzeRequest | Self::ExplainAnalyzeConfirm => ExplainAnalyze,
-            Self::CompareEditQuery => PlanComparison,
+            Self::ExplainRequest
+            | Self::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                ..
+            }
+            | Self::ExplainCompleted {
+                is_analyze: false, ..
+            }
+            | Self::ExplainFailed {
+                is_analyze: false, ..
+            } => Explain,
+            Self::ExplainAnalyzeRequest
+            | Self::ExplainAnalyzeConfirm
+            | Self::ExplainAnalyzeCancel
+            | Self::TextInput {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextDelete {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextKill {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                ..
+            }
+            | Self::ExplainCompleted {
+                is_analyze: true, ..
+            }
+            | Self::ExplainFailed {
+                is_analyze: true, ..
+            } => ExplainAnalyze,
+            Self::CompareEditQuery
+            | Self::Scroll {
+                target: ScrollTarget::ExplainCompare,
+                ..
+            } => PlanComparison,
             _ => None,
         }
     }
@@ -760,6 +810,62 @@ mod tests {
     })]
     fn non_scroll_action_returns_false(#[case] action: Action) {
         assert!(!action.is_scroll());
+    }
+
+    #[test]
+    fn completion_actions_keep_feature_requirements() {
+        assert_eq!(
+            Action::ExplainCompleted {
+                dsn: "dsn".to_string(),
+                run_id: 1,
+                query: "SELECT 1".to_string(),
+                plan_text: "plan".to_string(),
+                is_analyze: true,
+                execution_time_ms: 1,
+            }
+            .feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            Action::ExplainFailed {
+                dsn: "dsn".to_string(),
+                run_id: 1,
+                error: DbOperationError::QueryFailed("error".to_string()),
+                is_analyze: false,
+            }
+            .feature_requirement(),
+            FeatureRequirement::Explain
+        );
+        assert_eq!(
+            Action::SqliteDiagnosticsCoreLoaded {
+                dsn: "sqlite://test.db".to_string(),
+                run_id: 1,
+                snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
+            }
+            .feature_requirement(),
+            FeatureRequirement::SqliteDiagnostics
+        );
+        assert_eq!(
+            Action::ExplainAnalyzeCancel.feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            Action::Scroll {
+                target: ScrollTarget::ExplainCompare,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            }
+            .feature_requirement(),
+            FeatureRequirement::PlanComparison
+        );
+        assert_eq!(
+            Action::TextInput {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ch: 'x',
+            }
+            .feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
     }
 
     mod shared_scroll_helpers {

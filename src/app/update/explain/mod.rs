@@ -817,6 +817,7 @@ mod tests {
                     dsn: "dsn://test".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
+                    is_analyze: false,
                 },
                 Instant::now(),
             );
@@ -846,6 +847,7 @@ mod tests {
                     dsn: "dsn://stale".to_string(),
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
+                    is_analyze: false,
                 },
                 Instant::now(),
             );
