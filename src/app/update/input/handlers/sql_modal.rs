@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -14,47 +12,6 @@ use crate::update::input::keybindings::{
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
-
-#[cfg(test)]
-pub fn handle_sql_modal_keys(
-    combo: KeyCombo,
-    completion_visible: bool,
-    status: &SqlModalStatus,
-    active_tab: SqlModalTab,
-) -> Action {
-    handle_sql_modal_keys_with_prefix(
-        combo,
-        completion_visible,
-        status,
-        active_tab,
-        None,
-        KeymapPreset::Default,
-        true,
-    )
-}
-
-#[cfg(test)]
-pub fn handle_sql_modal_keys_with_prefix(
-    combo: KeyCombo,
-    completion_visible: bool,
-    status: &SqlModalStatus,
-    active_tab: SqlModalTab,
-    pending_prefix: Option<Prefix>,
-    keymap_preset: KeymapPreset,
-    supports_explain_analyze: bool,
-) -> Action {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-    handle_sql_modal_keys_internal(
-        combo,
-        completion_visible,
-        status,
-        active_tab,
-        pending_prefix,
-        keymap_preset,
-        &feature_policy,
-        supports_explain_analyze,
-    )
-}
 
 pub fn handle_sql_modal_keys_with_feature_policy(
     combo: KeyCombo,
@@ -435,6 +392,7 @@ fn handle_sql_modal_keys_internal(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -449,6 +407,45 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn handle_sql_modal_keys(
+        combo: KeyCombo,
+        completion_visible: bool,
+        status: &SqlModalStatus,
+        active_tab: SqlModalTab,
+    ) -> Action {
+        handle_sql_modal_keys_with_prefix(
+            combo,
+            completion_visible,
+            status,
+            active_tab,
+            None,
+            KeymapPreset::Default,
+            true,
+        )
+    }
+
+    fn handle_sql_modal_keys_with_prefix(
+        combo: KeyCombo,
+        completion_visible: bool,
+        status: &SqlModalStatus,
+        active_tab: SqlModalTab,
+        pending_prefix: Option<Prefix>,
+        keymap_preset: KeymapPreset,
+        supports_explain_analyze: bool,
+    ) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_sql_modal_keys_internal(
+            combo,
+            completion_visible,
+            status,
+            active_tab,
+            pending_prefix,
+            keymap_preset,
+            &feature_policy,
+            supports_explain_analyze,
+        )
     }
 
     #[derive(Debug, PartialEq)]

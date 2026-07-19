@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::key_sequence::Prefix;
 use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, CursorMove, InputTarget};
@@ -12,16 +10,6 @@ use crate::update::input::vim::{
 };
 
 use super::interaction::InputInteraction;
-
-#[cfg(test)]
-pub fn handle_jsonb_detail_keys(
-    combo: KeyCombo,
-    interaction: InputInteraction,
-    pending_prefix: Option<Prefix>,
-) -> Action {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-    handle_jsonb_detail_keys_with_policy(combo, interaction, pending_prefix, &feature_policy)
-}
 
 pub fn handle_jsonb_detail_keys_with_policy(
     combo: KeyCombo,
@@ -123,12 +111,6 @@ fn handle_search_input(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Actio
     }
 }
 
-#[cfg(test)]
-pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-    handle_jsonb_edit_keys_with_policy(combo, &feature_policy)
-}
-
 pub fn handle_jsonb_edit_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
@@ -193,6 +175,7 @@ pub fn handle_jsonb_edit_keys_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::Key;
 
@@ -202,6 +185,20 @@ mod tests {
 
     fn combo_ctrl(k: Key) -> KeyCombo {
         KeyCombo::ctrl(k)
+    }
+
+    fn handle_jsonb_detail_keys(
+        combo: KeyCombo,
+        interaction: InputInteraction,
+        pending_prefix: Option<Prefix>,
+    ) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_jsonb_detail_keys_with_policy(combo, interaction, pending_prefix, &feature_policy)
+    }
+
+    fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_jsonb_edit_keys_with_policy(combo, &feature_policy)
     }
 
     mod jsonb_detail {

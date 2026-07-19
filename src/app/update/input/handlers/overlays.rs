@@ -1,17 +1,9 @@
-#[cfg(test)]
-use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, CursorMove, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
 use crate::update::input::keymap;
 
 use super::interaction::InputInteraction;
-
-#[cfg(test)]
-pub fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
-    handle_help_keys_with_policy(combo, interaction, &feature_policy)
-}
 
 pub fn handle_help_keys_with_policy(
     combo: KeyCombo,
@@ -71,12 +63,6 @@ pub fn handle_confirm_dialog_keys(combo: KeyCombo) -> Action {
     keymap::resolve(&combo, keybindings::CONFIRM_DIALOG_KEYS).unwrap_or(Action::None)
 }
 
-#[cfg(test)]
-pub fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
-    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
-    handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
-}
-
 pub fn handle_sqlite_diagnostics_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
@@ -89,6 +75,7 @@ pub fn handle_sqlite_diagnostics_keys_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::ModalKind;
     use crate::update::action::{
         CursorMove, InputTarget, ScrollAmount, ScrollDirection, ScrollTarget,
@@ -102,6 +89,16 @@ mod tests {
 
     fn combo_ctrl(k: Key) -> KeyCombo {
         KeyCombo::ctrl(k)
+    }
+
+    fn handle_help_keys(combo: KeyCombo, interaction: InputInteraction) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_help_keys_with_policy(combo, interaction, &feature_policy)
+    }
+
+    fn handle_sqlite_diagnostics_keys(combo: KeyCombo) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+        handle_sqlite_diagnostics_keys_with_policy(combo, &feature_policy)
     }
 
     mod help {
