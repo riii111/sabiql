@@ -859,6 +859,23 @@ mod tests {
         use super::*;
 
         #[test]
+        fn sqlite_connection_rejects_compare_edit_query_with_error() {
+            let mut state = sql_modal_state();
+            activate_sqlite_connection(&mut state);
+            state.sql_modal.set_active_tab(SqlModalTab::Compare);
+
+            let effects = reduce_explain(&mut state, &Action::CompareEditQuery, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Plan comparison is not available for this connection")
+            );
+        }
+
+        #[test]
         fn two_explains_auto_advance_returns_comparable_slots() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
