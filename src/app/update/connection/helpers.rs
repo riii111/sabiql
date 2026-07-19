@@ -14,9 +14,9 @@ fn reset_sql_and_er_state(state: &mut AppState) {
 }
 
 fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab) {
-    let capabilities = state.session.active_db_capabilities();
-    let inspector_tab = capabilities.normalize_inspector_tab(inspector_tab);
-    let sql_modal_tab = capabilities.normalize_sql_modal_tab(state.sql_modal.active_tab());
+    let profile = state.session.active_engine_feature_profile();
+    let inspector_tab = profile.normalize_inspector_tab(inspector_tab);
+    let sql_modal_tab = profile.normalize_sql_modal_tab(state.sql_modal.active_tab());
 
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);

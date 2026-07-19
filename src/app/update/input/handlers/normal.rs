@@ -69,7 +69,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
         if matches!(action, Action::OpenModal(ModalKind::SqliteDiagnostics))
             && !state
                 .session
-                .active_db_capabilities()
+                .active_engine_feature_profile()
                 .supports_sqlite_diagnostics()
         {
             return Action::None;
@@ -136,7 +136,12 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::UnstageLastStagedRow
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
-        Key::Char('e') if state.session.active_db_capabilities().supports_er_diagram() => {
+        Key::Char('e')
+            if state
+                .session
+                .active_engine_feature_profile()
+                .supports_er_diagram() =>
+        {
             Action::OpenModal(ModalKind::ErTablePicker)
         }
         Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {

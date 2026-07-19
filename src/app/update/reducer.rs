@@ -124,7 +124,7 @@ fn reduce_inner(
                 let cmd_action = palette_action_for_index(
                     state.ui.table_picker().selected(),
                     state.settings.saved_keymap_preset(),
-                    state.session.active_db_capabilities(),
+                    state.session.active_engine_feature_profile(),
                 );
                 state.modal.set_mode(InputMode::Normal);
                 return reduce(state, cmd_action, now, services);
@@ -3010,7 +3010,7 @@ mod tests {
         fn palette_index_of(state: &AppState, target: impl Fn(&Action) -> bool) -> usize {
             palette_commands(
                 state.settings.saved_keymap_preset(),
-                state.session.active_db_capabilities(),
+                state.session.active_engine_feature_profile(),
             )
             .enumerate()
             .find(|(_, kb)| target(&kb.action))

@@ -24,7 +24,11 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    if !state.session.active_db_capabilities().supports_explain() {
+    if !state
+        .session
+        .active_engine_feature_profile()
+        .supports_explain()
+    {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",
             Style::default().fg(theme.semantic.text.placeholder),

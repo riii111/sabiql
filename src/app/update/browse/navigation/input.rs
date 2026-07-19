@@ -211,7 +211,7 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
         } => {
             let max = palette_command_count(
                 state.settings.saved_keymap_preset(),
-                state.session.active_db_capabilities(),
+                state.session.active_engine_feature_profile(),
             )
             .saturating_sub(1);
             let selected = state.ui.table_picker().selected();
