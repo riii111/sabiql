@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -13,11 +14,8 @@ pub(super) fn reduce_sqlite_diagnostics(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::SqliteDiagnostics) => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_sqlite_diagnostics()
-            {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                 return DispatchResult::handled();
             }
             let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -28,6 +26,10 @@ pub(super) fn reduce_sqlite_diagnostics(
             DispatchResult::handled_with(vec![Effect::FetchSqliteDiagnosticsCore { dsn, run_id }])
         }
         Action::RunSqliteDiagnosticsQuickCheck => {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                return DispatchResult::handled();
+            }
             let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
@@ -165,6 +167,27 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::Normal);
         assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn quick_check_is_ignored_for_postgres_connection() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/db",
+        );
+
+        let effects = reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::RunSqliteDiagnosticsQuickCheck,
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(effects.is_empty());
+        assert!(!state.sqlite_diagnostics.is_quick_check_running());
     }
 
     #[test]

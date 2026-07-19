@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -37,6 +38,10 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                return DispatchResult::handled();
+            }
             if state.er_preparation.is_busy() {
                 return DispatchResult::handled();
             }
@@ -63,6 +68,10 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                return DispatchResult::handled();
+            }
             if !state.er_preparation.can_generate_from_cache() {
                 return DispatchResult::handled();
             }

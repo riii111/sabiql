@@ -10,6 +10,7 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::model::shared::text_input::{TextInputEditing, TextInputLike};
 use crate::model::shared::ui_state::DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS;
 use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
@@ -21,6 +22,10 @@ use std::time::Instant;
 pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonbDetail) => {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                return DispatchResult::handled();
+            }
             let result = match state.query.visible_result() {
                 Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
                 _ => return DispatchResult::handled(),
@@ -400,6 +405,7 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 #[cfg(test)]
 mod tests {
     use crate::test_support;
+    use crate::update::test_fixtures;
 
     use super::*;
     pub use crate::domain::Column;
@@ -430,6 +436,7 @@ mod tests {
 
     fn state_with_jsonb_value(cell_value: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
         state
             .query
             .set_current_result(Arc::new(QueryResult::success(

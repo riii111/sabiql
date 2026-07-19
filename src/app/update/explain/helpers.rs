@@ -5,6 +5,7 @@ use crate::model::app_state::AppState;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
 use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::split_statements_for_database;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 
 pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> &'static str {
     match database_type {
@@ -47,11 +48,8 @@ pub(super) fn mark_explain_unsupported_analyze(state: &mut AppState) {
 }
 
 fn apply_explain_unsupported_analyze_state(state: &mut AppState) {
-    if state
-        .session
-        .active_engine_feature_profile()
-        .supports_explain()
-    {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if feature_policy.is_enabled(FeatureRequirement::Explain) {
         mark_explain_unsupported_analyze(state);
     } else {
         mark_explain_unavailable(state);
@@ -118,11 +116,8 @@ pub(super) fn finish_explain_error(state: &mut AppState, error: impl Into<String
 }
 
 pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
-    if state
-        .session
-        .active_engine_feature_profile()
-        .supports_explain_analyze()
-    {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if feature_policy.is_enabled(FeatureRequirement::ExplainAnalyze) {
         return false;
     }
 
@@ -131,11 +126,8 @@ pub(super) fn reject_unsupported_explain_analyze(state: &mut AppState) -> bool {
 }
 
 pub(super) fn reject_unsupported_explain(state: &mut AppState) -> bool {
-    if state
-        .session
-        .active_engine_feature_profile()
-        .supports_explain()
-    {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if feature_policy.is_enabled(FeatureRequirement::Explain) {
         return false;
     }
 

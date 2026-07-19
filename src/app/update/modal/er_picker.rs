@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::{TextInputEditing, TextInputState};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -14,11 +15,8 @@ pub(super) fn reduce_er_picker(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ErTablePicker) => {
-            if !state
-                .session
-                .active_engine_feature_profile()
-                .supports_er_diagram()
-            {
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            if !feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
                 state.messages.set_error_at(
                     "ER diagrams are not available for this connection".to_string(),
                     now,

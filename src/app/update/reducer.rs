@@ -1533,6 +1533,22 @@ mod tests {
         }
 
         #[test]
+        fn unsupported_er_open_direct_dispatch_has_no_side_effect() {
+            let mut state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+
+            let effects = reduce(
+                &mut state,
+                Action::ErOpenDiagram,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+        }
+
+        #[test]
         fn always_emits_smart_refresh_even_with_pending_tables() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
@@ -1589,6 +1605,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             let now = Instant::now();
 
