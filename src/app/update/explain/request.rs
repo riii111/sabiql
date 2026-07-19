@@ -46,7 +46,11 @@ pub(super) fn reduce_request(
                 .build_explain_sql(database_type, &content)
             {
                 Some(query) => query,
-                None if state.session.active_db_capabilities().supports_explain() => {
+                None if state
+                    .session
+                    .active_engine_feature_profile()
+                    .supports_explain() =>
+                {
                     mark_explain_unsupported_query(state, &content);
                     return DispatchResult::handled();
                 }

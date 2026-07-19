@@ -85,7 +85,7 @@ pub(super) fn restore_cache(
     state.ui.set_inspector_tab(
         state
             .session
-            .active_db_capabilities()
+            .active_engine_feature_profile()
             .normalize_inspector_tab(cache.inspector_tab),
     );
     state

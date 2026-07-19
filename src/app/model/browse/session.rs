@@ -9,7 +9,7 @@ use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
-use crate::model::shared::db_capabilities::DbCapabilities;
+use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::inspector_tab::InspectorTab;
 
 #[derive(Debug, Clone)]
@@ -56,7 +56,7 @@ pub struct BrowseSession {
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
     active_connection: Option<ActiveConnection>,
-    active_db_capabilities: DbCapabilities,
+    active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
 }
@@ -76,7 +76,7 @@ impl Default for BrowseSession {
             table_detail_run: AsyncRun::default(),
             dsn: None,
             active_connection: None,
-            active_db_capabilities: DbCapabilities::disconnected(),
+            active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
         }
@@ -155,7 +155,7 @@ impl BrowseSession {
             database_type,
             origin: ConnectionOrigin::Profile,
         });
-        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
     }
@@ -167,7 +167,8 @@ impl BrowseSession {
             database_type: DatabaseType::SQLite,
             origin: ConnectionOrigin::CliEphemeral,
         });
-        self.active_db_capabilities = DbCapabilities::for_database_type(DatabaseType::SQLite);
+        self.active_engine_feature_profile =
+            EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
     }
@@ -186,19 +187,19 @@ impl BrowseSession {
             database_type,
             origin: ConnectionOrigin::Profile,
         });
-        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
     }
 
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
-    pub fn set_active_db_capabilities_for_test(&mut self, database_type: DatabaseType) {
-        self.active_db_capabilities = DbCapabilities::for_database_type(database_type);
+    pub fn set_active_engine_feature_profile_for_test(&mut self, database_type: DatabaseType) {
+        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
     }
 
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
-        self.active_db_capabilities = DbCapabilities::disconnected();
+        self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -422,8 +423,8 @@ impl BrowseSession {
         self.active_database_type().unwrap_or_default()
     }
 
-    pub fn active_db_capabilities(&self) -> &DbCapabilities {
-        &self.active_db_capabilities
+    pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {
+        &self.active_engine_feature_profile
     }
 
     pub fn is_read_only(&self) -> bool {
@@ -945,8 +946,8 @@ mod tests {
             assert!(session.active_connection_name().is_none());
             assert!(session.active_database_type().is_none());
             assert_eq!(
-                session.active_db_capabilities(),
-                &DbCapabilities::disconnected()
+                session.active_engine_feature_profile(),
+                &EngineFeatureProfile::disconnected()
             );
             assert!(!session.is_read_only());
             assert!(!session.is_reloading());

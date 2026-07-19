@@ -42,7 +42,7 @@ pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
             state.ui.set_inspector_tab(
                 state
                     .session
-                    .active_db_capabilities()
+                    .active_engine_feature_profile()
                     .next_inspector_tab(state.ui.inspector_tab()),
             );
             DispatchResult::handled()
@@ -51,7 +51,7 @@ pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
             state.ui.set_inspector_tab(
                 state
                     .session
-                    .active_db_capabilities()
+                    .active_engine_feature_profile()
                     .prev_inspector_tab(state.ui.inspector_tab()),
             );
             DispatchResult::handled()

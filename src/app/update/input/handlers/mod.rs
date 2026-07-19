@@ -71,13 +71,13 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
                 state.sql_modal.status(),
                 state
                     .session
-                    .active_db_capabilities()
+                    .active_engine_feature_profile()
                     .normalize_sql_modal_tab(state.sql_modal.active_tab()),
                 state.ui.key_sequence().pending_prefix(),
                 state.settings.saved_keymap_preset(),
                 state
                     .session
-                    .active_db_capabilities()
+                    .active_engine_feature_profile()
                     .supports_explain_analyze(),
             )
         }
