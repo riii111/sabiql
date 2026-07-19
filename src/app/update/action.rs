@@ -5,6 +5,7 @@ use crate::domain::connection::{
 };
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::app_state::AppState;
+use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -788,6 +789,15 @@ impl Action {
 
     pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
         match self {
+            Self::JsonbExitEdit if state.input_mode() == InputMode::JsonbEdit => {
+                FeatureRequirement::None
+            }
+            Self::JsonbExitSearch
+                if state.input_mode() == InputMode::JsonbDetail
+                    && state.jsonb_detail.mode() == JsonbDetailMode::Searching =>
+            {
+                FeatureRequirement::None
+            }
             Self::Paste(_) => match state.input_mode() {
                 InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
                 InputMode::JsonbDetail | InputMode::JsonbEdit => FeatureRequirement::JsonbDetail,
@@ -886,6 +896,30 @@ mod tests {
             }
             .feature_requirement(),
             FeatureRequirement::ExplainAnalyze
+        );
+    }
+
+    #[test]
+    fn jsonb_cleanup_actions_are_allowed_on_preserved_surfaces() {
+        let mut edit_state = AppState::new("test".to_string());
+        edit_state.modal.set_mode(InputMode::JsonbEdit);
+        assert_eq!(
+            Action::JsonbExitEdit.feature_requirement_for_state(&edit_state),
+            FeatureRequirement::None
+        );
+
+        let mut search_state = AppState::new("test".to_string());
+        search_state.modal.set_mode(InputMode::JsonbDetail);
+        search_state.jsonb_detail.enter_search();
+        assert_eq!(
+            Action::JsonbExitSearch.feature_requirement_for_state(&search_state),
+            FeatureRequirement::None
+        );
+
+        let normal_state = AppState::new("test".to_string());
+        assert_eq!(
+            Action::JsonbExitEdit.feature_requirement_for_state(&normal_state),
+            FeatureRequirement::JsonbDetail
         );
     }
 

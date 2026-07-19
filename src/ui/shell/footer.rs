@@ -343,7 +343,7 @@ impl Footer {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
                 if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
-                    vec![]
+                    vec![jsonb_detail::CLOSE.as_hint()]
                 } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
@@ -371,7 +371,7 @@ impl Footer {
                         jsonb_edit::HOME_END.as_hint(),
                     ]
                 } else {
-                    vec![]
+                    vec![jsonb_edit::ESC_NORMAL.as_hint()]
                 }
             }
             InputMode::CellDetail => {
@@ -519,6 +519,29 @@ mod tests {
         assert_eq!(
             hints.contains(&global::ER_DIAGRAM.as_hint()),
             expected_visible
+        );
+    }
+
+    #[test]
+    fn unsupported_jsonb_modes_keep_exit_hints() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+
+        state.modal.set_mode(InputMode::JsonbDetail);
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![jsonb_detail::CLOSE.as_hint()]
+        );
+
+        state.modal.set_mode(InputMode::JsonbEdit);
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![jsonb_edit::ESC_NORMAL.as_hint()]
         );
     }
 
