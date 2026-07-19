@@ -53,10 +53,7 @@ impl AppServices {
         struct StubDdlGenerator;
         impl DdlGenerator for StubDdlGenerator {
             fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
-                unimplemented!("inject a real DdlGenerator via AppServices")
-            }
-            fn ddl_line_count(&self, _database_type: DatabaseType, _table: &Table) -> usize {
-                0
+                String::new()
             }
         }
 

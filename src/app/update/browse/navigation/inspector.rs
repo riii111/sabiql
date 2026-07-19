@@ -1,5 +1,5 @@
 use crate::model::app_state::AppState;
-use crate::model::shared::inspector_tab::InspectorTab;
+use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::shared::viewport::{calculate_next_column_offset, calculate_prev_column_offset};
 use crate::services::AppServices;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
@@ -7,17 +7,12 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::inspector_max_scroll;
 
-fn inspector_page_scroll_delta(state: &AppState, amount: ScrollAmount) -> Option<usize> {
-    let visible = match state
-        .session
-        .active_engine_feature_profile()
-        .normalize_inspector_tab(state.ui.inspector_tab())
-    {
-        InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-        _ => state.inspector_visible_rows(),
-    };
-
-    amount.page_delta(visible)
+fn inspector_page_scroll_delta(
+    view_model: &InspectorViewModel,
+    pane_height: u16,
+    amount: ScrollAmount,
+) -> Option<usize> {
+    amount.page_delta(view_model.visible_rows(pane_height))
 }
 
 pub fn reduce_inspector(
@@ -64,8 +59,11 @@ pub fn reduce_inspector(
             direction,
             amount: amount @ (ScrollAmount::HalfPage | ScrollAmount::FullPage),
         } => {
-            if let Some(delta) = inspector_page_scroll_delta(state, *amount) {
-                let max = inspector_max_scroll(state, services);
+            let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+            if let Some(delta) =
+                inspector_page_scroll_delta(&view_model, state.ui.inspector_pane_height(), *amount)
+            {
+                let max = view_model.max_scroll(state.ui.inspector_pane_height());
                 state
                     .ui
                     .set_inspector_scroll_offset(direction.clamp_vertical_offset(
@@ -110,7 +108,7 @@ pub fn reduce_inspector(
 mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ConnectionId, DatabaseType, Table};
-    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::model::shared::inspector_tab::InspectorTab;
     use crate::update::browse::navigation::dispatch_navigation;
     use std::time::Instant;
 
@@ -173,8 +171,10 @@ mod tests {
         fn inspector_scroll_bottom_goes_to_max() {
             let mut state = state_with_table_detail(20);
             state.ui.set_inspector_scroll_offset(0);
-            let visible = state.inspector_visible_rows();
-            let expected_max = 20_usize.saturating_sub(visible);
+            let services = AppServices::stub();
+            let expected_max = state
+                .inspector_view_model(services.ddl_generator.as_ref())
+                .max_scroll(state.ui.inspector_pane_height());
 
             let effects = dispatch_navigation(
                 &mut state,
@@ -183,7 +183,7 @@ mod tests {
                     direction: ScrollDirection::Down,
                     amount: ScrollAmount::ToEnd,
                 },
-                &AppServices::stub(),
+                &services,
                 Instant::now(),
             );
 
@@ -287,9 +287,10 @@ mod tests {
                 let mut state = state_with_table_detail(0);
                 state.ui.set_inspector_pane_height(8);
                 state.ui.set_inspector_tab(InspectorTab::Info);
-                let expected_max = EngineFeatureProfile::postgres_like()
-                    .inspector_info_line_count()
-                    .saturating_sub(state.inspector_visible_rows());
+                let services = AppServices::stub();
+                let expected_max = state
+                    .inspector_view_model(services.ddl_generator.as_ref())
+                    .max_scroll(state.ui.inspector_pane_height());
 
                 let effects = dispatch_navigation(
                     &mut state,
@@ -298,7 +299,7 @@ mod tests {
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::ToEnd,
                     },
-                    &AppServices::stub(),
+                    &services,
                     Instant::now(),
                 );
 
@@ -312,9 +313,10 @@ mod tests {
                 use_sqlite_tabs(&mut state);
                 state.ui.set_inspector_pane_height(7);
                 state.ui.set_inspector_tab(InspectorTab::Info);
-                let expected_max = EngineFeatureProfile::sqlite_like()
-                    .inspector_info_line_count()
-                    .saturating_sub(state.inspector_visible_rows());
+                let services = AppServices::stub();
+                let expected_max = state
+                    .inspector_view_model(services.ddl_generator.as_ref())
+                    .max_scroll(state.ui.inspector_pane_height());
 
                 let effects = dispatch_navigation(
                     &mut state,
@@ -323,7 +325,7 @@ mod tests {
                         direction: ScrollDirection::Down,
                         amount: ScrollAmount::ToEnd,
                     },
-                    &AppServices::stub(),
+                    &services,
                     Instant::now(),
                 );
 

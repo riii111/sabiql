@@ -504,20 +504,12 @@ impl UiState {
         self.result_pane_height.saturating_sub(RESULT_PANE_OVERHEAD) as usize
     }
 
-    pub fn inspector_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(5) as usize
-    }
-
     pub fn explorer_visible_items(&self) -> usize {
         self.explorer_pane_height.saturating_sub(3) as usize
     }
 
     pub fn connection_list_visible_items(&self) -> usize {
         self.connection_list_pane_height as usize
-    }
-
-    pub fn inspector_ddl_visible_rows(&self) -> usize {
-        self.inspector_pane_height.saturating_sub(3) as usize
     }
 
     pub fn help_visible_rows(&self, total_lines: usize, content_width: usize) -> usize {
@@ -778,37 +770,6 @@ mod tests {
             let visible = state.result_visible_rows();
 
             assert_eq!(visible, 0);
-        }
-
-        #[rstest]
-        #[case(10, 7)]
-        #[case(15, 12)]
-        #[case(20, 17)]
-        fn ddl_visible_rows_equals_height_minus_three(
-            #[case] pane_height: u16,
-            #[case] expected: usize,
-        ) {
-            let state = UiState {
-                inspector_pane_height: pane_height,
-                ..Default::default()
-            };
-
-            let visible = state.inspector_ddl_visible_rows();
-
-            assert_eq!(visible, expected);
-        }
-
-        #[test]
-        fn ddl_visible_rows_is_greater_than_standard() {
-            let state = UiState {
-                inspector_pane_height: 20,
-                ..Default::default()
-            };
-
-            let standard = state.inspector_visible_rows();
-            let ddl = state.inspector_ddl_visible_rows();
-
-            assert_eq!(ddl - standard, 2);
         }
 
         #[rstest]

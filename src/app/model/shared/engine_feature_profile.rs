@@ -223,10 +223,6 @@ impl EngineFeatureProfile {
         self.inspector.info_fields()
     }
 
-    pub fn inspector_info_line_count(&self) -> usize {
-        self.inspector.info_fields().len()
-    }
-
     pub fn supports_inspector_tab(&self, tab: InspectorTab) -> bool {
         self.inspector.tabs().contains(&tab)
     }
@@ -343,7 +339,18 @@ mod tests {
         assert!(profile.supports_jsonb_detail());
         assert!(!profile.supports_sqlite_diagnostics());
         assert!(profile.supports_inspector_tab(InspectorTab::Ddl));
-        assert_eq!(profile.supported_inspector_tabs().len(), 7);
+        assert_eq!(
+            profile.supported_inspector_tabs(),
+            &[
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Rls,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ]
+        );
         assert_eq!(
             profile.supported_inspector_info_fields(),
             &[
