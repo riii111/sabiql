@@ -79,14 +79,13 @@ pub fn reduce_connection_lifecycle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ConnectionId;
     use crate::domain::connection::DatabaseType;
-    use crate::domain::{ConnectionId, SqliteDiagnosticsSnapshot};
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
-    use crate::model::sql_editor::modal::SqlModalTab;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -191,109 +190,219 @@ mod tests {
         assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
     }
 
-    fn assert_reconciles_postgres_to_sqlite_feature_state(cached: bool) {
-        let mut state = AppState::new("test".to_string());
-        let current_id = ConnectionId::new();
-        let target_id = ConnectionId::new();
-        state.session.activate_connection_with_dsn(
-            &current_id,
-            "current",
-            DatabaseType::PostgreSQL,
-            "postgres://localhost/current",
-        );
-        state.ui.set_inspector_tab(InspectorTab::Rls);
-        state.sql_modal.set_active_tab(SqlModalTab::Compare);
-        state.ui.set_pending_er_picker(true);
-        let _ = state.er_preparation.start_waiting_run();
-        state
-            .er_preparation
-            .queue_pending_table("public.users".to_string());
+    mod reconciliation_tests {
+        use super::*;
+        use crate::domain::SqliteDiagnosticsSnapshot;
+        use crate::model::sql_editor::modal::SqlModalTab;
 
-        if cached {
-            state.connection_caches.save(
-                &target_id,
-                ConnectionCache {
-                    inspector_tab: InspectorTab::Rls,
-                    ..Default::default()
-                },
+        fn target_action(id: ConnectionId, name: &str, database_type: DatabaseType) -> Action {
+            let dsn = match database_type {
+                DatabaseType::PostgreSQL => format!("postgres://localhost/{name}"),
+                DatabaseType::SQLite => format!("sqlite:///tmp/{name}.db"),
+            };
+            Action::SwitchConnection(ConnectionTarget {
+                id,
+                dsn,
+                name: name.to_string(),
+                database_type,
+            })
+        }
+
+        fn seed_explain_state(state: &mut AppState) {
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+                "SELECT * FROM users",
             );
-        }
-
-        let action = Action::SwitchConnection(ConnectionTarget {
-            id: target_id,
-            dsn: "sqlite:///tmp/app.db".to_string(),
-            name: "app.db".to_string(),
-            database_type: DatabaseType::SQLite,
-        });
-        reduce(&mut state, &action);
-
-        assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
-        assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
-        assert!(!state.ui.pending_er_picker());
-        assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-        assert!(state.er_preparation.pending_tables().is_empty());
-    }
-
-    #[test]
-    fn reconciles_postgres_to_sqlite_feature_state_without_cache() {
-        assert_reconciles_postgres_to_sqlite_feature_state(false);
-    }
-
-    #[test]
-    fn reconciles_postgres_to_sqlite_feature_state_with_cache() {
-        assert_reconciles_postgres_to_sqlite_feature_state(true);
-    }
-
-    fn assert_reconciles_sqlite_diagnostics_on_postgres_switch(cached: bool) {
-        let mut state = AppState::new("test".to_string());
-        let current_id = ConnectionId::new();
-        let target_id = ConnectionId::new();
-        state.session.activate_connection_with_dsn(
-            &current_id,
-            "current",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/current.db",
-        );
-
-        let run_id = state.sqlite_diagnostics.begin_fetch();
-        state
-            .sqlite_diagnostics
-            .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
-        assert!(state.sqlite_diagnostics.snapshot().is_some());
-        let _ = state.sqlite_diagnostics.begin_quick_check();
-        assert!(state.sqlite_diagnostics.is_quick_check_running());
-
-        if cached {
+            state.explain.set_plan(
+                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                false,
+                0,
+                "SELECT * FROM users WHERE id = 1",
+            );
             state
-                .connection_caches
-                .save(&target_id, ConnectionCache::default());
+                .explain
+                .set_error_for_test(Some("stale error".to_string()));
         }
 
-        let action = Action::SwitchConnection(ConnectionTarget {
-            id: target_id,
-            dsn: "postgres://localhost/target".to_string(),
-            name: "target".to_string(),
-            database_type: DatabaseType::PostgreSQL,
-        });
-        reduce(&mut state, &action);
+        fn assert_explain_state_cleared(state: &AppState) {
+            assert!(state.explain.plan_text().is_none());
+            assert!(state.explain.error().is_none());
+            assert!(state.explain.left().is_none());
+            assert!(state.explain.right().is_none());
+            assert!(state.explain.history().is_empty());
+        }
 
-        assert_eq!(
-            state.session.active_database_type(),
-            Some(DatabaseType::PostgreSQL)
-        );
-        assert!(state.sqlite_diagnostics.snapshot().is_none());
-        assert!(!state.sqlite_diagnostics.is_loading());
-        assert!(!state.sqlite_diagnostics.is_quick_check_running());
-    }
+        fn seed_er_state(state: &mut AppState) {
+            state.ui.set_pending_er_picker(true);
+            let _ = state.er_preparation.start_waiting_run();
+            state
+                .er_preparation
+                .queue_pending_table("public.users".to_string());
+        }
 
-    #[test]
-    fn reconciles_sqlite_diagnostics_when_switching_to_postgres_without_cache() {
-        assert_reconciles_sqlite_diagnostics_on_postgres_switch(false);
-    }
+        fn seed_sqlite_diagnostics(state: &mut AppState) {
+            let run_id = state.sqlite_diagnostics.begin_fetch();
+            state
+                .sqlite_diagnostics
+                .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
+            assert!(state.sqlite_diagnostics.snapshot().is_some());
+            let _ = state.sqlite_diagnostics.begin_quick_check();
+            assert!(state.sqlite_diagnostics.is_quick_check_running());
+        }
 
-    #[test]
-    fn reconciles_sqlite_diagnostics_when_switching_to_postgres_with_cache() {
-        assert_reconciles_sqlite_diagnostics_on_postgres_switch(true);
+        fn assert_sqlite_diagnostics_cleared(state: &AppState) {
+            assert!(state.sqlite_diagnostics.snapshot().is_none());
+            assert!(!state.sqlite_diagnostics.is_loading());
+            assert!(!state.sqlite_diagnostics.is_quick_check_running());
+        }
+
+        fn assert_er_state_cleared(state: &AppState) {
+            assert!(!state.ui.pending_er_picker());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.er_preparation.pending_tables().is_empty());
+        }
+
+        fn assert_reconciles_postgres_to_sqlite_feature_state(cached: bool) {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            let target_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+            );
+            state.ui.set_inspector_tab(InspectorTab::Rls);
+            state.sql_modal.set_active_tab(SqlModalTab::Compare);
+            seed_er_state(&mut state);
+            seed_explain_state(&mut state);
+
+            if cached {
+                state.connection_caches.save(
+                    &target_id,
+                    ConnectionCache {
+                        inspector_tab: InspectorTab::Rls,
+                        ..Default::default()
+                    },
+                );
+            }
+
+            reduce(
+                &mut state,
+                &target_action(target_id, "app", DatabaseType::SQLite),
+            );
+
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert_er_state_cleared(&state);
+            assert_explain_state_cleared(&state);
+        }
+
+        #[test]
+        fn reconciles_postgres_to_sqlite_feature_state_without_cache() {
+            assert_reconciles_postgres_to_sqlite_feature_state(false);
+        }
+
+        #[test]
+        fn reconciles_postgres_to_sqlite_feature_state_with_cache() {
+            assert_reconciles_postgres_to_sqlite_feature_state(true);
+        }
+
+        fn assert_reconciles_sqlite_diagnostics_on_postgres_switch(cached: bool) {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            let target_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/current.db",
+            );
+            seed_sqlite_diagnostics(&mut state);
+            seed_explain_state(&mut state);
+
+            if cached {
+                state
+                    .connection_caches
+                    .save(&target_id, ConnectionCache::default());
+            }
+
+            reduce(
+                &mut state,
+                &target_action(target_id, "target", DatabaseType::PostgreSQL),
+            );
+
+            assert_eq!(
+                state.session.active_database_type(),
+                Some(DatabaseType::PostgreSQL)
+            );
+            assert_sqlite_diagnostics_cleared(&state);
+            assert_explain_state_cleared(&state);
+        }
+
+        #[test]
+        fn reconciles_sqlite_diagnostics_when_switching_to_postgres_without_cache() {
+            assert_reconciles_sqlite_diagnostics_on_postgres_switch(false);
+        }
+
+        #[test]
+        fn reconciles_sqlite_diagnostics_when_switching_to_postgres_with_cache() {
+            assert_reconciles_sqlite_diagnostics_on_postgres_switch(true);
+        }
+
+        #[test]
+        fn preserves_postgres_features_when_switching_to_another_postgres_connection() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+            );
+            state.ui.set_inspector_tab(InspectorTab::Rls);
+            state.sql_modal.set_active_tab(SqlModalTab::Compare);
+            seed_er_state(&mut state);
+            seed_explain_state(&mut state);
+
+            reduce(
+                &mut state,
+                &target_action(ConnectionId::new(), "target", DatabaseType::PostgreSQL),
+            );
+
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Rls);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Compare);
+            assert_er_state_cleared(&state);
+            assert_explain_state_cleared(&state);
+        }
+
+        #[test]
+        fn preserves_sqlite_features_when_switching_to_another_sqlite_connection() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::new();
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "current",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/current.db",
+            );
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+            seed_sqlite_diagnostics(&mut state);
+            seed_explain_state(&mut state);
+
+            reduce(
+                &mut state,
+                &target_action(ConnectionId::new(), "target", DatabaseType::SQLite),
+            );
+
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Ddl);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert_sqlite_diagnostics_cleared(&state);
+            assert_explain_state_cleared(&state);
+        }
     }
 
     #[test]
