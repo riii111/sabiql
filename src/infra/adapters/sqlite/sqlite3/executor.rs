@@ -51,6 +51,44 @@ struct SqliteVersion {
     patch: u16,
 }
 
+#[cfg(any(windows, test))]
+#[derive(Default)]
+struct WindowsCsvNewlineNormalizer {
+    pending_carriage_return: bool,
+}
+
+#[cfg(any(windows, test))]
+impl WindowsCsvNewlineNormalizer {
+    fn normalize<'a>(&mut self, input: &[u8], output: &'a mut Vec<u8>) -> &'a [u8] {
+        output.clear();
+        output.reserve(input.len());
+
+        for &byte in input {
+            if self.pending_carriage_return {
+                if byte == b'\n' {
+                    output.push(b'\n');
+                    self.pending_carriage_return = false;
+                    continue;
+                }
+                output.push(b'\r');
+                self.pending_carriage_return = false;
+            }
+
+            if byte == b'\r' {
+                self.pending_carriage_return = true;
+            } else {
+                output.push(byte);
+            }
+        }
+
+        output
+    }
+
+    fn finish(&self) -> Option<u8> {
+        self.pending_carriage_return.then_some(b'\r')
+    }
+}
+
 impl SqliteVersion {
     const fn new(major: u16, minor: u16, patch: u16) -> Self {
         Self {
@@ -227,11 +265,17 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<(), DbOperationError> {
         Self::ensure_database_path(path)?;
+        let sql = sqlite_session_sql(sql, read_only);
         let mut cmd = self.command_with_program(command);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
-        cmd.arg("-batch").arg("-bail").arg("-csv").arg("-header");
+        cmd.arg("-batch")
+            .arg("-bail")
+            .arg("-csv")
+            .arg("-header")
+            .arg("-newline")
+            .arg("\n");
         cmd.arg(sqlite_database_uri(path, read_only));
 
         let mut child = cmd
@@ -253,16 +297,31 @@ impl SqliteCli {
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
-                write_sql_to_stdin(stdin, sql),
+                write_sql_to_stdin(stdin, &sql),
                 async {
                     if let Some(mut stdout) = stdout {
                         let mut buf = [0u8; 8192];
+                        #[cfg(windows)]
+                        let mut newline_normalizer = WindowsCsvNewlineNormalizer::default();
+                        #[cfg(windows)]
+                        let mut normalized_buf = Vec::with_capacity(buf.len());
                         loop {
                             let n = stdout.read(&mut buf).await?;
                             if n == 0 {
                                 break;
                             }
+                            #[cfg(windows)]
+                            {
+                                let output =
+                                    newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
+                                writer.write_all(output).await?;
+                            }
+                            #[cfg(not(windows))]
                             writer.write_all(&buf[..n]).await?;
+                        }
+                        #[cfg(windows)]
+                        if let Some(trailing_carriage_return) = newline_normalizer.finish() {
+                            writer.write_all(&[trailing_carriage_return]).await?;
                         }
                         writer.flush().await?;
                     }
@@ -315,6 +374,7 @@ impl SqliteCli {
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
         Self::ensure_database_path(path)?;
+        let sql = sqlite_session_sql(sql, read_only);
         let mut cmd = self.command();
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
@@ -323,7 +383,7 @@ impl SqliteCli {
             cmd.arg(arg);
         }
         cmd.arg(sqlite_database_uri(path, read_only));
-        Self::collect_output(&mut cmd, self.timeout_secs, sql).await
+        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
     }
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
@@ -337,13 +397,7 @@ impl SqliteCli {
         if read_only {
             cmd.arg("-readonly");
         }
-        cmd.arg("-cmd")
-            .arg(format!(".timeout {BUSY_TIMEOUT_MS}"))
-            .arg("-cmd")
-            .arg("PRAGMA foreign_keys=ON");
-        if read_only {
-            cmd.arg("-cmd").arg("PRAGMA query_only=ON");
-        }
+        cmd.arg("-cmd").arg(format!(".timeout {BUSY_TIMEOUT_MS}"));
     }
 
     fn apply_initialization_file(cmd: &mut Command) {
@@ -419,20 +473,13 @@ fn safe_mode_required_error(details: &str) -> DbOperationError {
     ))
 }
 
-fn sqlite_empty_init_file() -> &'static str {
-    sqlite_empty_init_file_for_platform(cfg!(windows))
-}
-
-const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
-    if is_windows { "NUL" } else { "/dev/null" }
-}
-
 async fn write_sql_to_stdin(
     stdin: Option<tokio::process::ChildStdin>,
     sql: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(mut stdin) = stdin {
-        if let Err(error) = stdin.write_all(sql.as_bytes()).await
+        let execution_sql = terminated_sql(sql);
+        if let Err(error) = stdin.write_all(execution_sql.as_bytes()).await
             && error.kind() != std::io::ErrorKind::BrokenPipe
         {
             return Err(error);
@@ -444,6 +491,27 @@ async fn write_sql_to_stdin(
         }
     }
     Ok(())
+}
+
+fn sqlite_empty_init_file() -> &'static str {
+    sqlite_empty_init_file_for_platform(cfg!(windows))
+}
+
+const fn sqlite_empty_init_file_for_platform(is_windows: bool) -> &'static str {
+    if is_windows { "NUL" } else { "/dev/null" }
+}
+
+fn terminated_sql(sql: &str) -> String {
+    format!("{sql}\n;\n")
+}
+
+fn sqlite_session_sql(sql: &str, read_only: bool) -> String {
+    let query_only = if read_only {
+        "PRAGMA query_only=ON;\n"
+    } else {
+        ""
+    };
+    format!("PRAGMA foreign_keys=ON;\n{query_only}{sql}")
 }
 
 fn sqlite_database_uri(path: &str, read_only: bool) -> String {
@@ -684,6 +752,46 @@ mod tests {
         result
             .display_row_at(row)
             .expect("test result should contain the requested row")
+    }
+
+    #[test]
+    fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
+        let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut normalized_buf = Vec::new();
+        let mut output = Vec::new();
+
+        for chunk in [
+            b"id,message\r".as_slice(),
+            b"\n1,\"hello\r\n".as_slice(),
+            b"world\"\r".as_slice(),
+            b"\n2,done\r\n".as_slice(),
+        ] {
+            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
+        }
+        if let Some(trailing_carriage_return) = normalizer.finish() {
+            output.push(trailing_carriage_return);
+        }
+
+        assert_eq!(output, b"id,message\n1,\"hello\nworld\"\n2,done\n");
+    }
+
+    #[test]
+    fn windows_csv_newline_normalizer_preserves_embedded_crlf() {
+        let mut normalizer = WindowsCsvNewlineNormalizer::default();
+        let mut normalized_buf = Vec::new();
+        let mut output = Vec::new();
+
+        for chunk in [
+            b"id,message\r\n1,\"first\r".as_slice(),
+            b"\r\nsecond\"\r\n".as_slice(),
+        ] {
+            output.extend(normalizer.normalize(chunk, &mut normalized_buf));
+        }
+        if let Some(trailing_carriage_return) = normalizer.finish() {
+            output.push(trailing_carriage_return);
+        }
+
+        assert_eq!(output, b"id,message\n1,\"first\r\nsecond\"\n");
     }
 
     mod preview {
@@ -951,6 +1059,20 @@ mod tests {
                 assert_eq!(result.columns, vec!["value"]);
                 assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+            }
+
+            #[tokio::test]
+            async fn runs_sql_larger_than_the_windows_command_line_limit() {
+                let (_dir, dsn) = test_support::make_sqlite_db("");
+                let adapter = SqliteAdapter::new();
+                let sql = format!("SELECT 1 AS value /* {} */", "x".repeat(32_768));
+
+                let result = adapter
+                    .execute_adhoc(&dsn, &sql, AccessMode::ReadOnly)
+                    .await
+                    .unwrap();
+
+                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
             }
 
             #[tokio::test]
@@ -2457,6 +2579,27 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn export_to_csv_runs_sql_larger_than_the_windows_command_line_limit() {
+            let (dir, dsn) = test_support::make_sqlite_db("");
+            let path = dir.path().join("long.csv");
+            let adapter = SqliteAdapter::new();
+            let sql = format!("SELECT 1 AS value /* {} */", "x".repeat(32_768));
+
+            adapter
+                .cli
+                .export_csv(
+                    SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                    &sql,
+                    &path,
+                    true,
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(std::fs::read_to_string(path).unwrap(), "value\n1\n");
+        }
+
+        #[tokio::test]
         async fn export_to_csv_preserves_records_with_embedded_newlines() {
             let (dir, dsn) = test_support::make_sqlite_db(
                 r"
@@ -2650,7 +2793,7 @@ world'), (2, 'done');
         }
 
         #[test]
-        fn initialization_precedes_safe_read_only_and_session_options() {
+        fn initialization_precedes_safe_read_only_and_timeout() {
             let mut cmd = Command::new("sqlite3");
             SqliteCli::apply_session_options(&mut cmd, true);
             let args = cmd
@@ -2668,11 +2811,27 @@ world'), (2, 'done');
                     "-readonly",
                     "-cmd",
                     &format!(".timeout {BUSY_TIMEOUT_MS}"),
-                    "-cmd",
-                    "PRAGMA foreign_keys=ON",
-                    "-cmd",
-                    "PRAGMA query_only=ON",
                 ]
+            );
+        }
+
+        #[test]
+        fn session_pragmas_precede_user_sql() {
+            assert_eq!(
+                sqlite_session_sql("SELECT 1", true),
+                "PRAGMA foreign_keys=ON;\nPRAGMA query_only=ON;\nSELECT 1"
+            );
+            assert_eq!(
+                sqlite_session_sql("SELECT 1", false),
+                "PRAGMA foreign_keys=ON;\nSELECT 1"
+            );
+        }
+
+        #[test]
+        fn terminates_sql_with_a_standalone_statement_separator() {
+            assert_eq!(
+                terminated_sql("SELECT 1 -- trailing comment"),
+                "SELECT 1 -- trailing comment\n;\n"
             );
         }
 
