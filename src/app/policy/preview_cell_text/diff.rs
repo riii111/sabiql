@@ -22,11 +22,12 @@ mod tests {
     use super::*;
     use crate::domain::DatabaseType;
 
-    use super::super::handling::preview_cell_text_diff_handling;
+    use super::super::handling::CellPresentationPolicy;
 
     #[test]
     fn jsonb_column_normalizes_key_order() {
-        let handling = preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "jsonb");
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
         let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
         assert_eq!(
@@ -37,7 +38,8 @@ mod tests {
 
     #[test]
     fn text_column_preserves_json_like_string() {
-        let handling = preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "text");
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", "").diff_handling();
         let spaced = r#"{ "a": 1 }"#;
         let compact = r#"{"a":1}"#;
         assert_eq!(normalize_for_write_diff(spaced, handling), spaced);
@@ -49,14 +51,16 @@ mod tests {
 
     #[test]
     fn sqlite_text_column_preserves_json_like_string() {
-        let handling = preview_cell_text_diff_handling(DatabaseType::SQLite, "TEXT");
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", "").diff_handling();
         let original = r#"{"items":["admin","writer"]}"#;
         assert_eq!(normalize_for_write_diff(original, handling), original);
     }
 
     #[test]
     fn sqlite_jsonb_declared_type_stays_raw() {
-        let handling = preview_cell_text_diff_handling(DatabaseType::SQLite, "jsonb");
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
         let serde_style = r#"{"company_size":"enterprise","industries":["tech"]}"#;
         assert_eq!(

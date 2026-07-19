@@ -15,3 +15,8 @@
 
 ## Screenshots
 <!-- Screenshots/GIF. Optional -->
+
+## Linear Issue Link (optional)
+<!-- (Maintainers only) Delete this entire section if there are no related Linear issues -->
+
+- Implements https://linear.app/sabiql/issue/SAB-XXX

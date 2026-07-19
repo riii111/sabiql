@@ -40,6 +40,10 @@ pub(super) fn reduce_diagram_lifecycle(
         Action::ErOpenDiagram => {
             let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
             if !feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                state.messages.set_error_at(
+                    "ER diagrams are not available for this connection".to_string(),
+                    now,
+                );
                 return DispatchResult::handled();
             }
             if state.er_preparation.is_busy() {
@@ -70,6 +74,10 @@ pub(super) fn reduce_diagram_lifecycle(
         Action::ErGenerateFromCache => {
             let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
             if !feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                state.messages.set_error_at(
+                    "ER diagrams are not available for this connection".to_string(),
+                    now,
+                );
                 return DispatchResult::handled();
             }
             if !state.er_preparation.can_generate_from_cache() {

@@ -10,12 +10,16 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_sqlite_diagnostics(
     state: &mut AppState,
     action: &Action,
-    _now: Instant,
+    now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::SqliteDiagnostics) => {
             let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
             if !feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                state.messages.set_error_at(
+                    "SQLite diagnostics are not available for this connection".to_string(),
+                    now,
+                );
                 return DispatchResult::handled();
             }
             let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -28,6 +32,10 @@ pub(super) fn reduce_sqlite_diagnostics(
         Action::RunSqliteDiagnosticsQuickCheck => {
             let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
             if !feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                state.messages.set_error_at(
+                    "SQLite diagnostics are not available for this connection".to_string(),
+                    now,
+                );
                 return DispatchResult::handled();
             }
             let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -149,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn open_is_ignored_for_postgres_connection() {
+    fn open_returns_error_for_postgres_connection() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -167,6 +175,43 @@ mod tests {
 
         assert_eq!(state.input_mode(), InputMode::Normal);
         assert!(effects.is_empty());
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            Some("SQLite diagnostics are not available for this connection")
+        );
+    }
+
+    #[test]
+    fn quick_check_returns_error_for_postgres_connection() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/db",
+        );
+        let run_id = state.sqlite_diagnostics.begin_fetch();
+        state.sqlite_diagnostics.set_core_loaded(
+            run_id,
+            SqliteDiagnosticsSnapshot {
+                quick_check: DiagnosticField::Pending,
+                ..Default::default()
+            },
+        );
+
+        let effects = reduce_sqlite_diagnostics(
+            &mut state,
+            &Action::RunSqliteDiagnosticsQuickCheck,
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert!(effects.is_empty());
+        assert!(!state.sqlite_diagnostics.is_quick_check_running());
+        assert_eq!(
+            state.messages.last_error.as_deref(),
+            Some("SQLite diagnostics are not available for this connection")
+        );
     }
 
     #[test]

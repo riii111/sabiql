@@ -1,11 +1,13 @@
 use unicode_width::UnicodeWidthStr;
 
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
+use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 #[allow(
     clippy::wildcard_imports,
@@ -33,6 +35,10 @@ impl HelpDocument {
             filter.cursor(),
             state.settings.saved_keymap_preset(),
             state.session.active_engine_feature_profile(),
+            state
+                .session
+                .active_database_type()
+                .map(|database_type| CellPresentationPolicy::new(database_type, "jsonb", "")),
         )
     }
 
@@ -47,6 +53,11 @@ impl HelpDocument {
             filter_cursor,
             origin.keymap_preset(),
             &EngineFeatureProfile::postgres_like(),
+            Some(CellPresentationPolicy::new(
+                DatabaseType::PostgreSQL,
+                "jsonb",
+                "",
+            )),
         )
     }
 
@@ -56,11 +67,16 @@ impl HelpDocument {
         filter_cursor: usize,
         keymap_preset: KeymapPreset,
         engine_feature_profile: &EngineFeatureProfile,
+        cell_presentation_policy: Option<CellPresentationPolicy>,
     ) -> Self {
         let feature_policy = FeaturePolicy::new(engine_feature_profile);
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(origin, &feature_policy)];
-        sections.extend(reference_sections(keymap_preset, &feature_policy));
+        sections.extend(reference_sections(
+            keymap_preset,
+            &feature_policy,
+            cell_presentation_policy,
+        ));
 
         if !normalized.is_empty() {
             sections = sections
@@ -326,6 +342,7 @@ fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
 fn reference_sections(
     keymap_preset: KeymapPreset,
     feature_policy: &FeaturePolicy,
+    cell_presentation_policy: Option<CellPresentationPolicy>,
 ) -> Vec<HelpSection> {
     let mut open_switch_rows = vec![
         table_picker(keymap_preset),
@@ -351,7 +368,9 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_visible(jsonb_detail::YANK.feature_requirement()) {
+    if feature_policy.is_visible(jsonb_detail::YANK.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    {
         data_action_rows.extend(rows_from_mode_row_refs_if_visible(
             &[&jsonb_detail::YANK],
             feature_policy,
@@ -365,7 +384,9 @@ fn reference_sections(
     if feature_policy.is_visible(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if feature_policy.is_visible(jsonb_search::TYPE_SEARCH.feature_requirement()) {
+    if feature_policy.is_visible(jsonb_search::TYPE_SEARCH.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    {
         search_filter_rows.extend(rows_from_bindings_if_visible(
             JSONB_SEARCH_KEYS,
             feature_policy,
@@ -379,7 +400,9 @@ fn reference_sections(
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if feature_policy.is_visible(jsonb_edit::ESC_NORMAL.feature_requirement()) {
+    if feature_policy.is_visible(jsonb_edit::ESC_NORMAL.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    {
         editing_rows.extend(rows_from_mode_rows_if_visible(
             JSONB_EDIT_ROWS,
             feature_policy,
@@ -407,7 +430,9 @@ fn reference_sections(
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::JsonbDetail) {
+    if feature_policy.is_visible(FeatureRequirement::JsonbDetail)
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
             JSONB_DETAIL_ROWS,
             feature_policy,
@@ -703,7 +728,7 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::ConnectionId;
     use crate::model::browse::jsonb_detail::JsonbDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
@@ -1045,6 +1070,31 @@ mod tests {
                 .iter()
                 .any(|description| description.contains("JSONB"))
         );
+    }
+
+    #[test]
+    fn jsonb_help_rows_follow_cell_presentation_policy() {
+        for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                "database",
+            );
+            let origin = HelpOrigin::from_state(&state);
+            state.ui.help_mut().open(origin);
+
+            let document = HelpDocument::from_state(&state);
+            let descriptions = row_descriptions(&document);
+            let help_includes_jsonb = descriptions
+                .iter()
+                .any(|description| description.contains("JSONB"));
+            let policy_allows_jsonb =
+                CellPresentationPolicy::new(database_type, "jsonb", "").uses_jsonb_detail_modal();
+
+            assert_eq!(help_includes_jsonb, policy_allows_jsonb);
+        }
     }
 
     #[test]

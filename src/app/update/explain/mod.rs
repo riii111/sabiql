@@ -35,6 +35,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::model::shared::input_mode::InputMode;
+    use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
@@ -857,6 +858,38 @@ mod tests {
 
     mod compare_workflow {
         use super::*;
+
+        #[test]
+        fn sqlite_connection_rejects_compare_edit_query_with_error() {
+            let mut state = sql_modal_state();
+            state
+                .explain
+                .set_plan("stale plan".to_string(), false, 1, "SELECT stale");
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT current".to_string());
+            state.sql_modal.set_active_tab(SqlModalTab::Compare);
+
+            activate_sqlite_connection(&mut state);
+            let editor_before = state.sql_modal.editor.content().to_string();
+            let status_before = state.sql_modal.status().clone();
+            let active_tab_before = state.sql_modal.active_tab();
+
+            assert_eq!(
+                state.explain.right().map(|slot| slot.full_query.as_str()),
+                Some("SELECT stale")
+            );
+            reduce_explain(&mut state, &Action::CompareEditQuery, Instant::now());
+
+            assert_eq!(state.sql_modal.editor.content(), editor_before);
+            assert_eq!(state.sql_modal.status(), &status_before);
+            assert_eq!(state.sql_modal.active_tab(), active_tab_before);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Plan comparison is not available for this connection")
+            );
+        }
 
         #[test]
         fn two_explains_auto_advance_returns_comparable_slots() {
