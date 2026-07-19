@@ -86,6 +86,9 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
+    use crate::test_support::connection::{
+        assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
+    };
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -233,14 +236,6 @@ mod tests {
             assert!(!state.explain.history().is_empty());
         }
 
-        fn assert_explain_state_cleared(state: &AppState) {
-            assert!(state.explain.plan_text().is_none());
-            assert!(state.explain.error().is_none());
-            assert!(state.explain.left().is_none());
-            assert!(state.explain.right().is_none());
-            assert!(state.explain.history().is_empty());
-        }
-
         fn seed_er_state(state: &mut AppState) {
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
@@ -257,12 +252,6 @@ mod tests {
             assert!(state.sqlite_diagnostics.snapshot().is_some());
             let _ = state.sqlite_diagnostics.begin_quick_check();
             assert!(state.sqlite_diagnostics.is_quick_check_running());
-        }
-
-        fn assert_sqlite_diagnostics_cleared(state: &AppState) {
-            assert!(state.sqlite_diagnostics.snapshot().is_none());
-            assert!(!state.sqlite_diagnostics.is_loading());
-            assert!(!state.sqlite_diagnostics.is_quick_check_running());
         }
 
         fn assert_er_state_cleared(state: &AppState) {

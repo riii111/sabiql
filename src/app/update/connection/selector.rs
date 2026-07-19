@@ -293,6 +293,9 @@ mod tests {
         use crate::model::er_state::ErStatus;
         use crate::model::shared::inspector_tab::InspectorTab;
         use crate::model::sql_editor::modal::SqlModalTab;
+        use crate::test_support::connection::{
+            assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
+        };
 
         #[test]
         fn removes_connection_from_list() {
@@ -403,13 +406,8 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
             assert_eq!(state.ui.inspector_horizontal_offset(), 0);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
-            assert!(state.explain.plan_text().is_none());
-            assert!(state.explain.error().is_none());
-            assert!(state.explain.left().is_none());
-            assert!(state.explain.right().is_none());
-            assert!(state.explain.history().is_empty());
-            assert!(state.sqlite_diagnostics.snapshot().is_none());
-            assert!(!state.sqlite_diagnostics.is_quick_check_running());
+            assert_explain_state_cleared(&state);
+            assert_sqlite_diagnostics_cleared(&state);
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.er_preparation.pending_tables().is_empty());
@@ -455,13 +453,8 @@ mod tests {
             assert_eq!(state.ui.inspector_scroll_offset(), 0);
             assert_eq!(state.ui.inspector_horizontal_offset(), 0);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
-            assert!(state.explain.plan_text().is_none());
-            assert!(state.explain.error().is_none());
-            assert!(state.explain.left().is_none());
-            assert!(state.explain.right().is_none());
-            assert!(state.explain.history().is_empty());
-            assert!(state.sqlite_diagnostics.snapshot().is_none());
-            assert!(!state.sqlite_diagnostics.is_quick_check_running());
+            assert_explain_state_cleared(&state);
+            assert_sqlite_diagnostics_cleared(&state);
         }
 
         #[test]
