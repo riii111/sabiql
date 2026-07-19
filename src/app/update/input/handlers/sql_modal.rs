@@ -1,6 +1,9 @@
+#[cfg(test)]
+use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
@@ -30,6 +33,7 @@ pub fn handle_sql_modal_keys(
     )
 }
 
+#[cfg(test)]
 pub fn handle_sql_modal_keys_with_prefix(
     combo: KeyCombo,
     completion_visible: bool,
@@ -37,6 +41,50 @@ pub fn handle_sql_modal_keys_with_prefix(
     active_tab: SqlModalTab,
     pending_prefix: Option<Prefix>,
     keymap_preset: KeymapPreset,
+    supports_explain_analyze: bool,
+) -> Action {
+    let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+    handle_sql_modal_keys_internal(
+        combo,
+        completion_visible,
+        status,
+        active_tab,
+        pending_prefix,
+        keymap_preset,
+        &feature_policy,
+        supports_explain_analyze,
+    )
+}
+
+pub fn handle_sql_modal_keys_with_feature_policy(
+    combo: KeyCombo,
+    completion_visible: bool,
+    status: &SqlModalStatus,
+    active_tab: SqlModalTab,
+    pending_prefix: Option<Prefix>,
+    keymap_preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
+) -> Action {
+    handle_sql_modal_keys_internal(
+        combo,
+        completion_visible,
+        status,
+        active_tab,
+        pending_prefix,
+        keymap_preset,
+        feature_policy,
+        feature_policy.is_enabled(FeatureRequirement::ExplainAnalyze),
+    )
+}
+
+fn handle_sql_modal_keys_internal(
+    combo: KeyCombo,
+    completion_visible: bool,
+    status: &SqlModalStatus,
+    active_tab: SqlModalTab,
+    pending_prefix: Option<Prefix>,
+    keymap_preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
     supports_explain_analyze: bool,
 ) -> Action {
     use crate::update::action::CursorMove;
@@ -77,7 +125,9 @@ pub fn handle_sql_modal_keys_with_prefix(
             SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
             SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
         };
-        if explain_binding.combos.contains(&combo) {
+        if explain_binding.combos.contains(&combo)
+            && feature_policy.is_enabled(explain_binding.feature_requirement())
+        {
             return Action::ExplainRequest;
         }
 
@@ -117,7 +167,11 @@ pub fn handle_sql_modal_keys_with_prefix(
 
             return match combo.key {
                 Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
-                Key::Char('e') if plain => Action::CompareEditQuery,
+                Key::Char('e')
+                    if plain && feature_policy.is_enabled(FeatureRequirement::PlanComparison) =>
+                {
+                    Action::CompareEditQuery
+                }
                 _ => Action::None,
             };
         }

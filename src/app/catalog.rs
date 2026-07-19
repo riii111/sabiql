@@ -6,7 +6,7 @@ use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
-use crate::update::action::{Action, ModalKind};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 #[allow(
     clippy::wildcard_imports,
     reason = "help catalog enumerates nearly every keybindings table; explicit list is churn"
@@ -57,9 +57,10 @@ impl HelpDocument {
         keymap_preset: KeymapPreset,
         engine_feature_profile: &EngineFeatureProfile,
     ) -> Self {
+        let feature_policy = FeaturePolicy::new(engine_feature_profile);
         let normalized = filter.trim().to_lowercase();
-        let mut sections = vec![current_section(origin, engine_feature_profile)];
-        sections.extend(reference_sections(keymap_preset, engine_feature_profile));
+        let mut sections = vec![current_section(origin, &feature_policy)];
+        sections.extend(reference_sections(keymap_preset, &feature_policy));
 
         if !normalized.is_empty() {
             sections = sections
@@ -210,10 +211,7 @@ impl HelpRow {
     }
 }
 
-fn current_section(
-    origin: HelpOrigin,
-    engine_feature_profile: &EngineFeatureProfile,
-) -> HelpSection {
+fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSection {
     let rows = match origin {
         HelpOrigin::Normal {
             focused_pane: FocusedPane::Result,
@@ -280,7 +278,7 @@ fn current_section(
             &global::CONNECTIONS,
             &global::SQL,
         ]),
-        HelpOrigin::CommandLine => command_line_rows(engine_feature_profile),
+        HelpOrigin::CommandLine => command_line_rows(feature_policy),
         HelpOrigin::CellEdit => rows_from_bindings(CELL_EDIT_KEYS),
         HelpOrigin::TablePicker => rows_from_mode_rows(TABLE_PICKER_ROWS),
         HelpOrigin::CommandPalette => rows_from_mode_rows(COMMAND_PALETTE_ROWS),
@@ -289,21 +287,23 @@ fn current_section(
         HelpOrigin::SqlModal {
             mode,
             keymap_preset,
-        } => sql_current_rows(mode, keymap_preset, engine_feature_profile),
+        } => sql_current_rows(mode, keymap_preset, feature_policy),
         HelpOrigin::ConnectionSetup {
             keymap_preset,
             focused_field,
         } => connection_setup_current_rows(keymap_preset, focused_field),
         HelpOrigin::ConnectionError => rows_from_mode_rows(CONNECTION_ERROR_ROWS),
-        HelpOrigin::SqliteDiagnostics => rows_from_mode_rows(SQLITE_DIAGNOSTICS_ROWS),
+        HelpOrigin::SqliteDiagnostics => {
+            rows_from_mode_rows_if_visible(SQLITE_DIAGNOSTICS_ROWS, feature_policy)
+        }
         HelpOrigin::ConfirmDialog => rows_from_bindings(CONFIRM_DIALOG_KEYS),
         HelpOrigin::ConnectionSelector => rows_from_mode_rows(CONNECTION_SELECTOR_ROWS),
         HelpOrigin::ErTablePicker { keymap_preset } => {
-            rows_from_mode_rows(er_picker_rows(keymap_preset))
+            rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
         }
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
-        HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode),
-        HelpOrigin::JsonbEdit => rows_from_mode_rows(JSONB_EDIT_ROWS),
+        HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode, feature_policy),
+        HelpOrigin::JsonbEdit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
         HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
         HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
@@ -315,18 +315,17 @@ fn current_section(
     }
 }
 
-fn command_line_rows(engine_feature_profile: &EngineFeatureProfile) -> Vec<HelpRow> {
-    rows_from_binding_iter(COMMAND_LINE_KEYS.iter().filter(|binding| {
-        !matches!(
-            binding.action,
-            Action::OpenModal(ModalKind::ErTablePicker) if !engine_feature_profile.supports_er_diagram()
-        )
-    }))
+fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
+    rows_from_binding_iter(
+        COMMAND_LINE_KEYS
+            .iter()
+            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+    )
 }
 
 fn reference_sections(
     keymap_preset: KeymapPreset,
-    engine_feature_profile: &EngineFeatureProfile,
+    feature_policy: &FeaturePolicy,
 ) -> Vec<HelpSection> {
     let mut open_switch_rows = vec![
         table_picker(keymap_preset),
@@ -336,10 +335,10 @@ fn reference_sections(
         &global::PANE_SWITCH,
         &global::INSPECTOR_TABS,
     ];
-    if engine_feature_profile.supports_er_diagram() {
+    if feature_policy.is_visible(global::ER_DIAGRAM.feature_requirement()) {
         open_switch_rows.insert(2, &global::ER_DIAGRAM);
     }
-    if engine_feature_profile.supports_sqlite_diagnostics() {
+    if feature_policy.is_visible(sqlite_diagnostics(keymap_preset).feature_requirement()) {
         open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
 
@@ -352,52 +351,67 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if engine_feature_profile.supports_jsonb_detail() {
-        data_action_rows.extend(rows_from_mode_row_refs(&[&jsonb_detail::YANK]));
+    if feature_policy.is_visible(jsonb_detail::YANK.feature_requirement()) {
+        data_action_rows.extend(rows_from_mode_row_refs_if_visible(
+            &[&jsonb_detail::YANK],
+            feature_policy,
+        ));
     }
 
     let mut search_filter_rows = rows_from_mode_row_refs(&[
         &table_picker::TYPE_FILTER,
         &query_history_picker::TYPE_FILTER,
     ]);
-    if engine_feature_profile.supports_er_diagram() {
+    if feature_policy.is_visible(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if engine_feature_profile.supports_jsonb_detail() {
-        search_filter_rows.extend(rows_from_bindings(JSONB_SEARCH_KEYS));
+    if feature_policy.is_visible(jsonb_search::TYPE_SEARCH.feature_requirement()) {
+        search_filter_rows.extend(rows_from_bindings_if_visible(
+            JSONB_SEARCH_KEYS,
+            feature_policy,
+        ));
     }
     search_filter_rows.extend(rows_from_mode_rows(HELP_ROWS));
 
     let mut editing_rows = merge_rows(&[
-        sql_current_rows(SqlHelpMode::Normal, keymap_preset, engine_feature_profile),
-        sql_current_rows(SqlHelpMode::Insert, keymap_preset, engine_feature_profile),
+        sql_current_rows(SqlHelpMode::Normal, keymap_preset, feature_policy),
+        sql_current_rows(SqlHelpMode::Insert, keymap_preset, feature_policy),
         rows_from_bindings(CELL_EDIT_KEYS),
-        rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
+        rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if engine_feature_profile.supports_jsonb_detail() {
-        editing_rows.extend(rows_from_mode_rows(JSONB_EDIT_ROWS));
+    if feature_policy.is_visible(jsonb_edit::ESC_NORMAL.feature_requirement()) {
+        editing_rows.extend(rows_from_mode_rows_if_visible(
+            JSONB_EDIT_ROWS,
+            feature_policy,
+        ));
     }
 
     let mut advanced_rows = Vec::new();
-    if engine_feature_profile.supports_explain() {
+    if feature_policy.is_visible(FeatureRequirement::Explain) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Plan,
             keymap_preset,
-            engine_feature_profile,
+            feature_policy,
         ));
     }
-    if engine_feature_profile.supports_plan_comparison() {
+    if feature_policy.is_visible(FeatureRequirement::PlanComparison) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Compare,
             keymap_preset,
-            engine_feature_profile,
+            feature_policy,
         ));
     }
-    if engine_feature_profile.supports_er_diagram() {
-        advanced_rows.extend(rows_from_mode_rows(er_picker_rows(keymap_preset)));
+    if feature_policy.is_visible(FeatureRequirement::ErDiagram) {
+        advanced_rows.extend(rows_from_mode_rows_if_visible(
+            er_picker_rows(keymap_preset),
+            feature_policy,
+        ));
     }
-    if engine_feature_profile.supports_jsonb_detail() {
-        advanced_rows.extend(rows_from_mode_rows(JSONB_DETAIL_ROWS));
+    if feature_policy.is_visible(FeatureRequirement::JsonbDetail) {
+        advanced_rows.extend(rows_from_mode_rows_if_visible(
+            JSONB_DETAIL_ROWS,
+            feature_policy,
+        ));
     }
     advanced_rows.extend(rows_from_mode_rows(ROW_DETAIL_ROWS));
 
@@ -453,35 +467,41 @@ fn reference_sections(
 fn sql_current_rows(
     mode: SqlHelpMode,
     keymap_preset: KeymapPreset,
-    engine_feature_profile: &EngineFeatureProfile,
+    feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
     match mode {
-        SqlHelpMode::Normal => rows_from_binding_refs(&[
-            &sql_modal_normal::RUN,
-            &sql_modal_normal::YANK,
-            &sql_modal_normal::ENTER_INSERT,
-            &sql_modal_normal::APPEND,
-            &sql_modal_normal::MOVE,
-            &sql_modal_normal::HOME_END,
-            &sql_modal_normal::VIEWPORT,
-            &sql_modal_normal::CLOSE,
-            &sql_modal_normal::CLEAR,
-            sql_modal_normal_query_history(keymap_preset),
-        ]),
+        SqlHelpMode::Normal => rows_from_binding_refs_if_visible(
+            &[
+                &sql_modal_normal::RUN,
+                &sql_modal_normal::YANK,
+                &sql_modal_normal::ENTER_INSERT,
+                &sql_modal_normal::APPEND,
+                &sql_modal_normal::MOVE,
+                &sql_modal_normal::HOME_END,
+                &sql_modal_normal::VIEWPORT,
+                &sql_modal_normal::CLOSE,
+                &sql_modal_normal::CLEAR,
+                sql_modal_normal_query_history(keymap_preset),
+            ],
+            feature_policy,
+        ),
         SqlHelpMode::Insert | SqlHelpMode::Running => match keymap_preset {
-            KeymapPreset::Default => rows_from_bindings(SQL_MODAL_KEYS),
-            KeymapPreset::Ide => rows_from_binding_refs(&[
-                &sql_modal::RUN,
-                &sql_modal::ESC_NORMAL,
-                &sql_modal::MOVE,
-                &sql_modal::HOME_END,
-                &sql_modal::TAB,
-                &sql_modal::CLEAR,
-            ]),
+            KeymapPreset::Default => rows_from_bindings_if_visible(SQL_MODAL_KEYS, feature_policy),
+            KeymapPreset::Ide => rows_from_binding_refs_if_visible(
+                &[
+                    &sql_modal::RUN,
+                    &sql_modal::ESC_NORMAL,
+                    &sql_modal::MOVE,
+                    &sql_modal::HOME_END,
+                    &sql_modal::TAB,
+                    &sql_modal::CLEAR,
+                ],
+                feature_policy,
+            ),
         },
         SqlHelpMode::Plan => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if engine_feature_profile.supports_explain_analyze() {
+            if feature_policy.is_visible(sql_modal_plan::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_plan::ANALYZE);
             }
             bindings.extend([
@@ -491,11 +511,11 @@ fn sql_current_rows(
                 &sql_modal_plan::BACKTAB,
                 &sql_modal_plan::CLOSE,
             ]);
-            rows_from_binding_refs(&bindings)
+            rows_from_binding_refs_if_visible(&bindings, feature_policy)
         }
         SqlHelpMode::Compare => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if engine_feature_profile.supports_explain_analyze() {
+            if feature_policy.is_visible(sql_modal_compare::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_compare::ANALYZE);
             }
             bindings.extend([
@@ -506,9 +526,11 @@ fn sql_current_rows(
                 &sql_modal_compare::BACKTAB,
                 &sql_modal_compare::CLOSE,
             ]);
-            rows_from_binding_refs(&bindings)
+            rows_from_binding_refs_if_visible(&bindings, feature_policy)
         }
-        SqlHelpMode::Confirm => rows_from_bindings(SQL_MODAL_CONFIRMING_KEYS),
+        SqlHelpMode::Confirm => {
+            rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy)
+        }
     }
 }
 
@@ -544,11 +566,11 @@ fn connection_setup_current_rows(
     rows
 }
 
-fn jsonb_current_rows(mode: JsonbHelpMode) -> Vec<HelpRow> {
+fn jsonb_current_rows(mode: JsonbHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     match mode {
-        JsonbHelpMode::Detail => rows_from_mode_rows(JSONB_DETAIL_ROWS),
-        JsonbHelpMode::Search => rows_from_bindings(JSONB_SEARCH_KEYS),
-        JsonbHelpMode::Edit => rows_from_mode_rows(JSONB_EDIT_ROWS),
+        JsonbHelpMode::Detail => rows_from_mode_rows_if_visible(JSONB_DETAIL_ROWS, feature_policy),
+        JsonbHelpMode::Search => rows_from_bindings_if_visible(JSONB_SEARCH_KEYS, feature_policy),
+        JsonbHelpMode::Edit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
     }
 }
 
@@ -563,8 +585,31 @@ fn rows_from_bindings(bindings: &[KeyBinding]) -> Vec<HelpRow> {
     rows_from_binding_iter(bindings.iter())
 }
 
+fn rows_from_bindings_if_visible(
+    bindings: &[KeyBinding],
+    feature_policy: &FeaturePolicy,
+) -> Vec<HelpRow> {
+    rows_from_binding_iter(
+        bindings
+            .iter()
+            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+    )
+}
+
 fn rows_from_binding_refs(bindings: &[&KeyBinding]) -> Vec<HelpRow> {
     rows_from_binding_iter(bindings.iter().copied())
+}
+
+fn rows_from_binding_refs_if_visible(
+    bindings: &[&KeyBinding],
+    feature_policy: &FeaturePolicy,
+) -> Vec<HelpRow> {
+    rows_from_binding_iter(
+        bindings
+            .iter()
+            .copied()
+            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+    )
 }
 
 fn rows_from_binding_iter<'a>(bindings: impl IntoIterator<Item = &'a KeyBinding>) -> Vec<HelpRow> {
@@ -613,8 +658,28 @@ fn rows_from_mode_rows(rows: &[ModeRow]) -> Vec<HelpRow> {
     rows.iter().map(row_from_mode_row).collect()
 }
 
+fn rows_from_mode_rows_if_visible(
+    rows: &[ModeRow],
+    feature_policy: &FeaturePolicy,
+) -> Vec<HelpRow> {
+    rows.iter()
+        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .map(row_from_mode_row)
+        .collect()
+}
+
 fn rows_from_mode_row_refs(rows: &[&ModeRow]) -> Vec<HelpRow> {
     rows.iter().map(|&row| row_from_mode_row(row)).collect()
+}
+
+fn rows_from_mode_row_refs_if_visible(
+    rows: &[&ModeRow],
+    feature_policy: &FeaturePolicy,
+) -> Vec<HelpRow> {
+    rows.iter()
+        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .map(|&row| row_from_mode_row(row))
+        .collect()
 }
 
 fn row_from_mode_row(row: &ModeRow) -> HelpRow {

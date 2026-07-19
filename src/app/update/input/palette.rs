@@ -1,7 +1,8 @@
 use super::keybindings::{KeyBinding, global};
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::settings::KeymapPreset;
-use crate::update::action::{Action, ModalKind};
+use crate::policy::FeaturePolicy;
+use crate::update::action::Action;
 
 // Deliberate opt-in list in display order — not derived from GLOBAL_KEYS, so an
 // entry never appears in the palette by accident. A test forces every global
@@ -68,28 +69,20 @@ pub fn palette_commands(
     preset: KeymapPreset,
     engine_feature_profile: &EngineFeatureProfile,
 ) -> impl Iterator<Item = &'static KeyBinding> {
+    let feature_policy = FeaturePolicy::new(engine_feature_profile);
     palette_commands_for(preset)
         .iter()
-        .filter(|kb| palette_command_supported(kb, engine_feature_profile))
+        .filter(move |kb| palette_command_supported(kb, &feature_policy))
 }
 
-fn palette_command_supported(
-    kb: &KeyBinding,
-    engine_feature_profile: &EngineFeatureProfile,
-) -> bool {
-    !matches!(
-        kb.action,
-        Action::OpenModal(ModalKind::ErTablePicker) if !engine_feature_profile.supports_er_diagram()
-    ) && !matches!(
-        kb.action,
-        Action::OpenModal(ModalKind::SqliteDiagnostics)
-            if !engine_feature_profile.supports_sqlite_diagnostics()
-    )
+fn palette_command_supported(kb: &KeyBinding, feature_policy: &FeaturePolicy) -> bool {
+    feature_policy.is_enabled(kb.feature_requirement())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::ModalKind;
     use crate::update::input::keybindings::{
         GLOBAL_KEYS, IDE_GLOBAL_KEYS, same_payload_free_action,
     };

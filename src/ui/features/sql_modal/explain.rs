@@ -12,6 +12,7 @@ use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::sql::sqlite_explain::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
+use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
 use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
@@ -24,11 +25,8 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    if !state
-        .session
-        .active_engine_feature_profile()
-        .supports_explain()
-    {
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if !feature_policy.is_enabled(FeatureRequirement::Explain) {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",
             Style::default().fg(theme.semantic.text.placeholder),

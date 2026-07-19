@@ -13,6 +13,7 @@ use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
+use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
@@ -150,13 +151,14 @@ impl Footer {
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let capabilities = state.session.active_engine_feature_profile();
+                    let feature_policy = FeaturePolicy::new(capabilities);
                     let active_inspector_tab =
                         capabilities.normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
-                    if capabilities.supports_er_diagram() {
+                    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
                         list.push(global::ER_DIAGRAM.as_hint());
                     }
-                    if capabilities.supports_sqlite_diagnostics() {
+                    if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                         list.push(sqlite_diagnostics(keymap_preset).as_hint());
                     }
                     if state.ui.focused_pane() == FocusedPane::Explorer {
@@ -300,8 +302,15 @@ impl Footer {
                 ]
             }
             InputMode::SqliteDiagnostics => {
-                let mut hints = vec![sqlite_diagnostics::SCROLL.as_hint()];
-                if state.sqlite_diagnostics.can_run_quick_check() {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                let mut hints = Vec::new();
+                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                    hints.push(sqlite_diagnostics::SCROLL.as_hint());
+                }
+                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics)
+                    && state.sqlite_diagnostics.can_run_quick_check()
+                {
                     hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
                 }
                 hints.extend([
@@ -310,20 +319,32 @@ impl Footer {
                 ]);
                 hints
             }
-            InputMode::ErTablePicker => vec![
-                er_picker::ENTER_GENERATE.as_hint(),
-                er_picker::SELECT.as_hint(),
-                er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
-                er_picker::TYPE_FILTER.as_hint(),
-                er_picker::ESC_CLOSE.as_hint(),
-            ],
+            InputMode::ErTablePicker => {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                let mut hints = Vec::new();
+                if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                    hints.extend([
+                        er_picker::ENTER_GENERATE.as_hint(),
+                        er_picker::SELECT.as_hint(),
+                        er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
+                        er_picker::TYPE_FILTER.as_hint(),
+                    ]);
+                }
+                hints.push(er_picker::ESC_CLOSE.as_hint());
+                hints
+            }
             InputMode::QueryHistoryPicker => vec![
                 query_history_picker::ENTER_SELECT.as_hint(),
                 query_history_picker::TYPE_FILTER.as_hint(),
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                    vec![]
+                } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
                         jsonb_search::CONFIRM.as_hint(),
@@ -340,11 +361,19 @@ impl Footer {
                     ]
                 }
             }
-            InputMode::JsonbEdit => vec![
-                jsonb_edit::ESC_NORMAL.as_hint(),
-                jsonb_edit::MOVE.as_hint(),
-                jsonb_edit::HOME_END.as_hint(),
-            ],
+            InputMode::JsonbEdit => {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                if feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                    vec![
+                        jsonb_edit::ESC_NORMAL.as_hint(),
+                        jsonb_edit::MOVE.as_hint(),
+                        jsonb_edit::HOME_END.as_hint(),
+                    ]
+                } else {
+                    vec![]
+                }
+            }
             InputMode::CellDetail => {
                 if state.cell_detail.search().is_active() {
                     vec![

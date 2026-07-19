@@ -16,6 +16,7 @@ use crate::app::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::sql_editor::modal::{SQL_MODAL_HEIGHT_PERCENT, SqlModalStatus, SqlModalTab};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
+use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_compare, sql_modal_normal, sql_modal_plan, sql_modal_plan_explain,
 };
@@ -41,6 +42,7 @@ impl SqlModal {
             SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         );
         let engine_feature_profile = state.session.active_engine_feature_profile();
+        let feature_policy = FeaturePolicy::new(engine_feature_profile);
         let active_tab =
             engine_feature_profile.normalize_sql_modal_tab(state.sql_modal.active_tab());
 
@@ -101,7 +103,7 @@ impl SqlModal {
         } else {
             let hint = match state.sql_modal.status() {
                 SqlModalStatus::Editing => {
-                    Self::editing_hint(engine_feature_profile, state.settings.saved_keymap_preset())
+                    Self::editing_hint(&feature_policy, state.settings.saved_keymap_preset())
                 }
                 SqlModalStatus::Running => FooterHintBar::message("Running\u{2026}"),
                 SqlModalStatus::ConfirmingAnalyzeHigh {
@@ -123,6 +125,7 @@ impl SqlModal {
                         active_tab,
                         compare_can_yank,
                         engine_feature_profile,
+                        &feature_policy,
                         state.settings.saved_keymap_preset(),
                     )
                 }
@@ -256,11 +259,12 @@ impl SqlModal {
         tab: SqlModalTab,
         compare_can_yank: bool,
         engine_feature_profile: &EngineFeatureProfile,
+        feature_policy: &FeaturePolicy,
         keymap_preset: KeymapPreset,
     ) -> FooterHintBar {
         match tab {
             SqlModalTab::Sql if engine_feature_profile.supported_sql_modal_tabs().len() == 1 => {
-                if engine_feature_profile.supports_explain() {
+                if feature_policy.is_enabled(FeatureRequirement::Explain) {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
                         sql_modal_plan_explain(keymap_preset).as_hint(),
@@ -280,19 +284,22 @@ impl SqlModal {
                 ("Tab/⇧Tab", sql_modal_plan::TAB.as_hint().1),
                 sql_modal_plan::CLOSE.as_hint(),
             ]),
-            SqlModalTab::Compare if compare_can_yank => FooterHintBar::new([
-                sql_modal_compare::EDIT_QUERY.as_hint(),
-                sql_modal_compare::YANK.as_hint(),
-                ("Tab/⇧Tab", sql_modal_compare::TAB.as_hint().1),
-                sql_modal_compare::CLOSE.as_hint(),
-            ]),
-            SqlModalTab::Compare => FooterHintBar::new([
-                sql_modal_compare::EDIT_QUERY.as_hint(),
-                ("Tab/⇧Tab", sql_modal_compare::TAB.as_hint().1),
-                sql_modal_compare::CLOSE.as_hint(),
-            ]),
+            SqlModalTab::Compare => {
+                let mut hints = Vec::new();
+                if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
+                    hints.push(sql_modal_compare::EDIT_QUERY.as_hint());
+                }
+                if compare_can_yank {
+                    hints.push(sql_modal_compare::YANK.as_hint());
+                }
+                hints.extend([
+                    ("Tab/⇧Tab", sql_modal_compare::TAB.as_hint().1),
+                    sql_modal_compare::CLOSE.as_hint(),
+                ]);
+                FooterHintBar::new(hints)
+            }
             SqlModalTab::Sql => {
-                if engine_feature_profile.supports_explain() {
+                if feature_policy.is_enabled(FeatureRequirement::Explain) {
                     FooterHintBar::new([
                         sql_modal_normal::RUN.as_hint(),
                         sql_modal_plan_explain(keymap_preset).as_hint(),
@@ -312,11 +319,11 @@ impl SqlModal {
         }
     }
 
-    fn editing_hint(
-        engine_feature_profile: &EngineFeatureProfile,
-        keymap_preset: KeymapPreset,
-    ) -> FooterHintBar {
-        match (engine_feature_profile.supports_explain(), keymap_preset) {
+    fn editing_hint(feature_policy: &FeaturePolicy, keymap_preset: KeymapPreset) -> FooterHintBar {
+        match (
+            feature_policy.is_enabled(FeatureRequirement::Explain),
+            keymap_preset,
+        ) {
             (true, KeymapPreset::Default) => FooterHintBar::new([
                 sql_modal::RUN.as_hint(),
                 sql_modal_plan::EXPLAIN.as_hint(),

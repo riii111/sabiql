@@ -1,6 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::key_sequence::Prefix;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{Action, ModalKind};
 use crate::update::input::keybindings::{self as kb, Key, KeyCombo, Modifiers};
 use crate::update::input::vim::{
@@ -12,6 +13,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();
     let keymap_preset = state.settings.saved_keymap_preset();
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
 
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before Ctrl/global actions so that the second key is
@@ -62,16 +64,9 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     }
 
     // Global actions (predicate-based, no modifiers)
-    if let Some(action) = kb::global_action_for(&combo, keymap_preset) {
+    if let Some(action) = kb::global_action_for_with_policy(&combo, keymap_preset, &feature_policy)
+    {
         if matches!(action, Action::RequestCsvExport) && !state.can_request_csv_export() {
-            return Action::None;
-        }
-        if matches!(action, Action::OpenModal(ModalKind::SqliteDiagnostics))
-            && !state
-                .session
-                .active_engine_feature_profile()
-                .supports_sqlite_diagnostics()
-        {
             return Action::None;
         }
         return action;
@@ -136,12 +131,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Action::UnstageLastStagedRow
         }
         Key::Char('s') => Action::OpenModal(ModalKind::SqlModal),
-        Key::Char('e')
-            if state
-                .session
-                .active_engine_feature_profile()
-                .supports_er_diagram() =>
-        {
+        Key::Char('e') if feature_policy.is_enabled(FeatureRequirement::ErDiagram) => {
             Action::OpenModal(ModalKind::ErTablePicker)
         }
         Key::Char('c') if state.ui.focused_pane() == FocusedPane::Explorer => {

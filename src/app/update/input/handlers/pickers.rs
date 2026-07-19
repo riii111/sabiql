@@ -1,7 +1,8 @@
 use crate::model::app_state::AppState;
+use crate::policy::FeaturePolicy;
 use crate::update::action::{Action, InputTarget};
 use crate::update::input::keybindings::{self, Key, KeyCombo, Modifiers};
-use crate::update::input::keymap::resolve_mode;
+use crate::update::input::keymap::resolve_mode_with_policy;
 
 pub fn handle_table_picker_keys(combo: KeyCombo) -> Action {
     if let Some(action) = keybindings::TABLE_PICKER.resolve(&combo) {
@@ -82,9 +83,11 @@ pub fn handle_query_history_picker_keys(combo: KeyCombo) -> Action {
 }
 
 pub fn handle_er_table_picker_keys(combo: KeyCombo, state: &AppState) -> Action {
-    if let Some(action) = resolve_mode(
+    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    if let Some(action) = resolve_mode_with_policy(
         &combo,
         keybindings::er_picker_rows(state.settings.saved_keymap_preset()),
+        &feature_policy,
     ) {
         return action;
     }
@@ -378,8 +381,11 @@ mod tests {
     mod er_table_picker {
         use super::*;
 
+        use crate::update::test_fixtures;
         fn state() -> AppState {
-            AppState::new("test".to_string())
+            let mut state = AppState::new("test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
         }
 
         fn state_with_preset(preset: KeymapPreset) -> AppState {
