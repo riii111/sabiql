@@ -7,52 +7,14 @@ mod inspector;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::model::shared::inspector_tab::InspectorTab;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-fn inspector_total_items(state: &AppState, services: &AppServices) -> usize {
-    let capabilities = state.session.active_engine_feature_profile();
-    let active_tab = capabilities.normalize_inspector_tab(state.ui.inspector_tab());
-    state
-        .session
-        .table_detail()
-        .map_or(0, |t| match active_tab {
-            InspectorTab::Info => capabilities.inspector_info_line_count(),
-            InspectorTab::Columns => t.columns.len(),
-            InspectorTab::Indexes => t.indexes.len(),
-            InspectorTab::ForeignKeys => t.foreign_keys.len(),
-            InspectorTab::Rls => t.rls.as_ref().map_or(1, |rls| {
-                let mut lines = 1;
-                if !rls.policies.is_empty() {
-                    lines += 2;
-                    for policy in &rls.policies {
-                        lines += 1;
-                        if policy.qual.is_some() {
-                            lines += 1;
-                        }
-                    }
-                }
-                lines
-            }),
-            InspectorTab::Triggers => t.triggers.len(),
-            InspectorTab::Ddl => services
-                .ddl_generator
-                .ddl_line_count(state.session.active_database_type_or_default(), t),
-        })
-}
-
 pub(super) fn inspector_max_scroll(state: &AppState, services: &AppServices) -> usize {
-    let visible = match state
-        .session
-        .active_engine_feature_profile()
-        .normalize_inspector_tab(state.ui.inspector_tab())
-    {
-        InspectorTab::Ddl => state.inspector_ddl_visible_rows(),
-        _ => state.inspector_visible_rows(),
-    };
-    inspector_total_items(state, services).saturating_sub(visible)
+    state
+        .inspector_view_model(services.ddl_generator.as_ref())
+        .max_scroll(state.ui.inspector_pane_height())
 }
 
 pub(super) fn explorer_item_count(state: &AppState) -> usize {
