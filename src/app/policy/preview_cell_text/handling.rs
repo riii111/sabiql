@@ -15,39 +15,50 @@ pub enum PreviewCellTextDisplayHandling {
     PostgreSqlJsonb,
 }
 
-pub fn preview_cell_text_diff_handling(
-    database_type: DatabaseType,
-    column_data_type: &str,
-) -> PreviewCellTextDiffHandling {
-    match (database_type, column_data_type) {
-        (DatabaseType::PostgreSQL, "jsonb") => PreviewCellTextDiffHandling::PostgreSqlJsonb,
-        _ => PreviewCellTextDiffHandling::RawText,
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CellPresentationPolicy {
+    diff_handling: PreviewCellTextDiffHandling,
+    display_handling: PreviewCellTextDisplayHandling,
 }
 
-pub fn preview_cell_text_display_handling(
-    database_type: DatabaseType,
-    column_data_type: &str,
-    value: &str,
-) -> PreviewCellTextDisplayHandling {
-    match database_type {
-        DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
-            PreviewCellTextDisplayHandling::SqliteText
-        }
-        DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
-        DatabaseType::PostgreSQL => match column_data_type {
-            "jsonb" => PreviewCellTextDisplayHandling::PostgreSqlJsonb,
-            "json" => PreviewCellTextDisplayHandling::PostgreSqlJson,
-            _ if looks_like_json_container(value) => {
-                PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+impl CellPresentationPolicy {
+    pub fn new(database_type: DatabaseType, column_data_type: &str, value: &str) -> Self {
+        let diff_handling = match (database_type, column_data_type) {
+            (DatabaseType::PostgreSQL, "jsonb") => PreviewCellTextDiffHandling::PostgreSqlJsonb,
+            _ => PreviewCellTextDiffHandling::RawText,
+        };
+        let display_handling = match database_type {
+            DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
+                PreviewCellTextDisplayHandling::SqliteText
             }
-            _ => PreviewCellTextDisplayHandling::RawText,
-        },
-    }
-}
+            DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
+            DatabaseType::PostgreSQL => match column_data_type {
+                "jsonb" => PreviewCellTextDisplayHandling::PostgreSqlJsonb,
+                "json" => PreviewCellTextDisplayHandling::PostgreSqlJson,
+                _ if looks_like_json_container(value) => {
+                    PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+                }
+                _ => PreviewCellTextDisplayHandling::RawText,
+            },
+        };
 
-pub fn uses_jsonb_detail_modal(diff_handling: PreviewCellTextDiffHandling) -> bool {
-    diff_handling == PreviewCellTextDiffHandling::PostgreSqlJsonb
+        Self {
+            diff_handling,
+            display_handling,
+        }
+    }
+
+    pub fn diff_handling(self) -> PreviewCellTextDiffHandling {
+        self.diff_handling
+    }
+
+    pub fn display_handling(self) -> PreviewCellTextDisplayHandling {
+        self.display_handling
+    }
+
+    pub fn uses_jsonb_detail_modal(self) -> bool {
+        self.diff_handling == PreviewCellTextDiffHandling::PostgreSqlJsonb
+    }
 }
 
 fn looks_like_json_container(value: &str) -> bool {
@@ -67,39 +78,39 @@ mod tests {
     #[test]
     fn sqlite_columns_always_use_raw_text() {
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::SQLite, "TEXT"),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", "").diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::SQLite, "json"),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "json", "").diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::SQLite, "jsonb"),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "").diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
-        assert!(!uses_jsonb_detail_modal(preview_cell_text_diff_handling(
-            DatabaseType::SQLite,
-            "jsonb"
-        )));
+        assert!(
+            !CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "")
+                .uses_jsonb_detail_modal()
+        );
     }
 
     #[test]
     fn postgresql_jsonb_uses_semantic_handling() {
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "jsonb"),
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling(),
             PreviewCellTextDiffHandling::PostgreSqlJsonb
         );
-        assert!(uses_jsonb_detail_modal(preview_cell_text_diff_handling(
-            DatabaseType::PostgreSQL,
-            "jsonb"
-        )));
+        assert!(
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "")
+                .uses_jsonb_detail_modal()
+        );
     }
 
     #[test]
     fn postgresql_json_uses_raw_text_for_diff() {
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "json"),
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "json", "").diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
     }
@@ -107,7 +118,7 @@ mod tests {
     #[test]
     fn postgresql_text_uses_raw_text_for_diff() {
         assert_eq!(
-            preview_cell_text_diff_handling(DatabaseType::PostgreSQL, "text"),
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", "").diff_handling(),
             PreviewCellTextDiffHandling::RawText
         );
     }
@@ -115,15 +126,13 @@ mod tests {
     #[test]
     fn sqlite_text_affinity_uses_text_display_handling() {
         assert_eq!(
-            preview_cell_text_display_handling(
-                DatabaseType::SQLite,
-                "TEXT",
-                r#"{"items":["admin"]}"#
-            ),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", r#"{"items":["admin"]}"#)
+                .display_handling(),
             PreviewCellTextDisplayHandling::SqliteText
         );
         assert_eq!(
-            preview_cell_text_display_handling(DatabaseType::SQLite, "varchar(255)", "42"),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "varchar(255)", "42")
+                .display_handling(),
             PreviewCellTextDisplayHandling::SqliteText
         );
     }
@@ -131,11 +140,12 @@ mod tests {
     #[test]
     fn sqlite_non_text_affinity_uses_raw_display_handling() {
         assert_eq!(
-            preview_cell_text_display_handling(DatabaseType::SQLite, "INTEGER", "42"),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "INTEGER", "42").display_handling(),
             PreviewCellTextDisplayHandling::RawText
         );
         assert_eq!(
-            preview_cell_text_display_handling(DatabaseType::SQLite, "json", r#"{"a":1}"#),
+            CellPresentationPolicy::new(DatabaseType::SQLite, "json", r#"{"a":1}"#)
+                .display_handling(),
             PreviewCellTextDisplayHandling::RawText
         );
     }
@@ -143,11 +153,8 @@ mod tests {
     #[test]
     fn postgresql_text_json_container_uses_json_like_display_handling() {
         assert_eq!(
-            preview_cell_text_display_handling(
-                DatabaseType::PostgreSQL,
-                "text",
-                r#"{"items":["admin"]}"#
-            ),
+            CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", r#"{"items":["admin"]}"#)
+                .display_handling(),
             PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
         );
     }

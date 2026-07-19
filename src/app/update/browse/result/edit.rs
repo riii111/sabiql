@@ -8,7 +8,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
-use crate::policy::preview_cell_text::{preview_cell_text_diff_handling, uses_jsonb_detail_modal};
+use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::write::inline_cell_edit::text_for_inline_edit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
@@ -25,11 +25,12 @@ fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(column) = td.columns.get(col_idx) else {
         return false;
     };
-    let handling = preview_cell_text_diff_handling(
+    let policy = CellPresentationPolicy::new(
         state.session.active_database_type_or_default(),
         column.data_type.as_str(),
+        "",
     );
-    uses_jsonb_detail_modal(handling)
+    policy.uses_jsonb_detail_modal()
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {

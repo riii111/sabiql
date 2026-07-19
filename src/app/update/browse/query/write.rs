@@ -9,7 +9,7 @@ use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
-    normalize_for_write_diff, preview_cell_text_diff_handling, uses_structured_json_diff,
+    CellPresentationPolicy, normalize_for_write_diff, uses_structured_json_diff,
 };
 use crate::policy::write::inline_cell_edit::build_inline_edited_value;
 use crate::policy::write::write_guardrails::{
@@ -107,7 +107,8 @@ fn build_update_preview(
                 .table_detail()
                 .and_then(|td| td.columns.get(col_idx))
                 .map_or("", |c| c.data_type.as_str());
-            let handling = preview_cell_text_diff_handling(database_type, column_data_type);
+            let handling =
+                CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
             let before = normalize_for_write_diff(
                 state.result_interaction.cell_edit().original_value(),
                 handling,

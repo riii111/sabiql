@@ -6,10 +6,7 @@ use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::detail_view::DetailDisplayMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::preview_cell_text::{
-    format_for_cell_detail, preview_cell_text_diff_handling, preview_cell_text_display_handling,
-    uses_jsonb_detail_modal,
-};
+use crate::policy::preview_cell_text::{CellPresentationPolicy, format_for_cell_detail};
 use crate::ports::outbound::ClipboardError;
 use crate::update::action::{Action, InputTarget, ModalKind, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
@@ -32,9 +29,8 @@ pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -
 
             let database_type = state.session.active_database_type_or_default();
             let column_data_type = data_type.as_deref().unwrap_or("");
-            let display_handling =
-                preview_cell_text_display_handling(database_type, column_data_type, &cell_value);
-            let display = format_for_cell_detail(&cell_value, display_handling);
+            let policy = CellPresentationPolicy::new(database_type, column_data_type, &cell_value);
+            let display = format_for_cell_detail(&cell_value, policy.display_handling());
             let display_mode = if display.formatted_json {
                 DetailDisplayMode::FormattedJson
             } else {
@@ -169,11 +165,12 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
     let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
         return false;
     };
-    let handling = preview_cell_text_diff_handling(
+    let policy = CellPresentationPolicy::new(
         state.session.active_database_type_or_default(),
         column_data_type,
+        "",
     );
-    uses_jsonb_detail_modal(handling)
+    policy.uses_jsonb_detail_modal()
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
