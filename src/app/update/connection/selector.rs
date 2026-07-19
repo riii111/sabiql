@@ -128,6 +128,10 @@ mod tests {
         .unwrap()
     }
 
+    fn create_sqlite_profile(name: &str) -> ConnectionProfile {
+        ConnectionProfile::new_sqlite(name.to_string(), format!("/tmp/{name}.db")).unwrap()
+    }
+
     mod open_connection_selector {
         use super::*;
 
@@ -336,7 +340,7 @@ mod tests {
         }
 
         #[test]
-        fn resets_full_state_when_active_deleted() {
+        fn resets_postgres_state_when_active_deleted() {
             let mut state = AppState::new("test".to_string());
             let profile = create_profile("Production");
             let profile_id = profile.id.clone();
@@ -374,11 +378,6 @@ mod tests {
                 "SELECT * FROM users WHERE id = 1",
             );
             state.explain.set_error("stale error".to_string());
-            let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
-            state
-                .sqlite_diagnostics
-                .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());
-            let _ = state.sqlite_diagnostics.begin_quick_check();
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
@@ -414,6 +413,55 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.er_preparation.pending_tables().is_empty());
+        }
+
+        #[test]
+        fn resets_sqlite_state_when_active_deleted() {
+            let mut state = AppState::new("test".to_string());
+            let profile = create_sqlite_profile("Production");
+            let profile_id = profile.id.clone();
+            state.set_connections(vec![profile]);
+            state.session.activate_connection_with_dsn(
+                &profile_id,
+                "Production",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/Production.db",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
+            state.ui.set_inspector_scroll_offset(17);
+            state.ui.set_inspector_horizontal_offset(23);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+            state
+                .explain
+                .set_plan("SCAN users".to_string(), false, 0, "SELECT * FROM users");
+            state.explain.set_error("stale error".to_string());
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
+            state
+                .sqlite_diagnostics
+                .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());
+            let _ = state.sqlite_diagnostics.begin_quick_check();
+
+            reduce_connection_selector(
+                &mut state,
+                &Action::ConnectionDeleted(profile_id),
+                Instant::now(),
+            );
+
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
+            assert_eq!(state.ui.inspector_horizontal_offset(), 0);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert!(state.explain.plan_text().is_none());
+            assert!(state.explain.error().is_none());
+            assert!(state.explain.left().is_none());
+            assert!(state.explain.right().is_none());
+            assert!(state.explain.history().is_empty());
+            assert!(state.sqlite_diagnostics.snapshot().is_none());
+            assert!(!state.sqlite_diagnostics.is_quick_check_running());
         }
 
         #[test]
