@@ -219,26 +219,6 @@ impl ExplainContext {
     }
 }
 
-#[cfg(any(test, feature = "test-support"))]
-impl ExplainContext {
-    pub fn set_plan_text_for_test(&mut self, plan_text: Option<String>) {
-        self.plan_text = plan_text;
-    }
-
-    pub fn set_error_for_test(&mut self, error: Option<String>) {
-        self.error = error;
-    }
-
-    pub fn set_compare_slots_for_test(
-        &mut self,
-        left: Option<CompareSlot>,
-        right: Option<CompareSlot>,
-    ) {
-        self.left = left;
-        self.right = right;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,7 +347,12 @@ mod tests {
             0,
             "B",
         );
-        ctx.set_error_for_test(Some("stale error".to_string()));
+        ctx.set_error("stale error".to_string());
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_some());
+        assert!(ctx.left().is_some());
+        assert!(ctx.right().is_some());
+        assert!(!ctx.history().is_empty());
 
         ctx.reset_for_connection_change();
 

@@ -284,8 +284,11 @@ mod tests {
 
     mod connection_deleted {
         use super::*;
+        use crate::domain::SqliteDiagnosticsSnapshot;
         use crate::model::connection::state::ConnectionState;
         use crate::model::er_state::ErStatus;
+        use crate::model::shared::inspector_tab::InspectorTab;
+        use crate::model::sql_editor::modal::SqlModalTab;
 
         #[test]
         fn removes_connection_from_list() {
@@ -354,6 +357,28 @@ mod tests {
             state.result_interaction.set_scroll_offset(10);
             state.result_interaction.set_horizontal_offset(20);
             state.result_interaction.stage_row(0);
+            state.ui.set_inspector_tab(InspectorTab::Rls);
+            state.ui.set_inspector_scroll_offset(17);
+            state.ui.set_inspector_horizontal_offset(23);
+            state.sql_modal.set_active_tab(SqlModalTab::Compare);
+            state.explain.set_plan(
+                "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                false,
+                0,
+                "SELECT * FROM users",
+            );
+            state.explain.set_plan(
+                "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                false,
+                0,
+                "SELECT * FROM users WHERE id = 1",
+            );
+            state.explain.set_error("stale error".to_string());
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
+            state
+                .sqlite_diagnostics
+                .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());
+            let _ = state.sqlite_diagnostics.begin_quick_check();
             state.ui.set_pending_er_picker(true);
             let _ = state.er_preparation.start_waiting_run();
             state
@@ -375,6 +400,17 @@ mod tests {
             assert_eq!(state.result_interaction.horizontal_offset(), 0);
             assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert!(state.result_interaction.pending_write_preview().is_none());
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Info);
+            assert_eq!(state.ui.inspector_scroll_offset(), 0);
+            assert_eq!(state.ui.inspector_horizontal_offset(), 0);
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+            assert!(state.explain.plan_text().is_none());
+            assert!(state.explain.error().is_none());
+            assert!(state.explain.left().is_none());
+            assert!(state.explain.right().is_none());
+            assert!(state.explain.history().is_empty());
+            assert!(state.sqlite_diagnostics.snapshot().is_none());
+            assert!(!state.sqlite_diagnostics.is_quick_check_running());
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.er_preparation.pending_tables().is_empty());
