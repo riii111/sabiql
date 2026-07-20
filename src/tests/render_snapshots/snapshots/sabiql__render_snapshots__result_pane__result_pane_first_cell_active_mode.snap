@@ -51,4 +51,4 @@ test_project ▸ test_db ▸ -                                                  
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-i:Edit  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  ?:Help  Esc:Back  q:Quit
+Enter:Detail  Y:Yank Cell  yy:Yank Row  K:Row Detail  dd:Stage Del  ?:Help  Esc:Back  q:Quit

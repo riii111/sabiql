@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
-use crate::model::shared::text_input::TextInputEditing;
+use crate::model::shared::text_input::{TextInputEditing, TextInputState};
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -17,7 +17,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() == InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.is_none() {
+            if state.session.active_connection_id().is_none() {
                 return DispatchResult::handled();
             }
             if state.query.is_running() {
@@ -35,7 +35,7 @@ pub(super) fn reduce_query_history_picker(
             state.query_history_picker.reset();
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            let conn_id = state.session.active_connection_id.as_ref().unwrap();
+            let conn_id = state.session.active_connection_id().unwrap();
             DispatchResult::handled_with(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
                 connection_id: conn_id.clone(),
@@ -50,7 +50,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id() != Some(conn_id) {
                 return DispatchResult::handled();
             }
             state.query_history_picker.replace_entries(entries);
@@ -60,7 +60,7 @@ pub(super) fn reduce_query_history_picker(
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id.as_ref() != Some(conn_id) {
+            if state.session.active_connection_id() != Some(conn_id) {
                 return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);
@@ -85,7 +85,7 @@ pub(super) fn reduce_query_history_picker(
         } => {
             state
                 .query_history_picker
-                .edit_filter(crate::model::shared::text_input::TextInputState::delete);
+                .edit_filter(TextInputState::delete);
             DispatchResult::handled()
         }
         Action::TextKill {

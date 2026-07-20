@@ -1,8 +1,10 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 
 use crate::domain::{QueryResult, WriteExecutionResult};
 
-use super::DbOperationError;
+use super::{AccessMode, DbOperationError};
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -14,32 +16,25 @@ pub trait QueryExecutor: Send + Sync {
         table: &str,
         limit: usize,
         offset: usize,
-        read_only: bool,
     ) -> Result<QueryResult, DbOperationError>;
 
     async fn execute_adhoc(
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError>;
     async fn execute_write(
         &self,
         dsn: &str,
         query: &str,
-        read_only: bool,
+        access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError>;
-    async fn count_query_rows(
-        &self,
-        dsn: &str,
-        query: &str,
-        read_only: bool,
-    ) -> Result<usize, DbOperationError>;
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError>;
     async fn export_to_csv(
         &self,
         dsn: &str,
         query: &str,
-        path: &std::path::Path,
-        read_only: bool,
-    ) -> Result<usize, DbOperationError>;
+        file_name: &str,
+    ) -> Result<PathBuf, DbOperationError>;
 }

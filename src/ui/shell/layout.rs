@@ -10,8 +10,9 @@ use crate::app::model::shared::render_output::{
     OverlayLayout, PickerLayouts, ResultLayout,
 };
 use crate::app::model::shared::ui_state::explorer_content_width_from_pane_width;
-use crate::app::ports::outbound::RenderOutput;
+use crate::app::ports::outbound::{CellDetailViewport, RenderOutput};
 use crate::app::services::AppServices;
+use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
 use crate::features::browse::jsonb_detail::JsonbDetail;
@@ -23,6 +24,7 @@ use crate::features::connections::setup::ConnectionSetup;
 use crate::features::overlays::confirm_dialog::ConfirmDialog;
 use crate::features::overlays::help::HelpOverlay;
 use crate::features::overlays::settings::SettingsOverlay;
+use crate::features::overlays::sqlite_diagnostics::SqliteDiagnosticsOverlay;
 use crate::features::pickers::command_palette::CommandPalette;
 use crate::features::pickers::er_table_picker::ErTablePicker;
 use crate::features::pickers::query_history_picker::QueryHistoryPicker;
@@ -88,7 +90,7 @@ impl MainLayout {
         Header::render(frame, header_area, state, theme);
         let browse = Self::render_browse_mode(frame, main_area, state, services, now, theme);
 
-        Footer::render(frame, footer_area, state, services, time_ms, theme);
+        Footer::render(frame, footer_area, state, time_ms, theme);
         let command_line_visible_width = CommandLine::render(frame, cmdline_area, state, theme);
         let connection_list_pane_height = match state.input_mode() {
             InputMode::ConnectionSelector => Some(ConnectionSelector::render(frame, state, theme)),
@@ -116,7 +118,7 @@ impl MainLayout {
         };
 
         let explain_compare_viewport_height = if matches!(state.input_mode(), InputMode::SqlModal) {
-            SqlModal::render(frame, state, services, now, theme)
+            SqlModal::render(frame, state, now, theme)
         } else {
             None
         };
@@ -128,10 +130,35 @@ impl MainLayout {
             _ => None,
         };
 
+        let cell_detail = match state.input_mode() {
+            InputMode::CellDetail => CellDetail::render(frame, state, now, theme).map(
+                |CellDetailRenderMetrics {
+                     visible_rows,
+                     viewport_width,
+                 }| CellDetailViewport {
+                    visible_rows,
+                    viewport_width,
+                },
+            ),
+            _ => None,
+        };
+
         let row_detail = match state.input_mode() {
             InputMode::RowDetail => RowDetail::render(frame, state, now, theme),
             _ => None,
         };
+
+        let (sqlite_diagnostics_content_line_count, sqlite_diagnostics_viewport_height) =
+            match state.input_mode() {
+                InputMode::SqliteDiagnostics => {
+                    let metrics = SqliteDiagnosticsOverlay::render(frame, state, theme);
+                    (
+                        Some(metrics.content_line_count),
+                        Some(metrics.viewport_height),
+                    )
+                }
+                _ => (None, None),
+            };
 
         match state.input_mode() {
             InputMode::CommandPalette => CommandPalette::render(frame, state, theme),
@@ -155,11 +182,14 @@ impl MainLayout {
             },
             details: DetailLayout {
                 jsonb: jsonb_detail,
+                cell: cell_detail,
                 row: row_detail,
             },
             overlays: OverlayLayout {
                 confirm_preview,
                 explain_compare_viewport_height,
+                sqlite_diagnostics_content_line_count,
+                sqlite_diagnostics_viewport_height,
             },
         }
     }

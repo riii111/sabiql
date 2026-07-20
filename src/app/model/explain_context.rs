@@ -30,24 +30,80 @@ const MAX_EXPLAIN_HISTORY: usize = 10;
 
 #[derive(Debug, Clone, Default)]
 pub struct ExplainContext {
-    pub plan_text: Option<String>,
-    pub plan_query_snippet: Option<String>,
-    pub error: Option<String>,
-    pub is_analyze: bool,
-    pub execution_time_ms: u64,
-    pub scroll_offset: usize,
+    pub(crate) plan_text: Option<String>,
+    pub(crate) plan_query_snippet: Option<String>,
+    pub(crate) error: Option<String>,
+    pub(crate) is_analyze: bool,
+    pub(crate) execution_time_ms: u64,
+    pub(crate) scroll_offset: usize,
 
-    pub left: Option<CompareSlot>,
-    pub right: Option<CompareSlot>,
-    pub compare_scroll_offset: usize,
+    pub(crate) left: Option<CompareSlot>,
+    pub(crate) right: Option<CompareSlot>,
+    pub(crate) compare_scroll_offset: usize,
 
-    pub history: VecDeque<CompareSlot>,
+    pub(crate) history: VecDeque<CompareSlot>,
 
-    pub compare_viewport_height: Option<u16>,
-    pub confirm_scroll_offset: usize,
+    pub(crate) compare_viewport_height: Option<u16>,
+    pub(crate) confirm_scroll_offset: usize,
 }
 
 impl ExplainContext {
+    pub fn plan_text(&self) -> Option<&str> {
+        self.plan_text.as_deref()
+    }
+
+    pub fn plan_query_snippet(&self) -> Option<&str> {
+        self.plan_query_snippet.as_deref()
+    }
+
+    pub fn error(&self) -> Option<&str> {
+        self.error.as_deref()
+    }
+
+    pub fn is_analyze(&self) -> bool {
+        self.is_analyze
+    }
+
+    pub fn execution_time_ms(&self) -> u64 {
+        self.execution_time_ms
+    }
+
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+
+    pub fn compare_slots(&self) -> (Option<&CompareSlot>, Option<&CompareSlot>) {
+        (self.left.as_ref(), self.right.as_ref())
+    }
+
+    pub fn can_yank_compare(&self) -> bool {
+        self.left.is_some() && self.right.is_some()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn left(&self) -> Option<&CompareSlot> {
+        self.left.as_ref()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn right(&self) -> Option<&CompareSlot> {
+        self.right.as_ref()
+    }
+
+    pub fn history(&self) -> &VecDeque<CompareSlot> {
+        &self.history
+    }
+
+    pub fn compare_scroll_offset(&self) -> usize {
+        self.compare_scroll_offset
+    }
+
+    pub fn confirm_scroll_offset(&self) -> usize {
+        self.confirm_scroll_offset
+    }
+
     pub fn set_plan(
         &mut self,
         text: String,
@@ -90,7 +146,23 @@ impl ExplainContext {
         self.scroll_offset = 0;
     }
 
-    pub fn reset(&mut self) {
+    pub fn set_compare_viewport_height(&mut self, height: u16) {
+        self.compare_viewport_height = Some(height);
+    }
+
+    pub fn scroll_confirm_to(&mut self, offset: usize) {
+        self.confirm_scroll_offset = offset;
+    }
+
+    pub fn scroll_plan_to(&mut self, offset: usize) {
+        self.scroll_offset = offset;
+    }
+
+    pub fn scroll_compare_to(&mut self, offset: usize) {
+        self.compare_scroll_offset = offset;
+    }
+
+    pub fn reset_for_new_run(&mut self) {
         let left = self.left.take();
         let right = self.right.take();
         let history = std::mem::take(&mut self.history);
@@ -100,6 +172,10 @@ impl ExplainContext {
         self.left = left;
         self.right = right;
         self.history = history;
+    }
+
+    pub fn reset_for_connection_change(&mut self) {
+        *self = Self::default();
     }
 
     pub fn line_count(&self) -> usize {
@@ -151,11 +227,11 @@ mod tests {
     fn default_has_no_content() {
         let ctx = ExplainContext::default();
 
-        assert!(ctx.plan_text.is_none());
-        assert!(ctx.error.is_none());
-        assert!(ctx.left.is_none());
-        assert!(ctx.right.is_none());
-        assert!(ctx.history.is_empty());
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_none());
+        assert!(ctx.history().is_empty());
     }
 
     #[test]
@@ -169,14 +245,11 @@ mod tests {
             "SELECT * FROM users",
         );
 
-        assert!(ctx.left.is_none());
-        assert!(ctx.right.is_some());
-        assert_eq!(ctx.right.as_ref().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(
-            ctx.right.as_ref().unwrap().query_snippet,
-            "SELECT * FROM users"
-        );
-        assert_eq!(ctx.right.as_ref().unwrap().source, SlotSource::AutoLatest);
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_some());
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(100.0));
+        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT * FROM users");
+        assert_eq!(ctx.right().unwrap().source, SlotSource::AutoLatest);
     }
 
     #[test]
@@ -196,11 +269,11 @@ mod tests {
             "SELECT * FROM users WHERE id = 1",
         );
 
-        assert!(ctx.left.is_some());
-        assert_eq!(ctx.left.as_ref().unwrap().plan.total_cost, Some(100.0));
-        assert_eq!(ctx.left.as_ref().unwrap().source, SlotSource::AutoPrevious);
-        assert_eq!(ctx.right.as_ref().unwrap().plan.total_cost, Some(5.0));
-        assert_eq!(ctx.right.as_ref().unwrap().source, SlotSource::AutoLatest);
+        assert!(ctx.left().is_some());
+        assert_eq!(ctx.left().unwrap().plan.total_cost, Some(100.0));
+        assert_eq!(ctx.left().unwrap().source, SlotSource::AutoPrevious);
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(5.0));
+        assert_eq!(ctx.right().unwrap().source, SlotSource::AutoLatest);
     }
 
     #[test]
@@ -225,9 +298,9 @@ mod tests {
             "C",
         );
 
-        assert_eq!(ctx.history.len(), 3);
-        assert_eq!(ctx.history[0].query_snippet, "C");
-        assert_eq!(ctx.history[2].query_snippet, "A");
+        assert_eq!(ctx.history().len(), 3);
+        assert_eq!(ctx.history()[0].query_snippet, "C");
+        assert_eq!(ctx.history()[2].query_snippet, "A");
     }
 
     #[test]
@@ -245,18 +318,49 @@ mod tests {
             0,
             "B",
         );
-        ctx.scroll_offset = 10;
-        ctx.compare_scroll_offset = 5;
+        ctx.scroll_plan_to(10);
+        ctx.scroll_compare_to(5);
 
-        ctx.reset();
+        ctx.reset_for_new_run();
 
-        assert!(ctx.plan_text.is_none());
-        assert!(ctx.error.is_none());
-        assert_eq!(ctx.scroll_offset, 0);
-        assert_eq!(ctx.compare_scroll_offset, 0);
-        assert!(ctx.left.is_some());
-        assert!(ctx.right.is_some());
-        assert_eq!(ctx.history.len(), 2);
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert_eq!(ctx.scroll_offset(), 0);
+        assert_eq!(ctx.compare_scroll_offset(), 0);
+        assert!(ctx.left().is_some());
+        assert!(ctx.right().is_some());
+        assert_eq!(ctx.history().len(), 2);
+    }
+
+    #[test]
+    fn connection_change_reset_clears_plan_compare_and_history() {
+        let mut ctx = ExplainContext::default();
+        ctx.set_plan(
+            "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            false,
+            0,
+            "A",
+        );
+        ctx.set_plan(
+            "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            false,
+            0,
+            "B",
+        );
+        ctx.set_error("stale error".to_string());
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_some());
+        assert!(ctx.left().is_some());
+        assert!(ctx.right().is_some());
+        assert!(!ctx.history().is_empty());
+
+        ctx.reset_for_connection_change();
+
+        assert!(ctx.plan_text().is_none());
+        assert!(ctx.error().is_none());
+        assert!(ctx.left().is_none());
+        assert!(ctx.right().is_none());
+        assert!(ctx.history().is_empty());
     }
 
     #[test]
@@ -271,7 +375,7 @@ mod tests {
 
         ctx.set_error("some error".to_string());
 
-        assert!(ctx.right.is_some());
+        assert!(ctx.right().is_some());
     }
 
     #[test]
@@ -286,7 +390,7 @@ mod tests {
             );
         }
 
-        assert_eq!(ctx.history.len(), MAX_EXPLAIN_HISTORY);
+        assert_eq!(ctx.history().len(), MAX_EXPLAIN_HISTORY);
     }
 
     #[test]
@@ -300,7 +404,7 @@ mod tests {
             "SELECT *\nFROM users\nWHERE id = 1",
         );
 
-        assert_eq!(ctx.right.as_ref().unwrap().query_snippet, "SELECT *");
+        assert_eq!(ctx.right().unwrap().query_snippet, "SELECT *");
     }
 
     #[test]

@@ -5,20 +5,23 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::connection::list as connection_list;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
 use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::ResultNavMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
-use crate::app::services::AppServices;
+use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::{
-    ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_edit, command_palette,
+    ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
     exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
     jsonb_search, overlay, query_history, query_history_picker, read_only, result_active, settings,
-    sql_modal, sql_modal_confirming, table_picker, table_picker as table_picker_key,
+    sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
+    table_picker as table_picker_key,
 };
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
@@ -33,25 +36,21 @@ impl Footer {
         frame: &mut Frame,
         area: Rect,
         state: &AppState,
-        services: &AppServices,
         time_ms: Option<u128>,
         theme: &ThemePalette,
     ) {
         let base_style = Style::default().fg(theme.semantic.text.primary);
-        if state.er_preparation.status == ErStatus::Waiting {
+        if state.er_preparation.status() == ErStatus::Waiting {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
-        } else if let Some(error) = &state.messages.last_error {
+        } else if let Some(error) = state.messages.last_error() {
             let line = StatusMessage::render_line(error, MessageType::Error, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
-            let hints = Self::get_context_hints(state, services);
-            let line = Self::build_hint_line_with_success(
-                &hints,
-                state.messages.last_success.as_deref(),
-                theme,
-            );
+            let hints = Self::get_context_hints(state);
+            let line =
+                Self::build_hint_line_with_success(&hints, state.messages.last_success(), theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         }
     }
@@ -68,13 +67,12 @@ impl Footer {
         });
         let spinner = spinner_char(now_ms);
 
-        let total = state.er_preparation.total_tables;
-        let failed_count = state.er_preparation.failed_tables.len();
-        let remaining =
-            state.er_preparation.pending_tables.len() + state.er_preparation.fetching_tables.len();
-        let cached = total.saturating_sub(remaining + failed_count);
+        let progress = state.er_preparation.progress();
 
-        let text = format!("{spinner} Preparing ER... ({cached}/{total})");
+        let text = format!(
+            "{spinner} Preparing ER... ({}/{})",
+            progress.cached, progress.total
+        );
         Line::from(Span::styled(
             text,
             Style::default().fg(theme.semantic.text.accent),
@@ -82,20 +80,19 @@ impl Footer {
     }
 
     // Hint ordering: Actions → Navigation → Help → Close/Cancel → Quit
-    fn get_context_hints(
-        state: &AppState,
-        services: &AppServices,
-    ) -> Vec<(&'static str, &'static str)> {
+    fn get_context_hints(state: &AppState) -> Vec<(&'static str, &'static str)> {
         use crate::app::model::shared::focused_pane::FocusedPane;
 
         match state.input_mode() {
             InputMode::Normal => {
                 let keymap_preset = state.settings.saved_keymap_preset();
                 let result_navigation =
-                    state.ui.is_focus_mode() || state.ui.focused_pane == FocusedPane::Result;
+                    state.ui.is_focus_mode() || state.ui.focused_pane() == FocusedPane::Result;
                 let nav_mode = state.result_interaction.selection().mode();
 
                 if result_navigation && nav_mode == ResultNavMode::CellActive {
+                    let can_write_preview = state.can_write_visible_preview();
+                    let can_edit_selected_cell = state.can_edit_selected_cell();
                     if state.result_interaction.cell_edit().has_pending_draft() {
                         vec![
                             result_active::EDIT.as_hint(),
@@ -105,16 +102,24 @@ impl Footer {
                             global::QUIT.as_hint(),
                         ]
                     } else if state.result_interaction.staged_delete_rows().is_empty() {
-                        vec![
-                            result_active::EDIT.as_hint(),
+                        let mut hints = vec![result_active::DETAIL.as_hint()];
+                        if can_edit_selected_cell {
+                            hints.push(result_active::EDIT.as_hint());
+                        }
+                        hints.extend([
                             result_active::YANK.as_hint(),
                             result_active::ROW_YANK.as_hint(),
                             result_active::ROW_DETAIL.as_hint(),
-                            result_active::STAGE_DELETE.as_hint(),
+                        ]);
+                        if can_write_preview {
+                            hints.push(result_active::STAGE_DELETE.as_hint());
+                        }
+                        hints.extend([
                             global::HELP.as_hint(),
                             result_active::ESC_BACK.as_hint(),
                             global::QUIT.as_hint(),
-                        ]
+                        ]);
+                        hints
                     } else {
                         vec![
                             result_active::STAGE_DELETE.as_hint(),
@@ -145,23 +150,26 @@ impl Footer {
                     list
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
-                    let active_inspector_tab = services
-                        .db_capabilities
-                        .normalize_inspector_tab(state.ui.inspector_tab);
-                    let mut list = vec![
-                        global::RELOAD.as_hint(),
-                        global::SQL.as_hint(),
-                        global::ER_DIAGRAM.as_hint(),
-                    ];
-                    if state.ui.focused_pane == FocusedPane::Explorer {
+                    let capabilities = state.session.active_engine_feature_profile();
+                    let feature_policy = FeaturePolicy::new(capabilities);
+                    let active_inspector_tab =
+                        capabilities.normalize_inspector_tab(state.ui.inspector_tab());
+                    let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
+                    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                        list.push(global::ER_DIAGRAM.as_hint());
+                    }
+                    if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                        list.push(sqlite_diagnostics(keymap_preset).as_hint());
+                    }
+                    if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
                     }
                     list.push(table_picker_key(keymap_preset).as_hint());
                     list.push(query_history(keymap_preset).as_hint());
-                    if state.connection_error.error_info.is_some() {
+                    if state.connection_error.has_error() {
                         list.push(overlay::ERROR_OPEN.as_hint());
                     }
-                    if state.session.read_only {
+                    if state.session.is_read_only() {
                         list.push(exit_read_only(keymap_preset).as_hint());
                     } else {
                         list.push(read_only(keymap_preset).as_hint());
@@ -170,14 +178,14 @@ impl Footer {
                     if state.can_request_csv_export() {
                         list.push(csv_export(keymap_preset).as_hint());
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector {
+                    if state.ui.focused_pane() == FocusedPane::Inspector {
                         use crate::app::model::shared::inspector_tab::InspectorTab;
                         if active_inspector_tab == InspectorTab::Ddl {
                             list.push(inspector_ddl::YANK.as_hint());
                         }
                     }
                     // Navigation
-                    if state.ui.focused_pane == FocusedPane::Result {
+                    if state.ui.focused_pane() == FocusedPane::Result {
                         list.push(result_active::ENTER_DEEPEN.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(result_active::UNSTAGE_DELETE.as_hint());
@@ -187,8 +195,8 @@ impl Footer {
                             list.push(footer_nav::PAGE_NAV.as_hint());
                         }
                     }
-                    if state.ui.focused_pane == FocusedPane::Inspector
-                        && services.db_capabilities.supported_inspector_tabs().len() > 1
+                    if state.ui.focused_pane() == FocusedPane::Inspector
+                        && capabilities.supported_inspector_tabs().len() > 1
                     {
                         list.push(global::INSPECTOR_TABS.as_hint());
                     }
@@ -222,7 +230,7 @@ impl Footer {
                     command_palette::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::Help => match state.ui.help.mode() {
+            InputMode::Help => match state.ui.help().mode() {
                 HelpMode::Viewing => vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()],
                 HelpMode::EditingFilter => vec![help::ESC_VIEWING.as_hint()],
             },
@@ -254,17 +262,18 @@ impl Footer {
                     vec![]
                 } else {
                     // Editing / Running
-                    let hints = vec![
+                    vec![
                         sql_modal::RUN.as_hint(),
                         sql_modal::MOVE.as_hint(),
                         sql_modal::ESC_NORMAL.as_hint(),
-                    ];
-                    hints
+                    ]
                 }
             }
             InputMode::ConnectionSetup => {
-                let mut hints = if state.connection_setup.focused_field == ConnectionField::SslMode
-                {
+                let mut hints = if matches!(
+                    state.connection_setup.focused_field(),
+                    ConnectionField::DatabaseType | ConnectionField::SslMode
+                ) {
                     vec![
                         connection_setup::ENTER_DROPDOWN.as_hint(),
                         connection_setup::SAVE.as_hint(),
@@ -279,10 +288,10 @@ impl Footer {
                 hints
             }
             InputMode::ConnectionError => {
-                let first = if state.session.is_service_connection() {
-                    connection_error::RETRY.as_hint()
-                } else {
+                let first = if state.session.can_reenter_connection_setup() {
                     connection_error::EDIT.as_hint()
+                } else {
+                    connection_error::RETRY.as_hint()
                 };
                 vec![
                     first,
@@ -292,23 +301,50 @@ impl Footer {
                     connection_error::ESC_CLOSE.as_hint(),
                 ]
             }
-            InputMode::ErTablePicker => vec![
-                er_picker::ENTER_GENERATE.as_hint(),
-                er_picker::SELECT.as_hint(),
-                er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
-                er_picker::TYPE_FILTER.as_hint(),
-                er_picker::ESC_CLOSE.as_hint(),
-            ],
+            InputMode::SqliteDiagnostics => {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                let mut hints = Vec::new();
+                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
+                    hints.push(sqlite_diagnostics::SCROLL.as_hint());
+                }
+                if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics)
+                    && state.sqlite_diagnostics.can_run_quick_check()
+                {
+                    hints.push(sqlite_diagnostics::RUN_QUICK_CHECK.as_hint());
+                }
+                hints.extend([
+                    sqlite_diagnostics::HELP.as_hint(),
+                    sqlite_diagnostics::ESC_CLOSE.as_hint(),
+                ]);
+                hints
+            }
+            InputMode::ErTablePicker => {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                let mut hints = Vec::new();
+                if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
+                    hints.extend([
+                        er_picker::ENTER_GENERATE.as_hint(),
+                        er_picker::SELECT.as_hint(),
+                        er_picker_select_all(state.settings.saved_keymap_preset()).as_hint(),
+                        er_picker::TYPE_FILTER.as_hint(),
+                    ]);
+                }
+                hints.push(er_picker::ESC_CLOSE.as_hint());
+                hints
+            }
             InputMode::QueryHistoryPicker => vec![
                 query_history_picker::ENTER_SELECT.as_hint(),
                 query_history_picker::TYPE_FILTER.as_hint(),
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
             InputMode::JsonbDetail => {
-                if matches!(
-                    state.jsonb_detail.mode(),
-                    crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
-                ) {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                    vec![jsonb_detail::CLOSE.as_hint()]
+                } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
                         jsonb_search::TYPE_SEARCH.as_hint(),
                         jsonb_search::CONFIRM.as_hint(),
@@ -325,20 +361,45 @@ impl Footer {
                     ]
                 }
             }
-            InputMode::JsonbEdit => vec![
-                jsonb_edit::ESC_NORMAL.as_hint(),
-                jsonb_edit::MOVE.as_hint(),
-                jsonb_edit::HOME_END.as_hint(),
-            ],
+            InputMode::JsonbEdit => {
+                let feature_policy =
+                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                if feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                    vec![
+                        jsonb_edit::ESC_NORMAL.as_hint(),
+                        jsonb_edit::MOVE.as_hint(),
+                        jsonb_edit::HOME_END.as_hint(),
+                    ]
+                } else {
+                    vec![jsonb_edit::ESC_NORMAL.as_hint()]
+                }
+            }
+            InputMode::CellDetail => {
+                if state.cell_detail.search().is_active() {
+                    vec![
+                        cell_detail_search::TYPE_SEARCH.as_hint(),
+                        cell_detail_search::CONFIRM.as_hint(),
+                        cell_detail_search::CANCEL.as_hint(),
+                    ]
+                } else {
+                    vec![
+                        cell_detail::YANK.as_hint(),
+                        cell_detail::SEARCH.as_hint(),
+                        cell_detail::NEXT_PREV.as_hint(),
+                        cell_detail::SCROLL.as_hint(),
+                        cell_detail::CLOSE.as_hint(),
+                    ]
+                }
+            }
             InputMode::RowDetail => ROW_DETAIL_FOOTER_ROWS
                 .iter()
                 .map(ModeRow::as_hint)
                 .collect(),
             InputMode::ConnectionSelector => {
                 use connection_selector as cs;
-                let is_service_selected = crate::app::model::connection::list::is_service_selected(
+                let is_service_selected = connection_list::is_service_selected(
                     state.connection_list_items(),
-                    state.ui.connection_list_selected,
+                    state.ui.connection_list_selected(),
                 );
                 let mut list = vec![cs::CONFIRM.as_hint(), cs::NEW.as_hint()];
                 if !is_service_selected {
@@ -380,50 +441,57 @@ impl Footer {
 #[cfg(test)]
 mod tests {
     use super::Footer;
+    use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
     use crate::app::model::connection::setup::ConnectionField;
-    use crate::app::model::shared::db_capabilities::DbCapabilities;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
-    use crate::app::model::shared::inspector_tab::InspectorTab;
     use crate::app::model::shared::settings::KeymapPreset;
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
-    use crate::app::services::AppServices;
     use crate::app::update::input::keybindings::{
-        connection_setup, global, help, result_active, row_detail,
+        connection_setup, global, help, jsonb_detail, jsonb_edit, result_active, row_detail,
     };
     use rstest::rstest;
 
     fn inspector_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
         state
+    }
+
+    fn focus_connection_field(state: &mut AppState, field: ConnectionField) {
+        while state.connection_setup.focused_field() != field {
+            state.connection_setup.focus_next_field();
+        }
     }
 
     fn result_focused_state() -> AppState {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(InputMode::Normal);
-        state.ui.focused_pane = FocusedPane::Result;
+        state.ui.set_focused_pane(FocusedPane::Result);
         state
     }
 
     #[rstest]
-    #[case(DbCapabilities::new(true, vec![InspectorTab::Info]), false)]
-    #[case(
-        DbCapabilities::new(true, vec![InspectorTab::Info, InspectorTab::Columns]),
-        true
-    )]
+    #[case(None, false)]
+    #[case(Some(DatabaseType::SQLite), true)]
     fn inspector_tabs_hint_visibility_tracks_supported_tab_count(
-        #[case] db_capabilities: DbCapabilities,
+        #[case] database_type: Option<DatabaseType>,
         #[case] expected_visible: bool,
     ) {
-        let state = inspector_state();
-        let mut services = AppServices::stub();
-        services.db_capabilities = db_capabilities;
+        let mut state = inspector_state();
+        if let Some(database_type) = database_type {
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                "sqlite://test.db",
+            );
+        }
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
             hints.contains(&global::INSPECTOR_TABS.as_hint()),
@@ -431,12 +499,57 @@ mod tests {
         );
     }
 
+    #[rstest]
+    #[case(DatabaseType::PostgreSQL, true)]
+    #[case(DatabaseType::SQLite, false)]
+    fn er_hint_visibility_tracks_capability(
+        #[case] database_type: DatabaseType,
+        #[case] expected_visible: bool,
+    ) {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            "test://database",
+        );
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert_eq!(
+            hints.contains(&global::ER_DIAGRAM.as_hint()),
+            expected_visible
+        );
+    }
+
+    #[test]
+    fn unsupported_jsonb_modes_keep_exit_hints() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::SQLite,
+            "sqlite://test.db",
+        );
+
+        state.modal.set_mode(InputMode::JsonbDetail);
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![jsonb_detail::CLOSE.as_hint()]
+        );
+
+        state.modal.set_mode(InputMode::JsonbEdit);
+        assert_eq!(
+            Footer::get_context_hints(&state),
+            vec![jsonb_edit::ESC_NORMAL.as_hint()]
+        );
+    }
+
     #[test]
     fn row_detail_hint_is_hidden_in_result_scroll_mode() {
         let state = result_focused_state();
-        let services = AppServices::stub();
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
@@ -444,10 +557,11 @@ mod tests {
     #[test]
     fn row_detail_hint_is_hidden_in_result_focus_scroll_mode() {
         let mut state = result_focused_state();
-        let services = AppServices::stub();
-        state.ui.focus_mode = FocusMode::focused(FocusedPane::Explorer);
+        state
+            .ui
+            .set_focus_mode(FocusMode::focused(FocusedPane::Explorer));
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(!hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
@@ -455,10 +569,9 @@ mod tests {
     #[test]
     fn row_detail_hint_is_visible_in_cell_active_mode() {
         let mut state = result_focused_state();
-        let services = AppServices::stub();
         state.result_interaction.activate_cell(0, 0);
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(hints.contains(&result_active::ROW_DETAIL.as_hint()));
     }
@@ -466,10 +579,9 @@ mod tests {
     #[test]
     fn row_detail_footer_omits_navigation_hints() {
         let mut state = AppState::new("test".to_string());
-        let services = AppServices::stub();
         state.modal.set_mode(InputMode::RowDetail);
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
             hints,
@@ -484,14 +596,13 @@ mod tests {
     #[test]
     fn settings_custom_browser_hint_shows_edit_when_selected() {
         let mut state = AppState::new("test".to_string());
-        let services = AppServices::stub();
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
         state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
         state.settings.stop_custom_browser_edit();
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(hints.contains(&("i", "Edit")));
         assert!(hints.contains(&("Tab/⇧Tab", "Section")));
@@ -501,13 +612,12 @@ mod tests {
     #[test]
     fn settings_custom_browser_edit_hint_shows_done_and_typing() {
         let mut state = AppState::new("test".to_string());
-        let services = AppServices::stub();
         state.modal.set_mode(InputMode::Settings);
         state.settings.switch_next_section();
         state.settings.switch_next_section();
         state.settings.start_custom_browser_edit();
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert_eq!(
             hints,
@@ -518,18 +628,17 @@ mod tests {
     #[test]
     fn help_footer_hints_follow_help_mode() {
         let mut state = AppState::new("test".to_string());
-        let services = AppServices::stub();
         state.modal.set_mode(InputMode::Help);
 
         assert_eq!(
-            Footer::get_context_hints(&state, &services),
+            Footer::get_context_hints(&state),
             vec![help::START_FILTER.as_hint(), help::CLOSE.as_hint()]
         );
 
-        state.ui.help.enter_filter_editing();
+        state.ui.help_mut().enter_filter_editing();
 
         assert_eq!(
-            Footer::get_context_hints(&state, &services),
+            Footer::get_context_hints(&state),
             vec![help::ESC_VIEWING.as_hint()]
         );
     }
@@ -539,13 +648,17 @@ mod tests {
     #[case(KeymapPreset::Ide)]
     fn sql_editing_footer_omits_explain_hint(#[case] preset: KeymapPreset) {
         let mut state = AppState::new("test".to_string());
-        let mut services = AppServices::stub();
-        services.db_capabilities = DbCapabilities::postgres_like();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::PostgreSQL,
+            "postgres://localhost/test",
+        );
         state.modal.set_mode(InputMode::SqlModal);
         state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
         state.settings.load_keymap_preset(preset);
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(!hints.contains(&("^E", "Explain")));
     }
@@ -553,11 +666,10 @@ mod tests {
     #[test]
     fn connection_setup_footer_shows_toggle_and_connect_on_ssl_field() {
         let mut state = AppState::new("test".to_string());
-        let services = AppServices::stub();
         state.modal.set_mode(InputMode::ConnectionSetup);
-        state.connection_setup.focused_field = ConnectionField::SslMode;
+        focus_connection_field(&mut state, ConnectionField::SslMode);
 
-        let hints = Footer::get_context_hints(&state, &services);
+        let hints = Footer::get_context_hints(&state);
 
         assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
         assert!(hints.contains(&connection_setup::SAVE.as_hint()));

@@ -1,41 +1,42 @@
 use super::*;
 use sabiql_app::model::shared::confirm_dialog::ConfirmIntent;
 use sabiql_domain::connection::ServiceEntry;
-use sabiql_domain::connection::{ConnectionId, ConnectionName, ConnectionProfile, SslMode};
+use sabiql_domain::connection::{ConnectionId, ConnectionProfile, SslMode};
 
 fn three_connections() -> (ConnectionId, Vec<ConnectionProfile>) {
     let active_id = ConnectionId::new();
     let profiles = vec![
-        ConnectionProfile {
-            id: active_id.clone(),
-            name: ConnectionName::new("Production").unwrap(),
-            host: "prod.example.com".to_string(),
-            port: 5432,
-            database: "prod_db".to_string(),
-            username: "admin".to_string(),
-            password: "secret".to_string(),
-            ssl_mode: SslMode::Require,
-        },
-        ConnectionProfile {
-            id: ConnectionId::new(),
-            name: ConnectionName::new("Staging").unwrap(),
-            host: "staging.example.com".to_string(),
-            port: 5432,
-            database: "staging_db".to_string(),
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            ssl_mode: SslMode::Prefer,
-        },
-        ConnectionProfile {
-            id: ConnectionId::new(),
-            name: ConnectionName::new("Local Dev").unwrap(),
-            host: "localhost".to_string(),
-            port: 5432,
-            database: "dev_db".to_string(),
-            username: "dev".to_string(),
-            password: "dev".to_string(),
-            ssl_mode: SslMode::Disable,
-        },
+        ConnectionProfile::with_id_postgres(
+            active_id.clone(),
+            "Production",
+            "prod.example.com",
+            5432,
+            "prod_db",
+            "admin",
+            "secret",
+            SslMode::Require,
+        )
+        .unwrap(),
+        ConnectionProfile::new_postgres(
+            "Staging",
+            "staging.example.com",
+            5432,
+            "staging_db",
+            "user",
+            "pass",
+            SslMode::Prefer,
+        )
+        .unwrap(),
+        ConnectionProfile::new_postgres(
+            "Local Dev",
+            "localhost",
+            5432,
+            "dev_db",
+            "dev",
+            "dev",
+            SslMode::Disable,
+        )
+        .unwrap(),
     ];
     (active_id, profiles)
 }
@@ -47,7 +48,11 @@ fn connection_selector_with_multiple_connections() {
 
     let (active_id, connections) = three_connections();
     state.set_connections(connections);
-    state.session.active_connection_id = Some(active_id);
+    state.session.set_active_connection_identity_for_test(
+        &active_id,
+        "localhost:5432/test",
+        sabiql_domain::DatabaseType::PostgreSQL,
+    );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
@@ -81,7 +86,11 @@ fn connection_selector_with_service_entries() {
             },
         ],
     );
-    state.session.active_connection_id = Some(active_id);
+    state.session.set_active_connection_identity_for_test(
+        &active_id,
+        "localhost:5432/test",
+        sabiql_domain::DatabaseType::PostgreSQL,
+    );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 
@@ -141,8 +150,11 @@ fn connection_selector_with_active_service() {
         },
     ]);
     // Set active connection to the first service entry
-    state.session.active_connection_id =
-        Some(ConnectionId::from_string("service:dev-local".to_string()));
+    state.session.set_active_connection_identity_for_test(
+        &ConnectionId::from_string("service:dev-local".to_string()),
+        "localhost:5432/test",
+        sabiql_domain::DatabaseType::PostgreSQL,
+    );
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
 

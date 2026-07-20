@@ -96,7 +96,6 @@ fn navigation(combo: &KeyCombo) -> Option<VimNavigation> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::update::input::keybindings::KeyCombo;
     use rstest::rstest;
 
     fn combo(key: Key) -> KeyCombo {

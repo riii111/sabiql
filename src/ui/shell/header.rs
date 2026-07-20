@@ -23,7 +23,7 @@ impl Header {
         let sep_style = Style::default().fg(theme.semantic.text.muted);
         let item_style = Style::default().fg(theme.semantic.text.secondary);
 
-        let (status_text, status_color) = if state.session.dsn.is_none() {
+        let (status_text, status_color) = if state.session.dsn().is_none() {
             ("no dsn", theme.semantic.status.error)
         } else {
             match &state.session.metadata_state() {
@@ -35,7 +35,7 @@ impl Header {
         };
 
         let left_items = vec![
-            HeaderItem::new(&state.runtime.project_name, item_style, 2),
+            HeaderItem::new(state.runtime.project_name(), item_style, 2),
             HeaderItem::new(db_name, item_style, 1),
             HeaderItem::new(table, Style::default().fg(theme.semantic.text.primary), 0),
         ];
@@ -53,15 +53,11 @@ impl Header {
             ));
         }
         right_items.push(HeaderItem::new(
-            state
-                .session
-                .active_connection_name
-                .as_deref()
-                .unwrap_or("-"),
+            state.session.active_connection_name().unwrap_or("-"),
             item_style,
             0,
         ));
-        if state.session.read_only {
+        if state.session.is_read_only() {
             right_items.push(HeaderItem::new(
                 "READ-ONLY",
                 Style::default()

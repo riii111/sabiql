@@ -1,5 +1,6 @@
 use crate::model::shared::key_sequence::Prefix;
-use crate::update::action::{Action, CursorMove, InputTarget};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
+use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use crate::update::input::keybindings::{
     JSONB_DETAIL, JSONB_EDIT, JSONB_SEARCH_KEYS, Key, KeyCombo, Modifiers,
 };
@@ -10,16 +11,21 @@ use crate::update::input::vim::{
 
 use super::interaction::InputInteraction;
 
-pub fn handle_jsonb_detail_keys(
+pub fn handle_jsonb_detail_keys_with_policy(
     combo: KeyCombo,
     interaction: InputInteraction,
     pending_prefix: Option<Prefix>,
+    feature_policy: &FeaturePolicy,
 ) -> Action {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+        return disabled_jsonb_detail_exit_action(combo, interaction);
+    }
+
     if matches!(
         interaction,
         InputInteraction::FormEditing(InputTarget::JsonbSearch)
     ) {
-        return handle_search_input(combo);
+        return handle_search_input(combo, feature_policy);
     }
 
     if let Some(prefix) = pending_prefix {
@@ -66,15 +72,15 @@ pub fn handle_jsonb_detail_keys(
         return action;
     }
 
-    if let Some(action) = JSONB_DETAIL.resolve(&combo) {
+    if let Some(action) = JSONB_DETAIL.resolve_with_policy(&combo, feature_policy) {
         return action;
     }
     Action::None
 }
 
-fn handle_search_input(combo: KeyCombo) -> Action {
+fn handle_search_input(combo: KeyCombo, feature_policy: &FeaturePolicy) -> Action {
     // Command keys (Enter/Esc) resolved from SSOT keybindings
-    if let Some(action) = keymap::resolve(&combo, JSONB_SEARCH_KEYS) {
+    if let Some(action) = keymap::resolve_with_policy(&combo, JSONB_SEARCH_KEYS, feature_policy) {
         return action;
     }
     // Text input fallthrough
@@ -109,7 +115,18 @@ fn handle_search_input(combo: KeyCombo) -> Action {
     }
 }
 
-pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
+pub fn handle_jsonb_edit_keys_with_policy(
+    combo: KeyCombo,
+    feature_policy: &FeaturePolicy,
+) -> Action {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+        return if combo.modifiers.is_empty() && combo.key == Key::Esc {
+            Action::JsonbExitEdit
+        } else {
+            Action::None
+        };
+    }
+
     if let Some(action) = action_for_key(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Editing),
@@ -117,7 +134,7 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
         return action;
     }
 
-    if let Some(action) = JSONB_EDIT.resolve(&combo) {
+    if let Some(action) = JSONB_EDIT.resolve_with_policy(&combo, feature_policy) {
         return action;
     }
     match combo.key {
@@ -167,11 +184,29 @@ pub fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
     }
 }
 
+fn disabled_jsonb_detail_exit_action(combo: KeyCombo, interaction: InputInteraction) -> Action {
+    if !combo.modifiers.is_empty() {
+        return Action::None;
+    }
+
+    match (interaction, combo.key) {
+        (InputInteraction::Viewing, Key::Esc | Key::Char('q')) => {
+            Action::CloseModal(ModalKind::JsonbDetail)
+        }
+        (InputInteraction::FormEditing(InputTarget::JsonbSearch), Key::Esc) => {
+            Action::JsonbExitSearch
+        }
+        (InputInteraction::VimEditing(InputTarget::JsonbEdit), Key::Esc) => Action::JsonbExitEdit,
+        _ => Action::None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
-    use crate::update::input::keybindings::{Key, KeyCombo};
+    use crate::update::input::keybindings::Key;
 
     fn combo(k: Key) -> KeyCombo {
         KeyCombo::plain(k)
@@ -181,9 +216,22 @@ mod tests {
         KeyCombo::ctrl(k)
     }
 
+    fn handle_jsonb_detail_keys(
+        combo: KeyCombo,
+        interaction: InputInteraction,
+        pending_prefix: Option<Prefix>,
+    ) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_jsonb_detail_keys_with_policy(combo, interaction, pending_prefix, &feature_policy)
+    }
+
+    fn handle_jsonb_edit_keys(combo: KeyCombo) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_jsonb_edit_keys_with_policy(combo, &feature_policy)
+    }
+
     mod jsonb_detail {
         use super::*;
-        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_moves_cursor_down_in_normal_mode() {
@@ -293,6 +341,48 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_jsonb_detail_ignores_g() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_jsonb_detail_keys_with_policy(
+                combo(Key::Char('g')),
+                InputInteraction::Viewing,
+                None,
+                &feature_policy,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[test]
+        fn sqlite_jsonb_detail_keeps_escape_close_action() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_jsonb_detail_keys_with_policy(
+                combo(Key::Esc),
+                InputInteraction::Viewing,
+                None,
+                &feature_policy,
+            );
+
+            assert!(matches!(result, Action::CloseModal(ModalKind::JsonbDetail)));
+        }
+
+        #[test]
+        fn sqlite_jsonb_detail_keeps_search_escape_action() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_jsonb_detail_keys_with_policy(
+                combo(Key::Esc),
+                InputInteraction::FormEditing(InputTarget::JsonbSearch),
+                None,
+                &feature_policy,
+            );
+
+            assert!(matches!(result, Action::JsonbExitSearch));
+        }
+
+        #[test]
         fn gg_moves_to_first_line() {
             let result = handle_jsonb_detail_keys(
                 combo(Key::Char('g')),
@@ -323,7 +413,6 @@ mod tests {
 
     mod jsonb_search {
         use super::*;
-        use crate::model::shared::key_sequence::Prefix;
 
         #[test]
         fn ctrl_n_still_falls_through_to_search_input() {
@@ -425,6 +514,15 @@ mod tests {
                     direction: CursorMove::Up,
                 }
             ));
+        }
+
+        #[test]
+        fn sqlite_jsonb_edit_keeps_escape_normal_action() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
+
+            let result = handle_jsonb_edit_keys_with_policy(combo(Key::Esc), &feature_policy);
+
+            assert!(matches!(result, Action::JsonbExitEdit));
         }
     }
 }

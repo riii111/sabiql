@@ -1,5 +1,11 @@
 use crate::model::shared::viewport::{ColumnWidthsCache, ViewportPlan};
 
+#[derive(Clone, Copy)]
+pub struct CellDetailViewport {
+    pub visible_rows: usize,
+    pub viewport_width: usize,
+}
+
 /// Layout data produced during a draw. Owned by the model so state write-back
 /// stays port-agnostic; the renderer port re-exports this type as its output.
 #[derive(Default)]
@@ -58,6 +64,7 @@ pub struct PickerLayout {
 #[derive(Default)]
 pub struct DetailLayout {
     pub jsonb: Option<JsonbDetailLayout>,
+    pub cell: Option<CellDetailViewport>,
     pub row: Option<RowDetailLayout>,
 }
 
@@ -74,6 +81,8 @@ pub struct RowDetailLayout {
 pub struct OverlayLayout {
     pub confirm_preview: ConfirmPreviewLayout,
     pub explain_compare_viewport_height: Option<u16>,
+    pub sqlite_diagnostics_content_line_count: Option<usize>,
+    pub sqlite_diagnostics_viewport_height: Option<usize>,
 }
 
 #[derive(Default)]

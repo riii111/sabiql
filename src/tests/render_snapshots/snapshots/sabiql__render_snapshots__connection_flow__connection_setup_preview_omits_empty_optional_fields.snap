@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 114
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
@@ -22,19 +23,19 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ empty = psql default       ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
-│                                       ││          │  Database:   [ mydb                       ]                │                                                  │
-│                                       │└──────────│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  Password:   [ ******                     ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
+│                                       │└──────────│  Database:   [ mydb                       ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  User:       [ empty = psql default       ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Password:   [ ******                     ]                │                                                  │
+│                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → port='5432' dbname='mydb' password='****' sslmode='pre  │                                                  │
-│                                       ││          │    fer'                                                    │                                                  │
+│                                       ││          │  → stub-dsn                                                │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
+Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

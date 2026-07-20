@@ -81,21 +81,39 @@ pub enum SqlModalStatus {
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlModalContext {
-    pub editor: MultiLineInputState,
-    status: SqlModalStatus,
-    last_adhoc_success: Option<AdhocSuccessSnapshot>,
-    last_adhoc_error: Option<String>,
-    completion: CompletionState,
-    completion_debounce: Option<Instant>,
+    pub(crate) editor: MultiLineInputState,
+    pub(crate) status: SqlModalStatus,
+    pub(crate) last_adhoc_success: Option<AdhocSuccessSnapshot>,
+    pub(crate) last_adhoc_error: Option<String>,
+    pub(crate) completion: CompletionState,
+    pub(crate) completion_debounce: Option<Instant>,
     prefetch_queue: VecDeque<String>,
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    prefetch_started: bool,
-    prefetch_run: AsyncRun,
+    pub(crate) prefetch_started: bool,
+    pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
 
 impl SqlModalContext {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
+        self.status = status;
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
+        &mut self.completion
+    }
+
+    pub fn editor(&self) -> &MultiLineInputState {
+        &self.editor
+    }
+
+    pub fn editor_mut_for_input(&mut self) -> &mut MultiLineInputState {
+        &mut self.editor
+    }
+
     // ── Prefetch lifecycle ──────────────────────────────────────────
 
     pub fn reset_prefetch(&mut self) {
@@ -180,9 +198,11 @@ impl SqlModalContext {
         self.failed_prefetch_tables.insert(table, entry);
     }
 
-    pub fn retry_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) {
+    pub fn retry_table_prefetch(&mut self, table: String, entry: FailedPrefetchEntry) -> bool {
+        let had_other_pending_before_requeue = self.has_pending_prefetch();
         self.fail_table_prefetch(table.clone(), entry);
         self.queue_table_prefetch(table);
+        had_other_pending_before_requeue
     }
 
     pub fn active_prefetch_run_id(&self) -> Option<u64> {
@@ -252,12 +272,6 @@ impl SqlModalContext {
         ) {
             self.status = SqlModalStatus::Normal;
         }
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
-        self.status = status;
     }
 
     pub fn status(&self) -> &SqlModalStatus {
@@ -435,24 +449,11 @@ impl SqlModalContext {
         self.editor.clear();
         self.reset_completion();
     }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
-        &mut self.completion
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_completion_debounce_for_test(&mut self, debounce: Option<Instant>) {
-        self.completion_debounce = debounce;
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 
     fn candidate(text: &str) -> CompletionCandidate {

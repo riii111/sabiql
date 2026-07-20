@@ -1,8 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::{ColumnAttributes, QueryResult, QuerySource};
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -24,12 +23,15 @@ pub fn reduce_yank(
                 state.result_interaction.selection().row(),
                 state.result_interaction.selection().cell(),
             ) {
-                let content = state
-                    .query
-                    .visible_result()
-                    .and_then(|r| r.rows.get(row_idx))
-                    .and_then(|row| row.get(col_idx))
-                    .cloned();
+                let content = state.query.visible_result().and_then(|result| {
+                    if result.has_typed_values() {
+                        result
+                            .value_at(row_idx, col_idx)
+                            .map(QueryValue::copy_value)
+                    } else {
+                        result.display_value_at(row_idx, col_idx)
+                    }
+                });
                 if let Some(value) = content {
                     DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                         content: value,
@@ -54,10 +56,12 @@ pub fn reduce_yank(
             DispatchResult::handled()
         }
         Action::DdlYank => {
-            if state.ui.inspector_tab == InspectorTab::Ddl
+            if state.ui.inspector_tab() == InspectorTab::Ddl
                 && let Some(table) = state.session.table_detail().as_ref()
             {
-                let ddl = services.ddl_generator.generate_ddl(table);
+                let ddl = services
+                    .ddl_generator
+                    .generate_ddl(state.session.active_database_type_or_default(), table);
                 return DispatchResult::handled_with(vec![Effect::CopyToClipboard {
                     content: ddl,
                     on_success: Some(Box::new(Action::DdlYankSuccess)),
@@ -71,7 +75,15 @@ pub fn reduce_yank(
                 let content = state
                     .query
                     .visible_result()
-                    .and_then(|r| r.rows.get(row_idx))
+                    .and_then(|result| {
+                        if result.has_typed_values() {
+                            result.values().get(row_idx).map(|row| {
+                                row.iter().map(QueryValue::copy_value).collect::<Vec<_>>()
+                            })
+                        } else {
+                            result.display_row_at(row_idx)
+                        }
+                    })
                     .map(|row| {
                         row.iter()
                             .map(|v| {
@@ -99,19 +111,19 @@ pub fn reduce_yank(
             }
         }
         Action::ResultCellYankSuccess { row, col } => {
-            state.result_interaction.yank_flash = Some(YankFlash {
+            state.result_interaction.set_yank_flash(Some(YankFlash {
                 row: *row,
                 col: Some(*col),
                 until: now + Duration::from_millis(200),
-            });
+            }));
             DispatchResult::handled()
         }
         Action::ResultRowYankSuccess { row } => {
-            state.result_interaction.yank_flash = Some(YankFlash {
+            state.result_interaction.set_yank_flash(Some(YankFlash {
                 row: *row,
                 col: None,
                 until: now + Duration::from_millis(200),
-            });
+            }));
             DispatchResult::handled()
         }
         Action::DdlYankSuccess => {
@@ -133,7 +145,9 @@ fn clipboard_unavailable() -> Action {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, Table};
+    use crate::domain::{
+        Column, ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, Table,
+    };
     use crate::ports::outbound::ddl_generator::DdlGenerator;
     use std::sync::Arc;
 
@@ -223,7 +237,35 @@ mod tests {
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
-            assert!(state.result_interaction.yank_flash.is_none());
+            assert!(state.result_interaction.yank_flash().is_none());
+        }
+
+        #[test]
+        fn typed_blob_cell_emits_lossless_copy_effect() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["payload".to_string()],
+                    vec![vec![QueryValue::Blob(vec![0xAB, 0xCD])]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_yank(
+                &mut state,
+                &Action::ResultCellYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::CopyToClipboard { content, .. } if content == "X'ABCD'"
+            ));
         }
 
         #[test]
@@ -238,7 +280,7 @@ mod tests {
                 now,
             );
 
-            let flash = state.result_interaction.yank_flash.expect("flash set");
+            let flash = state.result_interaction.yank_flash().expect("flash set");
             assert_eq!(flash.row, 1);
             assert_eq!(flash.col, Some(2));
         }
@@ -324,7 +366,38 @@ mod tests {
                 }
                 other => panic!("expected CopyToClipboard, got {other:?}"),
             }
-            assert!(state.result_interaction.yank_flash.is_none());
+            assert!(state.result_interaction.yank_flash().is_none());
+        }
+
+        #[test]
+        fn typed_blob_row_emits_lossless_tsv_copy_effect() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Blob(vec![0xAB, 0xCD]),
+                    ]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_yank(
+                &mut state,
+                &Action::ResultRowYank,
+                &AppServices::stub(),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::CopyToClipboard { content, .. } if content == "1\tX'ABCD'"
+            ));
         }
 
         #[test]
@@ -339,7 +412,7 @@ mod tests {
                 now,
             );
 
-            let flash = state.result_interaction.yank_flash.expect("flash set");
+            let flash = state.result_interaction.yank_flash().expect("flash set");
             assert_eq!(flash.row, 0);
             assert_eq!(flash.col, None);
         }
@@ -422,11 +495,13 @@ mod tests {
     }
 
     mod ddl_yank {
+        use crate::test_support;
+
         use super::*;
 
         struct FakeDdlGenerator;
         impl DdlGenerator for FakeDdlGenerator {
-            fn generate_ddl(&self, table: &Table) -> String {
+            fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
                 format!("CREATE TABLE {}.{} ();", table.schema, table.name)
             }
         }
@@ -439,26 +514,17 @@ mod tests {
 
         fn state_with_ddl_tab() -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
                 row_count_estimate: Some(0),
-                comment: None,
+                ..test_support::table::minimal("", "")
             }));
             state
         }
@@ -505,7 +571,7 @@ mod tests {
         #[test]
         fn without_table_detail_returns_empty() {
             let mut state = AppState::new("test".to_string());
-            state.ui.inspector_tab = InspectorTab::Ddl;
+            state.ui.set_inspector_tab(InspectorTab::Ddl);
 
             let effects = reduce_yank(
                 &mut state,
@@ -521,7 +587,7 @@ mod tests {
         #[test]
         fn on_non_ddl_tab_returns_empty() {
             let mut state = state_with_ddl_tab();
-            state.ui.inspector_tab = InspectorTab::Info;
+            state.ui.set_inspector_tab(InspectorTab::Info);
 
             let effects = reduce_yank(
                 &mut state,

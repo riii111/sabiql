@@ -11,6 +11,7 @@ use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::update::input::keybindings::sql_modal_compare_explain;
 use crate::domain::explain_plan::{self, ComparisonVerdict};
+use crate::primitives::atoms::apply_yank_flash_masked;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
 
@@ -21,10 +22,9 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    let can_yank = state.explain.left.is_some() && state.explain.right.is_some();
-    let left = state.explain.left.as_ref();
-    let right = state.explain.right.as_ref();
-    let scroll_offset = state.explain.compare_scroll_offset;
+    let can_yank = state.explain.can_yank_compare();
+    let (left, right) = state.explain.compare_slots();
+    let scroll_offset = state.explain.compare_scroll_offset();
 
     let mut lines: Vec<Line> = Vec::new();
     let mut flash_mask: Vec<bool> = Vec::new();
@@ -54,12 +54,7 @@ pub fn render(
     let visible_mask: Vec<bool> = flash_mask.into_iter().skip(clamped).collect();
 
     let flash_active = can_yank && state.flash_timers.is_active(FlashId::SqlModal, now);
-    crate::primitives::atoms::apply_yank_flash_masked(
-        &mut visible,
-        flash_active,
-        &visible_mask,
-        theme,
-    );
+    apply_yank_flash_masked(&mut visible, flash_active, &visible_mask, theme);
 
     frame.render_widget(
         Paragraph::new(visible)

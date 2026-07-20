@@ -5,21 +5,23 @@ use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::EditGuardrailError;
 
 use super::scroll::{result_col_count, result_row_count};
 
 fn ensure_cell_visible(state: &mut AppState) {
     if let Some(col) = state.result_interaction.selection().cell() {
-        let plan = &state.ui.result_viewport_plan;
-        let h_offset = state.result_interaction.horizontal_offset;
+        let plan = state.ui.result_viewport_plan();
+        let h_offset = state.result_interaction.horizontal_offset();
         if col < h_offset {
-            state.result_interaction.horizontal_offset = col;
+            state.result_interaction.set_horizontal_offset(col);
         } else if col >= h_offset + plan.column_count {
             // At max_offset every remaining column is visible, so clamping
             // never hides the active cell
-            state.result_interaction.horizontal_offset = col
-                .saturating_sub(plan.column_count.saturating_sub(1))
-                .min(plan.max_offset);
+            state.result_interaction.set_horizontal_offset(
+                col.saturating_sub(plan.column_count.saturating_sub(1))
+                    .min(plan.max_offset),
+            );
         }
     }
 }
@@ -30,8 +32,8 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
             let rows = result_row_count(state);
             let cols = result_col_count(state);
             if rows > 0 && cols > 0 {
-                let row = state.result_interaction.scroll_offset.min(rows - 1);
-                let col = state.result_interaction.horizontal_offset.min(cols - 1);
+                let row = state.result_interaction.scroll_offset().min(rows - 1);
+                let col = state.result_interaction.horizontal_offset().min(cols - 1);
                 state.result_interaction.activate_cell(row, col);
             }
             DispatchResult::handled()
@@ -64,9 +66,16 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
             DispatchResult::handled()
         }
         Action::StageRowForDelete => {
-            if state.session.read_only {
+            if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: delete operations are disabled".to_string(),
+                    now,
+                );
+                return DispatchResult::handled();
+            }
+            if let Some(reason) = state.visible_preview_target_read_only_reason() {
+                state.messages.set_error_at(
+                    EditGuardrailError::ReadOnlyPreviewTarget(reason).to_string(),
                     now,
                 );
                 return DispatchResult::handled();
@@ -94,11 +103,14 @@ pub fn reduce_selection(state: &mut AppState, action: &Action, now: Instant) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, QueryResult, QuerySource, Table};
+    use crate::domain::Column;
+    use crate::domain::{QueryResult, QuerySource, Table};
     use std::sync::Arc;
     use std::time::Instant;
 
     mod row_delete {
+        use crate::test_support;
+
         use super::*;
 
         pub(super) fn base_state(
@@ -107,11 +119,13 @@ mod tests {
             current_page: usize,
         ) -> AppState {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            let _ = state.session.begin_connecting("postgres://localhost/test");
             state.session.set_selection_generation(7);
-            state.query.pagination.current_page = current_page;
-            state.query.pagination.schema = "public".to_string();
-            state.query.pagination.table = "users".to_string();
+            state.query.pagination.reset_for_table("public", "users");
+            state
+                .query
+                .pagination
+                .set_page_result(current_page, state.query.pagination.reached_end());
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success(
@@ -126,22 +140,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "integer".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
                 }],
                 primary_key: pk.map(|cols| cols.into_iter().map(ToString::to_string).collect()),
-                foreign_keys: vec![],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             }));
             state
         }
@@ -221,13 +225,15 @@ mod tests {
     }
 
     mod read_only_guard {
+        use crate::test_support;
+
         use super::*;
 
         #[test]
         fn read_only_blocks_stage_row_for_delete() {
             let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
             state.result_interaction.activate_cell(0, 0);
-            state.session.read_only = true;
+            state.session.enable_read_only();
 
             let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
                 .into_effects()
@@ -235,7 +241,27 @@ mod tests {
 
             assert!(effects.is_empty());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
-            assert!(state.messages.last_error.is_some());
+            assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn view_blocks_stage_row_for_delete() {
+            let mut state = row_delete::base_state(Some(vec!["id"]), vec![vec!["1", "alice"]], 0);
+            let mut table = state.session.table_detail().unwrap().clone();
+            table.kind_info = test_support::table::view_kind_info();
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 0);
+
+            let effects = reduce_selection(&mut state, &Action::StageRowForDelete, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Preview target is read-only: view")
+            );
         }
     }
 

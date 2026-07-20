@@ -29,7 +29,7 @@ pub(super) fn reduce_completion(
         Action::CompletionAccept => {
             state
                 .sql_modal
-                .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height));
+                .accept_selected_completion(sql_modal_visible_rows(state.ui.terminal_height()));
             DispatchResult::handled()
         }
 

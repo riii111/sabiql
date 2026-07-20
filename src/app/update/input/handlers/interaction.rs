@@ -45,7 +45,7 @@ pub fn resolve_input_interaction(state: &AppState) -> InputInteraction {
             JsonbDetailMode::Searching => InputInteraction::FormEditing(InputTarget::JsonbSearch),
         },
         InputMode::JsonbEdit => InputInteraction::VimEditing(InputTarget::JsonbEdit),
-        InputMode::Help => match state.ui.help.mode() {
+        InputMode::Help => match state.ui.help().mode() {
             HelpMode::Viewing => InputInteraction::Viewing,
             HelpMode::EditingFilter => InputInteraction::FormEditing(InputTarget::HelpFilter),
         },

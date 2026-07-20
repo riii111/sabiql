@@ -18,18 +18,22 @@ test_project ▸ test_db ▸ -                                                  
 │                        │  Home/End                                     Jump to start/end                                                ││                        │
 │                        │  :                                            Open command line                                                ││                        │
 │                        │  Esc                                          Exit to Cell Active (draft preserved)                            ││                        │
-│                        │  Home / End                                   Line start/end                                                   ││                        │
 │                        │  Enter                                        Execute the confirmed statement                                  ││                        │
 │                        │  Esc                                          Cancel and return to editor                                      ││                        │
-│                        │                                                                                                                ││                        │
+│                        │  Esc                                          Return to Normal mode                                            ││                        │
+│                        │  ↑↓←→                                         Move cursor                                                      ││                        │
+│                        │  Home / End                                   Line start/end                                                   ┃│                        │
+│                        │                                                                                                                ┃│                        │
 │                        │▸ Search / Filter                                                                                               ┃│                        │
 │                        │  type                                         Type to filter                                                   ┃│                        │
+│                        │  type                                         Type to filter                                                   ┃│────────────────────────┘
+│                        │  type                                         Type to filter                                                   ┃│────────────────────────┐
 │                        │  type                                         Type to search                                                   ┃│                        │
 │                        │  Enter                                        Confirm search                                                   ┃│                        │
-│                        │  Esc                                          Cancel search                                                    ┃│────────────────────────┘
-│                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓              Scroll down / up                                                 ┃│────────────────────────┐
-│                        │  Home / End                                   Jump to top / bottom                                             ┃│                        │
-│                        │  Ctrl+D / Ctrl+U                              Scroll half page down / up                                       ┃│                        │
+│                        │  Esc                                          Cancel search                                                    ││                        │
+│                        │  Ctrl+N / Ctrl+P / j / k / ↑ / ↓              Scroll down / up                                                 ││                        │
+│                        │  Home / End                                   Jump to top / bottom                                             ││                        │
+│                        │  Ctrl+D / Ctrl+U                              Scroll half page down / up                                       ││                        │
 │                        │  Ctrl+F / Ctrl+B / PageDown / PageUp          Scroll full page down / up                                       ││                        │
 │                        │  h / l / ← / →                                Scroll left / right                                              ││                        │
 │                        │  /                                            Edit filter                                                      ││                        │
@@ -40,11 +44,7 @@ test_project ▸ test_db ▸ -                                                  
 │                        │  Tab/⇧Tab                                     Next/Previous field                                              ││                        │
 │                        │  Tab                                          Next field                                                       ││                        │
 │                        │  ⇧Tab                                         Previous field                                                   ││                        │
-│                        │  Ctrl+S                                       Save and connect                                                 ││                        │
-│                        │  Esc                                          Cancel                                                           ││                        │
-│                        │  Enter                                        Toggle dropdown (SSL field)                                      ││                        │
-│                        │  Ctrl+N / Ctrl+P / ↑ / ↓                      Dropdown navigation                                              ││                        │
-│                        │  Enter                                        Confirm selection                                                ▼│                        │
+│                        │  Ctrl+S                                       Save and connect                                                 ▼│                        │
 │                        │─────────────────────────────────────────────────────────────────────────────────────────────────────────────────│                        │
 │                        │ [BROWSE]                                                                                                        │                        │
 │                        ╰ /: Filter │ Esc: Close │ ?: Close ──────────────────────────────────────────────────────────────────────────────╯                        │

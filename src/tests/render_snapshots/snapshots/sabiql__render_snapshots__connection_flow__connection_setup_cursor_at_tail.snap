@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 273
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
@@ -20,9 +21,9 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ db.example.com             ]                │                                                  │
 │                                       ││          │  Port:       [ 5432                       ]                │                                                  │
@@ -31,7 +32,7 @@ test_project ▸ - ▸ -                                                        
 │                                       ││(select a │  Password:   [ empty = psql default       ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → host='db.example.com' port='5432' sslmode='prefer'      │                                                  │
+│                                       ││          │  → stub-dsn                                                │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │

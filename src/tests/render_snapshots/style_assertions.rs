@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, create_test_terminal_sized, render_and_get_buffer,
+    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
     with_current_result,
 };
@@ -14,11 +14,9 @@ use sabiql_app::model::app_state::AppState;
 use sabiql_app::model::shared::input_mode::InputMode;
 use sabiql_app::model::shared::theme_id::ThemeId;
 use sabiql_app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_WIDTH_PERCENT};
-use sabiql_app::model::sql_editor::modal::SqlModalStatus;
-use sabiql_app::services::AppServices;
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
-use sabiql_domain::{Column, ColumnAttributes, QueryResult, QuerySource};
+use sabiql_domain::{Column, ConnectionId, QueryResult};
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
     SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
@@ -95,9 +93,8 @@ fn jsonb_detail_state() -> (AppState, Instant) {
             1,
             QuerySource::Preview,
         )));
-    state.query.pagination.schema = "public".to_string();
-    state.query.pagination.table = "users".to_string();
-    state.ui.focused_pane = FocusedPane::Result;
+    state.query.pagination.reset_for_table("public", "users");
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 3);
     dispatch_result(
         &mut state,
@@ -120,7 +117,7 @@ fn pending_draft_cell_uses_orange_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::Normal);
     state
@@ -128,8 +125,7 @@ fn pending_draft_cell_uses_orange_fg() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -148,7 +144,7 @@ fn active_cell_edit_uses_yellow_fg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(1, 2);
     state.modal.set_mode(InputMode::CellEdit);
     state
@@ -156,8 +152,7 @@ fn active_cell_edit_uses_yellow_fg() {
         .begin_cell_edit(1, 2, "bob@example.com".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -176,7 +171,7 @@ fn staged_delete_row_uses_dark_red_bg() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
@@ -216,7 +211,7 @@ fn result_highlight_respects_injected_now() {
 
     with_current_result(&mut state);
     // Unfocused so highlight border is distinguishable from focus border
-    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_focused_pane(FocusedPane::Explorer);
 
     let highlight_until = now + Duration::from_millis(500);
     state.query.set_result_highlight(highlight_until);
@@ -345,8 +340,13 @@ fn header_status_uses_success_warning_and_error_colors() {
 #[test]
 fn read_only_header_uses_warning_badge_style() {
     let mut state = connected_state();
-    state.session.dsn = Some("postgresql://localhost/test".to_string());
-    state.session.read_only = true;
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::PostgreSQL,
+        "postgresql://localhost/test",
+    );
+    state.session.enable_read_only();
     let mut terminal = create_test_terminal();
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -370,7 +370,7 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help.set_scroll_offset(14);
+    state.ui.help_mut().set_scroll_offset(14);
 
     let buffer = render_and_get_buffer_at(&mut terminal, &mut state, now);
 
@@ -406,8 +406,8 @@ fn help_overlay_omits_scrollbars_when_content_fits() {
     let mut terminal = create_test_terminal_sized(180, 300);
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.terminal_width = 180;
-    state.ui.terminal_height = 300;
+    state.ui.set_terminal_width(180);
+    state.ui.set_terminal_height(300);
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -430,7 +430,7 @@ fn test_contrast_theme_applies_help_overlay_navigation_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
-    state.ui.help.set_scroll_offset(14);
+    state.ui.help_mut().set_scroll_offset(14);
 
     let buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
@@ -459,8 +459,11 @@ fn sql_modal_keyword_and_number_use_syntax_colors() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT 42".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 42".to_string());
+    state.sql_modal.enter_normal();
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -499,9 +502,9 @@ fn sql_modal_string_comment_and_operator_use_syntax_colors() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT 'x'::text -- note".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -528,9 +531,9 @@ fn test_contrast_theme_applies_sql_syntax_colors() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT 'x' + 42 -- note".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let buffer = render_and_get_buffer_at_with_theme(
         &mut terminal,
@@ -583,8 +586,11 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT 1".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 1".to_string());
+    state.sql_modal.enter_normal();
 
     let normal_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let has_block_cursor = has_cell(&normal_buffer, |cell| {
@@ -592,7 +598,7 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
             && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
     });
 
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let insert_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let has_insert_glyph = has_cell(&insert_buffer, |cell| cell.symbol() == "\u{258f}");
@@ -621,7 +627,7 @@ fn help_uses_block_cursor_while_browsing_and_terminal_cursor_while_filtering() {
             && cell.fg == DEFAULT_THEME.semantic.cursor.text_fg
     });
 
-    state.ui.help.enter_filter_editing();
+    state.ui.help_mut().enter_filter_editing();
 
     let filtering_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let has_block_cursor_while_filtering =
@@ -670,9 +676,9 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state.sql_modal.enter_normal();
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let head = sql_modal_block_cursor_position(&head_buffer)
@@ -680,7 +686,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
 
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), middle_col);
     let middle_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let middle = sql_modal_block_cursor_position(&middle_buffer)
@@ -688,7 +694,7 @@ fn sql_modal_normal_cursor_position_tracks_head_middle_and_tail() {
 
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content, tail_col);
     let tail_buffer = render_and_get_buffer(&mut terminal, &mut state);
     let tail = sql_modal_block_cursor_position(&tail_buffer)
@@ -717,21 +723,21 @@ fn sql_modal_insert_cursor_position_tracks_head_middle_and_tail() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), middle_col);
     let middle = render_and_get_cursor_position(&mut terminal, &mut state);
 
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content, tail_col);
     let tail = render_and_get_cursor_position(&mut terminal, &mut state);
 
@@ -750,13 +756,16 @@ fn sql_modal_insert_cursor_uses_display_width_for_wide_chars() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    state.sql_modal.editor.set_content_with_cursor(content, 2);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content_with_cursor(content, 2);
     let after_wide = render_and_get_cursor_position(&mut terminal, &mut state);
 
     assert_eq!(after_wide.y, head.y);
@@ -772,13 +781,16 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content_with_cursor(content.clone(), 0);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let head = render_and_get_cursor_position(&mut terminal, &mut state);
 
-    state.sql_modal.editor.set_content_with_cursor(content, 18);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content_with_cursor(content, 18);
     let wrapped = render_and_get_cursor_position(&mut terminal, &mut state);
 
     assert!(wrapped.y > head.y);
@@ -865,9 +877,9 @@ fn sql_modal_unterminated_string_keeps_string_highlight() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT 'unterminated".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -890,9 +902,9 @@ fn sql_modal_unterminated_block_comment_keeps_comment_highlight() {
     state.modal.set_mode(InputMode::SqlModal);
     state
         .sql_modal
-        .editor
+        .editor_mut_for_input()
         .set_content("SELECT /* pending".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state.sql_modal.enter_editing();
 
     let buffer = render_and_get_buffer(&mut terminal, &mut state);
 
@@ -934,7 +946,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
         },
     };
 
-    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_focused_pane(FocusedPane::Explorer);
     let shell_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_focus_border = has_cell(&shell_buffer, |cell| {
         cell.symbol() == "─" && cell.fg == theme.semantic.surface.focus_border
@@ -966,7 +978,7 @@ fn injected_palette_changes_shell_modal_and_picker_styles() {
     );
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+    state.sql_modal.enter_normal();
     let sql_buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
     let has_custom_sql_hint = has_cell(&sql_buffer, |cell| cell.fg == theme.component.modal.hint);
     assert!(
@@ -1027,7 +1039,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
     let mut terminal = create_test_terminal();
 
     with_current_result(&mut state);
-    state.ui.focused_pane = FocusedPane::Result;
+    state.ui.set_focused_pane(FocusedPane::Result);
     state.result_interaction.activate_cell(0, 0);
     state.result_interaction.stage_row(1);
 
@@ -1054,8 +1066,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
         .begin_cell_edit(0, 0, "1".to_string());
     state
         .result_interaction
-        .cell_edit_input_mut()
-        .set_content("new@example.com".to_string());
+        .replace_cell_edit_draft("new@example.com".to_string());
 
     let draft_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &TEST_CONTRAST_THEME);
@@ -1090,11 +1101,12 @@ fn sql_completion_popup_uses_injected_theme_styles() {
     };
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT ".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
-    state.sql_modal.completion_mut_for_test().visible = true;
-    state.sql_modal.completion_mut_for_test().selected_index = 0;
-    state.sql_modal.completion_mut_for_test().candidates = vec![
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT ".to_string());
+    state.sql_modal.enter_editing();
+    let candidates = vec![
         CompletionCandidate {
             text: "users".into(),
             kind: CompletionKind::Table,
@@ -1106,6 +1118,9 @@ fn sql_completion_popup_uses_injected_theme_styles() {
             score: 90,
         },
     ];
+    state
+        .sql_modal
+        .apply_completion_update(&candidates, 7, true);
 
     let buffer = render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &theme);
 
@@ -1133,10 +1148,10 @@ fn sql_completion_popup_uses_injected_theme_styles() {
         Constraint::Length(1),
     ])
     .areas(content_area);
-    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
+    let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
     let cursor_col = cursor_col as u16;
     let cursor_row = cursor_row as u16;
-    let scroll_row = state.sql_modal.editor.scroll_row() as u16;
+    let scroll_row = state.sql_modal.editor().scroll_row() as u16;
     let visible_count = state.sql_modal.completion().candidates.len().min(8) as u16;
     let popup_height = visible_count + 2;
     let popup_width = 45u16.min(modal_area.width);
@@ -1179,7 +1194,7 @@ fn light_theme_applies_shell_and_sql_colors() {
     let now = test_instant();
     let mut terminal = create_test_terminal();
 
-    state.ui.focused_pane = FocusedPane::Explorer;
+    state.ui.set_focused_pane(FocusedPane::Explorer);
     let shell_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
     let has_light_focus_border = has_cell(&shell_buffer, |cell| {
@@ -1191,8 +1206,11 @@ fn light_theme_applies_shell_and_sql_colors() {
     );
 
     state.modal.set_mode(InputMode::SqlModal);
-    state.sql_modal.editor.set_content("SELECT 42".to_string());
-    state.sql_modal.set_status_for_test(SqlModalStatus::Editing);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("SELECT 42".to_string());
+    state.sql_modal.enter_editing();
     let sql_buffer =
         render_and_get_buffer_at_with_theme(&mut terminal, &mut state, now, &LIGHT_THEME);
     let has_light_keyword = has_cell(&sql_buffer, |cell| {

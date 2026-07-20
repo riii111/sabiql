@@ -9,7 +9,7 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
-use super::error::classify_query_error;
+use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{ParseCommandTagError, split_sql_statements};
 
 // Keep user SQL server-side: stdin scripts would let psql interpret
@@ -141,7 +141,7 @@ impl PostgresAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| DbOperationError::CommandNotFound(e.to_string()))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let mut stdout_handle = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -317,10 +317,9 @@ impl PostgresAdapter {
         source: QuerySource,
     ) -> QueryResult {
         let row_count = tag.affected_rows().unwrap_or(0) as usize;
-        let mut result =
-            QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source);
-        result.row_count = row_count;
-        result.with_command_tag(tag)
+        QueryResult::success(query.to_string(), Vec::new(), Vec::new(), elapsed, source)
+            .with_row_count(row_count)
+            .with_command_tag(tag)
     }
 
     fn csv_result(
@@ -404,7 +403,7 @@ impl PostgresAdapter {
         query: &str,
         path: &std::path::Path,
         read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    ) -> Result<(), DbOperationError> {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
@@ -417,7 +416,7 @@ impl PostgresAdapter {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| DbOperationError::CommandNotFound(e.to_string()))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
@@ -428,7 +427,6 @@ impl PostgresAdapter {
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            let mut newline_count: usize = 0;
             if let Some(mut out) = stdout {
                 let mut buf = [0u8; 8192];
                 loop {
@@ -436,7 +434,6 @@ impl PostgresAdapter {
                     if n == 0 {
                         break;
                     }
-                    newline_count += buf[..n].iter().filter(|&&b| b == b'\n').count();
                     writer.write_all(&buf[..n]).await?;
                 }
                 writer.flush().await?;
@@ -451,7 +448,7 @@ impl PostgresAdapter {
             };
 
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr, newline_count))
+            Ok::<_, std::io::Error>((status, stderr))
         })
         .await;
 
@@ -463,15 +460,13 @@ impl PostgresAdapter {
             }
         };
 
-        let (status, stderr, newline_count) = result;
+        let (status, stderr) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
             return Err(Self::classify_psql_error(&stderr));
         }
 
-        // Subtract 1 for the CSV header line
-        let row_count = newline_count.saturating_sub(1);
-        Ok(row_count)
+        Ok(())
     }
 
     pub(in crate::adapters::postgres) async fn fetch_preview_order_columns(
@@ -822,7 +817,7 @@ mod tests {
             assert_eq!(tag.as_ref(), Some(&expected_tag));
             let rows = tag
                 .as_ref()
-                .and_then(crate::domain::command_tag::CommandTag::affected_rows)
+                .and_then(CommandTag::affected_rows)
                 .unwrap_or(0) as usize;
             assert_eq!(rows, expected_rows);
         }
@@ -855,9 +850,7 @@ mod tests {
             let csv = "id,name\n1,Alice\n2,Bob\n";
             let tag = PostgresAdapter::extract_command_tag(csv);
             // Should be Other or None, never a DML/DDL variant
-            let is_dml = tag
-                .as_ref()
-                .is_some_and(crate::domain::command_tag::CommandTag::is_data_modifying);
+            let is_dml = tag.as_ref().is_some_and(CommandTag::is_data_modifying);
             assert!(!is_dml, "CSV output should not be parsed as DML tag");
         }
 

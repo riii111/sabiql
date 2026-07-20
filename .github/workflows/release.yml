@@ -169,13 +169,27 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
 
+      - name: Check publishable crate order
+        run: bash ./scripts/check-publish-order.sh > /dev/null
+
       - name: Publish workspace crates to crates.io
         run: |
-          for crate in src/domain src/app src/infra src/ui .; do
+          while IFS= read -r crate; do
             cargo publish --manifest-path "$crate/Cargo.toml"
             if [ "$crate" != "." ]; then
               sleep 30
             fi
-          done
+          done < <(bash ./scripts/check-publish-order.sh)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Verify published crates independently
+        run: |
+          sleep 30
+          while IFS= read -r crate; do
+            target_dir="$RUNNER_TEMP/package-${crate//\//-}"
+            CARGO_TARGET_DIR="$target_dir" cargo package \
+              --manifest-path "$crate/Cargo.toml" \
+              --all-features \
+              --locked
+          done < <(bash ./scripts/check-publish-order.sh)

@@ -1,6 +1,7 @@
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::setup::ConnectionField;
+use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::settings::KeymapPreset;
@@ -23,6 +24,7 @@ impl Default for HelpState {
                 focused_pane: FocusedPane::default(),
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: false,
                 keymap_preset: KeymapPreset::Default,
             },
             filter: TextInputState::default(),
@@ -105,7 +107,7 @@ impl HelpState {
         result
     }
 
-    pub fn move_filter_cursor(&mut self, direction: crate::model::shared::cursor::CursorMove) {
+    pub fn move_filter_cursor(&mut self, direction: CursorMove) {
         self.filter.move_cursor(direction);
     }
 
@@ -128,6 +130,7 @@ pub enum HelpOrigin {
         focused_pane: FocusedPane,
         result_active: bool,
         staged_delete_in_progress: bool,
+        can_write_preview: bool,
         keymap_preset: KeymapPreset,
     },
     CommandLine,
@@ -145,6 +148,7 @@ pub enum HelpOrigin {
         focused_field: ConnectionField,
     },
     ConnectionError,
+    SqliteDiagnostics,
     ConfirmDialog,
     ConnectionSelector,
     ErTablePicker {
@@ -155,6 +159,9 @@ pub enum HelpOrigin {
         mode: JsonbHelpMode,
     },
     JsonbEdit,
+    CellDetail {
+        searching: bool,
+    },
     RowDetail,
 }
 
@@ -172,11 +179,13 @@ impl HelpOrigin {
             | Self::Settings
             | Self::Help
             | Self::ConnectionError
+            | Self::SqliteDiagnostics
             | Self::ConfirmDialog
             | Self::ConnectionSelector
             | Self::QueryHistoryPicker
             | Self::JsonbDetail { .. }
             | Self::JsonbEdit
+            | Self::CellDetail { .. }
             | Self::RowDetail => KeymapPreset::Default,
         }
     }
@@ -184,12 +193,13 @@ impl HelpOrigin {
     pub fn from_state(state: &AppState) -> Self {
         match state.input_mode() {
             InputMode::Normal => Self::Normal {
-                focused_pane: state.ui.focused_pane,
+                focused_pane: state.ui.focused_pane(),
                 result_active: state.result_interaction.selection().cell().is_some(),
                 staged_delete_in_progress: !state
                     .result_interaction
                     .staged_delete_rows()
                     .is_empty(),
+                can_write_preview: state.can_write_visible_preview(),
                 keymap_preset: state.settings.saved_keymap_preset(),
             },
             InputMode::CommandLine => Self::CommandLine,
@@ -207,6 +217,7 @@ impl HelpOrigin {
                 focused_field: state.connection_setup.focused_field,
             },
             InputMode::ConnectionError => Self::ConnectionError,
+            InputMode::SqliteDiagnostics => Self::SqliteDiagnostics,
             InputMode::ConfirmDialog => Self::ConfirmDialog,
             InputMode::ConnectionSelector => Self::ConnectionSelector,
             InputMode::ErTablePicker => Self::ErTablePicker {
@@ -217,6 +228,9 @@ impl HelpOrigin {
                 mode: JsonbHelpMode::from_state(state),
             },
             InputMode::JsonbEdit => Self::JsonbEdit,
+            InputMode::CellDetail => Self::CellDetail {
+                searching: state.cell_detail.search().is_active(),
+            },
             InputMode::RowDetail => Self::RowDetail,
         }
     }
@@ -244,12 +258,15 @@ impl HelpOrigin {
             Self::SqlModal { mode, .. } => mode.label(),
             Self::ConnectionSetup { .. } => "Connection Setup",
             Self::ConnectionError => "Connection Error",
+            Self::SqliteDiagnostics => "SQLite Diagnostics",
             Self::ConfirmDialog => "Confirm Dialog",
             Self::ConnectionSelector => "Connection Selector",
             Self::ErTablePicker { .. } => "ER Table Picker",
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
             Self::JsonbEdit => "JSONB Edit",
+            Self::CellDetail { searching: true } => "Cell Detail Search",
+            Self::CellDetail { searching: false } => "Cell Detail",
             Self::RowDetail => "Row Detail",
         }
     }
@@ -274,13 +291,15 @@ impl SqlHelpMode {
             | SqlModalStatus::ConfirmingRisk { .. }
             | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => Self::Confirm,
             SqlModalStatus::Running => Self::Running,
-            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => {
-                match state.sql_modal.active_tab() {
-                    SqlModalTab::Sql => Self::Normal,
-                    SqlModalTab::Plan => Self::Plan,
-                    SqlModalTab::Compare => Self::Compare,
-                }
-            }
+            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => match state
+                .session
+                .active_engine_feature_profile()
+                .normalize_sql_modal_tab(state.sql_modal.active_tab())
+            {
+                SqlModalTab::Sql => Self::Normal,
+                SqlModalTab::Plan => Self::Plan,
+                SqlModalTab::Compare => Self::Compare,
+            },
         }
     }
 
@@ -328,7 +347,7 @@ mod tests {
     #[test]
     fn normal_origin_captures_focused_pane() {
         let mut state = AppState::new("test".to_string());
-        state.ui.focused_pane = FocusedPane::Inspector;
+        state.ui.set_focused_pane(FocusedPane::Inspector);
 
         let origin = HelpOrigin::from_state(&state);
 
@@ -338,6 +357,7 @@ mod tests {
                 focused_pane: FocusedPane::Inspector,
                 result_active: false,
                 staged_delete_in_progress: false,
+                can_write_preview: false,
                 keymap_preset: KeymapPreset::Default,
             }
         ));

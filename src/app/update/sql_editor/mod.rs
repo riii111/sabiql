@@ -9,22 +9,16 @@ mod yank;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
-use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
-pub fn dispatch_sql_modal(
-    state: &mut AppState,
-    action: &Action,
-    now: Instant,
-    services: &AppServices,
-) -> DispatchResult {
+pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     completion::reduce_completion(state, action, now)
         .or_else(|| editing::reduce_editing(state, action, now))
         .or_else(|| mode::reduce_mode(state, action, now))
         .or_else(|| submit::reduce_submit(state, action, now))
         .or_else(|| high_risk::reduce_high_risk_confirmation(state, action, now))
-        .or_else(|| yank::reduce_yank(state, action, now, services))
+        .or_else(|| yank::reduce_yank(state, action, now))
 }
 
 #[cfg(test)]
@@ -34,13 +28,15 @@ mod tests {
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
-    use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
-    use crate::policy::write::write_guardrails::RiskLevel;
+    use crate::model::sql_editor::modal::{AdhocSuccessSnapshot, SqlModalStatus, SqlModalTab};
+    use crate::policy::write::sql_risk::AcknowledgeReason;
+    use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::update::action::{CursorMove, InputTarget, ModalKind};
+    use crate::update::test_fixtures;
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-        super::dispatch_sql_modal(state, action, now, &crate::services::AppServices::stub())
+        super::dispatch_sql_modal(state, action, now)
     }
 
     fn sql_modal_state() -> AppState {
@@ -48,7 +44,6 @@ mod tests {
         state.modal.set_mode(InputMode::SqlModal);
         state
     }
-
     mod paste {
         use super::*;
 
@@ -152,7 +147,7 @@ mod tests {
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingHigh {
-                    decision: crate::policy::write::write_guardrails::AdhocRiskDecision {
+                    decision: AdhocRiskDecision {
                         risk_level: RiskLevel::High,
                         label: "DROP",
                     },
@@ -176,12 +171,11 @@ mod tests {
 
     mod scrolling {
         use super::*;
-        use crate::update::action::CursorMove;
 
         #[test]
         fn moves_down_without_scrolling_while_cursor_stays_inside_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal
@@ -206,7 +200,7 @@ mod tests {
         #[test]
         fn scrolls_once_cursor_moves_past_visible_rows() {
             let mut state = sql_modal_state();
-            state.ui.terminal_height = 20;
+            state.ui.set_terminal_height(20);
             state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
             state
                 .sql_modal
@@ -231,8 +225,6 @@ mod tests {
 
     mod confirming_high {
         use super::*;
-        use crate::policy::write::write_guardrails::AdhocRiskDecision;
-        use crate::update::action::CursorMove;
 
         fn confirming_high_state(content: &str, target: &str) -> AppState {
             let mut state = sql_modal_state();
@@ -276,14 +268,14 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("SELECT * INTO backup FROM users".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingRisk {
-                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    reason: AcknowledgeReason::UnknownRisk,
                     ..
                 }
             ));
@@ -296,14 +288,14 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("COPY users FROM '/tmp/data.csv'".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingRisk {
-                    reason: crate::policy::write::sql_risk::AcknowledgeReason::UnknownRisk,
+                    reason: AcknowledgeReason::UnknownRisk,
                     ..
                 }
             ));
@@ -316,15 +308,33 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE a, b".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
             assert!(matches!(
                 state.sql_modal.status(),
                 SqlModalStatus::ConfirmingRisk {
-                    reason:
-                        crate::policy::write::sql_risk::AcknowledgeReason::TargetNameUnavailable,
+                    reason: AcknowledgeReason::TargetNameUnavailable,
+                    ..
+                }
+            ));
+        }
+
+        #[test]
+        fn sqlite_incompatible_transaction_enters_non_atomic_acknowledgement() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content(
+                "PRAGMA foreign_keys = ON; CREATE TABLE users(id INTEGER)".to_string(),
+            );
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingRisk {
+                    reason: AcknowledgeReason::NonAtomicTransaction,
                     ..
                 }
             ));
@@ -337,7 +347,7 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("UPDATE users SET x=1 WHERE id=1".to_string());
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
@@ -420,7 +430,7 @@ mod tests {
         #[test]
         fn high_risk_confirm_executes_on_match() {
             let mut state = confirming_high_state("DROP TABLE users", "users");
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             for c in "users".chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -607,10 +617,31 @@ mod tests {
         }
 
         #[test]
+        fn sqlite_submit_multi_drop_pairs_label_with_first_target() {
+            let mut state = sql_modal_state();
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state
+                .sql_modal
+                .editor
+                .set_content("DROP INDEX my_index; DROP VIEW my_view".to_string());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingHigh {
+                    decision,
+                    target_name,
+                    ..
+                } if decision.label == "DROP INDEX" && target_name == "my_index"
+            ));
+        }
+
+        #[test]
         fn high_risk_confirm_matches_full_name_not_truncated() {
             let full_name = "my_schema.very_long_table_name";
             let mut state = confirming_high_state(&format!("DROP TABLE {full_name}"), full_name);
-            state.session.dsn = Some("postgres://test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             for c in full_name.chars() {
                 reduce_sql_modal(
                     &mut state,
@@ -645,8 +676,8 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DELETE FROM users WHERE id = 1".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
@@ -664,17 +695,15 @@ mod tests {
         fn read_only_reject_clears_prior_success() {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state.session.enable_read_only();
 
             // Simulate a prior adhoc success
-            state.sql_modal.finish_adhoc_success(
-                crate::model::sql_editor::modal::AdhocSuccessSnapshot {
-                    command_tag: None,
-                    row_count: 5,
-                    execution_time_ms: 10,
-                },
-            );
+            state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+                command_tag: None,
+                row_count: 5,
+                execution_time_ms: 10,
+            });
             assert!(state.sql_modal.last_adhoc_success().is_some());
 
             // Now submit a write query in read-only mode
@@ -696,8 +725,8 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
-            state.session.read_only = true;
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state.session.enable_read_only();
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
@@ -706,16 +735,57 @@ mod tests {
             assert!(!effects.is_empty());
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
+
+        #[test]
+        fn sqlite_read_only_allows_read_only_pragma() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content("PRAGMA table_info(users)".to_string());
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state.session.enable_read_only();
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(!effects.is_empty());
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
+
+        #[test]
+        fn sqlite_read_only_blocks_dangerous_pragma() {
+            let mut state = AppState::new("test".to_string());
+            state.modal.set_mode(InputMode::SqlModal);
+            state
+                .sql_modal
+                .editor
+                .set_content("PRAGMA foreign_keys = OFF".to_string());
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
+            state.session.enable_read_only();
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert_eq!(
+                state.sql_modal.last_adhoc_error(),
+                Some("Read-only mode: write operations are disabled")
+            );
+        }
     }
 
     mod risk_acknowledge_flow {
         use super::*;
-        use crate::policy::write::sql_risk::AcknowledgeReason;
 
         fn confirming_risk_state(content: &str) -> AppState {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content(content.to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .sql_modal
                 .set_status_for_test(SqlModalStatus::ConfirmingRisk {
@@ -754,13 +824,12 @@ mod tests {
 
     mod confirmation_flow {
         use super::*;
-        use crate::policy::write::write_guardrails::RiskLevel;
 
         fn modal_state_with_query(query: &str) -> AppState {
             let mut state = AppState::new("test".to_string());
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content(query.to_string());
-            state.session.dsn = Some("postgres://localhost/test".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
         }
 
@@ -1021,6 +1090,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_copies_plan_text() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = Some("Seq Scan on users".to_string());
 
@@ -1037,6 +1107,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_no_plan_is_noop() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
 
@@ -1050,6 +1121,7 @@ mod tests {
         #[test]
         fn plan_tab_yank_error_state_is_noop() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
             state.explain.plan_text = None;
             state.explain.error = Some("syntax error".to_string());
@@ -1064,6 +1136,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_both_slots() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 420, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", true, 50, SlotSource::AutoLatest));
@@ -1089,6 +1162,7 @@ mod tests {
         #[test]
         fn both_auto_slots_yank_returns_distinguishable_headers() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 300, SlotSource::AutoPrevious));
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1109,6 +1183,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_right_only_is_noop() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = Some(make_slot("Index Scan", false, 100, SlotSource::AutoLatest));
@@ -1123,6 +1198,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_left_only_is_noop() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = Some(make_slot("Seq Scan", false, 200, SlotSource::AutoPrevious));
             state.explain.right = None;
@@ -1137,6 +1213,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_empty_is_noop() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.left = None;
             state.explain.right = None;
@@ -1151,6 +1228,7 @@ mod tests {
         #[test]
         fn compare_tab_yank_includes_verdict_with_reasons() {
             let mut state = sql_modal_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://test");
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             // Use parseable EXPLAIN output so compare_plans produces a real verdict
             state.explain.left = Some(CompareSlot {

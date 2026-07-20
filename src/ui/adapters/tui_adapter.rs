@@ -4,7 +4,10 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
+use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::app::ports::outbound::renderer::{RenderOutput, RenderResult, Renderer};
 use crate::app::services::AppServices;
 use crate::shell::layout::MainLayout;
@@ -54,18 +57,10 @@ impl Renderer for TuiAdapter<'_> {
 fn uses_insert_cursor(state: &AppState) -> bool {
     match state.input_mode() {
         InputMode::JsonbEdit => true,
-        InputMode::JsonbDetail => matches!(
-            state.jsonb_detail.mode(),
-            crate::app::model::browse::jsonb_detail::JsonbDetailMode::Searching
-        ),
-        InputMode::Help => matches!(
-            state.ui.help.mode(),
-            crate::app::model::shared::help::HelpMode::EditingFilter
-        ),
-        InputMode::SqlModal => matches!(
-            state.sql_modal.status(),
-            crate::app::model::sql_editor::modal::SqlModalStatus::Editing
-        ),
+        InputMode::JsonbDetail => matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching),
+        InputMode::CellDetail => state.cell_detail.search().is_active(),
+        InputMode::Help => matches!(state.ui.help().mode(), HelpMode::EditingFilter),
+        InputMode::SqlModal => matches!(state.sql_modal.status(), SqlModalStatus::Editing),
         _ => false,
     }
 }
@@ -81,7 +76,7 @@ mod tests {
 
         assert!(!uses_insert_cursor(&state));
 
-        state.ui.help.enter_filter_editing();
+        state.ui.help_mut().enter_filter_editing();
 
         assert!(uses_insert_cursor(&state));
     }

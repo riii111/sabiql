@@ -64,7 +64,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
-            if state.session.is_service_connection() {
+            if !state.session.can_reenter_connection_setup() {
                 return DispatchResult::handled();
             }
             state.connection_error.clear();
@@ -72,11 +72,11 @@ pub(super) fn reduce_connection_error(
             state.modal.replace_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
         }
-        Action::RetryServiceConnection => {
-            if let Some(dsn) = state.session.dsn.clone() {
+        Action::RetryConnection => {
+            if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 let run_id = state.session.begin_connecting(&dsn);
-                state.session.read_only = false;
+                state.session.disable_read_only();
                 state.modal.set_mode(InputMode::Normal);
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
             } else {
@@ -91,6 +91,8 @@ pub(super) fn reduce_connection_error(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::update::test_fixtures;
 
     mod scroll_down {
         use super::*;
@@ -132,7 +134,29 @@ mod tests {
         #[test]
         fn blocked_for_service_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("service=mydb".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "service",
+                DatabaseType::PostgreSQL,
+                "service=mydb",
+            );
+            state.modal.set_mode(InputMode::ConnectionError);
+
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
+        }
+
+        #[test]
+        fn blocked_for_cli_ephemeral_connection() {
+            use crate::cmd::cli_sqlite::connection_id_for_path;
+
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_cli_ephemeral_connection(
+                &connection_id_for_path("/tmp/app.db"),
+                "app.db",
+                "sqlite:///tmp/app.db",
+            );
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
@@ -143,7 +167,7 @@ mod tests {
         #[test]
         fn allowed_for_profile_connection() {
             let mut state = AppState::new("test".to_string());
-            state.session.dsn = Some("postgres://localhost/db".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/db");
             state.modal.set_mode(InputMode::ConnectionError);
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

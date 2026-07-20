@@ -4,13 +4,15 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     begin_explain_running, is_multi_statement, mark_explain_unavailable,
-    reject_unsupported_explain, show_explain_error_on_plan,
+    mark_explain_unsupported_query, show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_request(
@@ -21,27 +23,37 @@ pub(super) fn reduce_request(
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
-            if reject_unsupported_explain(state, services) {
-                return DispatchResult::handled();
-            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return DispatchResult::handled();
             }
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return DispatchResult::handled();
             }
-            if is_multi_statement(&content) {
+            let database_type = state.session.active_database_type_or_default();
+            if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
                 return DispatchResult::handled();
             }
 
-            let Some(query) = services.sql_dialect.build_explain_sql(&content) else {
-                mark_explain_unavailable(state, services);
-                return DispatchResult::handled();
+            let query = match services
+                .sql_dialect
+                .build_explain_sql(database_type, &content)
+            {
+                Some(query) => query,
+                None if FeaturePolicy::new(state.session.active_engine_feature_profile())
+                    .is_enabled(FeatureRequirement::Explain) =>
+                {
+                    mark_explain_unsupported_query(state, &content);
+                    return DispatchResult::handled();
+                }
+                None => {
+                    mark_explain_unavailable(state);
+                    return DispatchResult::handled();
+                }
             };
             let run_id = begin_explain_running(state, now);
 
@@ -51,7 +63,7 @@ pub(super) fn reduce_request(
                 query,
                 source_query: content,
                 is_analyze: false,
-                read_only: true,
+                access_mode: AccessMode::ReadOnly,
             }])
         }
         _ => DispatchResult::pass(),

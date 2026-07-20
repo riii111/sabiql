@@ -1,0 +1,27 @@
+---
+source: src/tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project ▸ test_db ▸ -       connected | local
+┌ [1] Explor┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]
+│> public.u │┌ [2] Inspector ────────────────────┐
+│  public.p ││(select a table)                   │
+│  public.c ││                                   │
+│       ╭ SQLite Diagnostics ─────────────╮      │
+│       │                                 │      │
+│       │SQLite features: FTS5: available │      │
+│       │  FTS4: not available            │      │
+│       │  RTree: available               │      │
+│       │  JSON: available                │      │
+│       │                                 │──────┘
+│       │Effective foreign keys: on       │──────┐
+│       │                                 │      │
+│       │Journal mode: wal                │      │
+│       │                                 │      │
+│       │Effective query only: off        │      │
+│       │                                 │      │
+│       ╰ Esc: Close │ ↑↓: Scroll │ r: Run╯      │
+│           ││                                   │
+│           ││                                   │
+└───────────┘└───────────────────────────────────┘
+↑↓:Scroll  r:Run check  ?:Help  Esc:Close

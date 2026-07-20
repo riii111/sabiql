@@ -1,31 +1,19 @@
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{
-    DatabaseCapabilities, DatabaseCapabilityProvider, DbOperationError, DdlGenerator, DsnBuilder,
-    InspectorFeature, MetadataProvider, QueryExecutor, SqlDialect,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
+    SqlDialect,
 };
-use crate::domain::connection::ConnectionProfile;
-use crate::domain::{DatabaseMetadata, QueryResult, Table, TableSignature, WriteExecutionResult};
+use crate::domain::connection::{ConnectionProfile, DatabaseType};
+use crate::domain::{
+    DatabaseMetadata, QueryResult, QueryValue, Table, TableSignature, WriteExecutionResult,
+};
 
 pub struct MySqlAdapter;
 
 impl MySqlAdapter {
     pub fn new() -> Self {
         Self
-    }
-}
-
-impl DatabaseCapabilityProvider for MySqlAdapter {
-    fn capabilities(&self) -> DatabaseCapabilities {
-        DatabaseCapabilities::new(
-            false,
-            vec![
-                InspectorFeature::Info,
-                InspectorFeature::Columns,
-                InspectorFeature::Indexes,
-                InspectorFeature::ForeignKeys,
-            ],
-        )
     }
 }
 
@@ -84,7 +72,6 @@ impl QueryExecutor for MySqlAdapter {
         _table: &str,
         _limit: usize,
         _offset: usize,
-        _read_only: bool,
     ) -> Result<QueryResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
@@ -95,7 +82,7 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _read_only: bool,
+        _access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
@@ -106,19 +93,14 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _read_only: bool,
+        _access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
     }
 
-    async fn count_query_rows(
-        &self,
-        _dsn: &str,
-        _query: &str,
-        _read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+    async fn count_query_rows(&self, _dsn: &str, _query: &str) -> Result<usize, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
@@ -128,9 +110,8 @@ impl QueryExecutor for MySqlAdapter {
         &self,
         _dsn: &str,
         _query: &str,
-        _path: &std::path::Path,
-        _read_only: bool,
-    ) -> Result<usize, DbOperationError> {
+        _file_name: &str,
+    ) -> Result<std::path::PathBuf, DbOperationError> {
         Err(DbOperationError::ConnectionFailed(
             "MySQL adapter not yet implemented".to_string(),
         ))
@@ -138,36 +119,42 @@ impl QueryExecutor for MySqlAdapter {
 }
 
 impl DdlGenerator for MySqlAdapter {
-    fn generate_ddl(&self, _table: &Table) -> String {
+    fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
 }
 
 impl SqlDialect for MySqlAdapter {
-    fn build_explain_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_sql(&self, _database_type: DatabaseType, _query: &str) -> Option<String> {
         None
     }
 
-    fn build_explain_analyze_sql(&self, _query: &str) -> Option<String> {
+    fn build_explain_analyze_sql(
+        &self,
+        _database_type: DatabaseType,
+        _query: &str,
+    ) -> Option<String> {
         None
     }
 
     fn build_update_sql(
         &self,
+        _database_type: DatabaseType,
         _schema: &str,
         _table: &str,
         _column: &str,
-        _new_value: &str,
-        _pk_pairs: &[(String, String)],
+        _new_value: &QueryValue,
+        _pk_pairs: &[(String, QueryValue)],
     ) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }
 
     fn build_bulk_delete_sql(
         &self,
+        _database_type: DatabaseType,
         _schema: &str,
         _table: &str,
-        _pk_pairs_per_row: &[Vec<(String, String)>],
+        _pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
         unimplemented!("MySQL adapter not yet implemented")
     }

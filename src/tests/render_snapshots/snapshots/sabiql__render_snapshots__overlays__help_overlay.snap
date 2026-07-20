@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/overlays.rs
+assertion_line: 414
 expression: output
 ---
 test_project ▸ test_db ▸ -                                                                                                               no dsn | localhost:5432/test

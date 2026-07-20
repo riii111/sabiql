@@ -74,7 +74,7 @@
             '';
 
             meta = {
-              description = "A fast, driver-less TUI for browsing and editing PostgreSQL databases";
+              description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases";
               homepage = "https://github.com/riii111/sabiql";
               license = pkgs.lib.licenses.mit;
               mainProgram = "sabiql";
@@ -103,6 +103,7 @@
               pkgs.graphviz
               pkgs.lefthook
               pkgs.postgresql
+              pkgs.sqlite
               pkgs.python3
               pkgs.ruby
             ];

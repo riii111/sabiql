@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
+assertion_line: 219
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
@@ -13,35 +14,35 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  Name:       [ nnnnnnnnnnnnnnnnnnnnnnnnn  ]                │                                                  │
+│                                       ││          │  Type:       [ PostgreSQL               ▼ ]                │                                                  │
+│                                       ││          │  Name:       [ nnnnnnnnnnnnnnnnnnnnnnnnnn ]                │                                                  │
 │                                       ││          │  Host:       [ hhhhhhhhhhhhhhhhhhhhhhhhhh ]                │                                                  │
 │                                       ││          │  Port:       [ 65535                      ]                │                                                  │
-│                                       ││          │  Database:   [ dddddddddddddddddddddddddd ]                │                                                  │
-│                                       ││          │  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │                                                  │
-│                                       ││          │  Password:   [ ************************** ]                │                                                  │
+│                                       │└──────────│  Database:   [ dddddddddddddddddddddddddd ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  User:       [ uuuuuuuuuuuuuuuuuuuuuuuuuu ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  Password:   [ ************************** ]                │                                                  │
 │                                       ││          │  SSL Mode:   [ prefer                   ▼ ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → host='hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
-│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
-│                                       ││          │    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │                                                  │
-│                                       │└──────────│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh  │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│    hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh' port='6  │──────────────────────────────────────────────────┐
-│                                       ││(select a │    5535' dbname='dddddddddddddddddddddddddddddddddddddddd  │                                                  │
-│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
-│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
-│                                       ││          │    dddddddddddddddddddddddddddddddddddddddddddddddddddddd  │                                                  │
-│                                       ││          │    ddddddddddddddddddddddddddddddddddddddddddddddddddddd'  │                                                  │
-│                                       ││          │     user='uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
-│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
-│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
-│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu  │                                                  │
-│                                       ││          │    uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu' passwo  │                                                  │
-│                                       ││          │    rd='****' sslmode='prefer'                              │                                                  │
+│                                       ││          │  → stub-dsn                                                │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          ╰ Tab/⇧Tab: Field │ ^S: Connect │ Esc: Cancel ───────────────╯                                                  │
+│                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
+Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel

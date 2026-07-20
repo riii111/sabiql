@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
+use crate::ports::outbound::AccessMode;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn start_adhoc_if_connected(
@@ -9,7 +10,7 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> DispatchResult {
-    let Some(dsn) = state.session.dsn.clone() else {
+    let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal
             .finish_adhoc_error("No active connection".to_string());
@@ -22,6 +23,6 @@ pub(super) fn start_adhoc_if_connected(
         dsn,
         run_id,
         query,
-        read_only: state.session.read_only,
+        access_mode: AccessMode::from_read_only(state.session.is_read_only()),
     }])
 }

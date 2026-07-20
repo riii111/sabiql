@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use crate::query_result::QueryResult;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExplainPlan {
     pub raw_text: String,
@@ -6,6 +10,83 @@ pub struct ExplainPlan {
     pub estimated_rows: Option<u64>,
     pub is_analyze: bool,
     pub execution_time_ms: u64,
+}
+
+#[derive(Debug, Clone)]
+struct SqliteExplainPlanRow {
+    id: i64,
+    parent: i64,
+    detail: String,
+}
+
+fn column_index(columns: &[String], name: &str) -> Option<usize> {
+    columns
+        .iter()
+        .position(|column| column.eq_ignore_ascii_case(name))
+}
+
+fn sqlite_explain_plan_rows(result: &QueryResult) -> Option<Vec<SqliteExplainPlanRow>> {
+    let id_index = column_index(&result.columns, "id")?;
+    let parent_index = column_index(&result.columns, "parent")?;
+    let detail_index = column_index(&result.columns, "detail")?;
+
+    (0..result.data_row_count())
+        .map(|row_idx| {
+            Some(SqliteExplainPlanRow {
+                id: result.display_value_at(row_idx, id_index)?.parse().ok()?,
+                parent: result
+                    .display_value_at(row_idx, parent_index)?
+                    .parse()
+                    .ok()?,
+                detail: result.display_value_at(row_idx, detail_index)?,
+            })
+        })
+        .collect()
+}
+
+fn sqlite_explain_plan_depth(
+    row: &SqliteExplainPlanRow,
+    parents_by_id: &HashMap<i64, i64>,
+    max_depth: usize,
+) -> usize {
+    let mut depth = 0usize;
+    let mut parent = row.parent;
+    while parents_by_id.contains_key(&parent) && depth < max_depth {
+        depth += 1;
+        parent = parents_by_id[&parent];
+    }
+    depth
+}
+
+fn sqlite_explain_plan_text(result: &QueryResult) -> Option<String> {
+    let rows = sqlite_explain_plan_rows(result)?;
+    let parents_by_id = rows
+        .iter()
+        .map(|row| (row.id, row.parent))
+        .collect::<HashMap<_, _>>();
+    let max_depth = rows.len();
+    Some(
+        rows.iter()
+            .map(|row| {
+                let depth = sqlite_explain_plan_depth(row, &parents_by_id, max_depth);
+                if depth == 0 {
+                    row.detail.clone()
+                } else {
+                    format!("{}- {}", "  ".repeat(depth), row.detail)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
+pub fn sqlite_explain_query_plan_text_from_result(result: &QueryResult) -> String {
+    sqlite_explain_plan_text(result).unwrap_or_else(|| {
+        (0..result.data_row_count())
+            .filter_map(|row_idx| result.display_value_at(row_idx, 0))
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
 }
 
 impl ExplainPlan {

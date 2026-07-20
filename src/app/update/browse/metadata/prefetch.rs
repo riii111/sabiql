@@ -1,8 +1,8 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
-use crate::model::er_state::ErStatus;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -31,7 +31,7 @@ pub(super) fn reduce_prefetch(
                 let qualified_names: Vec<String> = metadata
                     .table_summaries
                     .iter()
-                    .map(crate::domain::TableSummary::qualified_name)
+                    .map(TableSummary::qualified_name)
                     .collect();
                 state
                     .er_preparation
@@ -113,13 +113,12 @@ pub(super) fn reduce_prefetch(
             if let Some(entry) = state.sql_modal.failed_prefetch(&qualified_name) {
                 if entry.retry_count >= MAX_PREFETCH_RETRIES {
                     // Exceeded retry limit — give up, don't re-queue
-                    state.er_preparation.pending_tables.remove(&qualified_name);
                     state
                         .er_preparation
                         .on_table_failed(&qualified_name, entry.error.clone());
                     let mut effects = check_er_completion(state, now);
                     // No fetch started → no completion event to re-drive the queue.
-                    if effects.is_empty() && state.er_preparation.status == ErStatus::Waiting {
+                    if effects.is_empty() && state.er_preparation.is_waiting() {
                         effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
                     }
                     return DispatchResult::handled_with(effects);
@@ -141,7 +140,7 @@ pub(super) fn reduce_prefetch(
                 }
             }
 
-            let Some(dsn) = &state.session.dsn else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 state.sql_modal.defer_table_prefetch(qualified_name);
                 return DispatchResult::handled();
             };
@@ -150,7 +149,7 @@ pub(super) fn reduce_prefetch(
             state.er_preparation.start_fetching(&qualified_name);
 
             DispatchResult::handled_with(vec![Effect::PrefetchTableDetail {
-                dsn: dsn.clone(),
+                dsn,
                 run_id: *run_id,
                 schema: schema.clone(),
                 table: table.clone(),
@@ -164,8 +163,7 @@ pub(super) fn reduce_prefetch(
             table,
             detail,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.sql_modal.is_current_prefetch_run(*run_id)
+            if !state.session.dsn_matches(dsn) || !state.sql_modal.is_current_prefetch_run(*run_id)
             {
                 return DispatchResult::handled();
             }
@@ -194,8 +192,7 @@ pub(super) fn reduce_prefetch(
             table,
             error,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.sql_modal.is_current_prefetch_run(*run_id)
+            if !state.session.dsn_matches(dsn) || !state.sql_modal.is_current_prefetch_run(*run_id)
             {
                 return DispatchResult::handled();
             }
@@ -205,8 +202,7 @@ pub(super) fn reduce_prefetch(
                 .sql_modal
                 .failed_prefetch(&qualified_name)
                 .map_or(0, |e| e.retry_count);
-            let should_continue_queue = state.sql_modal.has_pending_prefetch();
-            state.sql_modal.retry_table_prefetch(
+            let had_other_pending_before_requeue = state.sql_modal.retry_table_prefetch(
                 qualified_name.clone(),
                 FailedPrefetchEntry {
                     failed_at: now,
@@ -218,7 +214,7 @@ pub(super) fn reduce_prefetch(
 
             let mut effects = Vec::new();
 
-            if should_continue_queue {
+            if had_other_pending_before_requeue {
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
             effects.push(Effect::DelayedProcessPrefetchQueue {
@@ -237,8 +233,7 @@ pub(super) fn reduce_prefetch(
             schema,
             table,
         } => {
-            if state.session.dsn.as_ref() != Some(dsn)
-                || !state.sql_modal.is_current_prefetch_run(*run_id)
+            if !state.session.dsn_matches(dsn) || !state.sql_modal.is_current_prefetch_run(*run_id)
             {
                 return DispatchResult::handled();
             }

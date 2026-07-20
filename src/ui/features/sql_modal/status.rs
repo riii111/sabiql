@@ -5,8 +5,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
+use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
+use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
@@ -29,7 +31,7 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
 
     let (badge_text, badge_style, status_text, status_style) = match state.sql_modal.status() {
         SqlModalStatus::Normal => {
-            if let Some(ref msg) = state.messages.last_success {
+            if let Some(msg) = state.messages.last_success() {
                 (
                     "[NORMAL]",
                     Style::default().fg(theme.semantic.text.dim),
@@ -135,8 +137,8 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
 fn render_confirming_high_status(
     frame: &mut Frame,
     area: Rect,
-    decision: &crate::app::policy::write::write_guardrails::AdhocRiskDecision,
-    input: &crate::app::model::shared::text_input::TextInputState,
+    decision: &AdhocRiskDecision,
+    input: &TextInputState,
     name: &str,
     theme: &ThemePalette,
 ) {
@@ -204,6 +206,11 @@ fn render_confirming_risk_status(
             format!("\u{26a0} HIGH RISK  {label}"),
             Style::default().fg(theme.semantic.status.error),
             "Can't identify target name \u{2014} review before executing",
+        ),
+        AcknowledgeReason::NonAtomicTransaction => (
+            "\u{26a0} NON-ATOMIC  SQLite transaction".to_string(),
+            Style::default().fg(theme.semantic.status.warning),
+            "SQLite must run this script without an automatic transaction",
         ),
     };
 

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::cmd::cache::BoundedLruCache;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
-use crate::domain::{DatabaseMetadata, Table};
+use crate::domain::{DatabaseMetadata, Table, TableSummary};
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::update::helpers::char_to_byte_index;
@@ -319,8 +319,7 @@ impl CompletionEngine {
                     .map(|t| self.qualified_name_from_ref(t, metadata))
                     .collect();
 
-                let selected_qualified =
-                    table_detail.map(crate::domain::table::Table::qualified_name);
+                let selected_qualified = table_detail.map(Table::qualified_name);
                 let use_all_cache = referenced_tables.is_empty();
                 for (qualified_name, cached_table) in self.table_detail_cache.iter() {
                     if selected_qualified.as_ref() == Some(qualified_name) {
@@ -903,10 +902,7 @@ impl CompletionEngine {
                 .table_summaries
                 .iter()
                 .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-                .map_or_else(
-                    || table_ref.table.clone(),
-                    crate::domain::table::TableSummary::qualified_name,
-                )
+                .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name)
         } else {
             table_ref.table.clone()
         }
@@ -924,8 +920,10 @@ impl CompletionEngine {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support;
+
     use super::*;
-    use crate::domain::{Column, Table};
+    pub use crate::domain::Column;
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
@@ -935,26 +933,14 @@ mod tests {
         Table {
             schema: schema.to_string(),
             name: name.to_string(),
-            owner: None,
             columns: columns
                 .iter()
                 .enumerate()
-                .map(|(i, col)| Column {
-                    name: (*col).to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: (i + 1) as i32,
+                .map(|(i, col)| {
+                    test_support::column::test_nullable_column(*col, "text", (i + 1) as i32)
                 })
                 .collect(),
-            primary_key: None,
-            indexes: vec![],
-            foreign_keys: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -962,15 +948,8 @@ mod tests {
         Table {
             schema: "public".to_string(),
             name: "test".to_string(),
-            owner: None,
             columns: vec![col1, col2],
-            primary_key: None,
-            indexes: vec![],
-            foreign_keys: vec![],
-            rls: None,
-            triggers: vec![],
-            row_count_estimate: None,
-            comment: None,
+            ..test_support::table::minimal("", "")
         }
     }
 
@@ -1134,7 +1113,6 @@ mod tests {
 
     mod schema_qualified_limit {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn schema_qualified_candidates_limited_to_max() {
@@ -1187,7 +1165,6 @@ mod tests {
 
     mod prefix_match_ranking {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
 
         #[test]
         fn keyword_prefix_match_ranked_first() {
@@ -1231,32 +1208,15 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
+                    test_support::column::test_nullable_column("user_name", "text", 1),
                     Column {
-                        name: "user_name".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "user_id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 2,
+                        ..test_support::column::test_nullable_column("user_id", "int", 2)
                     },
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates(Some(&table), "user");
@@ -1376,21 +1336,10 @@ mod tests {
         fn pk_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
+                test_support::column::test_nullable_column("name", "text", 1),
                 Column {
-                    name: "name".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 1,
-                },
-                Column {
-                    name: "id".to_string(),
-                    data_type: "int".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 2,
+                    ..test_support::column::test_nullable_column("id", "int", 2)
                 },
             );
 
@@ -1404,21 +1353,10 @@ mod tests {
         fn not_null_column_returns_higher_score() {
             let e = engine();
             let table = table_with_two_columns(
+                test_support::column::test_nullable_column("optional_field", "text", 1),
                 Column {
-                    name: "optional_field".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 1,
-                },
-                Column {
-                    name: "required_field".to_string(),
-                    data_type: "text".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::empty(),
-                    comment: None,
-                    ordinal_position: 2,
+                    ..test_support::column::test_nullable_column("required_field", "text", 2)
                 },
             );
 
@@ -1431,7 +1369,6 @@ mod tests {
 
     mod alias_column_context {
         use super::*;
-        use crate::policy::sql::lexer::{SqlContext, TableReference};
 
         #[test]
         fn alias_dot_returns_alias_column_context() {
@@ -1528,8 +1465,7 @@ mod tests {
 
     mod cte_or_table_context {
         use super::*;
-        use crate::domain::DatabaseMetadata;
-        use crate::policy::sql::lexer::{CteDefinition, SqlContext};
+        use crate::policy::sql::lexer::CteDefinition;
 
         #[test]
         fn from_clause_with_cte_returns_cte_or_table() {
@@ -1564,7 +1500,7 @@ mod tests {
             };
 
             let mut metadata = DatabaseMetadata::new("test".to_string());
-            metadata.table_summaries = vec![crate::domain::TableSummary::new(
+            metadata.table_summaries = vec![TableSummary::new(
                 "public".to_string(),
                 "users".to_string(),
                 None,
@@ -1606,8 +1542,6 @@ mod tests {
 
     mod alias_column_completion {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
-        use crate::policy::sql::lexer::{SqlContext, TableReference};
 
         #[test]
         fn cached_table_returns_columns() {
@@ -1616,32 +1550,15 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
-                        name: "id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
+                        ..test_support::column::test_nullable_column("id", "int", 1)
                     },
-                    Column {
-                        name: "name".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    test_support::column::test_nullable_column("name", "text", 2),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1699,40 +1616,16 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
-                        name: "user_id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
+                        ..test_support::column::test_nullable_column("user_id", "int", 1)
                     },
-                    Column {
-                        name: "username".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
-                    Column {
-                        name: "email".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 3,
-                    },
+                    test_support::column::test_nullable_column("username", "text", 2),
+                    test_support::column::test_nullable_column("email", "text", 3),
                 ],
                 primary_key: Some(vec!["user_id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             e.cache_table_detail("public.users".to_string(), table);
@@ -1766,38 +1659,22 @@ mod tests {
 
     mod fk_column_scoring {
         use super::*;
-        use crate::domain::{Column, FkAction, ForeignKey, Table};
+        use crate::domain::{FkAction, ForeignKey};
 
         fn create_table_with_fk() -> Table {
             Table {
                 schema: "public".to_string(),
                 name: "orders".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
-                        name: "id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
+                        ..test_support::column::test_nullable_column("id", "int", 1)
                     },
                     Column {
-                        name: "user_id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::empty(),
-                        comment: None,
-                        ordinal_position: 2,
+                        ..test_support::column::test_nullable_column("user_id", "int", 2)
                     },
-                    Column {
-                        name: "status".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 3,
-                    },
+                    test_support::column::test_nullable_column("status", "text", 3),
                 ],
                 primary_key: Some(vec!["id".to_string()]),
                 foreign_keys: vec![ForeignKey {
@@ -1810,12 +1687,9 @@ mod tests {
                     to_columns: vec!["id".to_string()],
                     on_delete: FkAction::NoAction,
                     on_update: FkAction::NoAction,
+                    reference_resolved: true,
                 }],
-                indexes: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -1861,7 +1735,6 @@ mod tests {
 
     mod contains_match {
         use super::*;
-        use crate::domain::{Column, Table};
 
         #[test]
         fn finds_contains_matches() {
@@ -1869,32 +1742,11 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
-                    Column {
-                        name: "user_id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "created_at".to_string(),
-                        data_type: "timestamp".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    test_support::column::test_nullable_column("user_id", "int", 1),
+                    test_support::column::test_nullable_column("created_at", "timestamp", 2),
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             // "id" is contained in "user_id"
@@ -1910,32 +1762,11 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
-                    Column {
-                        name: "id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "user_id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    test_support::column::test_nullable_column("id", "int", 1),
+                    test_support::column::test_nullable_column("user_id", "int", 2),
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
@@ -1950,7 +1781,6 @@ mod tests {
 
     mod recent_columns_scoring {
         use super::*;
-        use crate::domain::{Column, Table};
 
         #[test]
         fn recent_column_returns_boosted_score() {
@@ -1958,32 +1788,11 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
                 columns: vec![
-                    Column {
-                        name: "name".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 1,
-                    },
-                    Column {
-                        name: "email".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
+                    test_support::column::test_nullable_column("name", "text", 1),
+                    test_support::column::test_nullable_column("email", "text", 2),
                 ],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
 
             let recent = vec!["email".to_string()];
@@ -2039,7 +1848,6 @@ mod tests {
 
     mod missing_tables {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
 
         #[test]
         fn empty_sql_returns_empty() {
@@ -2102,22 +1910,11 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![Column {
-                    name: "id".to_string(),
-                    data_type: "int".to_string(),
-                    default: None,
                     attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                    comment: None,
-                    ordinal_position: 1,
+                    ..test_support::column::test_nullable_column("id", "int", 1)
                 }],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2202,15 +1999,7 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             };
             e.cache_table_detail("public.users".to_string(), table);
 
@@ -2222,15 +2011,7 @@ mod tests {
             Table {
                 schema: schema.to_string(),
                 name: name.to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -2261,46 +2042,24 @@ mod tests {
 
     mod integration_tests {
         use super::*;
-        use crate::domain::{Column, DatabaseMetadata, Table, TableSummary};
 
         fn create_users_table() -> Table {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
                 columns: vec![
                     Column {
-                        name: "id".to_string(),
-                        data_type: "int".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::PRIMARY_KEY | ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 1,
+                        ..test_support::column::test_nullable_column("id", "int", 1)
                     },
+                    test_support::column::test_nullable_column("name", "text", 2),
                     Column {
-                        name: "name".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
-                        attributes: ColumnAttributes::NULLABLE,
-                        comment: None,
-                        ordinal_position: 2,
-                    },
-                    Column {
-                        name: "email".to_string(),
-                        data_type: "text".to_string(),
-                        default: None,
                         attributes: ColumnAttributes::UNIQUE,
-                        comment: None,
-                        ordinal_position: 3,
+                        ..test_support::column::test_nullable_column("email", "text", 3)
                     },
                 ],
                 primary_key: Some(vec!["id".to_string()]),
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -2495,22 +2254,8 @@ mod tests {
             let table = Table {
                 schema: "public".to_string(),
                 name: "test".to_string(),
-                owner: None,
-                columns: vec![Column {
-                    name: "and".to_string(), // Same as keyword AND
-                    data_type: "text".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 1,
-                }],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                columns: vec![test_support::column::test_nullable_column("and", "text", 1)],
+                ..test_support::table::minimal("", "")
             };
 
             let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
@@ -2586,7 +2331,6 @@ mod tests {
 
     mod target_table_boost {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn update_target_columns_get_boost() {
@@ -2658,7 +2402,6 @@ mod tests {
 
     mod all_cache_columns {
         use super::*;
-        use crate::domain::{DatabaseMetadata, TableSummary};
 
         #[test]
         fn no_from_with_2char_prefix_returns_all_cached_columns() {
@@ -2718,7 +2461,6 @@ mod tests {
 
     mod lru_cache_behavior {
         use super::*;
-        use crate::domain::TableSummary;
 
         #[test]
         fn evicted_table_appears_in_missing_tables() {
@@ -2833,7 +2575,6 @@ mod tests {
         use super::*;
 
         fn meta_with_tables(tables: &[(&str, &str, &[&str])]) -> DatabaseMetadata {
-            use crate::domain::TableSummary;
             let mut meta = DatabaseMetadata::new("test".to_string());
             meta.table_summaries = tables
                 .iter()

@@ -4,15 +4,16 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
-use crate::policy::sql::statement_classifier::{self, StatementKind};
-use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk};
+use crate::policy::sql::statement_classifier;
+use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk_for_database};
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
-    begin_explain_running, is_multi_statement, mark_explain_unavailable,
-    reject_unsupported_explain, show_explain_error_on_plan,
+    begin_explain_running, finish_explain_unsupported_analyze, is_multi_statement,
+    show_explain_error_on_plan,
 };
 
 pub(super) fn reduce_analyze(
@@ -23,21 +24,18 @@ pub(super) fn reduce_analyze(
 ) -> DispatchResult {
     match action {
         Action::ExplainAnalyzeRequest => {
-            if reject_unsupported_explain(state, services) {
-                return DispatchResult::handled();
-            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return DispatchResult::handled();
             }
-            let Some(dsn) = &state.session.dsn else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 return DispatchResult::handled();
             };
-            let dsn = dsn.clone();
             if matches!(state.sql_modal.status(), SqlModalStatus::Running) {
                 return DispatchResult::handled();
             }
-            if is_multi_statement(&content) {
+            let database_type = state.session.active_database_type_or_default();
+            if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(
                     state,
                     "EXPLAIN ANALYZE does not support multiple statements",
@@ -45,11 +43,9 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let kind = statement_classifier::classify(&content);
-            let risk = evaluate_sql_risk(&kind, &content);
+            let risk = evaluate_sql_risk_for_database(database_type, &kind, &content);
 
-            let is_dml = !matches!(kind, StatementKind::Select | StatementKind::Transaction);
-
-            if state.session.read_only && is_dml {
+            if state.session.is_read_only() && !risk.read_only_allowed {
                 show_explain_error_on_plan(
                     state,
                     "Read-only mode: EXPLAIN ANALYZE is blocked for DML statements.",
@@ -71,10 +67,11 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
-                    let Some(explain_query) =
-                        services.sql_dialect.build_explain_analyze_sql(&content)
+                    let Some(explain_query) = services
+                        .sql_dialect
+                        .build_explain_analyze_sql(database_type, &content)
                     else {
-                        mark_explain_unavailable(state, services);
+                        finish_explain_unsupported_analyze(state);
                         return DispatchResult::handled();
                     };
                     let run_id = begin_explain_running(state, now);
@@ -84,7 +81,7 @@ pub(super) fn reduce_analyze(
                         query: explain_query,
                         source_query: content,
                         is_analyze: true,
-                        read_only: state.session.read_only,
+                        access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                     }]);
                 }
             }
@@ -93,9 +90,6 @@ pub(super) fn reduce_analyze(
         }
 
         Action::ExplainAnalyzeConfirm => {
-            if reject_unsupported_explain(state, services) {
-                return DispatchResult::handled();
-            }
             let query = match state.sql_modal.status() {
                 SqlModalStatus::ConfirmingAnalyzeHigh {
                     query,
@@ -106,11 +100,14 @@ pub(super) fn reduce_analyze(
                 _ => None,
             };
             if let Some(query) = query
-                && let Some(dsn) = state.session.dsn.clone()
+                && let Some(dsn) = state.session.dsn().map(String::from)
             {
-                let Some(explain_query) = services.sql_dialect.build_explain_analyze_sql(&query)
+                let database_type = state.session.active_database_type_or_default();
+                let Some(explain_query) = services
+                    .sql_dialect
+                    .build_explain_analyze_sql(database_type, &query)
                 else {
-                    mark_explain_unavailable(state, services);
+                    finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 };
                 let run_id = begin_explain_running(state, now);
@@ -120,7 +117,7 @@ pub(super) fn reduce_analyze(
                     query: explain_query,
                     source_query: query,
                     is_analyze: true,
-                    read_only: state.session.read_only,
+                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }]);
             }
             DispatchResult::handled()

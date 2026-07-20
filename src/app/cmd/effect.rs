@@ -1,6 +1,6 @@
-use crate::domain::Table;
-use crate::domain::connection::{ConnectionId, SslMode};
-use crate::ports::outbound::AppSettings;
+use crate::domain::connection::{ConnectionConfig, ConnectionId};
+use crate::domain::{QueryValue, Table};
+use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::Action;
 
 #[derive(Debug, Clone)]
@@ -10,12 +10,7 @@ pub enum Effect {
     SaveAndConnect {
         id: Option<ConnectionId>,
         name: String,
-        host: String,
-        port: u16,
-        database: String,
-        user: String,
-        password: String,
-        ssl_mode: SslMode,
+        config: ConnectionConfig,
     },
     LoadConnectionForEdit {
         id: ConnectionId,
@@ -68,13 +63,12 @@ pub enum Effect {
         limit: usize,
         offset: usize,
         target_page: usize,
-        read_only: bool,
     },
     ExecuteAdhoc {
         dsn: String,
         run_id: u64,
         query: String,
-        read_only: bool,
+        access_mode: AccessMode,
     },
     ExecuteExplain {
         dsn: String,
@@ -82,21 +76,21 @@ pub enum Effect {
         query: String,
         source_query: String,
         is_analyze: bool,
-        read_only: bool,
+        access_mode: AccessMode,
     },
     ExecuteWrite {
         dsn: String,
         run_id: u64,
         query: String,
-        read_only: bool,
+        access_mode: AccessMode,
     },
+    CancelActiveQuery,
     CountRowsForExport {
         dsn: String,
         run_id: u64,
         count_query: String,
         export_query: String,
         file_name: String,
-        read_only: bool,
     },
     ExportCsv {
         dsn: String,
@@ -104,7 +98,14 @@ pub enum Effect {
         query: String,
         file_name: String,
         row_count: Option<usize>,
-        read_only: bool,
+    },
+    ExportCsvFromCache {
+        dsn: String,
+        run_id: u64,
+        file_name: String,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+        row_count: Option<usize>,
     },
 
     CacheTableInCompletionEngine {
@@ -147,11 +148,21 @@ pub enum Effect {
 
     LoadQueryHistory {
         project_name: String,
-        connection_id: crate::domain::ConnectionId,
+        connection_id: ConnectionId,
     },
 
     SaveSettings {
         settings: AppSettings,
+    },
+
+    FetchSqliteDiagnosticsCore {
+        dsn: String,
+        run_id: u64,
+    },
+
+    FetchSqliteDiagnosticsQuickCheck {
+        dsn: String,
+        run_id: u64,
     },
 
     // Executes effects in order (each awaits before the next),

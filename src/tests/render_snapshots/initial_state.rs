@@ -1,4 +1,5 @@
 use super::*;
+use sabiql_domain::ConnectionId;
 
 #[test]
 fn initial_state_no_metadata() {
@@ -13,7 +14,10 @@ fn initial_state_no_metadata() {
 #[test]
 fn explorer_shows_not_connected_when_no_active_connection() {
     let mut state = create_test_state();
-    state.session.active_connection_name = None;
+    state.session.clear_connection();
+    state
+        .session
+        .set_active_engine_feature_profile_for_test(sabiql_domain::DatabaseType::PostgreSQL);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -24,7 +28,12 @@ fn explorer_shows_not_connected_when_no_active_connection() {
 #[test]
 fn header_shows_effective_user_at_normal_width() {
     let mut state = connected_state();
-    state.session.dsn = Some("postgresql://localhost/test".to_string());
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::PostgreSQL,
+        "postgresql://localhost/test",
+    );
     state
         .session
         .mark_effective_user_loaded(Some("app_user".to_string()));
@@ -38,9 +47,12 @@ fn header_shows_effective_user_at_normal_width() {
 #[test]
 fn header_truncates_connection_name_at_narrow_width() {
     let mut state = connected_state();
-    state.session.dsn = Some("postgresql://localhost/test".to_string());
-    state.session.active_connection_name =
-        Some("very-long-connection-name-that-must-yield-space-to-the-user".to_string());
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "very-long-connection-name-that-must-yield-space-to-the-user",
+        DatabaseType::PostgreSQL,
+        "postgresql://localhost/test",
+    );
     state
         .session
         .mark_effective_user_loaded(Some("app_user".to_string()));
@@ -54,8 +66,13 @@ fn header_truncates_connection_name_at_narrow_width() {
 #[test]
 fn header_shows_read_only_badge_at_narrow_width() {
     let mut state = connected_state();
-    state.session.dsn = Some("postgresql://localhost/test".to_string());
-    state.session.read_only = true;
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::PostgreSQL,
+        "postgresql://localhost/test",
+    );
+    state.session.enable_read_only();
     state
         .session
         .mark_effective_user_loaded(Some("app_user".to_string()));

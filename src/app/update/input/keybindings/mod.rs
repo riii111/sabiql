@@ -5,9 +5,10 @@ mod overlays;
 mod readline;
 
 use crate::model::shared::settings::KeymapPreset;
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 pub use crate::ports::inbound::{Key, KeyCombo, Modifiers};
 use crate::update::action::{Action, ModalKind};
-use crate::update::input::keymap::resolve_mode;
+use crate::update::input::keymap::{resolve_mode, resolve_mode_with_policy};
 pub use connections::*;
 pub use editors::*;
 pub use normal::*;
@@ -27,6 +28,10 @@ pub struct KeyBinding {
 impl KeyBinding {
     pub const fn as_hint(&self) -> (&'static str, &'static str) {
         (self.key_short, self.desc_short)
+    }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        self.action.feature_requirement()
     }
 }
 
@@ -51,6 +56,14 @@ impl ModeRow {
     pub const fn as_hint(&self) -> (&'static str, &'static str) {
         (self.key_short, self.desc_short)
     }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        self.bindings
+            .iter()
+            .map(|binding| binding.action.feature_requirement())
+            .find(|requirement| *requirement != FeatureRequirement::None)
+            .unwrap_or(FeatureRequirement::None)
+    }
 }
 
 pub struct ModeBindings {
@@ -60,6 +73,14 @@ pub struct ModeBindings {
 impl ModeBindings {
     pub fn resolve(&self, combo: &KeyCombo) -> Option<Action> {
         resolve_mode(combo, self.rows)
+    }
+
+    pub fn resolve_with_policy(
+        &self,
+        combo: &KeyCombo,
+        feature_policy: &FeaturePolicy,
+    ) -> Option<Action> {
+        resolve_mode_with_policy(combo, self.rows, feature_policy)
     }
 }
 
@@ -91,6 +112,12 @@ pub const JSONB_DETAIL: ModeBindings = ModeBindings {
 pub const JSONB_EDIT: ModeBindings = ModeBindings {
     rows: JSONB_EDIT_ROWS,
 };
+pub const CELL_DETAIL: ModeBindings = ModeBindings {
+    rows: CELL_DETAIL_ROWS,
+};
+pub const SQLITE_DIAGNOSTICS: ModeBindings = ModeBindings {
+    rows: SQLITE_DIAGNOSTICS_ROWS,
+};
 pub const ROW_DETAIL: ModeBindings = ModeBindings {
     rows: ROW_DETAIL_ROWS,
 };
@@ -106,22 +133,31 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
     ("JSONB_DETAIL", &JSONB_DETAIL),
     ("JSONB_EDIT", &JSONB_EDIT),
+    ("CELL_DETAIL", &CELL_DETAIL),
+    ("SQLITE_DIAGNOSTICS", &SQLITE_DIAGNOSTICS),
     ("ROW_DETAIL", &ROW_DETAIL),
 ];
 
 pub const HELP_KEY_INDENT_WIDTH: usize = 2;
 pub const HELP_KEY_DESC_GAP: usize = 2;
 
-pub fn global_action_for(combo: &KeyCombo, preset: KeymapPreset) -> Option<Action> {
+pub fn global_action_for_with_policy(
+    combo: &KeyCombo,
+    preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
+) -> Option<Action> {
     normal::global_keys_for(preset)
         .iter()
         .filter(|binding| {
-            !matches!(
-                &binding.action,
-                Action::OpenModal(
-                    ModalKind::SqlModal | ModalKind::ErTablePicker | ModalKind::ConnectionSelector
+            feature_policy.is_enabled(binding.feature_requirement())
+                && !matches!(
+                    &binding.action,
+                    Action::OpenModal(
+                        ModalKind::SqlModal
+                            | ModalKind::ErTablePicker
+                            | ModalKind::ConnectionSelector
+                    )
                 )
-            )
         })
         .find(|binding| binding.combos.contains(combo))
         .map(|binding| binding.action.clone())
@@ -170,6 +206,10 @@ mod tests {
             #[case(
                 global::QUERY_HISTORY,
                 Action::OpenModal(ModalKind::QueryHistoryPicker)
+            )]
+            #[case(
+                global::SQLITE_DIAGNOSTICS,
+                Action::OpenModal(ModalKind::SqliteDiagnostics)
             )]
             fn global_key_action_matches(#[case] kb: KeyBinding, #[case] expected: Action) {
                 assert_payload_free_action_eq(&kb, &expected);
@@ -271,6 +311,7 @@ mod tests {
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
                 check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_non_none_have_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
             }
 
             fn check_mode_rows_exec_valid(rows: &[ModeRow], name: &str) {
@@ -336,6 +377,10 @@ mod tests {
                 );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
                 check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_none_action_entries_have_no_combos(
+                    CELL_DETAIL_SEARCH_KEYS,
+                    "CELL_DETAIL_SEARCH_KEYS",
+                );
             }
         }
 
@@ -400,6 +445,7 @@ mod tests {
                 check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_no_duplicate_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
@@ -456,6 +502,7 @@ mod tests {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
                 for (name, mb) in ALL_MODE_BINDINGS {
@@ -561,8 +608,36 @@ mod tests {
 
             #[test]
             fn all_mode_bindings_count() {
-                assert_eq!(ALL_MODE_BINDINGS.len(), 11);
+                assert_eq!(ALL_MODE_BINDINGS.len(), 13);
             }
         }
+    }
+
+    #[test]
+    fn feature_requirements_are_attached_to_feature_bindings() {
+        assert_eq!(
+            global::ER_DIAGRAM.feature_requirement(),
+            FeatureRequirement::ErDiagram
+        );
+        assert_eq!(
+            global::SQLITE_DIAGNOSTICS.feature_requirement(),
+            FeatureRequirement::SqliteDiagnostics
+        );
+        assert_eq!(
+            sql_modal_plan::EXPLAIN.feature_requirement(),
+            FeatureRequirement::Explain
+        );
+        assert_eq!(
+            sql_modal_plan::ANALYZE.feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            sql_modal_compare::EDIT_QUERY.feature_requirement(),
+            FeatureRequirement::PlanComparison
+        );
+        assert_eq!(
+            JSONB_DETAIL_ROWS[0].feature_requirement(),
+            FeatureRequirement::JsonbDetail
+        );
     }
 }

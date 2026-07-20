@@ -11,6 +11,7 @@ use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::focused_pane::FocusedPane;
+use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::shared::ui_state::{RESULT_INNER_OVERHEAD, ResultSelection, YankFlash};
 use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
@@ -53,7 +54,7 @@ impl ResultPane {
         now: Instant,
         theme: &ThemePalette,
     ) -> (ViewportPlan, ColumnWidthsCache) {
-        let is_focused = state.ui.focused_pane == FocusedPane::Result;
+        let is_focused = state.ui.focused_pane() == FocusedPane::Result;
         let should_highlight = state
             .query
             .result_highlight_until()
@@ -70,18 +71,17 @@ impl ResultPane {
             if result.is_error() {
                 Self::render_error(frame, area, result, block, theme);
                 default_result()
-            } else if result.rows.is_empty() {
+            } else if result.data_row_count() == 0 {
                 Self::render_empty(frame, area, block, theme);
                 default_result()
             } else {
                 let cell_edit = state.result_interaction.cell_edit();
                 let editing_cell = cell_edit.is_active().then(|| EditingCellView {
-                    row: cell_edit.row.unwrap_or_default(),
-                    col: cell_edit.col.unwrap_or_default(),
+                    row: cell_edit.row().unwrap_or_default(),
+                    col: cell_edit.col().unwrap_or_default(),
                     draft: cell_edit.draft_value(),
-                    actively_editing: state.input_mode()
-                        == crate::app::model::shared::input_mode::InputMode::CellEdit,
-                    cursor: cell_edit.input.cursor(),
+                    actively_editing: state.input_mode() == InputMode::CellEdit,
+                    cursor: cell_edit.input().cursor(),
                 });
                 Self::render_table(
                     frame,
@@ -89,15 +89,15 @@ impl ResultPane {
                     result,
                     block,
                     ResultTableParams {
-                        scroll_offset: state.result_interaction.scroll_offset,
-                        horizontal_offset: state.result_interaction.horizontal_offset,
-                        stored_plan: &state.ui.result_viewport_plan,
-                        stored_cache: &state.ui.result_widths_cache,
+                        scroll_offset: state.result_interaction.scroll_offset(),
+                        horizontal_offset: state.result_interaction.horizontal_offset(),
+                        stored_plan: state.ui.result_viewport_plan(),
+                        stored_cache: state.ui.result_widths_cache(),
                         result_generation: state.query.result_generation(),
                         selection: state.result_interaction.selection(),
                         editing_cell,
                         staged_delete_rows: state.result_interaction.staged_delete_rows(),
-                        yank_flash: state.result_interaction.yank_flash,
+                        yank_flash: state.result_interaction.yank_flash(),
                         now,
                     },
                     theme,
@@ -201,7 +201,7 @@ impl ResultPane {
                 &stored_cache.header_min_widths[..],
             )
         } else {
-            fresh_ideal = calculate_ideal_widths(&result.columns, &result.rows);
+            fresh_ideal = calculate_result_ideal_widths(result);
             fresh_min = calculate_header_min_widths(&result.columns);
             (&fresh_ideal[..], &fresh_min[..])
         };
@@ -265,13 +265,9 @@ impl ResultPane {
 
         let yank_flash_active = yank_flash.is_some_and(|f| now < f.until);
 
-        let rows: Vec<Row> = result
-            .rows
-            .iter()
-            .enumerate()
-            .skip(scroll_offset)
+        let rows: Vec<Row> = (scroll_offset..result.data_row_count())
             .take(data_rows_visible)
-            .map(|(abs_row_idx, row)| {
+            .map(|abs_row_idx| {
                 let is_staged_for_delete = staged_delete_rows.contains(&abs_row_idx);
                 let is_active_row = active_row == Some(abs_row_idx);
                 // None = no flash; Some(None) = full row; Some(Some(c)) = cell c
@@ -295,7 +291,6 @@ impl ResultPane {
                     .iter()
                     .zip(viewport_widths.iter())
                     .map(|(&orig_idx, &col_width)| {
-                        let val = row.get(orig_idx).map_or("", String::as_str);
                         let is_editing_cell = editing_cell
                             .as_ref()
                             .is_some_and(|e| e.row == abs_row_idx && e.col == orig_idx);
@@ -324,7 +319,9 @@ impl ResultPane {
                                 );
                             }
                         } else {
-                            let display = truncate_cell(val, col_width as usize);
+                            let display = result
+                                .display_value_at_width(abs_row_idx, orig_idx, col_width as usize)
+                                .unwrap_or_default();
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
@@ -364,8 +361,8 @@ impl ResultPane {
         frame.render_widget(table, inner);
 
         // Scroll indicators (pass inner area, not outer with border)
-        let total_rows = result.rows.len();
-        let total_cols = result.columns.len();
+        let total_rows = result.data_row_count();
+        let total_cols = result.column_count();
 
         use crate::primitives::atoms::scroll_indicator::{
             HorizontalScrollParams, VerticalScrollParams, render_horizontal_scroll_indicator,
@@ -399,7 +396,30 @@ impl ResultPane {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+    use unicode_width::UnicodeWidthStr;
+
+    calculate_ideal_widths_with(headers, rows.len(), |row_idx, col_idx| {
+        rows.get(row_idx)
+            .and_then(|row| row.get(col_idx))
+            .map(|cell| UnicodeWidthStr::width(cell.lines().next().unwrap_or(cell)))
+    })
+}
+
+fn calculate_result_ideal_widths(result: &QueryResult) -> Vec<u16> {
+    calculate_ideal_widths_with(
+        &result.columns,
+        result.data_row_count(),
+        |row_idx, col_idx| result.display_width_at(row_idx, col_idx),
+    )
+}
+
+fn calculate_ideal_widths_with(
+    headers: &[String],
+    row_count: usize,
+    mut cell_width: impl FnMut(usize, usize) -> Option<usize>,
+) -> Vec<u16> {
     use unicode_width::UnicodeWidthStr;
 
     const SAMPLE_ROWS: usize = 50;
@@ -410,11 +430,10 @@ pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -
         .map(|(col_idx, header)| {
             let mut max_width = UnicodeWidthStr::width(header.as_str());
 
-            let sample_size = rows.len().min(SAMPLE_ROWS);
-            for row in rows.iter().take(sample_size) {
-                if let Some(cell) = row.get(col_idx) {
-                    let first_line = cell.lines().next().unwrap_or(cell);
-                    max_width = max_width.max(UnicodeWidthStr::width(first_line));
+            let sample_size = row_count.min(SAMPLE_ROWS);
+            for row_idx in 0..sample_size {
+                if let Some(width) = cell_width(row_idx, col_idx) {
+                    max_width = max_width.max(width);
                 }
             }
 
@@ -463,6 +482,7 @@ fn truncate_cell(s: &str, max_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::QueryValue;
     use rstest::rstest;
 
     mod calculate_ideal_widths_tests {
@@ -571,6 +591,21 @@ mod tests {
             assert_eq!(result[1], 15);
             // email: max(5, 17) + 2 = 19
             assert_eq!(result[2], 19);
+        }
+
+        #[test]
+        fn typed_values_supply_display_widths_without_display_rows() {
+            let result = QueryResult::success_with_values(
+                "SELECT body".to_string(),
+                vec!["body".to_string()],
+                vec![vec![QueryValue::text("hello")]],
+                0,
+                QuerySource::Preview,
+            );
+
+            assert_eq!(calculate_result_ideal_widths(&result), vec![7]);
+            assert_eq!(result.display_value_ref_at(0, 0).as_deref(), Some("hello"));
+            assert_eq!(result.display_row_at(0), Some(vec!["hello".to_string()]));
         }
     }
 

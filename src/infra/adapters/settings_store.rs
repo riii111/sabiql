@@ -7,7 +7,9 @@ use super::app_config_file::{
 use crate::app::model::shared::settings::KeymapPreset;
 use crate::app::model::shared::theme_id::ThemeId;
 use crate::app::ports::outbound::{AppSettings, SettingsStore, SettingsStoreError};
-use crate::config::connection_config::{CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile};
+use crate::config::connection_config::{
+    CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
+};
 
 #[cfg(test)]
 use super::app_config_file::CONFIG_FILE_NAME;
@@ -41,7 +43,7 @@ impl TomlSettingsStore {
             return Ok(None);
         };
 
-        if version_check.version != CURRENT_VERSION {
+        if !is_supported_config_version(version_check.version) {
             return Ok(None);
         }
 
@@ -60,7 +62,7 @@ impl TomlSettingsStore {
         let content = fs::read_to_string(&path)?;
         let version_check: ConfigVersionCheck = toml::from_str(&content)?;
 
-        if version_check.version != CURRENT_VERSION {
+        if !is_supported_config_version(version_check.version) {
             return Err(SettingsStoreError::VersionMismatch {
                 found: version_check.version,
                 expected: CURRENT_VERSION,
@@ -128,8 +130,6 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::shared::settings::KeymapPreset;
-    use crate::app::model::shared::theme_id::ThemeId;
     use tempfile::TempDir;
 
     #[test]

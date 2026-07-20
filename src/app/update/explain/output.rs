@@ -33,7 +33,9 @@ pub(super) fn reduce_output(
             DispatchResult::handled()
         }
 
-        Action::ExplainFailed { dsn, run_id, error } => {
+        Action::ExplainFailed {
+            dsn, run_id, error, ..
+        } => {
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }

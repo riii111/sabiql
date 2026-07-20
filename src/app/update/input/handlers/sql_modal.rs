@@ -1,6 +1,7 @@
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::shared::settings::KeymapPreset;
 use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
@@ -12,30 +13,36 @@ use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
 };
 
-#[cfg(test)]
-pub fn handle_sql_modal_keys(
-    combo: KeyCombo,
-    completion_visible: bool,
-    status: &SqlModalStatus,
-    active_tab: SqlModalTab,
-) -> Action {
-    handle_sql_modal_keys_with_prefix(
-        combo,
-        completion_visible,
-        status,
-        active_tab,
-        None,
-        KeymapPreset::Default,
-    )
-}
-
-pub fn handle_sql_modal_keys_with_prefix(
+pub fn handle_sql_modal_keys_with_feature_policy(
     combo: KeyCombo,
     completion_visible: bool,
     status: &SqlModalStatus,
     active_tab: SqlModalTab,
     pending_prefix: Option<Prefix>,
     keymap_preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
+) -> Action {
+    handle_sql_modal_keys_internal(
+        combo,
+        completion_visible,
+        status,
+        active_tab,
+        pending_prefix,
+        keymap_preset,
+        feature_policy,
+        feature_policy.is_enabled(FeatureRequirement::ExplainAnalyze),
+    )
+}
+
+fn handle_sql_modal_keys_internal(
+    combo: KeyCombo,
+    completion_visible: bool,
+    status: &SqlModalStatus,
+    active_tab: SqlModalTab,
+    pending_prefix: Option<Prefix>,
+    keymap_preset: KeymapPreset,
+    feature_policy: &FeaturePolicy,
+    supports_explain_analyze: bool,
 ) -> Action {
     use crate::update::action::CursorMove;
 
@@ -75,7 +82,9 @@ pub fn handle_sql_modal_keys_with_prefix(
             SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
             SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
         };
-        if explain_binding.combos.contains(&combo) {
+        if explain_binding.combos.contains(&combo)
+            && feature_policy.is_enabled(explain_binding.feature_requirement())
+        {
             return Action::ExplainRequest;
         }
 
@@ -99,7 +108,7 @@ pub fn handle_sql_modal_keys_with_prefix(
             }
 
             return match combo.key {
-                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
+                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
                 _ => Action::None,
             };
         }
@@ -114,13 +123,17 @@ pub fn handle_sql_modal_keys_with_prefix(
             }
 
             return match combo.key {
-                Key::Char('e') if alt => Action::ExplainAnalyzeRequest,
-                Key::Char('e') if plain => Action::CompareEditQuery,
+                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
+                Key::Char('e')
+                    if plain && feature_policy.is_enabled(FeatureRequirement::PlanComparison) =>
+                {
+                    Action::CompareEditQuery
+                }
                 _ => Action::None,
             };
         }
 
-        if alt && combo.key == Key::Char('e') {
+        if alt && combo.key == Key::Char('e') && supports_explain_analyze {
             return Action::ExplainAnalyzeRequest;
         }
         if sql_modal_normal_query_history(keymap_preset)
@@ -299,12 +312,20 @@ pub fn handle_sql_modal_keys_with_prefix(
         return Action::None;
     }
 
+    if ctrl_only && combo.key == Key::Char('e') {
+        return Action::None;
+    }
+
     if ctrl && combo.key == Key::Char('l') {
         return Action::SqlModalClear;
     }
 
     if alt && combo.key == Key::Char('e') {
-        return Action::ExplainAnalyzeRequest;
+        return if supports_explain_analyze {
+            Action::ExplainAnalyzeRequest
+        } else {
+            Action::None
+        };
     }
 
     if completion_visible {
@@ -371,6 +392,7 @@ pub fn handle_sql_modal_keys_with_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -385,6 +407,45 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn handle_sql_modal_keys(
+        combo: KeyCombo,
+        completion_visible: bool,
+        status: &SqlModalStatus,
+        active_tab: SqlModalTab,
+    ) -> Action {
+        handle_sql_modal_keys_with_prefix(
+            combo,
+            completion_visible,
+            status,
+            active_tab,
+            None,
+            KeymapPreset::Default,
+            true,
+        )
+    }
+
+    fn handle_sql_modal_keys_with_prefix(
+        combo: KeyCombo,
+        completion_visible: bool,
+        status: &SqlModalStatus,
+        active_tab: SqlModalTab,
+        pending_prefix: Option<Prefix>,
+        keymap_preset: KeymapPreset,
+        supports_explain_analyze: bool,
+    ) -> Action {
+        let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+        handle_sql_modal_keys_internal(
+            combo,
+            completion_visible,
+            status,
+            active_tab,
+            pending_prefix,
+            keymap_preset,
+            &feature_policy,
+            supports_explain_analyze,
+        )
     }
 
     #[derive(Debug, PartialEq)]
@@ -819,6 +880,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert_action(result, Expected::SqlModalMoveCursor(CursorMove::FirstLine));
@@ -833,6 +895,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
@@ -847,6 +910,7 @@ mod tests {
                 SqlModalTab::Sql,
                 Some(Prefix::G),
                 KeymapPreset::Default,
+                true,
             );
 
             assert!(matches!(result, Action::CancelKeySequence));
@@ -861,6 +925,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(
@@ -878,6 +943,7 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -892,6 +958,7 @@ mod tests {
                 SqlModalTab::Plan,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::ExplainRequest));
@@ -906,6 +973,7 @@ mod tests {
                 SqlModalTab::Plan,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
@@ -920,11 +988,26 @@ mod tests {
                 SqlModalTab::Sql,
                 None,
                 KeymapPreset::Ide,
+                true,
             );
 
             assert!(matches!(result, Action::None));
         }
 
+        #[test]
+        fn ide_editing_ctrl_explain_key_is_ignored() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_ctrl(Key::Char('e')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Ide,
+                true,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
         #[rstest]
         #[case(Key::Char('a'))]
         #[case(Key::Char('e'))]
@@ -1334,6 +1417,38 @@ mod tests {
             );
 
             assert_action(result, Expected::ExplainAnalyzeRequest);
+        }
+
+        #[test]
+        fn editing_alt_e_is_noop_when_analyze_is_unsupported() {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Editing,
+                SqlModalTab::Sql,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
+        #[case(SqlModalTab::Plan)]
+        #[case(SqlModalTab::Compare)]
+        fn alt_e_is_noop_when_analyze_is_unsupported(#[case] tab: SqlModalTab) {
+            let result = handle_sql_modal_keys_with_prefix(
+                combo_alt(Key::Char('e')),
+                false,
+                &SqlModalStatus::Normal,
+                tab,
+                None,
+                KeymapPreset::Default,
+                false,
+            );
+
+            assert!(matches!(result, Action::None));
         }
 
         #[rstest]

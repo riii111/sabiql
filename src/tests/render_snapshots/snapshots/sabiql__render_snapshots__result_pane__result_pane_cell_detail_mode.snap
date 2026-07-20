@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/result_pane.rs
+expression: output
+---
+test_project ▸ test_db ▸ -                                                                                                               no dsn | localhost:5432/test
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                                                                 
+│> public.notes                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                       ││Owner:   (none)                                                                                                           │
+│                                       ││Comment: (none)                                                                                                           │
+│                                       ││Rows:    (none)                                                                                                           │
+│                                       ││Schema:  public                                                                                                           │
+│                                       ││Table:   notes                                                                                                            │
+│                ╭ Cell Detail ── body──────────────────────────────────────────────────────────────────────────────────────────────────────────────╮               │
+│                │Prompt:                                                                                                                           │               │
+│                │Summarize the incident timeline and include the operator notes.                                                                   │               │
+│                │                                                                                                                                  │               │
+│                │Memory:                                                                                                                           │               │
+│                │- User prefers concise status updates                                                                                             │               │
+│                │- Keep markdown bullets intact                                                                                                    │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │───────────────┘
+│                │                                                                                                                                  │───────────────┐
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │                                                                                                                                  │               │
+│                │149 chars                                                                                                                         │               │
+│                ╰ y: Copy │ /: Search │ Esc: Close ────────────────────────────────────────────────────────────────────────────────────────────────╯               │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+y:Copy  /:Search  n/N:Next/Prev  j/k/↑↓:Scroll  Esc:Close

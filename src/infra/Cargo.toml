@@ -19,6 +19,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
+urlencoding.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
 

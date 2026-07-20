@@ -1,5 +1,7 @@
 use super::keybindings::{KeyBinding, global};
+use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::settings::KeymapPreset;
+use crate::policy::FeaturePolicy;
 use crate::update::action::Action;
 
 // Deliberate opt-in list in display order — not derived from GLOBAL_KEYS, so an
@@ -15,6 +17,7 @@ const PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS,
     global::CSV_EXPORT,
     global::READ_ONLY,
     global::EXIT_READ_ONLY,
@@ -31,6 +34,7 @@ const IDE_PALETTE_COMMANDS: &[KeyBinding] = &[
     global::SQL,
     global::ER_DIAGRAM,
     global::CONNECTIONS,
+    global::SQLITE_DIAGNOSTICS_IDE,
     global::CSV_EXPORT_IDE,
     global::READ_ONLY_IDE,
     global::EXIT_READ_ONLY_IDE,
@@ -44,23 +48,41 @@ fn palette_commands_for(preset: KeymapPreset) -> &'static [KeyBinding] {
     }
 }
 
-pub fn palette_command_count(preset: KeymapPreset) -> usize {
-    palette_commands_for(preset).len()
+pub fn palette_command_count(
+    preset: KeymapPreset,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> usize {
+    palette_commands(preset, engine_feature_profile).count()
 }
 
-pub fn palette_action_for_index(index: usize, preset: KeymapPreset) -> Action {
-    palette_commands_for(preset)
-        .get(index)
+pub fn palette_action_for_index(
+    index: usize,
+    preset: KeymapPreset,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> Action {
+    palette_commands(preset, engine_feature_profile)
+        .nth(index)
         .map_or(Action::None, |kb| kb.action.clone())
 }
 
-pub fn palette_commands(preset: KeymapPreset) -> impl Iterator<Item = &'static KeyBinding> {
-    palette_commands_for(preset).iter()
+pub fn palette_commands(
+    preset: KeymapPreset,
+    engine_feature_profile: &EngineFeatureProfile,
+) -> impl Iterator<Item = &'static KeyBinding> {
+    let feature_policy = FeaturePolicy::new(engine_feature_profile);
+    palette_commands_for(preset)
+        .iter()
+        .filter(move |kb| palette_command_supported(kb, &feature_policy))
+}
+
+fn palette_command_supported(kb: &KeyBinding, feature_policy: &FeaturePolicy) -> bool {
+    feature_policy.is_enabled(kb.feature_requirement())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::update::action::ModalKind;
     use crate::update::input::keybindings::{
         GLOBAL_KEYS, IDE_GLOBAL_KEYS, same_payload_free_action,
     };
@@ -136,8 +158,9 @@ mod tests {
 
     #[test]
     fn palette_commands_contains_no_none_actions() {
+        let engine_feature_profile = EngineFeatureProfile::postgres_like();
         for preset in [KeymapPreset::Default, KeymapPreset::Ide] {
-            let none_entries: Vec<_> = palette_commands(preset)
+            let none_entries: Vec<_> = palette_commands(preset, &engine_feature_profile)
                 .filter(|kb| matches!(kb.action, Action::None))
                 .collect();
 
@@ -147,5 +170,38 @@ mod tests {
                 none_entries.iter().map(|kb| kb.key).collect::<Vec<_>>()
             );
         }
+    }
+
+    #[test]
+    fn sqlite_palette_omits_er_diagram_command() {
+        let commands =
+            palette_commands(KeymapPreset::Default, &EngineFeatureProfile::sqlite_like())
+                .collect::<Vec<_>>();
+
+        assert!(
+            !commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::ErTablePicker)))
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
+        );
+    }
+
+    #[test]
+    fn postgres_palette_omits_sqlite_diagnostics_command() {
+        let commands = palette_commands(
+            KeymapPreset::Default,
+            &EngineFeatureProfile::postgres_like(),
+        )
+        .collect::<Vec<_>>();
+
+        assert!(
+            !commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
+        );
     }
 }

@@ -1,3 +1,4 @@
+use crate::domain::QueryValue;
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
@@ -12,15 +13,7 @@ pub struct RowDetailState {
 
 impl RowDetailState {
     pub fn open(columns: &[String], cells: &[String]) -> Self {
-        let mut display_lines = Vec::new();
-        for (col, cell) in columns.iter().zip(cells.iter()) {
-            display_lines.push(col.clone());
-            for line in cell.lines() {
-                display_lines.push(format!("  {line}"));
-            }
-            display_lines.push(String::new());
-        }
-        let display_text = display_lines.join("\n") + "\n";
+        let display_text = Self::display_text(columns, cells);
 
         let mut obj = serde_json::Map::new();
         for (col, cell) in columns.iter().zip(cells.iter()) {
@@ -36,6 +29,40 @@ impl RowDetailState {
             horizontal_offset: 0,
             active: true,
         }
+    }
+
+    pub fn open_with_values(columns: &[String], values: &[QueryValue]) -> Self {
+        let cells = values
+            .iter()
+            .map(QueryValue::display_value)
+            .collect::<Vec<_>>();
+        let display_text = Self::display_text(columns, &cells);
+        let object = columns
+            .iter()
+            .zip(values)
+            .map(|(column, value)| (column.clone(), sqlite_json_value(value)))
+            .collect();
+        let json_text = serde_json::to_string_pretty(&Value::Object(object))
+            .unwrap_or_else(|_| "{}".to_string());
+        Self {
+            display_text,
+            json_text,
+            scroll_offset: 0,
+            horizontal_offset: 0,
+            active: true,
+        }
+    }
+
+    fn display_text(columns: &[String], cells: &[String]) -> String {
+        let mut display_lines = Vec::new();
+        for (column, cell) in columns.iter().zip(cells.iter()) {
+            display_lines.push(column.clone());
+            for line in cell.lines() {
+                display_lines.push(format!("  {line}"));
+            }
+            display_lines.push(String::new());
+        }
+        display_lines.join("\n") + "\n"
     }
 
     pub fn close(&mut self) {
@@ -117,6 +144,17 @@ impl RowDetailState {
 
     pub fn json_for_yank(&self) -> String {
         self.json_text.clone()
+    }
+}
+
+fn sqlite_json_value(value: &QueryValue) -> Value {
+    match value {
+        QueryValue::Null => Value::Null,
+        QueryValue::Text(value) => Value::String(value.clone()),
+        QueryValue::Blob(_) => Value::String(value.copy_value()),
+        QueryValue::SqlLiteral(value) => {
+            serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.clone()))
+        }
     }
 }
 
@@ -222,5 +260,47 @@ mod tests {
         assert!(json.contains("\"name\": \"alice\""));
 
         assert_eq!(state.content_for_yank(), content);
+    }
+
+    #[test]
+    fn typed_values_preserve_sqlite_storage_classes_in_json() {
+        let state = RowDetailState::open_with_values(
+            &[
+                "empty".to_string(),
+                "number_text".to_string(),
+                "blob".to_string(),
+            ],
+            &[
+                QueryValue::Text(String::new()),
+                QueryValue::Text("42".to_string()),
+                QueryValue::Blob(vec![0xAB, 0xCD]),
+            ],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "{\n  \"blob\": \"X'ABCD'\",\n  \"empty\": \"\",\n  \"number_text\": \"42\"\n}"
+        );
+    }
+
+    #[test]
+    fn sql_literals_preserve_json_values_and_invalid_literals_as_strings() {
+        let state = RowDetailState::open_with_values(
+            &[
+                "number".to_string(),
+                "boolean".to_string(),
+                "invalid".to_string(),
+            ],
+            &[
+                QueryValue::SqlLiteral("42".to_string()),
+                QueryValue::SqlLiteral("true".to_string()),
+                QueryValue::SqlLiteral("not json".to_string()),
+            ],
+        );
+
+        assert_eq!(
+            state.json_for_yank(),
+            "{\n  \"boolean\": true,\n  \"invalid\": \"not json\",\n  \"number\": 42\n}"
+        );
     }
 }

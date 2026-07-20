@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::require_er_diagram_enabled;
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -37,11 +38,14 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
+            if let Some(result) = require_er_diagram_enabled(state, now) {
+                return result;
+            }
             if state.er_preparation.is_busy() {
                 return DispatchResult::handled();
             }
 
-            let Some(dsn) = state.session.dsn.clone() else {
+            let Some(dsn) = state.session.dsn().map(String::from) else {
                 state
                     .messages
                     .set_error_at("No active connection".to_string(), now);
@@ -55,7 +59,7 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             state.sql_modal.invalidate_prefetch();
-            let run_id = state.er_preparation.begin_smart_refresh();
+            let run_id = state.er_preparation.start_waiting_run();
             state
                 .messages
                 .set_success_at("Checking for schema changes...".to_string(), now);
@@ -63,11 +67,14 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::SmartErRefresh { dsn, run_id }])
         }
         Action::ErGenerateFromCache => {
+            if let Some(result) = require_er_diagram_enabled(state, now) {
+                return result;
+            }
             if !state.er_preparation.can_generate_from_cache() {
                 return DispatchResult::handled();
             }
 
-            state.er_preparation.begin_rendering();
+            state.er_preparation.mark_rendering();
             let total_tables = state
                 .session
                 .metadata()
@@ -76,7 +83,7 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
-                target_tables: state.er_preparation.target_tables.clone(),
+                target_tables: state.er_preparation.target_tables().to_vec(),
             }])
         }
         _ => DispatchResult::pass(),

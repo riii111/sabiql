@@ -14,14 +14,14 @@ pub(super) fn reduce_er_neighbors(
 ) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors => {
-            let seed_tables = state.er_preparation.seed_tables.clone();
+            let seed_tables = state.er_preparation.seed_tables().to_vec();
             DispatchResult::handled_with(vec![Effect::ExtractFkNeighbors { seed_tables }])
         }
         Action::FkNeighborsDiscovered { tables } => {
             let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
                 return DispatchResult::handled();
             };
-            state.er_preparation.fk_expanded = true;
+            state.er_preparation.mark_fk_expanded();
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
@@ -31,9 +31,7 @@ pub(super) fn reduce_er_neighbors(
             for qualified_name in tables {
                 let is_new_pending = state
                     .er_preparation
-                    .pending_tables
-                    .insert(qualified_name.clone());
-
+                    .queue_pending_table(qualified_name.clone());
                 if is_new_pending {
                     state.sql_modal.queue_table_prefetch(qualified_name.clone());
                 }

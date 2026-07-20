@@ -1,0 +1,54 @@
+---
+source: src/tests/render_snapshots/overlays.rs
+expression: output
+---
+test_project ▸ test_db ▸ -                                                                                                                          connected | local
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
+│> public.users                         │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  public.posts                         ││(select a table)                                                                                                          │
+│  public.comments                      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                        ╭ SQLite Diagnostics ─────────────────────────────────────────────────────────────────────────────────────────────╮                        │
+│                        │                                                                                                                 │                        │
+│                        │Database file: /tmp/app.db                                                                                       │                        │
+│                        │                                                                                                                 │                        │
+│                        │SQLite version (requires 3.41.1+): 3.45.0                                                                        │                        │
+│                        │                                                                                                                 │                        │
+│                        │SQLite features: (unavailable)                                                                                   │                        │
+│                        │                                                                                                                 │                        │
+│                        │Effective foreign keys: (failed: timeout)                                                                        │                        │
+│                        │                                                                                                                 │                        │
+│                        │Journal mode: delete                                                                                             │                        │
+│                        │                                                                                                                 │                        │
+│                        │Effective query only: on                                                                                         │                        │
+│                        │                                                                                                                 │                        │
+│                        │Effective busy timeout (ms): 5000                                                                                │────────────────────────┘
+│                        │                                                                                                                 │────────────────────────┐
+│                        │Database list: 0: main @ /tmp/app.db                                                                             │                        │
+│                        │                                                                                                                 │                        │
+│                        │Quick check: row 1 missing from index idx_users                                                                  │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        │                                                                                                                 │                        │
+│                        ╰ Esc: Close │ ↑↓: Scroll │ r: Run check ─────────────────────────────────────────────────────────────────────────╯                        │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+│                                       ││                                                                                                                          │
+└───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+↑↓:Scroll  r:Run check  ?:Help  Esc:Close

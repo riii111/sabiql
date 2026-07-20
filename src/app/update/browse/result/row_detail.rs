@@ -13,7 +13,7 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
     match action {
         Action::OpenModal(ModalKind::RowDetail) => {
             let result = match state.query.visible_result() {
-                Some(r) if !r.is_error() && !r.rows.is_empty() => r,
+                Some(r) if !r.is_error() && r.data_row_count() > 0 => r,
                 _ => return DispatchResult::handled(),
             };
 
@@ -21,11 +21,17 @@ pub fn reduce_row_detail(state: &mut AppState, action: &Action, now: Instant) ->
                 return DispatchResult::handled();
             };
 
-            let Some(cells) = result.rows.get(row_idx) else {
-                return DispatchResult::handled();
+            state.row_detail = if result.has_typed_values() {
+                let Some(values) = result.values().get(row_idx) else {
+                    return DispatchResult::handled();
+                };
+                RowDetailState::open_with_values(&result.columns, values)
+            } else {
+                let Some(cells) = result.display_row_at(row_idx) else {
+                    return DispatchResult::handled();
+                };
+                RowDetailState::open(&result.columns, &cells)
             };
-
-            state.row_detail = RowDetailState::open(&result.columns, cells);
             state.modal.push_mode(InputMode::RowDetail);
             DispatchResult::handled()
         }
@@ -148,7 +154,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use crate::domain::{QueryResult, QuerySource};
+    use crate::domain::{QueryResult, QuerySource, QueryValue};
 
     fn state_with_result() -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -196,6 +202,30 @@ mod tests {
                 .json_for_yank()
                 .contains("\"name\": \"alice\"")
         );
+    }
+
+    #[test]
+    fn open_builds_row_detail_from_typed_values() {
+        let mut state = AppState::new("test".to_string());
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                "SELECT payload".to_string(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::Blob(vec![0xAB, 0xCD])]],
+                1,
+                QuerySource::Preview,
+            )));
+        state.result_interaction.activate_cell(0, 0);
+
+        reduce_row_detail(
+            &mut state,
+            &Action::OpenModal(ModalKind::RowDetail),
+            Instant::now(),
+        );
+
+        assert!(state.row_detail.content().contains("BLOB (2 bytes) AB CD"));
+        assert!(state.row_detail.json_for_yank().contains("X'ABCD'"));
     }
 
     #[test]

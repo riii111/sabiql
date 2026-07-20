@@ -1,10 +1,17 @@
 use std::sync::Arc;
 
-use crate::domain::connection::{ConnectionNameError, ConnectionProfile, ServiceEntry};
+use crate::domain::connection::{
+    ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+};
+use crate::domain::query_history::QueryHistoryEntry;
+use crate::model::app_state::AppState;
+use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
+use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
+use crate::policy::FeatureRequirement;
 use crate::policy::write::write_guardrails::WritePreview;
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
@@ -14,12 +21,15 @@ use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
-use crate::domain::{ConnectionId, DatabaseMetadata, QueryResult, QuerySource, Table};
+use crate::domain::SqliteDiagnosticsSnapshot;
+use crate::domain::{
+    ConnectionId, DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table,
+};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
     #[error("{0}")]
-    Validation(#[from] ConnectionNameError),
+    Validation(#[from] ConnectionProfileError),
     #[error("{0}")]
     Store(#[from] ConnectionStoreError),
     #[error("{0}")]
@@ -62,6 +72,8 @@ pub enum ScrollTarget {
     ExplainConfirm,
     Explorer,
     JsonbDetail,
+    CellDetail,
+    SqliteDiagnostics,
     RowDetail,
 }
 
@@ -136,6 +148,7 @@ pub enum InputTarget {
     QueryHistoryFilter,
     JsonbEdit,
     JsonbSearch,
+    CellDetailSearch,
     HelpFilter,
 }
 
@@ -186,9 +199,11 @@ pub enum ModalKind {
     ErTablePicker,
     QueryHistoryPicker,
     JsonbDetail,
+    CellDetail,
     RowDetail,
     ConnectionSetup,
     ConnectionSelector,
+    SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone)]
@@ -239,6 +254,7 @@ pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
     pub name: String,
+    pub database_type: DatabaseType,
 }
 
 // Full Action equality is intentionally unavailable: some payloads carry
@@ -339,12 +355,25 @@ pub enum Action {
     CopyConnectionError,
     ConnectionErrorCopied,
     ReenterConnectionSetup,
-    RetryServiceConnection,
+    RetryConnection,
     RequestDeleteSelectedConnection,
     DeleteConnection(ConnectionId),
     ConnectionDeleted(ConnectionId),
     ConnectionDeleteFailed(ConnectionStoreError),
     RequestEditSelectedConnection,
+
+    // SQLite diagnostics
+    RunSqliteDiagnosticsQuickCheck,
+    SqliteDiagnosticsCoreLoaded {
+        dsn: String,
+        run_id: u64,
+        snapshot: Box<SqliteDiagnosticsSnapshot>,
+    },
+    SqliteDiagnosticsQuickCheckLoaded {
+        dsn: String,
+        run_id: u64,
+        quick_check: DiagnosticField,
+    },
 
     // Settings
     SettingsSelectNext,
@@ -470,6 +499,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         error: DbOperationError,
+        is_analyze: bool,
     },
     CompareEditQuery,
 
@@ -525,6 +555,7 @@ pub enum Action {
     ClearStagedDeletes,
     RequestDeleteActiveRow,
     ResultEnterCellEdit,
+    ResultOpenCellDetail,
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
@@ -535,11 +566,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(
-        crate::domain::ConnectionId,
-        Vec<crate::domain::query_history::QueryHistoryEntry>,
-    ),
-    QueryHistoryLoadFailed(crate::domain::ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
@@ -583,6 +611,15 @@ pub enum Action {
     JsonbSearchPrev,
     JsonbSearchSubmit,
 
+    // Cell detail
+    CellDetailYankAll,
+    CellDetailYankSuccess,
+    CellDetailEnterSearch,
+    CellDetailExitSearch,
+    CellDetailSearchNext,
+    CellDetailSearchPrev,
+    CellDetailSearchSubmit,
+
     // Row Detail
     RowDetailYank,
     RowDetailYankJson,
@@ -608,6 +645,174 @@ impl Action {
 
     pub fn is_scroll(&self) -> bool {
         matches!(self, Self::Scroll { .. })
+    }
+
+    pub fn feature_requirement(&self) -> FeatureRequirement {
+        use FeatureRequirement::{
+            ErDiagram, Explain, ExplainAnalyze, JsonbDetail, None, PlanComparison,
+            SqliteDiagnostics,
+        };
+
+        match self {
+            Self::OpenModal(ModalKind::ErTablePicker)
+            | Self::ToggleModal(ModalKind::ErTablePicker)
+            | Self::ErToggleSelection
+            | Self::ErSelectAll
+            | Self::ErConfirmSelection
+            | Self::ErOpenDiagram
+            | Self::ErGenerateFromCache
+            | Self::SmartErRefreshCompleted(_)
+            | Self::SmartErRefreshFailed(_)
+            | Self::ErDiagramOpened(_)
+            | Self::ErDiagramFailed(_)
+            | Self::ErLogWriteFailed(_)
+            | Self::TextInput {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextDelete {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextKill {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::ErFilter,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::ErFilter,
+                ..
+            }
+            | Self::ListSelect {
+                target: ListTarget::ErTablePicker,
+                ..
+            } => ErDiagram,
+            Self::OpenModal(ModalKind::SqliteDiagnostics)
+            | Self::ToggleModal(ModalKind::SqliteDiagnostics)
+            | Self::RunSqliteDiagnosticsQuickCheck
+            | Self::SqliteDiagnosticsCoreLoaded { .. }
+            | Self::SqliteDiagnosticsQuickCheckLoaded { .. }
+            | Self::Scroll {
+                target: ScrollTarget::SqliteDiagnostics,
+                ..
+            } => SqliteDiagnostics,
+            Self::OpenModal(ModalKind::JsonbDetail)
+            | Self::ToggleModal(ModalKind::JsonbDetail)
+            | Self::JsonbYankAll
+            | Self::JsonbYankSuccess
+            | Self::JsonbEnterEdit
+            | Self::JsonbAppendInsert
+            | Self::JsonbExitEdit
+            | Self::JsonbEnterSearch
+            | Self::JsonbExitSearch
+            | Self::JsonbSearchNext
+            | Self::JsonbSearchPrev
+            | Self::JsonbSearchSubmit
+            | Self::TextInput {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextDelete {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextKill {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                ..
+            } => JsonbDetail,
+            Self::ExplainRequest
+            | Self::Scroll {
+                target: ScrollTarget::ExplainPlan,
+                ..
+            }
+            | Self::ExplainCompleted {
+                is_analyze: false, ..
+            }
+            | Self::ExplainFailed {
+                is_analyze: false, ..
+            } => Explain,
+            Self::ExplainAnalyzeRequest
+            | Self::ExplainAnalyzeConfirm
+            | Self::ExplainAnalyzeCancel
+            | Self::TextInput {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextDelete {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextKill {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+            }
+            | Self::TextMoveCursor {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ..
+            }
+            | Self::Scroll {
+                target: ScrollTarget::ExplainConfirm,
+                ..
+            }
+            | Self::ExplainCompleted {
+                is_analyze: true, ..
+            }
+            | Self::ExplainFailed {
+                is_analyze: true, ..
+            } => ExplainAnalyze,
+            Self::CompareEditQuery
+            | Self::Scroll {
+                target: ScrollTarget::ExplainCompare,
+                ..
+            } => PlanComparison,
+            _ => None,
+        }
+    }
+
+    pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
+        match self {
+            Self::JsonbExitEdit if state.input_mode() == InputMode::JsonbEdit => {
+                FeatureRequirement::None
+            }
+            Self::JsonbExitSearch
+                if state.input_mode() == InputMode::JsonbDetail
+                    && state.jsonb_detail.mode() == JsonbDetailMode::Searching =>
+            {
+                FeatureRequirement::None
+            }
+            Self::Paste(_) => match state.input_mode() {
+                InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
+                InputMode::JsonbDetail | InputMode::JsonbEdit => FeatureRequirement::JsonbDetail,
+                _ => FeatureRequirement::None,
+            },
+            Self::BeginKeySequence(Prefix::G)
+                if matches!(
+                    state.input_mode(),
+                    InputMode::JsonbDetail | InputMode::JsonbEdit
+                ) =>
+            {
+                FeatureRequirement::JsonbDetail
+            }
+            _ => self.feature_requirement(),
+        }
     }
 }
 
@@ -636,6 +841,86 @@ mod tests {
     })]
     fn non_scroll_action_returns_false(#[case] action: Action) {
         assert!(!action.is_scroll());
+    }
+
+    #[test]
+    fn completion_actions_keep_feature_requirements() {
+        assert_eq!(
+            Action::ExplainCompleted {
+                dsn: "dsn".to_string(),
+                run_id: 1,
+                query: "SELECT 1".to_string(),
+                plan_text: "plan".to_string(),
+                is_analyze: true,
+                execution_time_ms: 1,
+            }
+            .feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            Action::ExplainFailed {
+                dsn: "dsn".to_string(),
+                run_id: 1,
+                error: DbOperationError::QueryFailed("error".to_string()),
+                is_analyze: false,
+            }
+            .feature_requirement(),
+            FeatureRequirement::Explain
+        );
+        assert_eq!(
+            Action::SqliteDiagnosticsCoreLoaded {
+                dsn: "sqlite://test.db".to_string(),
+                run_id: 1,
+                snapshot: Box::new(SqliteDiagnosticsSnapshot::default()),
+            }
+            .feature_requirement(),
+            FeatureRequirement::SqliteDiagnostics
+        );
+        assert_eq!(
+            Action::ExplainAnalyzeCancel.feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            Action::Scroll {
+                target: ScrollTarget::ExplainCompare,
+                direction: ScrollDirection::Down,
+                amount: ScrollAmount::Line,
+            }
+            .feature_requirement(),
+            FeatureRequirement::PlanComparison
+        );
+        assert_eq!(
+            Action::TextInput {
+                target: InputTarget::SqlModalAnalyzeHighRisk,
+                ch: 'x',
+            }
+            .feature_requirement(),
+            FeatureRequirement::ExplainAnalyze
+        );
+    }
+
+    #[test]
+    fn jsonb_cleanup_actions_are_allowed_on_preserved_surfaces() {
+        let mut edit_state = AppState::new("test".to_string());
+        edit_state.modal.set_mode(InputMode::JsonbEdit);
+        assert_eq!(
+            Action::JsonbExitEdit.feature_requirement_for_state(&edit_state),
+            FeatureRequirement::None
+        );
+
+        let mut search_state = AppState::new("test".to_string());
+        search_state.modal.set_mode(InputMode::JsonbDetail);
+        search_state.jsonb_detail.enter_search();
+        assert_eq!(
+            Action::JsonbExitSearch.feature_requirement_for_state(&search_state),
+            FeatureRequirement::None
+        );
+
+        let normal_state = AppState::new("test".to_string());
+        assert_eq!(
+            Action::JsonbExitEdit.feature_requirement_for_state(&normal_state),
+            FeatureRequirement::JsonbDetail
+        );
     }
 
     mod shared_scroll_helpers {

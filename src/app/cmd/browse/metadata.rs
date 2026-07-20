@@ -7,9 +7,12 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
+use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
+use crate::domain::sqlite_path_from_dsn;
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::policy::sqlite_path::to_db_operation_error;
+use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
 
 pub async fn run(
@@ -17,12 +20,21 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
+    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
         Effect::FetchMetadata { dsn, run_id } => {
-            fetch_metadata(action_tx, metadata_provider, metadata_cache, dsn, run_id).await
+            fetch_metadata(
+                action_tx,
+                metadata_provider,
+                metadata_cache,
+                sqlite_path_validator,
+                dsn,
+                run_id,
+            )
+            .await
         }
         Effect::FetchEffectiveUser { dsn, run_id } => {
             fetch_effective_user(action_tx, metadata_provider, dsn, run_id);
@@ -91,9 +103,25 @@ async fn fetch_metadata(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
+    sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     dsn: String,
     run_id: u64,
 ) -> Result<()> {
+    if let Some(path) = sqlite_path_from_dsn(&dsn)
+        && let Err(error) =
+            validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
+    {
+        action_tx
+            .send(Action::MetadataFailed {
+                dsn,
+                run_id,
+                error: to_db_operation_error(&error),
+            })
+            .await
+            .ok();
+        return Ok(());
+    }
+
     if let Some(cached) = metadata_cache.get(&dsn).await {
         action_tx
             .send(Action::MetadataLoaded {
@@ -273,6 +301,7 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
+    use crate::cmd::test_fixtures::make_runner;
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -281,7 +310,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_support::*;
+    use crate::cmd::test_fixtures;
     use std::time::Instant;
 
     use crate::domain::DatabaseMetadata;
@@ -315,11 +344,14 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             cache
-                .set("dsn://test".to_string(), Arc::new(sample_metadata()))
+                .set(
+                    "dsn://test".to_string(),
+                    Arc::new(test_fixtures::sample_metadata()),
+                )
                 .await;
 
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -363,16 +395,136 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn sqlite_missing_file_fails_before_provider_call() {
+            use tempfile::tempdir;
+
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("missing.db");
+            let dsn = format!("sqlite://{}", path.display());
+            let expected_dsn = dsn.clone();
+
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider.expect_fetch_metadata().never();
+
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchMetadata {
+                        dsn: dsn.clone(),
+                        run_id: 7,
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(
+                matches!(
+                    action,
+                    Action::MetadataFailed {
+                        ref dsn,
+                        run_id: 7,
+                        error: DbOperationError::ConnectionFailed(_),
+                    } if *dsn == expected_dsn
+                ),
+                "expected MetadataFailed, got {action:?}"
+            );
+            assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn sqlite_existing_file_reaches_provider() {
+            use std::fs;
+            use tempfile::tempdir;
+
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("app.db");
+            fs::write(&path, b"").unwrap();
+            let dsn = format!("sqlite://{}", path.display());
+            let expected_dsn = dsn.clone();
+
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider
+                .expect_fetch_metadata()
+                .once()
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
+
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+
+            let state = &mut AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchMetadata {
+                        dsn: dsn.clone(),
+                        run_id: 7,
+                    }],
+                    &mut renderer,
+                    state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .expect("action timeout")
+                .expect("channel closed");
+            assert!(
+                matches!(
+                    action,
+                    Action::MetadataLoaded {
+                        ref dsn,
+                        run_id: 7,
+                        ..
+                    } if *dsn == expected_dsn
+                ),
+                "expected MetadataLoaded, got {action:?}"
+            );
+        }
+
+        #[tokio::test]
         async fn cache_miss_returns_metadata_loaded() {
             let mut mock_provider = MockMetadataProvider::new();
             mock_provider
                 .expect_fetch_metadata()
                 .once()
-                .returning(|_| Ok(sample_metadata()));
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -426,7 +578,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -524,6 +676,8 @@ mod tests {
     }
 
     mod table_detail_dispatch {
+        use crate::test_support;
+
         use super::*;
         use crate::domain::Table;
 
@@ -531,15 +685,7 @@ mod tests {
             Table {
                 schema: "public".to_string(),
                 name: "users".to_string(),
-                owner: None,
-                columns: vec![],
-                primary_key: None,
-                indexes: vec![],
-                foreign_keys: vec![],
-                rls: None,
-                triggers: vec![],
-                row_count_estimate: None,
-                comment: None,
+                ..test_support::table::minimal("", "")
             }
         }
 
@@ -554,7 +700,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -612,7 +758,7 @@ mod tests {
 
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -658,13 +804,16 @@ mod tests {
         async fn invalidate_removes_cache_entry() {
             let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
             cache
-                .set("dsn://target".to_string(), Arc::new(sample_metadata()))
+                .set(
+                    "dsn://target".to_string(),
+                    Arc::new(test_fixtures::sample_metadata()),
+                )
                 .await;
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_some());
 
             let (tx, _rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),

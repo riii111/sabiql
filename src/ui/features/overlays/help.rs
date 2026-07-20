@@ -30,7 +30,7 @@ const FILTER_LABEL: &str = "Filter: ";
 impl HelpOverlay {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) {
         let document = HelpDocument::from_state(state);
-        let footer = match state.ui.help.mode() {
+        let footer = match state.ui.help().mode() {
             HelpMode::Viewing => FooterHintBar::new([
                 help::START_FILTER.as_hint(),
                 help::ESC_CLOSE.as_hint(),
@@ -59,11 +59,11 @@ impl HelpOverlay {
             frame,
             separator_area,
             status_area,
-            state.ui.help.mode(),
+            state.ui.help().mode(),
             theme,
         );
 
-        let help_lines = Self::document_lines(&document, state.ui.help.mode(), theme);
+        let help_lines = Self::document_lines(&document, state.ui.help().mode(), theme);
         let total_lines = document.line_count();
         let content_width = document.content_width();
         let viewport = help_viewport_layout_for(
@@ -74,11 +74,14 @@ impl HelpOverlay {
         );
         let content_area = Self::content_area(document_area, viewport);
         let viewport_height = content_area.height as usize;
-        let scroll_offset =
-            clamp_scroll_offset(state.ui.help.scroll_offset(), viewport_height, total_lines);
+        let scroll_offset = clamp_scroll_offset(
+            state.ui.help().scroll_offset(),
+            viewport_height,
+            total_lines,
+        );
         let viewport_width = content_area.width as usize;
         let horizontal_offset = clamp_scroll_offset(
-            state.ui.help.horizontal_offset(),
+            state.ui.help().horizontal_offset(),
             viewport_width,
             content_width,
         );
@@ -88,7 +91,7 @@ impl HelpOverlay {
             .scroll((scroll_offset as u16, horizontal_offset as u16));
 
         frame.render_widget(help, content_area);
-        Self::render_filter_cursor(frame, content_area, &document, state.ui.help.mode());
+        Self::render_filter_cursor(frame, content_area, &document, state.ui.help().mode());
 
         if viewport.has_horizontal_scrollbar {
             render_horizontal_scroll_indicator(

@@ -11,8 +11,8 @@ use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
 use crate::primitives::atoms::{
-    CursorKind, ModalTextSurface, build_modal_text_surface_lines, highlight_sql_spans,
-    render_modal_text_surface,
+    CursorKind, ModalTextSurface, apply_yank_flash, build_modal_text_surface_lines,
+    highlight_sql_spans, render_modal_text_surface,
 };
 use crate::theme::ThemePalette;
 
@@ -23,7 +23,7 @@ pub(super) fn render_editor(
     now: Instant,
     theme: &ThemePalette,
 ) {
-    let content = state.sql_modal.editor.content();
+    let content = state.sql_modal.editor().content();
 
     // Cursor and highlight are omitted to reinforce that the SQL is not editable here.
     if matches!(
@@ -39,7 +39,7 @@ pub(super) fn render_editor(
                 ))
             })
             .collect();
-        let scroll_row = state.sql_modal.editor.scroll_row() as u16;
+        let scroll_row = state.sql_modal.editor().scroll_row() as u16;
         frame.render_widget(
             Paragraph::new(lines)
                 .wrap(Wrap { trim: false })
@@ -54,7 +54,7 @@ pub(super) fn render_editor(
         SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
     );
 
-    let (cursor_row, cursor_col) = state.sql_modal.editor.cursor_to_position();
+    let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
     let cursor_kind = if is_normal {
         CursorKind::Block
     } else {
@@ -64,7 +64,7 @@ pub(super) fn render_editor(
         content,
         cursor_row,
         cursor_col,
-        scroll_row: state.sql_modal.editor.scroll_row(),
+        scroll_row: state.sql_modal.editor().scroll_row(),
         cursor_kind,
         empty_placeholder: if is_normal {
             " Press i to edit..."
@@ -78,7 +78,7 @@ pub(super) fn render_editor(
     let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
     let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
-    crate::primitives::atoms::apply_yank_flash(&mut lines, flash_active, theme);
+    apply_yank_flash(&mut lines, flash_active, theme);
 
     render_modal_text_surface(frame, area, surface, lines);
 }

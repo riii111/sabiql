@@ -1,5 +1,4 @@
 use ratatui::prelude::*;
-use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
@@ -8,6 +7,7 @@ use crate::app::model::shared::render_output::ConfirmPreviewLayout;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
+use crate::domain::QueryValue;
 use crate::primitives::atoms::highlight_sql;
 use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_with_border_color};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -168,18 +168,10 @@ impl ConfirmDialog {
                     "Target",
                     Style::default().fg(theme.semantic.text.secondary),
                 )]));
-                for (key, value) in &preview.target_summary.key_values {
-                    content_lines.push(Line::from(vec![
-                        Span::styled(
-                            format!("  {key}: "),
-                            Style::default().fg(theme.semantic.text.secondary),
-                        ),
-                        Span::styled(
-                            format!("\"{}\"", escape_preview_value(value)),
-                            Style::default().fg(theme.semantic.text.primary),
-                        ),
-                    ]));
-                }
+                content_lines.extend(Self::render_key_value_lines(
+                    &preview.target_summary.key_values,
+                    theme,
+                ));
             }
         }
 
@@ -252,7 +244,7 @@ impl ConfirmDialog {
 
         let scroll = state
             .confirm_dialog
-            .preview_scroll
+            .preview_scroll()
             .min(wrapped_height.saturating_sub(inner.height));
 
         let para = Paragraph::new(content_lines)
@@ -265,6 +257,27 @@ impl ConfirmDialog {
             content_height: Some(wrapped_height),
             scroll,
         }
+    }
+
+    fn render_key_value_lines(
+        key_values: &[(String, QueryValue)],
+        theme: &ThemePalette,
+    ) -> Vec<Line<'static>> {
+        key_values
+            .iter()
+            .map(|(key, value)| {
+                Line::from(vec![
+                    Span::styled(
+                        format!("  {key}: "),
+                        Style::default().fg(theme.semantic.text.secondary),
+                    ),
+                    Span::styled(
+                        format!("\"{}\"", escape_preview_value(&value.display_value())),
+                        Style::default().fg(theme.semantic.text.primary),
+                    ),
+                ])
+            })
+            .collect()
     }
 
     fn render_json_diff_lines(
