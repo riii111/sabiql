@@ -10,6 +10,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
+  actions: write
+  contents: write
   pull-requests: write
 
 jobs:
@@ -17,7 +19,7 @@ jobs:
     name: Rebase stale Dependabot pull requests
     runs-on: ubuntu-latest
     steps:
-      - name: Ask Dependabot to rebase stale pull requests
+      - name: Update stale pull request branches and run CI
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -29,20 +31,39 @@ jobs:
             --state open \
             --author 'app/dependabot' \
             --limit 100 \
-            --json number,mergeStateStatus \
-            --jq '.[] | select(.mergeStateStatus == "BEHIND") | .number' |
-          while IFS= read -r number; do
+            --json number,headRefName,headRefOid,mergeStateStatus \
+            --jq '.[] | select(.mergeStateStatus == "BEHIND") | [.number, .headRefName, .headRefOid] | @tsv' |
+          while IFS=$'\t' read -r number head_ref head_sha; do
             [ -n "$number" ] || continue
 
             if response=$(gh api \
-              --method POST \
+              --method PUT \
               --repo "$GH_REPO" \
               -H 'Accept: application/vnd.github+json' \
-              "/repos/$GH_REPO/issues/$number/comments" \
-              -f 'body=@dependabot rebase' 2>&1); then
-              echo "Requested a rebase for Dependabot PR #$number: $response"
+              "/repos/$GH_REPO/pulls/$number/update-branch" \
+              -f "expected_head_sha=$head_sha" 2>&1); then
+              echo "Requested an update for Dependabot PR #$number: $response"
             else
               echo "$response" >&2
               exit 1
             fi
+
+            updated_head=''
+            for _ in $(seq 1 30); do
+              updated_head=$(gh api \
+                --repo "$GH_REPO" \
+                "/repos/$GH_REPO/pulls/$number" \
+                --jq '.head.sha')
+              if [ "$updated_head" != "$head_sha" ]; then
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$updated_head" = "$head_sha" ]; then
+              echo "::error::Dependabot PR #$number did not receive an updated head"
+              exit 1
+            fi
+
+            gh workflow run ci.yml --repo "$GH_REPO" --ref "$head_ref"
           done

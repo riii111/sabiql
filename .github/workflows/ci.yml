@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,7 +34,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "$EVENT_NAME" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "sqlite_safe_mode=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
