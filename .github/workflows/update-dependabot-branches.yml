@@ -1,0 +1,130 @@
+name: Update Dependabot branches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: update-dependabot-branches
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-branches:
+    name: Rebase stale Dependabot pull requests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update stale pull request branches and run CI
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Keep this list aligned with main's protected required status checks.
+          required_checks=$'Format\nLint\nTest\nBuild\nSecurity Audit'
+          failures=0
+
+          dependabot_prs=$(gh pr list \
+            --repo "$GH_REPO" \
+            --state open \
+            --author 'app/dependabot' \
+            --limit 100 \
+            --json number,headRefName,headRefOid,mergeStateStatus \
+            --jq '.[] | [.number, .headRefName, .headRefOid, .mergeStateStatus] | @tsv')
+
+          while IFS=$'\t' read -r number head_ref head_sha merge_state; do
+            [ -n "$number" ] || continue
+
+            if [ "$merge_state" = "BEHIND" ]; then
+              if response=$(gh api \
+                --method PUT \
+                --repo "$GH_REPO" \
+                -H 'Accept: application/vnd.github+json' \
+                "/repos/$GH_REPO/pulls/$number/update-branch" \
+                -f "expected_head_sha=$head_sha" 2>&1); then
+                echo "Requested an update for Dependabot PR #$number: $response"
+                update_wait_failed=false
+                update_observed=false
+                for _ in $(seq 1 30); do
+                  if ! updated_head=$(gh api \
+                    --repo "$GH_REPO" \
+                    "/repos/$GH_REPO/pulls/$number" \
+                    --jq '.head.sha'); then
+                    echo "::error::Could not observe the updated head for Dependabot PR #$number"
+                    failures=$((failures + 1))
+                    update_wait_failed=true
+                    break
+                  fi
+                  if [ "$updated_head" != "$head_sha" ]; then
+                    update_observed=true
+                    break
+                  fi
+                  sleep 2
+                done
+                if [ "$update_observed" != true ]; then
+                  if [ "$update_wait_failed" = false ]; then
+                    echo "::error::Dependabot PR #$number did not receive an updated head"
+                    failures=$((failures + 1))
+                  fi
+                  continue
+                fi
+              elif grep -q 'HTTP 422' <<< "$response"; then
+                echo "::notice::Dependabot PR #$number has a merge conflict or was updated concurrently: $response"
+              else
+                echo "::error::Could not update Dependabot PR #$number: $response"
+                failures=$((failures + 1))
+              fi
+            fi
+
+            if ! current_pr=$(gh api \
+                --repo "$GH_REPO" \
+                "/repos/$GH_REPO/pulls/$number" \
+                --jq '{head_sha: .head.sha, head_ref: .head.ref}' 2>&1); then
+              echo "::error::Could not inspect Dependabot PR #$number: $current_pr"
+              failures=$((failures + 1))
+              continue
+            fi
+            current_head=$(jq -r '.head_sha' <<< "$current_pr")
+            current_ref=$(jq -r '.head_ref' <<< "$current_pr")
+
+            if ! check_runs=$(gh api \
+              --paginate \
+              --slurp \
+              --repo "$GH_REPO" \
+              "/repos/$GH_REPO/commits/$current_head/check-runs" \
+              --jq 'map(.check_runs[]) | .[] | [.name, .status, (.conclusion // "")] | @tsv' 2>&1); then
+              echo "::error::Could not inspect checks for Dependabot PR #$number: $check_runs"
+              failures=$((failures + 1))
+              continue
+            fi
+
+            needs_ci=false
+            while IFS= read -r required_check; do
+              [ -n "$required_check" ] || continue
+              if ! awk -F '\t' -v name="$required_check" '$1 == name { found = 1 } END { exit !found }' <<< "$check_runs"; then
+                needs_ci=true
+                break
+              fi
+            done <<< "$required_checks"
+
+            if [ "$needs_ci" = true ]; then
+              if response=$(gh workflow run ci.yml --repo "$GH_REPO" --ref "$current_ref" 2>&1); then
+                echo "Dispatched CI for Dependabot PR #$number at $current_head: $response"
+              else
+                echo "::error::Could not dispatch CI for Dependabot PR #$number: $response"
+                failures=$((failures + 1))
+              fi
+            fi
+          done <<< "$dependabot_prs"
+
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::$failures Dependabot PR operation(s) failed"
+            exit 1
+          fi
