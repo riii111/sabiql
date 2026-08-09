@@ -43,6 +43,8 @@ jobs:
               "/repos/$GH_REPO/pulls/$number/update-branch" \
               -f "expected_head_sha=$head_sha" 2>&1); then
               echo "Requested an update for Dependabot PR #$number: $response"
+            elif grep -q 'HTTP 422' <<< "$response"; then
+              echo "::notice::Dependabot PR #$number was updated concurrently or has a merge conflict: $response"
             else
               echo "$response" >&2
               exit 1
