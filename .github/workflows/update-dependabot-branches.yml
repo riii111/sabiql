@@ -14,10 +14,10 @@ permissions:
 
 jobs:
   update-branches:
-    name: Update open Dependabot pull requests
+    name: Rebase stale Dependabot pull requests
     runs-on: ubuntu-latest
     steps:
-      - name: Update pull request branches
+      - name: Ask Dependabot to rebase stale pull requests
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
@@ -29,20 +29,18 @@ jobs:
             --state open \
             --author 'app/dependabot' \
             --limit 100 \
-            --json number,headRefOid \
-            --jq '.[] | [.number, .headRefOid] | @tsv' |
-          while IFS=$'\t' read -r number head_sha; do
+            --json number,mergeStateStatus \
+            --jq '.[] | select(.mergeStateStatus == "BEHIND") | .number' |
+          while IFS= read -r number; do
             [ -n "$number" ] || continue
 
             if response=$(gh api \
-              --method PUT \
+              --method POST \
               --repo "$GH_REPO" \
               -H 'Accept: application/vnd.github+json' \
-              "/repos/$GH_REPO/pulls/$number/update-branch" \
-              -f "expected_head_sha=$head_sha" 2>&1); then
-              echo "Requested an update for Dependabot PR #$number: $response"
-            elif grep -q 'HTTP 422' <<< "$response"; then
-              echo "::notice::Skipped Dependabot PR #$number because its branch could not be updated: $response"
+              "/repos/$GH_REPO/issues/$number/comments" \
+              -f 'body=@dependabot rebase' 2>&1); then
+              echo "Requested a rebase for Dependabot PR #$number: $response"
             else
               echo "$response" >&2
               exit 1
