@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   actions: write
+  checks: read
   contents: write
   pull-requests: write
 
@@ -26,10 +27,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          required_checks=$(gh api \
-            --repo "$GH_REPO" \
-            "repos/$GH_REPO/branches/main/protection/required_status_checks" \
-            --jq '.contexts[]')
+          # Keep this list aligned with main's protected required status checks.
+          required_checks=$'Format\nLint\nTest\nBuild\nSecurity Audit'
           failures=0
 
           dependabot_prs=$(gh pr list \
@@ -51,16 +50,31 @@ jobs:
                 "/repos/$GH_REPO/pulls/$number/update-branch" \
                 -f "expected_head_sha=$head_sha" 2>&1); then
                 echo "Requested an update for Dependabot PR #$number: $response"
+                update_wait_failed=false
+                update_observed=false
                 for _ in $(seq 1 30); do
-                  updated_head=$(gh api \
+                  if ! updated_head=$(gh api \
                     --repo "$GH_REPO" \
                     "/repos/$GH_REPO/pulls/$number" \
-                    --jq '.head.sha') || break
+                    --jq '.head.sha'); then
+                    echo "::error::Could not observe the updated head for Dependabot PR #$number"
+                    failures=$((failures + 1))
+                    update_wait_failed=true
+                    break
+                  fi
                   if [ "$updated_head" != "$head_sha" ]; then
+                    update_observed=true
                     break
                   fi
                   sleep 2
                 done
+                if [ "$update_observed" != true ]; then
+                  if [ "$update_wait_failed" = false ]; then
+                    echo "::error::Dependabot PR #$number did not receive an updated head"
+                    failures=$((failures + 1))
+                  fi
+                  continue
+                fi
               elif grep -q 'HTTP 422' <<< "$response"; then
                 echo "::notice::Dependabot PR #$number has a merge conflict or was updated concurrently: $response"
               else
