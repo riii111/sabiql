@@ -33,7 +33,9 @@ impl AppServices {
                     }
                     match database_type {
                         DatabaseType::PostgreSQL => format!("'\\x{hex}'"),
-                        DatabaseType::SQLite => format!("X'{}'", hex.to_uppercase()),
+                        DatabaseType::SQLite | DatabaseType::MySQL => {
+                            format!("X'{}'", hex.to_uppercase())
+                        }
                     }
                 }
             }
@@ -67,6 +69,7 @@ impl AppServices {
                 match database_type {
                     DatabaseType::PostgreSQL => Some(format!("EXPLAIN {query}")),
                     DatabaseType::SQLite => build_sqlite_explain_query_plan_sql(query),
+                    DatabaseType::MySQL => None,
                 }
             }
 
@@ -77,7 +80,7 @@ impl AppServices {
             ) -> Option<String> {
                 match database_type {
                     DatabaseType::PostgreSQL => Some(format!("EXPLAIN ANALYZE {query}")),
-                    DatabaseType::SQLite => None,
+                    DatabaseType::SQLite | DatabaseType::MySQL => None,
                 }
             }
 
@@ -103,7 +106,7 @@ impl AppServices {
                             "UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}"
                         )
                     }
-                    DatabaseType::SQLite => {
+                    DatabaseType::SQLite | DatabaseType::MySQL => {
                         format!("UPDATE \"{table}\" SET {set_clause} WHERE {where_clause}")
                     }
                 }
@@ -130,7 +133,9 @@ impl AppServices {
                     DatabaseType::PostgreSQL => {
                         format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
                     }
-                    DatabaseType::SQLite => format!("DELETE FROM \"{table}\" WHERE {where_clause}"),
+                    DatabaseType::SQLite | DatabaseType::MySQL => {
+                        format!("DELETE FROM \"{table}\" WHERE {where_clause}")
+                    }
                 }
             }
         }

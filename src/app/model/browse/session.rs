@@ -18,6 +18,7 @@ struct ActiveConnection {
     name: String,
     database_type: DatabaseType,
     origin: ConnectionOrigin,
+    database: Option<String>,
 }
 
 // # Invariants
@@ -149,11 +150,23 @@ impl BrowseSession {
         database_type: DatabaseType,
         dsn: &str,
     ) {
+        self.activate_connection_with_target(id, name, database_type, dsn, None);
+    }
+
+    pub fn activate_connection_with_target(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) {
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
             database_type,
             origin: ConnectionOrigin::Profile,
+            database: database.map(str::to_string),
         });
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
@@ -166,6 +179,7 @@ impl BrowseSession {
             name: name.to_string(),
             database_type: DatabaseType::SQLite,
             origin: ConnectionOrigin::CliEphemeral,
+            database: None,
         });
         self.active_engine_feature_profile =
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
@@ -186,6 +200,7 @@ impl BrowseSession {
             name: name.to_string(),
             database_type,
             origin: ConnectionOrigin::Profile,
+            database: None,
         });
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
     }
@@ -206,6 +221,19 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
+        self.metadata_run.clear_active();
+        self.effective_user = None;
+        self.effective_user_run.clear_active();
+    }
+
+    pub fn mark_probe_connected(&mut self, has_database: bool) {
+        self.connection_state = if has_database {
+            ConnectionState::Connected
+        } else {
+            ConnectionState::AwaitingDatabase
+        };
+        self.metadata_state = MetadataState::NotLoaded;
+        self.metadata = None;
         self.metadata_run.clear_active();
         self.effective_user = None;
         self.effective_user_run.clear_active();
@@ -331,9 +359,10 @@ impl BrowseSession {
         name: &str,
         database_type: DatabaseType,
         dsn: &str,
+        database: Option<&str>,
     ) {
         self.restore_from_cache(cache, query);
-        self.activate_connection_with_dsn(id, name, database_type, dsn);
+        self.activate_connection_with_target(id, name, database_type, dsn, database);
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -421,6 +450,12 @@ impl BrowseSession {
 
     pub fn active_database_type_or_default(&self) -> DatabaseType {
         self.active_database_type().unwrap_or_default()
+    }
+
+    pub fn active_database(&self) -> Option<&str> {
+        self.active_connection
+            .as_ref()
+            .and_then(|connection| connection.database.as_deref())
     }
 
     pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {

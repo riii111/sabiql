@@ -456,7 +456,16 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 }
             }
         }
-        ConnectionField::Database => require_non_empty(state, field, "Required"),
+        ConnectionField::Database => {
+            if state.database_type() == DatabaseType::PostgreSQL {
+                require_non_empty(state, field, "Required");
+            }
+        }
+        ConnectionField::Host | ConnectionField::User
+            if state.database_type() == DatabaseType::MySQL =>
+        {
+            require_non_empty(state, field, "Required");
+        }
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
@@ -690,6 +699,32 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mysql_validation_requires_host_and_user_but_not_database() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content(" ".to_string());
+        state
+            .input_mut(ConnectionField::User)
+            .unwrap()
+            .set_content(" ".to_string());
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::User),
+            Some("Required")
+        );
+        assert_eq!(state.validation_error(ConnectionField::Database), None);
+    }
+
     mod delete_refresh_target_bulk {
         use super::*;
 
@@ -739,6 +774,7 @@ mod tests {
             let dsn = match database_type {
                 DatabaseType::PostgreSQL => "postgres://localhost/test",
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
+                DatabaseType::MySQL => "mysql://user@localhost/test",
             };
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-connection"),

@@ -1,8 +1,10 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::domain::connection::ConnectionProfileError;
 use crate::model::app_state::AppState;
+use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
@@ -236,12 +238,20 @@ pub fn reduce_connection_setup(
             dsn,
             name,
             database_type,
+            database,
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
             state.connection_caches.remove(id);
 
-            reset_for_new_connection(state, id, dsn, name, *database_type);
+            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            if *database_type == DatabaseType::MySQL {
+                state.session.mark_probe_connected(database.is_some());
+                return DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![Effect::ClearCompletionEngineCache],
+                ));
+            }
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::handled_with(connection_save_fetch_effects(
                 state,
@@ -258,6 +268,15 @@ pub fn reduce_connection_setup(
             }
             if !state.session.connection_state().is_connected() {
                 state.session.mark_disconnected();
+            }
+            if let ConnectionSaveError::Metadata(error) = e
+                && state.connection_setup.database_type() == DatabaseType::MySQL
+            {
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+                state.modal.replace_mode(InputMode::ConnectionError);
+                return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);
             DispatchResult::handled()
@@ -762,6 +781,7 @@ mod tests {
                 dsn: "postgres://localhost/new_db".to_string(),
                 name: "new_db".to_string(),
                 database_type: DatabaseType::PostgreSQL,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 
@@ -801,6 +821,7 @@ mod tests {
                 dsn: "sqlite:///tmp/new.db".to_string(),
                 name: "new.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -869,6 +890,7 @@ mod tests {
                 dsn: "sqlite:///tmp/new.db".to_string(),
                 name: "new.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 
@@ -884,6 +906,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -914,6 +937,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 

@@ -31,6 +31,7 @@ pub(super) fn reset_for_new_connection(
     dsn: &str,
     name: &str,
     database_type: DatabaseType,
+    database: Option<&str>,
 ) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
@@ -39,7 +40,7 @@ pub(super) fn reset_for_new_connection(
     state.sql_modal.set_active_tab(sql_modal_tab);
     state
         .session
-        .activate_connection_with_dsn(id, name, database_type, dsn);
+        .activate_connection_with_target(id, name, database_type, dsn, database);
     reconcile_connection_state(state, inspector_tab);
 }
 
@@ -106,6 +107,7 @@ pub(super) fn restore_cache(
         &target.name,
         target.database_type,
         &target.dsn,
+        target.database.as_deref(),
     );
     reconcile_connection_state(state, cache.inspector_tab);
     state

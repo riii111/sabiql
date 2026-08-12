@@ -1,7 +1,7 @@
 use crate::domain::connection::{ConnectionConfig, ConnectionId};
 use crate::domain::{QueryValue, Table};
 use crate::ports::outbound::{AccessMode, AppSettings};
-use crate::update::action::Action;
+use crate::update::action::{Action, ConnectionTarget};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -11,6 +11,9 @@ pub enum Effect {
         id: Option<ConnectionId>,
         name: String,
         config: ConnectionConfig,
+    },
+    ProbeConnection {
+        target: ConnectionTarget,
     },
     LoadConnectionForEdit {
         id: ConnectionId,

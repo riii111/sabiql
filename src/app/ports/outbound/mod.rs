@@ -7,6 +7,7 @@ pub mod access_mode;
 pub mod cached_result_exporter;
 pub mod clipboard;
 pub mod config_writer;
+pub mod connection_probe;
 pub mod connection_store;
 pub mod db_operation_error;
 pub mod ddl_generator;
@@ -28,10 +29,12 @@ pub use access_mode::AccessMode;
 pub use cached_result_exporter::CachedResultExporter;
 pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
+pub use connection_probe::ConnectionProbe;
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-    SQLITE_TABLE_LIST_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;

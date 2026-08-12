@@ -49,6 +49,31 @@ fn connection_setup_sqlite_form() {
 }
 
 #[test]
+fn connection_setup_mysql_form() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::MySQL);
+    state
+        .connection_setup
+        .input_mut(ConnectionField::Database)
+        .unwrap()
+        .set_content("app".to_string());
+    state
+        .connection_setup
+        .input_mut(ConnectionField::User)
+        .unwrap()
+        .set_content("mysql_user".to_string());
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_empty_host_focused() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

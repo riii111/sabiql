@@ -60,6 +60,11 @@ impl Explorer {
                     ListItem::new(displayed)
                 })
                 .collect()
+        } else if state.session.connection_state().is_awaiting_database() {
+            vec![
+                ListItem::new(" Select a database in connection settings"),
+                ListItem::new(" (c: connections)"),
+            ]
         } else {
             match &state.session.metadata_state() {
                 MetadataState::Loading => {

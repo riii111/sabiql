@@ -1,5 +1,7 @@
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
+use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
@@ -21,6 +23,27 @@ pub fn reduce_connection_lifecycle(
                 && state.modal.active_mode() == InputMode::Normal
             {
                 if let Some(dsn) = state.session.dsn().map(str::to_string) {
+                    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                        let target = ConnectionTarget {
+                            id: state
+                                .session
+                                .active_connection_id()
+                                .cloned()
+                                .expect("active MySQL connection"),
+                            dsn,
+                            name: state
+                                .session
+                                .active_connection_name()
+                                .unwrap_or_default()
+                                .to_string(),
+                            database_type: DatabaseType::MySQL,
+                            database: state.session.active_database().map(str::to_string),
+                        };
+                        state.session.mark_connecting();
+                        return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                            target,
+                        }]);
+                    }
                     let run_id = state.session.begin_connecting(&dsn);
                     DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
                 } else {
@@ -37,7 +60,18 @@ pub fn reduce_connection_lifecycle(
                 dsn,
                 name,
                 database_type,
+                database,
             } = target;
+
+            if *database_type == DatabaseType::MySQL {
+                if let Some(current_id) = state.session.active_connection_id().cloned() {
+                    let cache = save_current_cache(state);
+                    state.connection_caches.save(&current_id, cache);
+                }
+                return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                    target: target.clone(),
+                }]);
+            }
 
             if let Some(current_id) = state.session.active_connection_id().cloned() {
                 let cache = save_current_cache(state);
@@ -57,7 +91,7 @@ pub fn reduce_connection_lifecycle(
                 DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
-                reset_for_new_connection(state, id, dsn, name, *database_type);
+                reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
                 let run_id = state.session.begin_connecting(dsn);
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
@@ -72,6 +106,36 @@ pub fn reduce_connection_lifecycle(
             }
         }
 
+        Action::ConnectionProbeCompleted(target) => {
+            let ConnectionTarget {
+                id,
+                dsn,
+                name,
+                database_type,
+                database,
+            } = target;
+            if *database_type != DatabaseType::MySQL {
+                return DispatchResult::handled();
+            }
+            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            state.session.mark_probe_connected(database.is_some());
+            DispatchResult::handled_with(termination_effects(
+                &state.query,
+                vec![Effect::ClearCompletionEngineCache],
+            ))
+        }
+
+        Action::ConnectionProbeFailed { target, error } => {
+            if state.session.dsn_matches(&target.dsn) {
+                state.session.mark_connection_failed(error.user_message());
+            }
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+            state.modal.replace_mode(InputMode::ConnectionError);
+            DispatchResult::handled()
+        }
+
         _ => DispatchResult::pass(),
     }
 }
@@ -79,13 +143,16 @@ pub fn reduce_connection_lifecycle(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ConnectionId;
     use crate::domain::connection::DatabaseType;
+    use crate::domain::{ConnectionId, MetadataState};
     use crate::model::connection::cache::ConnectionCache;
+    use crate::model::connection::error::ConnectionErrorKind;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
+    use crate::ports::outbound::DbOperationError;
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
@@ -106,6 +173,7 @@ mod tests {
             dsn: format!("postgres://localhost/{name}"),
             name: name.to_string(),
             database_type: DatabaseType::PostgreSQL,
+            database: None,
         })
     }
 
@@ -190,6 +258,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             reduce(&mut state, &action);
 
@@ -206,12 +275,14 @@ mod tests {
             let dsn = match database_type {
                 DatabaseType::PostgreSQL => format!("postgres://localhost/{name}"),
                 DatabaseType::SQLite => format!("sqlite:///tmp/{name}.db"),
+                DatabaseType::MySQL => format!("mysql://user@localhost/{name}"),
             };
             Action::SwitchConnection(ConnectionTarget {
                 id,
                 dsn,
                 name: name.to_string(),
                 database_type,
+                database: None,
             })
         }
 
@@ -437,6 +508,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action).unwrap();
 
@@ -478,6 +550,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action).unwrap();
 
@@ -565,6 +638,97 @@ mod tests {
             assert_eq!(
                 state.session.connection_state(),
                 ConnectionState::Connecting
+            );
+        }
+
+        #[test]
+        fn mysql_switch_probes_without_fetching_metadata() {
+            let mut state = AppState::new("test".to_string());
+            let target = ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            };
+
+            let effects = reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ProbeConnection { target: actual } if actual.dsn == target.dsn
+            )));
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+        }
+
+        #[test]
+        fn mysql_probe_without_database_enters_awaiting_database() {
+            let mut state = AppState::new("test".to_string());
+            let target = ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://user@localhost:3306?ssl-mode=PREFERRED".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: None,
+            };
+
+            let effects = reduce(&mut state, &Action::ConnectionProbeCompleted(target)).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
+            );
+            assert!(state.session.connection_state().is_awaiting_database());
+            assert!(matches!(
+                state.session.metadata_state(),
+                MetadataState::NotLoaded
+            ));
+        }
+
+        #[test]
+        fn mysql_probe_failure_never_enters_connected_state() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::new();
+            let dsn = "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string();
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                &dsn,
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connecting);
+            let target = ConnectionTarget {
+                id,
+                dsn,
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            };
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target,
+                    error: DbOperationError::ConnectionFailed(
+                        "ERROR 1045: Access denied for user 'user'".to_string(),
+                    ),
+                },
+            );
+
+            assert!(!state.session.connection_state().is_connected());
+            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
+            assert_eq!(
+                state.connection_error.error_info().unwrap().kind,
+                ConnectionErrorKind::AuthFailed
             );
         }
 

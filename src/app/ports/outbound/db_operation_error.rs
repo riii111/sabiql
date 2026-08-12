@@ -6,11 +6,15 @@ use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
+pub const MYSQL_CLI_VERSION_REQUIRED_MARKER: &str = "MYSQL_CLI_VERSION_REQUIRED";
+pub const MYSQL_SERVER_VERSION_REQUIRED_MARKER: &str = "MYSQL_SERVER_VERSION_REQUIRED";
+pub const MYSQL_SQL_MODE_UNSUPPORTED_MARKER: &str = "MYSQL_SQL_MODE_UNSUPPORTED";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseCli {
     Psql,
     Sqlite3,
+    MySql,
 }
 
 impl DatabaseCli {
@@ -18,6 +22,7 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Database CLI not found",
             Self::Sqlite3 => "sqlite3 not found",
+            Self::MySql => "mysql not found",
         }
     }
 
@@ -25,6 +30,7 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Install the database client and add it to PATH",
             Self::Sqlite3 => "Install sqlite3 and add it to PATH",
+            Self::MySql => "Install the Oracle MySQL 8.4 client and add it to PATH",
         }
     }
 }

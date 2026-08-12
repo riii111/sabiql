@@ -23,16 +23,17 @@ use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
-    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, PgServiceEntryReader,
-    QueryExecutor, QueryHistoryStore, Renderer, SettingsStore, SqliteDiagnosticsProvider,
-    SqlitePathValidator,
+    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionProbe, ConnectionStore,
+    DsnBuilder, ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider,
+    PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
+    SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
 
 pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
+    pub connection_probe: Arc<dyn ConnectionProbe>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
     pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
@@ -168,6 +169,7 @@ impl EffectRunner {
             }
 
             e @ (Effect::SaveAndConnect { .. }
+            | Effect::ProbeConnection { .. }
             | Effect::LoadConnectionForEdit { .. }
             | Effect::LoadConnections
             | Effect::DeleteConnection { .. }
@@ -658,6 +660,7 @@ mod tests {
                     dsn: "sqlite:///tmp/target.db".to_string(),
                     name: "target".to_string(),
                     database_type: DatabaseType::SQLite,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),

@@ -170,7 +170,7 @@ impl EngineFeatureProfile {
     pub fn for_database_type(database_type: DatabaseType) -> Self {
         match database_type {
             DatabaseType::PostgreSQL => Self::postgres_like(),
-            DatabaseType::SQLite => Self::sqlite_like(),
+            DatabaseType::SQLite | DatabaseType::MySQL => Self::sqlite_like(),
         }
     }
 

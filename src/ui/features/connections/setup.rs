@@ -9,9 +9,10 @@ use crate::app::model::connection::setup::{
 use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
-#[cfg(test)]
-use crate::domain::connection::ConnectionConfig;
-use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType, SslMode};
+use crate::domain::connection::{
+    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, MySqlConnectionConfig,
+    MySqlSslMode, PostgresConnectionConfig, SslMode,
+};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::{take_within_width, truncate_to_width_with};
@@ -107,7 +108,7 @@ impl ConnectionSetup {
                     frame,
                     chunks[idx],
                     field.label(),
-                    ssl_mode_label(form_state.ssl_mode()),
+                    &ssl_mode_label(form_state),
                     form_state.focused_field() == ConnectionField::SslMode,
                     theme,
                 ),
@@ -155,15 +156,27 @@ impl ConnectionSetup {
                 ConnectionField::SslMode,
             )
         {
-            Self::render_dropdown_list(
-                frame,
-                field_area,
-                SslMode::all_variants()
-                    .iter()
-                    .map(|ssl_mode| ssl_mode_label(*ssl_mode)),
-                form_state.ssl_dropdown().selected_index(),
-                theme,
-            );
+            if form_state.database_type() == DatabaseType::MySQL {
+                Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    MySqlSslMode::all_variants()
+                        .iter()
+                        .map(|mode| mysql_ssl_mode_label(*mode)),
+                    form_state.ssl_dropdown().selected_index(),
+                    theme,
+                );
+            } else {
+                Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    SslMode::all_variants()
+                        .iter()
+                        .map(|ssl_mode| ssl_mode_label_text(*ssl_mode)),
+                    form_state.ssl_dropdown().selected_index(),
+                    theme,
+                );
+            }
         }
     }
 
@@ -239,7 +252,7 @@ impl ConnectionSetup {
 
         let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
-        let placeholder = field.placeholder();
+        let placeholder = field.placeholder_for(state.database_type());
         let show_placeholder = value.is_empty() && !placeholder.is_empty();
 
         let input_line = if is_focused {
@@ -422,7 +435,7 @@ impl ConnectionSetup {
     }
 }
 
-fn ssl_mode_label(mode: SslMode) -> &'static str {
+fn ssl_mode_label_text(mode: SslMode) -> &'static str {
     match mode {
         SslMode::Disable => "disable",
         SslMode::Allow => "allow",
@@ -430,6 +443,23 @@ fn ssl_mode_label(mode: SslMode) -> &'static str {
         SslMode::Require => "require",
         SslMode::VerifyCa => "verify-ca",
         SslMode::VerifyFull => "verify-full",
+    }
+}
+
+fn mysql_ssl_mode_label(mode: MySqlSslMode) -> &'static str {
+    match mode {
+        MySqlSslMode::Disabled => "DISABLED",
+        MySqlSslMode::Preferred => "PREFERRED",
+        MySqlSslMode::Required => "REQUIRED",
+    }
+}
+
+fn ssl_mode_label(state: &ConnectionSetupState) -> String {
+    match state.database_type() {
+        DatabaseType::MySQL => state.mysql_ssl_mode().to_string(),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+            ssl_mode_label_text(state.ssl_mode()).to_string()
+        }
     }
 }
 
@@ -467,22 +497,41 @@ fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
         .field_value(ConnectionField::Port)
         .trim()
         .parse()
-        .unwrap_or(5432);
-    ConnectionProfile::with_id_postgres(
-        ConnectionId::from_string("preview"),
-        "preview",
-        state.field_value(ConnectionField::Host).trim(),
-        port,
-        state.field_value(ConnectionField::Database).trim(),
-        state.field_value(ConnectionField::User).trim(),
-        state.field_value(ConnectionField::Password),
-        state.ssl_mode(),
-    )
-    .expect("static preview connection name is valid")
+        .unwrap_or_else(|_| {
+            if state.database_type() == DatabaseType::MySQL {
+                3306
+            } else {
+                5432
+            }
+        });
+    let config = match state.database_type() {
+        DatabaseType::MySQL => ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+            state.field_value(ConnectionField::Host).trim(),
+            port,
+            match state.field_value(ConnectionField::Database).trim() {
+                "" => None,
+                database => Some(database.to_string()),
+            },
+            state.field_value(ConnectionField::User).trim(),
+            state.field_value(ConnectionField::Password),
+            state.mysql_ssl_mode(),
+        )),
+        DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+            state.field_value(ConnectionField::Host).trim(),
+            port,
+            state.field_value(ConnectionField::Database).trim(),
+            state.field_value(ConnectionField::User).trim(),
+            state.field_value(ConnectionField::Password),
+            state.ssl_mode(),
+        )),
+        DatabaseType::SQLite => unreachable!("SQLite has no DSN preview"),
+    };
+    ConnectionProfile::with_id_and_config(ConnectionId::from_string("preview"), "preview", config)
+        .expect("static preview connection name is valid")
 }
 
 fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Option<String> {
-    if form_state.database_type() != DatabaseType::PostgreSQL {
+    if form_state.database_type() == DatabaseType::SQLite {
         return None;
     }
 

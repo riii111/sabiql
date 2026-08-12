@@ -1,8 +1,10 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
+use crate::update::action::ConnectionTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
 use crate::update::dispatch_result::DispatchResult;
 
@@ -75,6 +77,26 @@ pub(super) fn reduce_connection_error(
         Action::RetryConnection => {
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
+                if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                    let target = ConnectionTarget {
+                        id: state
+                            .session
+                            .active_connection_id()
+                            .cloned()
+                            .expect("active MySQL connection"),
+                        dsn,
+                        name: state
+                            .session
+                            .active_connection_name()
+                            .unwrap_or_default()
+                            .to_string(),
+                        database_type: DatabaseType::MySQL,
+                        database: state.session.active_database().map(str::to_string),
+                    };
+                    state.session.mark_connecting();
+                    state.modal.set_mode(InputMode::Normal);
+                    return DispatchResult::handled_with(vec![Effect::ProbeConnection { target }]);
+                }
                 let run_id = state.session.begin_connecting(&dsn);
                 state.session.disable_read_only();
                 state.modal.set_mode(InputMode::Normal);
@@ -92,6 +114,7 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::connection::state::ConnectionState;
     use crate::update::test_fixtures;
 
     mod scroll_down {
@@ -174,5 +197,39 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
+    }
+
+    #[test]
+    fn retry_mysql_uses_probe_without_metadata() {
+        let mut state = AppState::new("test".to_string());
+        let id = ConnectionId::new();
+        let dsn = "mysql://user@localhost:3306/app?ssl-mode=PREFERRED";
+        state.session.activate_connection_with_target(
+            &id,
+            "mysql",
+            DatabaseType::MySQL,
+            dsn,
+            Some("app"),
+        );
+        state.session.set_connection_state(ConnectionState::Failed);
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let effects = reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+            .into_effects()
+            .unwrap();
+
+        assert!(effects.iter().any(|effect| matches!(
+            effect,
+            Effect::ProbeConnection { target }
+                if target.id == id
+                    && target.dsn == dsn
+                    && target.database == Some("app".to_string())
+        )));
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+        );
+        assert!(state.session.connection_state().is_connecting());
     }
 }

@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::config::{
-    ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
+    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
@@ -25,6 +26,8 @@ pub enum ConnectionProfileError {
     UnsupportedSqliteUriFilename,
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
+    #[error("MySQL connection field `{0}` is required")]
+    MissingMySqlField(&'static str),
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
 }
@@ -81,6 +84,24 @@ impl ConnectionProfile {
         })
     }
 
+    pub fn new_mysql(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        database: Option<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: MySqlSslMode,
+    ) -> Result<Self, ConnectionProfileError> {
+        Ok(Self {
+            id: ConnectionId::new(),
+            name: ConnectionName::new(name)?,
+            config: ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                host, port, database, username, password, ssl_mode,
+            )),
+        })
+    }
+
     pub fn with_id_postgres(
         id: ConnectionId,
         name: impl Into<String>,
@@ -134,6 +155,10 @@ impl ConnectionProfile {
 
     pub fn sqlite_config(&self) -> Option<&SqliteConnectionConfig> {
         self.config.as_sqlite()
+    }
+
+    pub fn mysql_config(&self) -> Option<&MySqlConnectionConfig> {
+        self.config.as_mysql()
     }
 
     pub fn display_name(&self) -> &str {

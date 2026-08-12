@@ -2,6 +2,31 @@ use serde::{Deserialize, Serialize};
 
 use super::ssl_mode::SslMode;
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MySqlSslMode {
+    Disabled,
+    #[default]
+    Preferred,
+    Required,
+}
+
+impl MySqlSslMode {
+    pub const fn all_variants() -> &'static [Self] {
+        &[Self::Disabled, Self::Preferred, Self::Required]
+    }
+}
+
+impl std::fmt::Display for MySqlSslMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Disabled => "DISABLED",
+            Self::Preferred => "PREFERRED",
+            Self::Required => "REQUIRED",
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PostgresConnectionConfig {
     pub host: String,
@@ -25,6 +50,36 @@ impl PostgresConnectionConfig {
             host: host.into(),
             port,
             database: database.into(),
+            username: username.into(),
+            password: password.into(),
+            ssl_mode,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MySqlConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub database: Option<String>,
+    pub username: String,
+    pub password: String,
+    pub ssl_mode: MySqlSslMode,
+}
+
+impl MySqlConnectionConfig {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        database: Option<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: MySqlSslMode,
+    ) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            database,
             username: username.into(),
             password: password.into(),
             ssl_mode,
@@ -104,6 +159,7 @@ fn is_sqlite_uri_filename(path: &str) -> bool {
 pub enum ConnectionConfig {
     PostgreSQL(PostgresConnectionConfig),
     SQLite(SqliteConnectionConfig),
+    MySQL(MySqlConnectionConfig),
 }
 
 impl ConnectionConfig {
@@ -111,20 +167,28 @@ impl ConnectionConfig {
         match self {
             Self::PostgreSQL(_) => super::DatabaseType::PostgreSQL,
             Self::SQLite(_) => super::DatabaseType::SQLite,
+            Self::MySQL(_) => super::DatabaseType::MySQL,
         }
     }
 
     pub fn as_postgres(&self) -> Option<&PostgresConnectionConfig> {
         match self {
             Self::PostgreSQL(config) => Some(config),
-            Self::SQLite(_) => None,
+            Self::SQLite(_) | Self::MySQL(_) => None,
         }
     }
 
     pub fn as_sqlite(&self) -> Option<&SqliteConnectionConfig> {
         match self {
             Self::SQLite(config) => Some(config),
-            Self::PostgreSQL(_) => None,
+            Self::PostgreSQL(_) | Self::MySQL(_) => None,
+        }
+    }
+
+    pub fn as_mysql(&self) -> Option<&MySqlConnectionConfig> {
+        match self {
+            Self::MySQL(config) => Some(config),
+            Self::PostgreSQL(_) | Self::SQLite(_) => None,
         }
     }
 }
