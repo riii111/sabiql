@@ -55,6 +55,13 @@ pub(super) fn reduce_connection_selector(
         }
         Action::ConnectionDeleted(id) => {
             let was_active = state.session.active_connection_id() == Some(id);
+            if state
+                .session
+                .pending_connection_probe()
+                .is_some_and(|pending| pending.id == *id)
+            {
+                state.session.clear_connection_probe();
+            }
             if was_active {
                 reset_active_connection_state(state);
             }
@@ -111,7 +118,7 @@ pub(super) fn reduce_connection_selector(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::connection::{ConnectionProfile, DatabaseType, SslMode};
+    use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType, SslMode};
     use crate::model::connection::list::build_connection_list;
     use crate::model::shared::ui_state::ResultNavMode;
 
@@ -293,9 +300,12 @@ mod tests {
         use crate::model::er_state::ErStatus;
         use crate::model::shared::inspector_tab::InspectorTab;
         use crate::model::sql_editor::modal::SqlModalTab;
+        use crate::services::AppServices;
         use crate::test_support::connection::{
             assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
         };
+        use crate::update::action::ConnectionTarget;
+        use crate::update::connection::lifecycle::reduce_connection_lifecycle;
 
         #[test]
         fn removes_connection_from_list() {
@@ -313,6 +323,53 @@ mod tests {
 
             assert_eq!(state.connections().len(), 1);
             assert_eq!(state.connections()[0].name.as_str(), "Second");
+        }
+
+        #[test]
+        fn deleting_pending_probe_target_invalidates_delayed_completion() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("postgres-a");
+            let deleted = create_profile("MySQL");
+            let deleted_id = deleted.id.clone();
+            state.set_connections(vec![deleted]);
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "postgres-a",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/a",
+            );
+            let target = ConnectionTarget {
+                id: deleted_id.clone(),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "MySQL".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let probe_run_id = state.session.begin_connection_probe(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                target.database.as_deref(),
+            );
+
+            reduce_connection_selector(
+                &mut state,
+                &Action::ConnectionDeleted(deleted_id),
+                Instant::now(),
+            );
+            reduce_connection_lifecycle(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_connection_id(), Some(&current_id));
+            assert!(state.session.pending_connection_probe().is_none());
         }
 
         #[test]

@@ -201,6 +201,7 @@ pub fn reduce_connection_setup(
                 state.connection_caches.save(&current_id, cache);
             }
             state.query.reset_for_context_change();
+            state.session.clear_connection_probe();
             state.session.mark_connecting();
             DispatchResult::handled_with(termination_effects(
                 &state.query,
@@ -333,7 +334,9 @@ mod tests {
     use crate::domain::connection::{ConnectionConfig, ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
+    use crate::services::AppServices;
     use crate::update::action::TextKillDirection;
+    use crate::update::connection::lifecycle::reduce_connection_lifecycle;
     use crate::update::test_fixtures;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
@@ -638,6 +641,50 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn save_invalidates_in_flight_mysql_probe() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("postgres-a");
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "postgres-a",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/a",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let target = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let probe_run_id = state.session.begin_connection_probe(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                target.database.as_deref(),
+            );
+
+            fill_valid_form(&mut state);
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            reduce_connection_lifecycle(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_connection_id(), Some(&current_id));
+            assert!(state.session.pending_connection_probe().is_none());
         }
 
         #[test]
