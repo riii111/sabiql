@@ -17,7 +17,12 @@ for argument in "$@"; do
     esac
 done
 
-exec docker run --rm --interactive \
+docker_args=(--rm --interactive)
+if [[ -t 0 && -t 1 ]]; then
+    docker_args+=(--tty)
+fi
+
+exec docker run "${docker_args[@]}" \
     --add-host=host.docker.internal:host-gateway \
     "${mount_args[@]}" \
     "$image" mysql "$@"
