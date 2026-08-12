@@ -603,10 +603,11 @@ impl MysqlProcess {
     fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
+        probe_query: &str,
     ) -> Result<Self, DbOperationError> {
         let mut command = Command::new(program);
         command
-            .args(mysql_query_args(option_file))
+            .args(mysql_query_args(option_file, Some(probe_query)))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -654,10 +655,13 @@ async fn run_mysql_adhoc_with_program(
     query: &str,
     execution_timeout: Duration,
 ) -> Result<MysqlResultSet, DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+    let marker = Uuid::new_v4().simple().to_string();
+    let probe_query =
+        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
+    let mut process = MysqlProcess::spawn_with_program(program, option_file, &probe_query)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, query),
+        run_mysql_adhoc_process(&mut process, query, &marker),
     )
     .await;
 
@@ -679,24 +683,11 @@ async fn run_mysql_adhoc_with_program(
 async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
     query: &str,
+    marker: &str,
 ) -> Result<MysqlResultSet, DbOperationError> {
-    let marker = Uuid::new_v4().simple().to_string();
-    let probe_query =
-        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode;\n");
-    process
-        .stdin
-        .write_all(probe_query.as_bytes())
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    process
-        .stdin
-        .flush()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
     let probe_xml = read_one_mysql_resultset(&mut process.stdout, &mut process.stderr).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
-    validate_mode_probe(&probe, &marker)?;
+    validate_mode_probe(&probe, marker)?;
 
     process
         .stdin
@@ -809,8 +800,8 @@ where
     }
 }
 
-fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
-    vec![
+fn mysql_query_args(option_file: &std::path::Path, init_command: Option<&str>) -> Vec<String> {
+    let mut args = vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
         "--protocol=TCP".to_string(),
@@ -822,7 +813,11 @@ fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
         "--unbuffered".to_string(),
         "--skip-reconnect".to_string(),
         "--default-character-set=utf8mb4".to_string(),
-    ]
+    ];
+    if let Some(init_command) = init_command {
+        args.push(format!("--init-command={init_command}"));
+    }
+    args
 }
 
 fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
@@ -1752,7 +1747,7 @@ mod query_tests {
 
     #[test]
     fn arguments_keep_credentials_out_of_argv() {
-        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"), None);
 
         assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
         assert_eq!(args[1], "--no-login-paths");
@@ -1768,6 +1763,19 @@ mod query_tests {
             assert!(args.contains(&expected.to_string()), "{expected}");
         }
         assert!(args.iter().all(|argument| !argument.contains("password")));
+    }
+
+    #[test]
+    fn adhoc_args_run_the_mode_probe_after_connecting() {
+        let args = mysql_query_args(
+            std::path::Path::new("/tmp/sabiql-mysql.cnf"),
+            Some("SELECT 'marker' AS __sabiql_probe"),
+        );
+
+        assert_eq!(
+            args.last().unwrap(),
+            "--init-command=SELECT 'marker' AS __sabiql_probe"
+        );
     }
 
     #[test]
@@ -1831,7 +1839,25 @@ mod executor_tests {
             "printf '%s\\n' '<resultset><row><field name=\"value\">ok</field></row></resultset>'"
         };
         let script = format!(
-            "#!/bin/sh\noption=$(printf '%s\\n' \"$1\" | sed 's/^--defaults-file=//')\nlog=\"$option.log\"\nwhile IFS= read -r line; do\n  printf '%s\\n' \"$line\" >> \"$log\"\n  if printf '%s\\n' \"$line\" | grep -q '__sabiql_probe'; then\n    marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)'.*/\\\\1/\")\n    {probe_response}\n  else\n    {user_response}\n    exit 0\n  fi\ndone\n",
+            r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+log="$option.log"
+for argument in "$@"; do
+  case "$argument" in
+    --init-command=*)
+      probe=$(printf '%s\n' "$argument" | sed 's/^--init-command=//')
+      printf '%s\n' "$probe" >> "$log"
+      marker=$(printf '%s\n' "$probe" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
+      {probe_response}
+      ;;
+  esac
+done
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  {user_response}
+  exit 0
+done
+"#,
         );
         fs::write(&program, script).unwrap();
         let mut permissions = fs::metadata(&program).unwrap().permissions();
