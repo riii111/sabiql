@@ -167,10 +167,19 @@ impl EngineFeatureProfile {
         )
     }
 
+    pub fn mysql_like() -> Self {
+        Self::new(
+            DISCONNECTED_INSPECTOR,
+            ExplainProfile::Unsupported,
+            NO_CONNECTION_FEATURES,
+        )
+    }
+
     pub fn for_database_type(database_type: DatabaseType) -> Self {
         match database_type {
             DatabaseType::PostgreSQL => Self::postgres_like(),
             DatabaseType::SQLite => Self::sqlite_like(),
+            DatabaseType::MySQL => Self::mysql_like(),
         }
     }
 
@@ -410,6 +419,23 @@ mod tests {
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite),
             EngineFeatureProfile::sqlite_like()
         );
+        assert_eq!(
+            EngineFeatureProfile::for_database_type(DatabaseType::MySQL),
+            EngineFeatureProfile::mysql_like()
+        );
+    }
+
+    #[test]
+    fn mysql_profile_has_no_unimplemented_features() {
+        let profile = EngineFeatureProfile::mysql_like();
+
+        assert!(!profile.supports_explain());
+        assert!(!profile.supports_explain_analyze());
+        assert!(!profile.supports_plan_comparison());
+        assert!(!profile.supports_er_diagram());
+        assert!(!profile.supports_jsonb_detail());
+        assert!(!profile.supports_sqlite_diagnostics());
+        assert_eq!(profile.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
     }
 
     #[test]

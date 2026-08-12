@@ -1,7 +1,8 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::connection::{
-    ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+    ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
 use crate::domain::query_history::QueryHistoryEntry;
 use crate::model::app_state::AppState;
@@ -11,8 +12,8 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
-use crate::policy::FeatureRequirement;
 use crate::policy::write::write_guardrails::WritePreview;
+use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
 use crate::ports::outbound::folder_opener::FolderOpenError;
@@ -22,9 +23,7 @@ use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::{
-    ConnectionId, DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table,
-};
+use crate::domain::{DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
@@ -249,12 +248,26 @@ pub struct TableTarget {
     pub generation: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
     pub name: String,
     pub database_type: DatabaseType,
+    pub database: Option<String>,
+}
+
+impl fmt::Debug for ConnectionTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConnectionTarget")
+            .field("id", &self.id)
+            .field("dsn", &mask_password(&self.dsn))
+            .field("name", &self.name)
+            .field("database_type", &self.database_type)
+            .field("database", &self.database)
+            .finish()
+    }
 }
 
 // Full Action equality is intentionally unavailable: some payloads carry
@@ -347,6 +360,15 @@ pub enum Action {
     ConnectionSetupCancel,
     ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(ConnectionSaveError),
+    ConnectionProbeCompleted {
+        target: ConnectionTarget,
+        run_id: u64,
+    },
+    ConnectionProbeFailed {
+        target: ConnectionTarget,
+        run_id: u64,
+        error: DbOperationError,
+    },
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
     ShowConnectionError(ConnectionErrorInfo),
@@ -820,6 +842,22 @@ impl Action {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    #[test]
+    fn connection_target_debug_masks_mysql_password() {
+        let target = ConnectionTarget {
+            id: ConnectionId::from_string("mysql"),
+            dsn: "mysql://user:secret@localhost:3306/app".to_string(),
+            name: "MySQL".to_string(),
+            database_type: DatabaseType::MySQL,
+            database: Some("app".to_string()),
+        };
+
+        let debug = format!("{target:?}");
+
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("mysql://user:****@localhost"));
+    }
 
     #[test]
     fn scroll_action_returns_true() {

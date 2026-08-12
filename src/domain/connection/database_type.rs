@@ -9,17 +9,20 @@ pub enum DatabaseType {
     PostgreSQL,
     #[serde(rename = "sqlite")]
     SQLite,
+    #[serde(rename = "mysql")]
+    MySQL,
 }
 
 impl DatabaseType {
     pub const fn all() -> &'static [Self] {
-        &[Self::PostgreSQL, Self::SQLite]
+        &[Self::PostgreSQL, Self::SQLite, Self::MySQL]
     }
 
     pub fn label(self) -> &'static str {
         match self {
             Self::PostgreSQL => "PostgreSQL",
             Self::SQLite => "SQLite",
+            Self::MySQL => "MySQL",
         }
     }
 }

@@ -13,6 +13,7 @@ pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> 
             "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
         }
         DatabaseType::PostgreSQL => "EXPLAIN is unavailable for this statement",
+        DatabaseType::MySQL => "EXPLAIN is unavailable for this connection",
     }
 }
 
@@ -30,6 +31,7 @@ pub(super) fn explain_unsupported_analyze_message(database_type: DatabaseType) -
     match database_type {
         DatabaseType::SQLite => "EXPLAIN ANALYZE is not supported for SQLite",
         DatabaseType::PostgreSQL => "EXPLAIN ANALYZE is unavailable for this statement",
+        DatabaseType::MySQL => "EXPLAIN ANALYZE is unavailable for this connection",
     }
 }
 
@@ -37,7 +39,9 @@ pub(super) fn mark_explain_unsupported_query(state: &mut AppState, content: &str
     let database_type = state.session.active_database_type_or_default();
     let message = match database_type {
         DatabaseType::SQLite => explain_unsupported_sqlite_query_message(content),
-        DatabaseType::PostgreSQL => explain_unsupported_query_message(database_type),
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+            explain_unsupported_query_message(database_type)
+        }
     };
     show_explain_error_on_plan(state, message);
 }

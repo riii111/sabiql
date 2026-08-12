@@ -31,7 +31,7 @@ impl CellPresentationPolicy {
             DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
                 PreviewCellTextDisplayHandling::SqliteText
             }
-            DatabaseType::SQLite => PreviewCellTextDisplayHandling::RawText,
+            DatabaseType::SQLite | DatabaseType::MySQL => PreviewCellTextDisplayHandling::RawText,
             DatabaseType::PostgreSQL => match column_data_type {
                 "jsonb" => PreviewCellTextDisplayHandling::PostgreSqlJsonb,
                 "json" => PreviewCellTextDisplayHandling::PostgreSqlJson,

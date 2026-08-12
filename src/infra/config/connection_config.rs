@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError,
-    DatabaseType, PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
+    DatabaseType, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+    SqliteConnectionConfig, SslMode,
 };
 
 pub const CURRENT_VERSION: u32 = 3;
@@ -49,6 +50,8 @@ pub struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssl_mode: Option<SslMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_ssl_mode: Option<MySqlSslMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -88,6 +91,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             username: None,
             password: None,
             ssl_mode: None,
+            mysql_ssl_mode: None,
             path: None,
         };
         match &profile.config {
@@ -101,6 +105,14 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             }
             ConnectionConfig::SQLite(config) => {
                 entry.path = Some(config.path().to_string());
+            }
+            ConnectionConfig::MySQL(config) => {
+                entry.host = Some(config.host.clone());
+                entry.port = Some(config.port);
+                entry.database.clone_from(&config.database);
+                entry.username = Some(config.username.clone());
+                entry.password = Some(config.password.clone());
+                entry.mysql_ssl_mode = Some(config.ssl_mode);
             }
         }
         entry
@@ -136,6 +148,21 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                     entry.path.as_ref(),
                 )?)?),
             ),
+            DatabaseType::MySQL => {
+                let database = entry.database.clone().filter(|value| !value.is_empty());
+                Self::with_id_and_config(
+                    id,
+                    name.as_str().to_string(),
+                    ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                        required_mysql_host(entry.host.as_ref())?,
+                        entry.port.unwrap_or(3306),
+                        database,
+                        required_mysql_field(entry.username.as_ref(), "username")?,
+                        entry.password.clone().unwrap_or_default(),
+                        entry.mysql_ssl_mode.unwrap_or_default(),
+                    )),
+                )
+            }
         }
     }
 }
@@ -159,6 +186,25 @@ fn required_postgres_field(
 
 fn optional_postgres_field(value: Option<&String>) -> String {
     value.cloned().unwrap_or_default()
+}
+
+fn required_mysql_field(
+    value: Option<&String>,
+    field: &'static str,
+) -> Result<String, ConnectionProfileError> {
+    let value = value.ok_or(ConnectionProfileError::MissingMySqlField(field))?;
+    if value.trim().is_empty() {
+        return Err(ConnectionProfileError::MissingMySqlField(field));
+    }
+    Ok(value.clone())
+}
+
+fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfileError> {
+    let host = required_mysql_field(value, "host")?;
+    if !MySqlConnectionConfig::is_valid_host(host.trim()) {
+        return Err(ConnectionProfileError::InvalidMySqlHost);
+    }
+    Ok(host.trim().to_string())
 }
 
 #[cfg(test)]
@@ -190,6 +236,7 @@ mod tests {
             username: Some("user".to_string()),
             password: None,
             ssl_mode: Some(SslMode::Prefer),
+            mysql_ssl_mode: None,
             path: None,
         }
     }
@@ -205,7 +252,24 @@ mod tests {
             username: None,
             password: None,
             ssl_mode: None,
+            mysql_ssl_mode: None,
             path: path.map(str::to_string),
+        }
+    }
+
+    fn mysql_entry(database: Option<&str>) -> ConnectionConfigEntry {
+        ConnectionConfigEntry {
+            id: "mysql-id".to_string(),
+            name: "MySQL".to_string(),
+            db_type: DatabaseType::MySQL,
+            host: Some("localhost".to_string()),
+            port: Some(3306),
+            database: database.map(str::to_string),
+            username: Some("user".to_string()),
+            password: Some("p@ss#word".to_string()),
+            ssl_mode: None,
+            mysql_ssl_mode: Some(MySqlSslMode::Required),
+            path: None,
         }
     }
 
@@ -300,6 +364,56 @@ mod tests {
         assert!(matches!(
             result,
             Err(ConnectionProfileError::UnsupportedSqliteUriFilename)
+        ));
+    }
+
+    #[test]
+    fn mysql_entry_round_trips_optional_database_and_tls_mode() {
+        let entry = mysql_entry(Some("app"));
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let serialized = ConnectionConfigEntry::from(&profile);
+
+        assert_eq!(serialized.db_type, DatabaseType::MySQL);
+        assert_eq!(serialized.database.as_deref(), Some("app"));
+        assert_eq!(serialized.mysql_ssl_mode, Some(MySqlSslMode::Required));
+        assert_eq!(serialized.port, Some(3306));
+        assert_eq!(serialized.password.as_deref(), Some("p@ss#word"));
+    }
+
+    #[test]
+    fn mysql_entry_without_database_is_valid() {
+        let profile = ConnectionProfile::try_from(&mysql_entry(None)).unwrap();
+
+        let config = profile.mysql_config().unwrap();
+        assert_eq!(config.database, None);
+        assert_eq!(config.ssl_mode, MySqlSslMode::Required);
+    }
+
+    #[test]
+    fn mysql_entry_requires_host_and_username() {
+        let mut entry = mysql_entry(None);
+        entry.host = None;
+        assert!(matches!(
+            ConnectionProfile::try_from(&entry),
+            Err(ConnectionProfileError::MissingMySqlField("host"))
+        ));
+
+        entry.host = Some("localhost".to_string());
+        entry.username = Some(" ".to_string());
+        assert!(matches!(
+            ConnectionProfile::try_from(&entry),
+            Err(ConnectionProfileError::MissingMySqlField("username"))
+        ));
+    }
+
+    #[test]
+    fn mysql_entry_rejects_invalid_host() {
+        let mut entry = mysql_entry(None);
+        entry.host = Some("db example".to_string());
+
+        assert!(matches!(
+            ConnectionProfile::try_from(&entry),
+            Err(ConnectionProfileError::InvalidMySqlHost)
         ));
     }
 }

@@ -74,6 +74,7 @@ pub(crate) async fn run(
                             dsn,
                             name,
                             database_type,
+                            database: None,
                         }))
                         .ok();
                     }
@@ -90,6 +91,36 @@ pub(crate) async fn run(
             let name = profile.name.as_str().to_string();
             let database_type = profile.database_type();
 
+            if database_type == DatabaseType::MySQL {
+                let database = profile
+                    .mysql_config()
+                    .and_then(|config| config.database.clone());
+                let target = ConnectionTarget {
+                    id,
+                    dsn,
+                    name,
+                    database_type,
+                    database,
+                };
+                let probe = Arc::clone(&connection.connection_probe);
+                tokio::spawn(async move {
+                    match probe.probe(&target.dsn).await {
+                        Ok(()) => match store.save(&profile) {
+                            Ok(()) => {
+                                tx.send(Action::ConnectionSaveCompleted(target)).await.ok();
+                            }
+                            Err(e) => {
+                                tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
+                            }
+                        },
+                        Err(e) => {
+                            tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
+                        }
+                    }
+                });
+                return Ok(());
+            }
+
             let provider = Arc::clone(metadata_provider);
             let cache = metadata_cache.clone();
             tokio::spawn(async move {
@@ -103,6 +134,7 @@ pub(crate) async fn run(
                                     dsn: dsn.clone(),
                                     name,
                                     database_type,
+                                    database: None,
                                 }))
                                 .await
                                 .ok();
@@ -117,6 +149,28 @@ pub(crate) async fn run(
                         tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
                     }
                 }
+            });
+            Ok(())
+        }
+
+        Effect::ProbeConnection { target, run_id } => {
+            let probe = Arc::clone(&connection.connection_probe);
+            let tx = action_tx.clone();
+            tokio::spawn(async move {
+                match probe.probe(&target.dsn).await {
+                    Ok(()) => tx
+                        .send(Action::ConnectionProbeCompleted { target, run_id })
+                        .await
+                        .ok(),
+                    Err(error) => tx
+                        .send(Action::ConnectionProbeFailed {
+                            target,
+                            run_id,
+                            error,
+                        })
+                        .await
+                        .ok(),
+                };
             });
             Ok(())
         }
@@ -199,6 +253,9 @@ pub(crate) async fn run(
                         dsn,
                         name,
                         database_type,
+                        database: profile
+                            .mysql_config()
+                            .and_then(|config| config.database.clone()),
                     }))
                     .await
                     .ok();
@@ -217,6 +274,7 @@ pub(crate) async fn run(
                         dsn,
                         name,
                         database_type: DatabaseType::PostgreSQL,
+                        database: None,
                     }))
                     .await
                     .ok();
@@ -271,14 +329,15 @@ mod tests {
     use crate::cmd::test_fixtures;
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
-        SqliteConnectionConfig, SqlitePathError, SslMode,
+        MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
+    use crate::ports::outbound::connection_probe::MockConnectionProbe;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
-        ConnectionStoreError, DsnBuilder, RenderOutput, RenderResult, Renderer,
+        ConnectionStoreError, DbOperationError, DsnBuilder, RenderOutput, RenderResult, Renderer,
     };
     use crate::services::AppServices;
     use crate::update::action::{
@@ -299,6 +358,7 @@ mod tests {
 
     mod save_connection {
         use super::*;
+        use mockall::predicate::eq;
         use std::fs;
         use tempfile::tempdir;
 
@@ -307,6 +367,150 @@ mod tests {
             fn build_dsn(&self, profile: &ConnectionProfile) -> String {
                 format!("sqlite://{}", profile.sqlite_config().unwrap().path())
             }
+        }
+
+        struct MySqlDsnBuilder;
+        impl DsnBuilder for MySqlDsnBuilder {
+            fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+                let config = profile.mysql_config().unwrap();
+                let database = config
+                    .database
+                    .as_deref()
+                    .map_or_else(String::new, |database| format!("/{database}"));
+                format!(
+                    "mysql://{}:secret@{}:{}{}?ssl-mode={}",
+                    config.username, config.host, config.port, database, config.ssl_mode
+                )
+            }
+        }
+
+        fn mysql_config(database: Option<&str>) -> ConnectionConfig {
+            ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                database.map(str::to_string),
+                "user",
+                "secret",
+                MySqlSslMode::Required,
+            ))
+        }
+
+        #[tokio::test]
+        async fn mysql_profile_is_saved_only_after_probe_success() {
+            let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
+            let mut probe = MockConnectionProbe::new();
+            probe
+                .expect_probe()
+                .with(eq(dsn.to_string()))
+                .once()
+                .returning(|_| Ok(()));
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().once().returning(|profile| {
+                assert_eq!(profile.database_type(), DatabaseType::MySQL);
+                assert_eq!(
+                    profile.mysql_config().unwrap().database.as_deref(),
+                    Some("app")
+                );
+                Ok(())
+            });
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                tx,
+                Arc::new(MySqlDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut renderer = NoopRenderer;
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "MySQL".to_string(),
+                        config: mysql_config(Some("app")),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                action,
+                Action::ConnectionSaveCompleted(ConnectionTarget {
+                    database: Some(database),
+                    database_type: DatabaseType::MySQL,
+                    ..
+                }) if database == "app"
+            ));
+        }
+
+        #[tokio::test]
+        async fn mysql_profile_is_not_saved_when_probe_fails() {
+            let dsn = "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED";
+            let mut probe = MockConnectionProbe::new();
+            probe
+                .expect_probe()
+                .with(eq(dsn.to_string()))
+                .once()
+                .returning(|_| {
+                    Err(DbOperationError::ConnectionFailed(
+                        "access denied for user".to_string(),
+                    ))
+                });
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                tx,
+                Arc::new(MySqlDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut renderer = NoopRenderer;
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "MySQL".to_string(),
+                        config: mysql_config(None),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(
+                action,
+                Action::ConnectionSaveFailed(ConnectionSaveError::Metadata(_))
+            ));
         }
 
         #[tokio::test]
@@ -580,6 +784,7 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 ConnectionDeps {
                     dsn_builder: Arc::new(test_fixtures::NoopDsnBuilder),
+                    connection_probe: Arc::new(test_fixtures::NoopConnectionProbe),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
                     sqlite_path_validator: Arc::new(test_fixtures::TestFsSqlitePathValidator),
@@ -705,6 +910,7 @@ mod tests {
                     dsn,
                     name,
                     database_type,
+                    ..
                 }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
