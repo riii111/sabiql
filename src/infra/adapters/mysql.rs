@@ -26,7 +26,7 @@ use crate::domain::{
 
 pub struct MySqlAdapter;
 
-const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 static OPTION_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -201,9 +201,7 @@ impl ConnectionProbe for MySqlAdapter {
         let output = result?;
 
         if !output.status.success() {
-            return Err(DbOperationError::ConnectionFailed(clean_stderr(
-                &output.stderr,
-            )));
+            return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
         }
 
         let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
@@ -473,6 +471,20 @@ fn clean_stderr(stderr: &[u8]) -> String {
     }
 }
 
+fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
+    if is_mysql_connect_timeout_message(&stderr) {
+        DbOperationError::Timeout(stderr)
+    } else {
+        DbOperationError::ConnectionFailed(stderr)
+    }
+}
+
+fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("can't connect to mysql server")
+        && (lower.contains("(110)") || lower.contains("(10060)"))
+}
+
 struct MySqlOptionFile {
     path: PathBuf,
 }
@@ -687,5 +699,23 @@ mod probe_tests {
             args.iter()
                 .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
         );
+    }
+
+    #[test]
+    fn classifies_mysql_cli_timeout_errno_before_connection_refusal() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)"
+                    .to_string()
+            ),
+            DbOperationError::Timeout(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
+                    .to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
     }
 }

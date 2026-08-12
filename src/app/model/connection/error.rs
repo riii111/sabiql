@@ -66,7 +66,8 @@ impl ConnectionErrorKind {
             return Self::DatabaseNotFound;
         }
 
-        if stderr_lower.contains("timeout expired")
+        if is_mysql_connect_timeout_message(&stderr_lower)
+            || stderr_lower.contains("timeout expired")
             || stderr_lower.contains("timed out")
             || stderr_lower.contains("connection timed out")
         {
@@ -145,6 +146,11 @@ impl ConnectionErrorKind {
             Self::Unknown => "See details for more information",
         }
     }
+}
+
+fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    value.contains("can't connect to mysql server")
+        && (value.contains("(110)") || value.contains("(10060)"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -330,6 +336,16 @@ mod tests {
             assert_eq!(
                 ConnectionErrorKind::classify("Can't connect to MySQL server on 'localhost' (111)"),
                 ConnectionErrorKind::ConnectionRefused
+            );
+        }
+
+        #[rstest]
+        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)")]
+        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (10060)")]
+        fn stderr_as_mysql_timeout(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::Timeout
             );
         }
     }
