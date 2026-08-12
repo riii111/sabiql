@@ -23,7 +23,7 @@ async fn connects_to_oracle_mysql_84_fixture() {
                     AccessMode::ReadWrite,
                 )
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["id"] || result.values() != [[QueryValue::Text("1".to_string())]]
             {
                 return Err(format!("unexpected MySQL connection result: {result:?}"));
@@ -48,7 +48,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
                 AccessMode::ReadWrite,
             )
             .await
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| format!("{error:?}"))?;
         let expected = vec![
             QueryValue::Null,
             QueryValue::Text(String::new()),
