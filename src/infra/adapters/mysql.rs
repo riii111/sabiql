@@ -856,10 +856,10 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
         || lower.contains("connection timed out")
     {
         DbOperationError::Timeout(details)
-    } else if lower.contains("access denied") || lower.contains("authentication") {
-        DbOperationError::ConnectionFailed(details)
     } else if lower.contains("command denied") || lower.contains("access denied for user") {
         DbOperationError::PermissionDenied(details)
+    } else if lower.contains("access denied") || lower.contains("authentication") {
+        DbOperationError::ConnectionFailed(details)
     } else if lower.contains("lost connection") || lower.contains("server has gone away") {
         DbOperationError::ConnectionLost(details)
     } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
@@ -919,11 +919,29 @@ fn validate_mysql_adhoc_query(query: &str) -> Result<(), DbOperationError> {
         },
         _ => None,
     };
+    if kind.is_some() && has_top_level_into_clause(&tokens) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL SELECT INTO clauses are not supported".to_string(),
+        ));
+    }
     kind.map(|_| ()).ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "only a single SELECT, TABLE, SHOW, DESCRIBE, or SELECT CTE is supported".to_string(),
         )
     })
+}
+
+fn has_top_level_into_clause(tokens: &[MysqlToken]) -> bool {
+    let mut depth = 0usize;
+    for token in tokens {
+        match token {
+            MysqlToken::OpenParen => depth += 1,
+            MysqlToken::CloseParen => depth = depth.saturating_sub(1),
+            MysqlToken::Word(word) if depth == 0 && word == "INTO" => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn scan_mysql_sql(query: &str) -> Result<Vec<MysqlToken>, DbOperationError> {
@@ -1656,6 +1674,27 @@ mod query_tests {
     }
 
     #[test]
+    fn scanner_rejects_top_level_into_clauses_before_starting_a_process() {
+        for query in [
+            "SELECT id INTO OUTFILE '/tmp/result' FROM users",
+            "SELECT id INTO DUMPFILE '/tmp/result' FROM users",
+            "SELECT id INTO @value FROM users",
+            "TABLE users INTO OUTFILE '/tmp/result'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
+        ] {
+            assert!(matches!(
+                validate_mysql_adhoc_query(query),
+                Err(DbOperationError::UnsupportedOperation(details))
+                    if details.contains("SELECT INTO clauses")
+            ));
+        }
+        assert!(
+            validate_mysql_adhoc_query("WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows")
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn scanner_rejects_client_commands_and_version_comments() {
         for query in [
             "DELIMITER //\nSELECT 1//",
@@ -1719,6 +1758,12 @@ mod query_tests {
     fn classifies_mysql_query_failures_by_server_error() {
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1142 (42000): command denied to user"),
+            DbOperationError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 1044 (42000): Access denied for user 'app' to database 'app'"
+            ),
             DbOperationError::PermissionDenied(_)
         ));
         assert!(matches!(
