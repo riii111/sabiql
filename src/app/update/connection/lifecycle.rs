@@ -711,6 +711,68 @@ mod tests {
         }
 
         #[test]
+        fn mysql_switch_invalidates_previous_metadata_failure() {
+            let mut state = AppState::new("test".to_string());
+            let postgres = ConnectionTarget {
+                id: ConnectionId::from_string("postgres-b"),
+                dsn: "postgres://localhost/b".to_string(),
+                name: "postgres-b".to_string(),
+                database_type: DatabaseType::PostgreSQL,
+                database: None,
+            };
+            let postgres_effects =
+                reduce(&mut state, &Action::SwitchConnection(postgres.clone())).unwrap();
+            let postgres_run_id = postgres_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            let mysql = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-c"),
+                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-c".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("c".to_string()),
+            };
+            let mysql_effects =
+                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_run_id = mysql_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::MetadataFailed {
+                    dsn: postgres.dsn,
+                    run_id: postgres_run_id,
+                    error: DbOperationError::ConnectionFailed("stale postgres".to_string()),
+                },
+            );
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target: mysql,
+                    run_id: mysql_run_id,
+                },
+            );
+
+            assert_eq!(
+                state.session.active_database_type(),
+                Some(DatabaseType::MySQL)
+            );
+            assert!(state.session.connection_state().is_connected());
+            assert_eq!(state.modal.active_mode(), InputMode::Normal);
+            assert!(state.connection_error.error_info().is_none());
+        }
+
+        #[test]
         fn stale_mysql_probe_completion_is_ignored_after_switch() {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {

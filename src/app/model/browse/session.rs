@@ -175,6 +175,9 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
+        self.metadata_run.clear_active();
+        self.effective_user_run.clear_active();
+        self.table_detail_run.clear_active();
         let run_id = self.connection_probe_run.begin();
         self.pending_connection_probe = Some(PendingConnectionProbe {
             id: id.clone(),
