@@ -88,10 +88,14 @@ impl MySqlConnectionConfig {
     }
 
     pub fn is_valid_host(host: &str) -> bool {
-        let host = host.trim();
-        if host.is_empty() {
+        let trimmed_host = host.trim();
+        if trimmed_host.is_empty() || trimmed_host != host {
             return false;
         }
+        let host = trimmed_host
+            .strip_prefix('[')
+            .and_then(|host| host.strip_suffix(']'))
+            .unwrap_or(host);
         let host = if host.contains(':') && !host.starts_with('[') {
             format!("[{host}]")
         } else {
@@ -282,12 +286,14 @@ mod tests {
             assert!(MySqlConnectionConfig::is_valid_host("localhost"));
             assert!(MySqlConnectionConfig::is_valid_host("db.example"));
             assert!(MySqlConnectionConfig::is_valid_host("::1"));
+            assert!(MySqlConnectionConfig::is_valid_host("[::1]"));
         }
 
         #[test]
         fn rejects_url_syntax_in_host() {
             assert!(!MySqlConnectionConfig::is_valid_host("db example"));
             assert!(!MySqlConnectionConfig::is_valid_host("db/example"));
+            assert!(!MySqlConnectionConfig::is_valid_host(" localhost "));
             assert!(!MySqlConnectionConfig::is_valid_host(
                 "db?ssl-mode=REQUIRED"
             ));

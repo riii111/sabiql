@@ -204,7 +204,7 @@ fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfi
     if !MySqlConnectionConfig::is_valid_host(host.trim()) {
         return Err(ConnectionProfileError::InvalidMySqlHost);
     }
-    Ok(host)
+    Ok(host.trim().to_string())
 }
 
 #[cfg(test)]

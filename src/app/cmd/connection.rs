@@ -153,14 +153,21 @@ pub(crate) async fn run(
             Ok(())
         }
 
-        Effect::ProbeConnection { target } => {
+        Effect::ProbeConnection { target, run_id } => {
             let probe = Arc::clone(&connection.connection_probe);
             let tx = action_tx.clone();
             tokio::spawn(async move {
                 match probe.probe(&target.dsn).await {
-                    Ok(()) => tx.send(Action::ConnectionProbeCompleted(target)).await.ok(),
+                    Ok(()) => tx
+                        .send(Action::ConnectionProbeCompleted { target, run_id })
+                        .await
+                        .ok(),
                     Err(error) => tx
-                        .send(Action::ConnectionProbeFailed { target, error })
+                        .send(Action::ConnectionProbeFailed {
+                            target,
+                            run_id,
+                            error,
+                        })
                         .await
                         .ok(),
                 };

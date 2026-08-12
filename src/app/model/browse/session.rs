@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::{
@@ -11,6 +12,7 @@ use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::inspector_tab::InspectorTab;
+use crate::policy::mask_password;
 
 #[derive(Debug, Clone)]
 struct ActiveConnection {
@@ -19,6 +21,30 @@ struct ActiveConnection {
     database_type: DatabaseType,
     origin: ConnectionOrigin,
     database: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PendingConnectionProbe {
+    pub id: ConnectionId,
+    pub name: String,
+    pub database_type: DatabaseType,
+    pub dsn: String,
+    pub database: Option<String>,
+    pub run_id: u64,
+}
+
+impl fmt::Debug for PendingConnectionProbe {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PendingConnectionProbe")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("database_type", &self.database_type)
+            .field("dsn", &mask_password(&self.dsn))
+            .field("database", &self.database)
+            .field("run_id", &self.run_id)
+            .finish()
+    }
 }
 
 // # Invariants
@@ -57,6 +83,8 @@ pub struct BrowseSession {
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
     active_connection: Option<ActiveConnection>,
+    connection_probe_run: AsyncRun,
+    pending_connection_probe: Option<PendingConnectionProbe>,
     active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
@@ -77,6 +105,8 @@ impl Default for BrowseSession {
             table_detail_run: AsyncRun::default(),
             dsn: None,
             active_connection: None,
+            connection_probe_run: AsyncRun::default(),
+            pending_connection_probe: None,
             active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
@@ -137,6 +167,59 @@ impl BrowseSession {
     }
 
     #[must_use]
+    pub fn begin_connection_probe(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) -> u64 {
+        let run_id = self.connection_probe_run.begin();
+        self.pending_connection_probe = Some(PendingConnectionProbe {
+            id: id.clone(),
+            name: name.to_string(),
+            database_type,
+            dsn: dsn.to_string(),
+            database: database.map(str::to_string),
+            run_id,
+        });
+        run_id
+    }
+
+    pub fn is_current_connection_probe(
+        &self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+        run_id: u64,
+    ) -> bool {
+        self.connection_probe_run.is_current(run_id)
+            && self
+                .pending_connection_probe
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.run_id == run_id
+                        && pending.id == *id
+                        && pending.name == name
+                        && pending.database_type == database_type
+                        && pending.dsn == dsn
+                        && pending.database.as_deref() == database
+                })
+    }
+
+    pub fn pending_connection_probe(&self) -> Option<&PendingConnectionProbe> {
+        self.pending_connection_probe.as_ref()
+    }
+
+    pub fn clear_connection_probe(&mut self) {
+        self.connection_probe_run.clear_active();
+        self.pending_connection_probe = None;
+    }
+
+    #[must_use]
     pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
@@ -171,6 +254,7 @@ impl BrowseSession {
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
+        self.clear_connection_probe();
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
@@ -185,6 +269,7 @@ impl BrowseSession {
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
+        self.clear_connection_probe();
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -214,6 +299,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
+        self.clear_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
 
@@ -266,6 +352,7 @@ impl BrowseSession {
         self.effective_user = None;
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
+        self.clear_connection_probe();
     }
 
     #[must_use]
@@ -344,6 +431,7 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
+        self.clear_connection_probe();
         match &cache.query_result {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
@@ -1124,6 +1212,23 @@ mod tests {
 
             assert!(!session.is_ephemeral_connection());
             assert!(session.can_reenter_connection_setup());
+        }
+
+        #[test]
+        fn pending_probe_debug_masks_password() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::new();
+            let _ = session.begin_connection_probe(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user:secret@localhost:3306/app",
+                Some("app"),
+            );
+
+            let debug = format!("{session:?}");
+            assert!(!debug.contains("secret"));
+            assert!(debug.contains("mysql://user:****@localhost:3306/app"));
         }
 
         #[test]

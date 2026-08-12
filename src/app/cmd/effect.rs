@@ -14,6 +14,7 @@ pub enum Effect {
     },
     ProbeConnection {
         target: ConnectionTarget,
+        run_id: u64,
     },
     LoadConnectionForEdit {
         id: ConnectionId,

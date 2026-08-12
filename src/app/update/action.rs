@@ -360,9 +360,13 @@ pub enum Action {
     ConnectionSetupCancel,
     ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(ConnectionSaveError),
-    ConnectionProbeCompleted(ConnectionTarget),
+    ConnectionProbeCompleted {
+        target: ConnectionTarget,
+        run_id: u64,
+    },
     ConnectionProbeFailed {
         target: ConnectionTarget,
+        run_id: u64,
         error: DbOperationError,
     },
     ConnectionEditLoaded(Box<ConnectionProfile>),

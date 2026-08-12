@@ -264,14 +264,14 @@ fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
         .expect("MySQL username is valid URL data");
     url.set_password(Some(&config.password))
         .expect("MySQL password is valid URL data");
-    let host = if config.host.contains(':') && !config.host.starts_with('[') {
-        format!("[{}]", config.host)
+    let host = normalize_mysql_host(&config.host);
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
     } else {
-        config.host.clone()
+        host
     };
-    if url.set_host(Some(&host)).is_err() {
-        return "mysql://invalid-host".to_string();
-    }
+    url.set_host(Some(&host))
+        .expect("validated MySQL host is valid URL data");
     url.set_port(Some(config.port))
         .expect("MySQL port is valid URL data");
     if let Some(database) = config.database.as_deref() {
@@ -296,6 +296,7 @@ fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     let host = url.host_str().ok_or_else(|| {
         DbOperationError::ConnectionFailed("MySQL DSN is missing a host".to_string())
     })?;
+    let host = normalize_mysql_host(host);
     let username = decode_url_component(url.username())?;
     let password = decode_url_component(url.password().unwrap_or_default())?;
     let database = url
@@ -311,13 +312,20 @@ fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         .unwrap_or_default();
 
     Ok(MySqlDsn {
-        host: host.to_string(),
+        host,
         port: url.port().unwrap_or(3306),
         database,
         username,
         password,
         ssl_mode,
     })
+}
+
+fn normalize_mysql_host(host: &str) -> String {
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
+        .to_string()
 }
 
 fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
@@ -564,6 +572,22 @@ mod probe_tests {
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
+    }
+
+    #[test]
+    fn ipv6_host_round_trip_serializes_without_url_brackets() {
+        let config = MySqlConnectionConfig::new(
+            "::1",
+            3306,
+            None,
+            "user",
+            "password",
+            MySqlSslMode::Disabled,
+        );
+        let parsed = parse_mysql_dsn(&build_mysql_dsn(&config)).unwrap();
+
+        assert_eq!(parsed.host, "::1");
+        assert!(serialize_option_file(&parsed).contains("host = \"::1\"\n"));
     }
 
     #[test]

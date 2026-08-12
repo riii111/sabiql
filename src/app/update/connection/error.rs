@@ -75,6 +75,29 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::RetryConnection => {
+            if let Some(pending) = state.session.pending_connection_probe().cloned() {
+                let target = ConnectionTarget {
+                    id: pending.id,
+                    dsn: pending.dsn,
+                    name: pending.name,
+                    database_type: pending.database_type,
+                    database: pending.database,
+                };
+                let run_id = state.session.begin_connection_probe(
+                    &target.id,
+                    &target.name,
+                    target.database_type,
+                    &target.dsn,
+                    target.database.as_deref(),
+                );
+                state.connection_error.clear();
+                state.session.mark_connecting();
+                state.modal.set_mode(InputMode::Normal);
+                return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                    target,
+                    run_id,
+                }]);
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 if state.session.active_database_type() == Some(DatabaseType::MySQL) {
@@ -93,9 +116,19 @@ pub(super) fn reduce_connection_error(
                         database_type: DatabaseType::MySQL,
                         database: state.session.active_database().map(str::to_string),
                     };
+                    let run_id = state.session.begin_connection_probe(
+                        &target.id,
+                        &target.name,
+                        target.database_type,
+                        &target.dsn,
+                        target.database.as_deref(),
+                    );
                     state.session.mark_connecting();
                     state.modal.set_mode(InputMode::Normal);
-                    return DispatchResult::handled_with(vec![Effect::ProbeConnection { target }]);
+                    return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                        target,
+                        run_id,
+                    }]);
                 }
                 let run_id = state.session.begin_connecting(&dsn);
                 state.session.disable_read_only();
@@ -220,7 +253,7 @@ mod tests {
 
         assert!(effects.iter().any(|effect| matches!(
             effect,
-            Effect::ProbeConnection { target }
+            Effect::ProbeConnection { target, .. }
                 if target.id == id
                     && target.dsn == dsn
                     && target.database == Some("app".to_string())
