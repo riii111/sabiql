@@ -60,7 +60,7 @@
         {
           default = rustPlatform.buildRustPackage {
             pname = "sabiql";
-            version = "1.11.0";
+            version = "2.0.0";
 
             src = self;
             cargoLock.lockFile = ./Cargo.lock;
