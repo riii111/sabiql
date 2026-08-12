@@ -175,9 +175,7 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
-        self.metadata_run.clear_active();
-        self.effective_user_run.clear_active();
-        self.table_detail_run.clear_active();
+        self.cancel_metadata_for_connection_probe();
         let run_id = self.connection_probe_run.begin();
         self.pending_connection_probe = Some(PendingConnectionProbe {
             id: id.clone(),
@@ -188,6 +186,29 @@ impl BrowseSession {
             run_id,
         });
         run_id
+    }
+
+    fn cancel_metadata_for_connection_probe(&mut self) {
+        self.metadata_run.clear_active();
+        self.effective_user_run.clear_active();
+        self.table_detail_run.clear_active();
+        self.is_reloading = false;
+        match self.connection_state {
+            ConnectionState::Connecting => {
+                self.connection_state = ConnectionState::NotConnected;
+                self.metadata_state = MetadataState::NotLoaded;
+            }
+            ConnectionState::Connected => {
+                self.metadata_state = if self.metadata.is_some() {
+                    MetadataState::Loaded
+                } else {
+                    MetadataState::NotLoaded
+                };
+            }
+            ConnectionState::AwaitingDatabase
+            | ConnectionState::Failed
+            | ConnectionState::NotConnected => {}
+        }
     }
 
     pub fn is_current_connection_probe(

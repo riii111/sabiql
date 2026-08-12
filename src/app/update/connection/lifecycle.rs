@@ -773,6 +773,98 @@ mod tests {
         }
 
         #[test]
+        fn mysql_probe_failure_does_not_leave_previous_connecting_state() {
+            let mut state = AppState::new("test".to_string());
+            let postgres = ConnectionTarget {
+                id: ConnectionId::from_string("postgres-b"),
+                dsn: "postgres://localhost/b".to_string(),
+                name: "postgres-b".to_string(),
+                database_type: DatabaseType::PostgreSQL,
+                database: None,
+            };
+            let _ = reduce(&mut state, &Action::SwitchConnection(postgres)).unwrap();
+
+            let mysql = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-c"),
+                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-c".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("c".to_string()),
+            };
+            let mysql_effects =
+                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_run_id = mysql_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: mysql,
+                    run_id: mysql_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            assert!(state.session.connection_state().is_not_connected());
+            assert!(matches!(
+                state.session.metadata_state(),
+                MetadataState::NotLoaded
+            ));
+            assert!(!state.session.is_reloading());
+        }
+
+        #[test]
+        fn mysql_probe_failure_finishes_previous_reload() {
+            let mut state = AppState::new("test".to_string());
+            let postgres_id = ConnectionId::from_string("postgres-b");
+            state.session.activate_connection_with_dsn(
+                &postgres_id,
+                "postgres-b",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/b",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let _ = state.session.begin_reload();
+            assert!(state.session.is_reloading());
+
+            let mysql = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-c"),
+                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-c".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("c".to_string()),
+            };
+            let mysql_effects =
+                reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_run_id = mysql_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: mysql,
+                    run_id: mysql_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            assert!(state.session.connection_state().is_connected());
+            assert!(!state.session.is_reloading());
+        }
+
+        #[test]
         fn stale_mysql_probe_completion_is_ignored_after_switch() {
             let mut state = AppState::new("test".to_string());
             let first = ConnectionTarget {
