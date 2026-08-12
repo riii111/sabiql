@@ -4,13 +4,17 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use quick_xml::Reader;
+use quick_xml::events::Event;
 use serde::Deserialize;
-use tokio::process::Command;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 use tokio::time::timeout;
 use url::Url;
+use uuid::Uuid;
 
 use crate::app::ports::outbound::{
     AccessMode, ConnectionProbe, DatabaseCli, DbOperationError, DdlGenerator, DsnBuilder,
@@ -21,12 +25,14 @@ use crate::domain::connection::{
     ConnectionProfile, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
 };
 use crate::domain::{
-    DatabaseMetadata, QueryResult, QueryValue, Table, TableSignature, WriteExecutionResult,
+    DatabaseMetadata, QueryResult, QuerySource, QueryValue, Table, TableSignature,
+    WriteExecutionResult,
 };
 
 pub struct MySqlAdapter;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
+const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 static OPTION_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
@@ -99,12 +105,31 @@ impl QueryExecutor for MySqlAdapter {
 
     async fn execute_adhoc(
         &self,
-        _dsn: &str,
-        _query: &str,
+        dsn: &str,
+        query: &str,
         _access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL query execution is not implemented".to_string(),
+        validate_mysql_adhoc_query(query)?;
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures mysql execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_adhoc(&option_file.path, query).await;
+        drop(option_file);
+        let result_set = result?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        Ok(QueryResult::success_with_values(
+            query.to_string(),
+            result_set.columns,
+            result_set.values,
+            elapsed,
+            QuerySource::Adhoc,
         ))
     }
 
@@ -561,6 +586,819 @@ fn quote_option_value(value: &str) -> String {
     format!("\"{escaped}\"")
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct MysqlResultSet {
+    columns: Vec<String>,
+    values: Vec<Vec<QueryValue>>,
+}
+
+struct MysqlProcess {
+    child: Child,
+    stdin: ChildStdin,
+    stdout: ChildStdout,
+    stderr: ChildStderr,
+}
+
+impl MysqlProcess {
+    fn spawn_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        let mut command = Command::new(program);
+        command
+            .args(mysql_query_args(option_file))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env_remove("MYSQL_PWD")
+            .env_remove("MYSQL_PASSWORD")
+            .kill_on_drop(true);
+        let mut child = command.spawn().map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                DbOperationError::CommandNotFound {
+                    command: DatabaseCli::MySql,
+                    details: error.to_string(),
+                }
+            } else {
+                DbOperationError::ConnectionFailed(error.to_string())
+            }
+        })?;
+        let stdin = child.stdin.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
+        })?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
+        })?;
+        Ok(Self {
+            child,
+            stdin,
+            stdout,
+            stderr,
+        })
+    }
+}
+
+async fn run_mysql_adhoc(
+    option_file: &std::path::Path,
+    query: &str,
+) -> Result<MysqlResultSet, DbOperationError> {
+    run_mysql_adhoc_with_program(OsStr::new("mysql"), option_file, query, MYSQL_QUERY_TIMEOUT).await
+}
+
+async fn run_mysql_adhoc_with_program(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+    execution_timeout: Duration,
+) -> Result<MysqlResultSet, DbOperationError> {
+    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+    let result = timeout(
+        execution_timeout,
+        run_mysql_adhoc_process(&mut process, query),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(result_set)) => Ok(result_set),
+        Ok(Err(error)) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    }
+}
+
+async fn run_mysql_adhoc_process(
+    process: &mut MysqlProcess,
+    query: &str,
+) -> Result<MysqlResultSet, DbOperationError> {
+    let marker = Uuid::new_v4().simple().to_string();
+    let probe_query =
+        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode;\n");
+    process
+        .stdin
+        .write_all(probe_query.as_bytes())
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    process
+        .stdin
+        .flush()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+    let probe_xml = read_one_mysql_resultset(&mut process.stdout, &mut process.stderr).await?;
+    let probe = parse_mysql_xml(&probe_xml)?;
+    validate_mode_probe(&probe, &marker)?;
+
+    process
+        .stdin
+        .write_all(query.as_bytes())
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    process
+        .stdin
+        .write_all(b"\n")
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    process
+        .stdin
+        .shutdown()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+    let (stdout, stderr) =
+        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status = process
+        .child
+        .wait()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+    if !status.success() {
+        return Err(classify_mysql_query_failure(&stderr));
+    }
+
+    parse_mysql_xml(&stdout)
+}
+
+async fn cleanup_mysql_process(process: &mut MysqlProcess) {
+    let _ = process.child.kill().await;
+    let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    let _ = process.child.wait().await;
+}
+
+async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).await?;
+    Ok(output)
+}
+
+async fn read_one_mysql_resultset<R, E>(
+    reader: &mut R,
+    stderr: &mut E,
+) -> Result<Vec<u8>, DbOperationError>
+where
+    R: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
+    const RESULTSET_END: &[u8] = b"</resultset>";
+    let mut output = Vec::new();
+    let mut chunk = [0; 4096];
+    let mut stderr_chunk = [0; 4096];
+    let mut stderr_closed = false;
+    loop {
+        if stderr_closed {
+            let count = reader
+                .read(&mut chunk)
+                .await
+                .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+            if count == 0 {
+                return Err(DbOperationError::EmptyResponse(
+                    "mysql mode probe returned no resultset".to_string(),
+                ));
+            }
+            output.extend_from_slice(&chunk[..count]);
+        } else {
+            tokio::select! {
+                result = reader.read(&mut chunk) => {
+                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                    if count == 0 {
+                        return Err(DbOperationError::EmptyResponse(
+                            "mysql mode probe returned no resultset".to_string(),
+                        ));
+                    }
+                    output.extend_from_slice(&chunk[..count]);
+                }
+                result = stderr.read(&mut stderr_chunk) => {
+                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                    if count == 0 {
+                        stderr_closed = true;
+                    } else {
+                        let details = String::from_utf8_lossy(&stderr_chunk[..count]);
+                        let lower = details.to_ascii_lowercase();
+                        if lower.contains("error")
+                            || lower.contains("access denied")
+                            || lower.contains("can't connect")
+                            || lower.contains("lost connection")
+                        {
+                            return Err(classify_mysql_query_failure(&stderr_chunk[..count]));
+                        }
+                    }
+                }
+            }
+        }
+        if output
+            .windows(RESULTSET_END.len())
+            .any(|window| window == RESULTSET_END)
+        {
+            return Ok(output);
+        }
+    }
+}
+
+fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
+    vec![
+        format!("--defaults-file={}", option_file.display()),
+        "--no-login-paths".to_string(),
+        "--protocol=TCP".to_string(),
+        "--connect-timeout=10".to_string(),
+        "--batch".to_string(),
+        "--xml".to_string(),
+        "--binary-as-hex".to_string(),
+        "--binary-mode".to_string(),
+        "--unbuffered".to_string(),
+        "--skip-reconnect".to_string(),
+        "--default-character-set=utf8mb4".to_string(),
+    ]
+}
+
+fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
+    if result.values.len() != 1 || result.columns != ["__sabiql_probe", "__sabiql_sql_mode"] {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe returned an unexpected result".to_string(),
+        ));
+    }
+    let values = &result.values[0];
+    if values.len() != 2 {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe returned an unexpected result".to_string(),
+        ));
+    }
+    if values[0].as_str() != Some(marker) {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe marker did not match".to_string(),
+        ));
+    }
+    let mode = values[1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql sql_mode probe returned no mode".to_string())
+    })?;
+    validate_sql_mode(mode)
+}
+
+fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
+    let details = clean_mysql_stderr(stderr, "mysql query failed");
+    let lower = details.to_ascii_lowercase();
+    let error_code = mysql_server_error_code(&lower);
+    if is_mysql_connect_timeout_message(&details)
+        || lower.contains("connect timeout")
+        || lower.contains("connection timed out")
+    {
+        DbOperationError::Timeout(details)
+    } else if matches!(error_code, Some(1044 | 1142 | 1143 | 1227))
+        || lower.contains("command denied")
+    {
+        DbOperationError::PermissionDenied(details)
+    } else if error_code == Some(1045)
+        || lower.contains("access denied")
+        || lower.contains("authentication")
+    {
+        DbOperationError::ConnectionFailed(details)
+    } else if lower.contains("lost connection") || lower.contains("server has gone away") {
+        DbOperationError::ConnectionLost(details)
+    } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
+        DbOperationError::LockTimeout(details)
+    } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
+        DbOperationError::ObjectMissing(details)
+    } else if lower.contains("duplicate entry") {
+        DbOperationError::UniqueViolation(details)
+    } else if lower.contains("query execution was interrupted")
+        || lower.contains("query was interrupted")
+    {
+        DbOperationError::Canceled(details)
+    } else {
+        DbOperationError::QueryFailed(details)
+    }
+}
+
+fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let marker = "error ";
+    let start = lowercase_details.find(marker)? + marker.len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
+}
+
+fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
+    let text = String::from_utf8_lossy(stderr).trim().to_string();
+    if text.is_empty() {
+        fallback.to_string()
+    } else {
+        text
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum MysqlToken {
+    Word(String),
+    OpenParen,
+    CloseParen,
+    Comma,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MysqlReadStatement {
+    Select,
+    Table,
+    Show,
+    Describe,
+}
+
+fn validate_mysql_adhoc_query(query: &str) -> Result<(), DbOperationError> {
+    let tokens = scan_mysql_sql(query)?;
+    let first = tokens.first().ok_or_else(|| {
+        DbOperationError::UnsupportedOperation("empty MySQL statement".to_string())
+    })?;
+    let kind = match first {
+        MysqlToken::Word(word) => match word.as_str() {
+            "SELECT" => Some(MysqlReadStatement::Select),
+            "TABLE" => Some(MysqlReadStatement::Table),
+            "SHOW" => Some(MysqlReadStatement::Show),
+            "DESCRIBE" => Some(MysqlReadStatement::Describe),
+            "WITH" => classify_with_statement(&tokens),
+            _ => None,
+        },
+        _ => None,
+    };
+    if kind.is_some() && has_top_level_into_clause(&tokens) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL SELECT INTO clauses are not supported".to_string(),
+        ));
+    }
+    kind.map(|_| ()).ok_or_else(|| {
+        DbOperationError::UnsupportedOperation(
+            "only a single SELECT, TABLE, SHOW, DESCRIBE, or SELECT CTE is supported".to_string(),
+        )
+    })
+}
+
+fn has_top_level_into_clause(tokens: &[MysqlToken]) -> bool {
+    let mut depth = 0usize;
+    for token in tokens {
+        match token {
+            MysqlToken::OpenParen => depth += 1,
+            MysqlToken::CloseParen => depth = depth.saturating_sub(1),
+            MysqlToken::Word(word) if depth == 0 && word == "INTO" => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn scan_mysql_sql(query: &str) -> Result<Vec<MysqlToken>, DbOperationError> {
+    let chars: Vec<char> = query.chars().collect();
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    let mut line_start = true;
+    let mut semicolons = 0;
+    let mut statement_ended = false;
+    while index < chars.len() {
+        let character = chars[index];
+        if line_start && matches!(character, ' ' | '\t' | '\r') {
+            index += 1;
+            continue;
+        }
+        if line_start && character == '\\' {
+            return Err(unsupported_client_command("backslash command"));
+        }
+        if line_start && character.is_ascii_alphabetic() {
+            let start = index;
+            while index < chars.len()
+                && (chars[index].is_ascii_alphanumeric() || chars[index] == '_')
+            {
+                index += 1;
+            }
+            let word: String = chars[start..index].iter().collect();
+            if matches!(
+                word.to_ascii_lowercase().as_str(),
+                "delimiter" | "charset" | "source" | "system"
+            ) && (index == chars.len() || chars[index].is_whitespace())
+            {
+                return Err(unsupported_client_command(&word));
+            }
+            if statement_ended {
+                return Err(unsupported_client_command("multiple SQL statements"));
+            }
+            tokens.push(MysqlToken::Word(word.to_ascii_uppercase()));
+            line_start = false;
+            continue;
+        }
+        if character == '\n' {
+            line_start = true;
+            index += 1;
+            continue;
+        }
+        if character.is_whitespace() {
+            index += 1;
+            continue;
+        }
+        if character == '#' {
+            skip_line_comment(&chars, &mut index, &mut line_start);
+            continue;
+        }
+        if character == '-'
+            && chars.get(index + 1) == Some(&'-')
+            && chars.get(index + 2).is_none_or(|next| next.is_whitespace())
+        {
+            skip_line_comment(&chars, &mut index, &mut line_start);
+            continue;
+        }
+        if character == '/' && chars.get(index + 1) == Some(&'*') {
+            if chars.get(index + 2) == Some(&'!') {
+                return Err(unsupported_client_command("MySQL version comment"));
+            }
+            skip_block_comment(&chars, &mut index, &mut line_start)?;
+            continue;
+        }
+        if matches!(character, '\'' | '"' | '`') {
+            if statement_ended {
+                return Err(unsupported_client_command("multiple SQL statements"));
+            }
+            skip_quoted_literal(&chars, &mut index, character)?;
+            line_start = false;
+            tokens.push(MysqlToken::Other);
+            continue;
+        }
+        match character {
+            ';' => {
+                semicolons += 1;
+                if semicolons > 1 {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                if tokens.is_empty() {
+                    return Err(unsupported_client_command("empty MySQL statement"));
+                }
+                statement_ended = true;
+                index += 1;
+            }
+            '(' => {
+                if statement_ended {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                tokens.push(MysqlToken::OpenParen);
+                line_start = false;
+                index += 1;
+            }
+            ')' => {
+                if statement_ended {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                tokens.push(MysqlToken::CloseParen);
+                line_start = false;
+                index += 1;
+            }
+            ',' => {
+                if statement_ended {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                tokens.push(MysqlToken::Comma);
+                line_start = false;
+                index += 1;
+            }
+            character if character.is_ascii_alphabetic() || character == '_' => {
+                if statement_ended {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                let start = index;
+                while index < chars.len()
+                    && (chars[index].is_ascii_alphanumeric() || matches!(chars[index], '_' | '$'))
+                {
+                    index += 1;
+                }
+                let word: String = chars[start..index].iter().collect();
+                tokens.push(MysqlToken::Word(word.to_ascii_uppercase()));
+                line_start = false;
+            }
+            _ => {
+                if statement_ended {
+                    return Err(unsupported_client_command("multiple SQL statements"));
+                }
+                tokens.push(MysqlToken::Other);
+                line_start = false;
+                index += 1;
+            }
+        }
+    }
+    if tokens.is_empty() || query.trim_start().starts_with(';') {
+        return Err(unsupported_client_command("empty MySQL statement"));
+    }
+    Ok(tokens)
+}
+
+fn skip_line_comment(chars: &[char], index: &mut usize, line_start: &mut bool) {
+    while *index < chars.len() {
+        let character = chars[*index];
+        *index += 1;
+        if character == '\n' {
+            *line_start = true;
+            break;
+        }
+    }
+}
+
+fn skip_block_comment(
+    chars: &[char],
+    index: &mut usize,
+    line_start: &mut bool,
+) -> Result<(), DbOperationError> {
+    *index += 2;
+    while *index < chars.len() {
+        if chars[*index] == '\n' {
+            *line_start = true;
+        }
+        if chars[*index] == '*' && chars.get(*index + 1) == Some(&'/') {
+            *index += 2;
+            return Ok(());
+        }
+        *index += 1;
+    }
+    Err(unsupported_client_command("unterminated block comment"))
+}
+
+fn skip_quoted_literal(
+    chars: &[char],
+    index: &mut usize,
+    quote: char,
+) -> Result<(), DbOperationError> {
+    *index += 1;
+    while *index < chars.len() {
+        if chars[*index] == '\\' {
+            *index += 2;
+            continue;
+        }
+        if chars[*index] == quote {
+            if chars.get(*index + 1) == Some(&quote) {
+                *index += 2;
+            } else {
+                *index += 1;
+                return Ok(());
+            }
+        } else {
+            *index += 1;
+        }
+    }
+    Err(unsupported_client_command("unterminated quoted literal"))
+}
+
+fn classify_with_statement(tokens: &[MysqlToken]) -> Option<MysqlReadStatement> {
+    let mut index = 1;
+    if matches!(tokens.get(index), Some(MysqlToken::Word(word)) if word == "RECURSIVE") {
+        index += 1;
+    }
+    loop {
+        if !matches!(
+            tokens.get(index),
+            Some(MysqlToken::Word(_) | MysqlToken::Other)
+        ) {
+            return None;
+        }
+        index += 1;
+        if matches!(tokens.get(index), Some(MysqlToken::OpenParen)) {
+            index = skip_parenthesized(tokens, index)?;
+        }
+        if !matches!(tokens.get(index), Some(MysqlToken::Word(word)) if word == "AS") {
+            return None;
+        }
+        index += 1;
+        if !matches!(tokens.get(index), Some(MysqlToken::OpenParen)) {
+            return None;
+        }
+        index = skip_parenthesized(tokens, index)?;
+        if matches!(tokens.get(index), Some(MysqlToken::Comma)) {
+            index += 1;
+            continue;
+        }
+        return match tokens.get(index) {
+            Some(MysqlToken::Word(word)) if word == "SELECT" => Some(MysqlReadStatement::Select),
+            _ => None,
+        };
+    }
+}
+
+fn skip_parenthesized(tokens: &[MysqlToken], mut index: usize) -> Option<usize> {
+    let mut depth = 0;
+    while let Some(token) = tokens.get(index) {
+        match token {
+            MysqlToken::OpenParen => depth += 1,
+            MysqlToken::CloseParen => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+fn unsupported_client_command(command: &str) -> DbOperationError {
+    DbOperationError::UnsupportedOperation(format!("unsupported MySQL {command}"))
+}
+
+fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
+    let mut reader = Reader::from_reader(xml);
+    reader.config_mut().trim_text(false);
+    let mut buffer = Vec::new();
+    let mut resultset_count = 0;
+    let mut in_resultset = false;
+    let mut current_row: Option<Vec<(String, QueryValue)>> = None;
+    let mut current_field: Option<MysqlField> = None;
+    let mut rows = Vec::new();
+    let mut columns = Vec::new();
+
+    loop {
+        let event = reader.read_event_into(&mut buffer).map_err(|error| {
+            DbOperationError::QueryFailed(format!("invalid MySQL XML result: {error}"))
+        })?;
+        match event {
+            Event::Start(element) => match element.name().as_ref() {
+                b"resultset" => {
+                    if in_resultset || resultset_count > 0 {
+                        return Err(DbOperationError::QueryFailed(
+                            "mysql returned more than one resultset".to_string(),
+                        ));
+                    }
+                    resultset_count += 1;
+                    in_resultset = true;
+                }
+                b"row" if in_resultset && current_row.is_none() => {
+                    current_row = Some(Vec::new());
+                }
+                b"field" if current_row.is_some() && current_field.is_none() => {
+                    current_field = Some(parse_mysql_field(&element)?);
+                }
+                _ => {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected element in MySQL XML result".to_string(),
+                    ));
+                }
+            },
+            Event::Empty(element) if element.name().as_ref() == b"field" => {
+                let row = current_row.as_mut().ok_or_else(|| {
+                    DbOperationError::QueryFailed("MySQL XML field is outside a row".to_string())
+                })?;
+                if current_field.is_some() {
+                    return Err(DbOperationError::QueryFailed(
+                        "nested MySQL XML fields are not supported".to_string(),
+                    ));
+                }
+                let field = parse_mysql_field(&element)?;
+                row.push(field.finish());
+            }
+            Event::Text(text) => {
+                let text = text.unescape().map_err(|error| {
+                    DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                })?;
+                if let Some(field) = current_field.as_mut() {
+                    field.value.push_str(&text);
+                } else if !text.chars().all(char::is_whitespace) {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected text in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::CData(data) => {
+                if let Some(field) = current_field.as_mut() {
+                    field
+                        .value
+                        .push_str(std::str::from_utf8(data.as_ref()).map_err(|error| {
+                            DbOperationError::QueryFailed(format!(
+                                "invalid MySQL XML text: {error}"
+                            ))
+                        })?);
+                } else {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected CDATA in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::End(element) => match element.name().as_ref() {
+                b"field" => {
+                    let row = current_row.as_mut().ok_or_else(|| {
+                        DbOperationError::QueryFailed(
+                            "MySQL XML field is outside a row".to_string(),
+                        )
+                    })?;
+                    let field = current_field.take().ok_or_else(|| {
+                        DbOperationError::QueryFailed("unexpected MySQL XML field end".to_string())
+                    })?;
+                    row.push(field.finish());
+                }
+                b"row" => {
+                    let row = current_row.take().ok_or_else(|| {
+                        DbOperationError::QueryFailed("unexpected MySQL XML row end".to_string())
+                    })?;
+                    if columns.is_empty() {
+                        columns = row.iter().map(|(name, _)| name.clone()).collect();
+                    } else if row.len() != columns.len()
+                        || row
+                            .iter()
+                            .zip(&columns)
+                            .any(|((name, _), column)| name != column)
+                    {
+                        return Err(DbOperationError::QueryFailed(
+                            "MySQL XML rows have inconsistent fields".to_string(),
+                        ));
+                    }
+                    rows.push(row.into_iter().map(|(_, value)| value).collect());
+                }
+                b"resultset" => {
+                    if !in_resultset || current_row.is_some() || current_field.is_some() {
+                        return Err(DbOperationError::QueryFailed(
+                            "malformed MySQL XML resultset".to_string(),
+                        ));
+                    }
+                    in_resultset = false;
+                }
+                _ => {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected MySQL XML closing element".to_string(),
+                    ));
+                }
+            },
+            Event::Decl(_) | Event::Comment(_) => {}
+            Event::Eof => break,
+            _ => {
+                return Err(DbOperationError::QueryFailed(
+                    "unexpected event in MySQL XML result".to_string(),
+                ));
+            }
+        }
+        buffer.clear();
+    }
+
+    if resultset_count != 1 || in_resultset || current_row.is_some() || current_field.is_some() {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL XML result did not contain one complete resultset".to_string(),
+        ));
+    }
+    Ok(MysqlResultSet {
+        columns,
+        values: rows,
+    })
+}
+
+struct MysqlField {
+    name: String,
+    value: String,
+    is_null: bool,
+}
+
+impl MysqlField {
+    fn finish(self) -> (String, QueryValue) {
+        let value = if self.is_null {
+            QueryValue::Null
+        } else {
+            QueryValue::Text(self.value)
+        };
+        (self.name, value)
+    }
+}
+
+fn parse_mysql_field(
+    element: &quick_xml::events::BytesStart<'_>,
+) -> Result<MysqlField, DbOperationError> {
+    let mut name = None;
+    let mut is_null = false;
+    for attribute in element.attributes() {
+        let attribute = attribute.map_err(|error| {
+            DbOperationError::QueryFailed(format!("invalid MySQL XML field: {error}"))
+        })?;
+        let value = attribute.unescape_value().map_err(|error| {
+            DbOperationError::QueryFailed(format!("invalid MySQL XML field: {error}"))
+        })?;
+        match attribute.key.as_ref() {
+            b"name" => name = Some(value.into_owned()),
+            b"xsi:nil" | b"nil" => is_null = matches!(value.as_ref(), "true" | "1"),
+            _ => {}
+        }
+    }
+    let name = name
+        .ok_or_else(|| DbOperationError::QueryFailed("MySQL XML field has no name".to_string()))?;
+    Ok(MysqlField {
+        name,
+        value: String::new(),
+        is_null,
+    })
+}
+
 #[cfg(test)]
 mod probe_tests {
     use super::*;
@@ -717,5 +1555,363 @@ mod probe_tests {
             ),
             DbOperationError::ConnectionFailed(_)
         ));
+    }
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+
+    #[test]
+    fn parses_mysql_xml_without_collapsing_value_boundaries() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<row>
+  <field name="null" xsi:nil="true"/>
+  <field name="empty"></field>
+  <field name="text-null">NULL</field>
+  <field name="special">tab&#9;line&#10;slash\unicode 日本語</field>
+  <field name="json">{"a":[1,true]}</field>
+  <field name="binary-looking">0x41</field>
+</row>
+</resultset>"#;
+
+        let result = parse_mysql_xml(xml.as_bytes()).unwrap();
+
+        assert_eq!(
+            result.columns,
+            vec![
+                "null",
+                "empty",
+                "text-null",
+                "special",
+                "json",
+                "binary-looking"
+            ]
+        );
+        assert_eq!(
+            result.values,
+            vec![vec![
+                QueryValue::Null,
+                QueryValue::Text(String::new()),
+                QueryValue::Text("NULL".to_string()),
+                QueryValue::Text("tab\tline\nslash\\unicode 日本語".to_string()),
+                QueryValue::Text("{\"a\":[1,true]}".to_string()),
+                QueryValue::Text("0x41".to_string()),
+            ]]
+        );
+    }
+
+    #[test]
+    fn parses_numeric_and_binary_values_as_text() {
+        let xml = br#"<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row>
+<field name="integer">18446744073709551615</field>
+<field name="decimal">12345678901234567890.123456789</field>
+<field name="float">1.25e+100</field>
+<field name="binary">0x00FF10</field>
+</row></resultset>"#;
+
+        let result = parse_mysql_xml(xml).unwrap();
+        assert!(
+            result.values[0]
+                .iter()
+                .all(|value| matches!(value, QueryValue::Text(_)))
+        );
+        assert_eq!(result.values[0][0].as_str(), Some("18446744073709551615"));
+        assert_eq!(result.values[0][3].as_str(), Some("0x00FF10"));
+    }
+
+    #[test]
+    fn rejects_multiple_resultsets_instead_of_guessing_the_last_one() {
+        let xml = br#"<resultset><row><field name="value">1</field></row></resultset>
+<resultset><row><field name="value">2</field></row></resultset>"#;
+
+        assert!(matches!(
+            parse_mysql_xml(xml),
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("more than one resultset")
+        ));
+    }
+
+    #[test]
+    fn accepts_xml_declaration_after_probe_separator_and_empty_resultsets() {
+        let xml = br#"
+<?xml version="1.0" encoding="utf-8"?>
+<resultset></resultset>
+"#;
+
+        let result = parse_mysql_xml(xml).unwrap();
+        assert!(result.columns.is_empty());
+        assert!(result.values.is_empty());
+    }
+
+    #[test]
+    fn scanner_ignores_semicolons_in_quotes_and_comments() {
+        let query = r#"
+            SELECT 'a; b', "quoted; identifier", `back;tick`
+            /* block ; comment */
+            FROM `table` -- line ; comment
+            WHERE value = 'backslash\\;'
+        "#;
+
+        assert!(validate_mysql_adhoc_query(query).is_ok());
+    }
+
+    #[test]
+    fn scanner_rejects_multiple_statements_before_starting_a_process() {
+        for query in ["SELECT 1; SELECT 2", "SELECT 1;\nSHOW TABLES"] {
+            assert!(matches!(
+                validate_mysql_adhoc_query(query),
+                Err(DbOperationError::UnsupportedOperation(details))
+                    if details.contains("multiple SQL statements")
+            ));
+        }
+    }
+
+    #[test]
+    fn scanner_accepts_read_statements_and_select_ctes_only() {
+        for query in [
+            "SELECT 1",
+            "TABLE users",
+            "SHOW TABLES",
+            "DESCRIBE users",
+            "WITH rows AS (SELECT 1) SELECT * FROM rows",
+            "WITH RECURSIVE rows AS (SELECT 1) SELECT * FROM rows",
+        ] {
+            assert!(validate_mysql_adhoc_query(query).is_ok(), "{query}");
+        }
+        for query in [
+            "INSERT INTO users VALUES (1)",
+            "WITH rows AS (SELECT 1) UPDATE users SET id = 2",
+            "WITH rows AS (SELECT 1) SHOW TABLES",
+        ] {
+            assert!(validate_mysql_adhoc_query(query).is_err(), "{query}");
+        }
+    }
+
+    #[test]
+    fn scanner_rejects_top_level_into_clauses_before_starting_a_process() {
+        for query in [
+            "SELECT id INTO OUTFILE '/tmp/result' FROM users",
+            "SELECT id INTO DUMPFILE '/tmp/result' FROM users",
+            "SELECT id INTO @value FROM users",
+            "TABLE users INTO OUTFILE '/tmp/result'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
+        ] {
+            assert!(matches!(
+                validate_mysql_adhoc_query(query),
+                Err(DbOperationError::UnsupportedOperation(details))
+                    if details.contains("SELECT INTO clauses")
+            ));
+        }
+        assert!(
+            validate_mysql_adhoc_query("WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn scanner_rejects_client_commands_and_version_comments() {
+        for query in [
+            "DELIMITER //\nSELECT 1//",
+            "  charset utf8mb4\nSELECT 1",
+            "source ./script.sql",
+            "system echo unsafe",
+            "\\C /tmp/other.sock\nSELECT 1",
+            "SELECT 1 /*!40101 + 1 */",
+        ] {
+            assert!(matches!(
+                validate_mysql_adhoc_query(query),
+                Err(DbOperationError::UnsupportedOperation(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn mode_probe_requires_marker_and_allowed_mode_before_user_sql() {
+        let probe = MysqlResultSet {
+            columns: vec![
+                "__sabiql_probe".to_string(),
+                "__sabiql_sql_mode".to_string(),
+            ],
+            values: vec![vec![
+                QueryValue::Text("marker".to_string()),
+                QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
+            ]],
+        };
+        assert!(validate_mode_probe(&probe, "marker").is_ok());
+
+        let mut unsupported = probe;
+        unsupported.values[0][1] = QueryValue::Text("ANSI_QUOTES".to_string());
+        assert!(matches!(
+            validate_mode_probe(&unsupported, "marker"),
+            Err(DbOperationError::UnsupportedOperation(details))
+                if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER)
+        ));
+    }
+
+    #[test]
+    fn arguments_keep_credentials_out_of_argv() {
+        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
+        assert_eq!(args[1], "--no-login-paths");
+        for expected in [
+            "--batch",
+            "--xml",
+            "--binary-as-hex",
+            "--binary-mode",
+            "--unbuffered",
+            "--skip-reconnect",
+            "--default-character-set=utf8mb4",
+        ] {
+            assert!(args.contains(&expected.to_string()), "{expected}");
+        }
+        assert!(args.iter().all(|argument| !argument.contains("password")));
+    }
+
+    #[test]
+    fn classifies_mysql_query_failures_by_server_error() {
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 1045 (28000): Access denied for user 'app'@'localhost' (using password: YES)"
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1142 (42000): command denied to user"),
+            DbOperationError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 1044 (42000): Access denied for user 'app' to database 'app'"
+            ),
+            DbOperationError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1146 (42S02): Table does not exist"),
+            DbOperationError::ObjectMissing(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1205 (HY000): Lock wait timeout exceeded"),
+            DbOperationError::LockTimeout(_)
+        ));
+        let masked = classify_mysql_query_failure(b"ERROR password=secret");
+        assert!(!masked.masked_details().contains("secret"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod executor_tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let option_file = directory.path().join("option.cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let program = directory.path().join("mysql");
+        let probe_response = match mode {
+            "missing" => "exit 0".to_string(),
+            "invalid" => {
+                "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
+                    .to_string()
+            }
+            "unsupported" => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">ANSI_QUOTES</field></row></resultset>'".to_string(),
+            "timeout" => "while :; do :; done".to_string(),
+            _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
+        };
+        let user_response = if mode == "failure" {
+            "printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
+        } else {
+            "printf '%s\\n' '<resultset><row><field name=\"value\">ok</field></row></resultset>'"
+        };
+        let script = format!(
+            "#!/bin/sh\noption=$(printf '%s\\n' \"$1\" | sed 's/^--defaults-file=//')\nlog=\"$option.log\"\nwhile IFS= read -r line; do\n  printf '%s\\n' \"$line\" >> \"$log\"\n  if printf '%s\\n' \"$line\" | grep -q '__sabiql_probe'; then\n    marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)'.*/\\\\1/\")\n    {probe_response}\n  else\n    {user_response}\n    exit 0\n  fi\ndone\n",
+        );
+        fs::write(&program, script).unwrap();
+        let mut permissions = fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, log_file)
+    }
+
+    #[tokio::test]
+    async fn sends_user_sql_only_after_a_valid_mode_probe() {
+        let (_directory, program, log_file) = fake_mysql("success");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_adhoc_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.columns, vec!["value"]);
+        assert_eq!(result.values[0][0].as_str(), Some("ok"));
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert!(log.contains("__sabiql_probe"));
+        assert!(log.contains("SELECT 123"));
+    }
+
+    #[tokio::test]
+    async fn probe_failure_never_writes_user_sql() {
+        for mode in ["unsupported", "invalid", "missing"] {
+            let (_directory, program, log_file) = fake_mysql(mode);
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_adhoc_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123",
+                Duration::from_secs(5),
+            )
+            .await;
+            assert!(result.is_err(), "{mode}");
+            let log =
+                fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
+            assert!(!log.contains("SELECT 123"), "{mode}: {log}");
+        }
+    }
+
+    #[tokio::test]
+    async fn probe_timeout_kills_the_process_and_discards_output() {
+        let (_directory, program, log_file) = fake_mysql("timeout");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_adhoc_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
+        assert!(!log.contains("SELECT 123"));
+    }
+
+    #[tokio::test]
+    async fn nonzero_cli_exit_discards_any_collected_stdout() {
+        let (_directory, program, log_file) = fake_mysql("failure");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_adhoc_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
     }
 }
