@@ -186,9 +186,11 @@ pub fn reduce_connection_lifecycle(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::domain::connection::DatabaseType;
-    use crate::domain::{ConnectionId, MetadataState};
+    use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::error::ConnectionErrorKind;
     use crate::model::connection::state::ConnectionState;
@@ -200,6 +202,7 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
+    use crate::update::reducer::reduce as reduce_app;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
         reduce_connection_lifecycle(
@@ -992,6 +995,151 @@ mod tests {
             assert_eq!(retry_target.dsn, target.dsn);
             assert_eq!(retry_target.id, target.id);
             assert_ne!(retry_run_id, first_run_id);
+        }
+
+        #[test]
+        fn retry_after_mysql_switch_failure_preserves_connected_previous_target() {
+            let mut state = AppState::new("test".to_string());
+            let postgres_id = ConnectionId::from_string("postgres-a");
+            let postgres_dsn = "postgres://localhost/a".to_string();
+            state.session.activate_connection_with_dsn(
+                &postgres_id,
+                "postgres-a",
+                DatabaseType::PostgreSQL,
+                &postgres_dsn,
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state
+                .session
+                .set_metadata(Some(Arc::new(DatabaseMetadata::new("a".to_string()))));
+            state.session.set_metadata_state(MetadataState::Loaded);
+
+            let mysql = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let first_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: mysql.clone(),
+                    run_id: first_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            let retry_effects = reduce_connection_error(
+                &mut state,
+                &Action::RetryConnection,
+                std::time::Instant::now(),
+            )
+            .into_effects()
+            .unwrap();
+            assert!(state.session.connection_state().is_connected());
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loaded);
+            let retry_run_id = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: mysql,
+                    run_id: retry_run_id,
+                    error: DbOperationError::ConnectionFailed("refused again".to_string()),
+                },
+            );
+
+            assert_eq!(state.session.dsn(), Some(postgres_dsn.as_str()));
+            assert!(state.session.connection_state().is_connected());
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loaded);
+            assert!(!state.session.is_reloading());
+        }
+
+        #[test]
+        fn postgres_reload_retry_does_not_use_old_mysql_probe_target() {
+            let mut state = AppState::new("test".to_string());
+            let postgres_id = ConnectionId::from_string("postgres-a");
+            let postgres_dsn = "postgres://localhost/a".to_string();
+            state.session.activate_connection_with_dsn(
+                &postgres_id,
+                "postgres-a",
+                DatabaseType::PostgreSQL,
+                &postgres_dsn,
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+
+            let mysql = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let mysql_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: mysql,
+                    run_id: mysql_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            let reload_run_id = state.session.begin_reload();
+            assert!(state.session.pending_connection_probe().is_none());
+            reduce_app(
+                &mut state,
+                Action::MetadataFailed {
+                    dsn: postgres_dsn.clone(),
+                    run_id: reload_run_id,
+                    error: DbOperationError::ConnectionFailed("reload refused".to_string()),
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let retry_effects = reduce_connection_error(
+                &mut state,
+                &Action::RetryConnection,
+                std::time::Instant::now(),
+            )
+            .into_effects()
+            .unwrap();
+            assert!(retry_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMetadata { dsn, .. } if dsn == &postgres_dsn
+            )));
+            assert!(
+                !retry_effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ProbeConnection { .. }))
+            );
         }
 
         #[test]

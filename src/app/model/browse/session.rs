@@ -245,6 +245,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
+        self.clear_connection_probe();
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
         self.begin_metadata_run()
@@ -364,6 +365,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_metadata_refresh(&mut self) -> u64 {
+        self.clear_connection_probe();
         self.metadata_state = MetadataState::Loading;
         self.begin_metadata_run()
     }
@@ -381,6 +383,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
+        self.clear_connection_probe();
         self.is_reloading = true;
         self.begin_metadata_run()
     }

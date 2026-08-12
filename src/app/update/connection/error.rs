@@ -91,7 +91,9 @@ pub(super) fn reduce_connection_error(
                     target.database.as_deref(),
                 );
                 state.connection_error.clear();
-                state.session.mark_connecting();
+                if state.session.dsn_matches(&target.dsn) {
+                    state.session.mark_connecting();
+                }
                 state.modal.set_mode(InputMode::Normal);
                 return DispatchResult::handled_with(vec![Effect::ProbeConnection {
                     target,
