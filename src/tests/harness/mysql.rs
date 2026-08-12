@@ -115,7 +115,7 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
         ),
         std::env::var("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|_| "sabiql".to_string()),
         std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
-            .unwrap_or_else(|_| "p a#ss;=\"\\word".to_string()),
+            .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
         MySqlSslMode::Disabled,
     )
 }

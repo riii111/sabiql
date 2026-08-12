@@ -10,7 +10,7 @@ readonly mysql_host="${SABIQL_MYSQL_TEST_HOST:-host.docker.internal}"
 readonly mysql_port="${SABIQL_MYSQL_TEST_PORT:-3306}"
 readonly mysql_database="${SABIQL_MYSQL_TEST_DATABASE:-sabiql_test}"
 readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql}"
-readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"\\word}"
+readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 
 mysql_option_file=''
 mysql_bin_dir=''

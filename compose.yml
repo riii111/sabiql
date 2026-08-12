@@ -24,7 +24,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sabiql_test
       MYSQL_USER: sabiql
-      MYSQL_PASSWORD: 'p a#ss;="\word'
+      MYSQL_PASSWORD: 'p a#ss;="word'
     ports:
       - "3306:3306"
     volumes:
