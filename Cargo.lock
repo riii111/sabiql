@@ -2658,6 +2658,7 @@ dependencies = [
  "async-trait",
  "csv",
  "dirs",
+ "quick-xml",
  "rstest",
  "sabiql-app",
  "sabiql-domain",
@@ -2669,6 +2670,7 @@ dependencies = [
  "toml",
  "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]
