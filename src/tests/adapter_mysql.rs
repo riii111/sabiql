@@ -119,7 +119,7 @@ async fn rejects_next_process_when_global_sql_mode_is_unsupported() {
                 .adapter()
                 .execute_adhoc(
                     db.dsn(),
-                    "SELECT 'user SQL must not run'",
+                    "SELECT SLEEP(32)",
                     AccessMode::ReadWrite,
                 )
                 .await;

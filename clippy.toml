@@ -16,6 +16,7 @@ absolute-paths-allowed-crates = [
     "futures",
     "insta",
     "lru",
+    "libc",
     "mockall",
     "nucleo_matcher",
     "quick_xml",

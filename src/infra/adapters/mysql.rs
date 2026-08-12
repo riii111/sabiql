@@ -6,12 +6,22 @@ use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::os::fd::{AsRawFd, FromRawFd};
+
 use async_trait::async_trait;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use serde::Deserialize;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
-use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
+#[cfg(unix)]
+use tokio::fs::File as TokioFile;
+#[cfg(not(unix))]
+use tokio::io::AsyncRead;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::process::Child;
+use tokio::process::Command;
+#[cfg(not(unix))]
+use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use tokio::time::timeout;
 use url::Url;
 use uuid::Uuid;
@@ -594,27 +604,93 @@ struct MysqlResultSet {
 
 struct MysqlProcess {
     child: Child,
+    #[cfg(unix)]
+    pty: MysqlPty,
+    #[cfg(not(unix))]
     stdin: ChildStdin,
+    #[cfg(not(unix))]
     stdout: ChildStdout,
+    #[cfg(not(unix))]
     stderr: ChildStderr,
+}
+
+#[cfg(unix)]
+struct MysqlPty {
+    input: TokioFile,
+    output: TokioFile,
 }
 
 impl MysqlProcess {
     fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
-        probe_query: &str,
     ) -> Result<Self, DbOperationError> {
+        #[cfg(unix)]
+        {
+            Self::spawn_with_pty(program, option_file)
+        }
+
+        #[cfg(not(unix))]
+        {
+            let mut command = Command::new(program);
+            command
+                .args(mysql_query_args(option_file))
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .env_remove("MYSQL_PWD")
+                .env_remove("MYSQL_PASSWORD")
+                .kill_on_drop(true);
+            let mut child = command.spawn().map_err(|error| {
+                if error.kind() == io::ErrorKind::NotFound {
+                    DbOperationError::CommandNotFound {
+                        command: DatabaseCli::MySql,
+                        details: error.to_string(),
+                    }
+                } else {
+                    DbOperationError::ConnectionFailed(error.to_string())
+                }
+            })?;
+            let stdin = child.stdin.take().ok_or_else(|| {
+                DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
+            })?;
+            let stdout = child.stdout.take().ok_or_else(|| {
+                DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
+            })?;
+            let stderr = child.stderr.take().ok_or_else(|| {
+                DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
+            })?;
+            return Ok(Self {
+                child,
+                stdin,
+                stdout,
+                stderr,
+            });
+        }
+    }
+
+    #[cfg(unix)]
+    fn spawn_with_pty(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        let (master, slave) = create_mysql_pty().map_err(|error| {
+            DbOperationError::ConnectionFailed(format!("Unable to create MySQL PTY: {error}"))
+        })?;
         let mut command = Command::new(program);
         command
-            .args(mysql_query_args(option_file, Some(probe_query)))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .args(mysql_query_args(option_file))
+            .stdin(Stdio::from(slave.try_clone().map_err(|error| {
+                DbOperationError::ConnectionFailed(error.to_string())
+            })?))
+            .stdout(Stdio::from(slave.try_clone().map_err(|error| {
+                DbOperationError::ConnectionFailed(error.to_string())
+            })?))
+            .stderr(Stdio::from(slave))
             .env_remove("MYSQL_PWD")
             .env_remove("MYSQL_PASSWORD")
             .kill_on_drop(true);
-        let mut child = command.spawn().map_err(|error| {
+        let child = command.spawn().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 DbOperationError::CommandNotFound {
                     command: DatabaseCli::MySql,
@@ -624,22 +700,46 @@ impl MysqlProcess {
                 DbOperationError::ConnectionFailed(error.to_string())
             }
         })?;
-        let stdin = child.stdin.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
-        })?;
+        let output = TokioFile::from_std(
+            master
+                .try_clone()
+                .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?,
+        );
+        let input = TokioFile::from_std(master);
         Ok(Self {
             child,
-            stdin,
-            stdout,
-            stderr,
+            pty: MysqlPty { input, output },
         })
     }
+}
+
+#[cfg(unix)]
+fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
+    let mut master = -1;
+    let mut slave = -1;
+    let result = unsafe {
+        libc::openpty(
+            &raw mut master,
+            &raw mut slave,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let slave_file = unsafe { std::fs::File::from_raw_fd(slave) };
+    let master_file = unsafe { std::fs::File::from_raw_fd(master) };
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if unsafe { libc::tcgetattr(slave_file.as_raw_fd(), termios.as_mut_ptr()) } == 0 {
+        let mut termios = unsafe { termios.assume_init() };
+        termios.c_lflag &= !libc::ECHO;
+        let _ =
+            unsafe { libc::tcsetattr(slave_file.as_raw_fd(), libc::TCSANOW, &raw const termios) };
+    }
+    Ok((master_file, slave_file))
 }
 
 async fn run_mysql_adhoc(
@@ -655,12 +755,10 @@ async fn run_mysql_adhoc_with_program(
     query: &str,
     execution_timeout: Duration,
 ) -> Result<MysqlResultSet, DbOperationError> {
-    let marker = Uuid::new_v4().simple().to_string();
-    let probe_query = mysql_mode_probe_query(&marker);
-    let mut process = MysqlProcess::spawn_with_program(program, option_file, &probe_query)?;
+    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, query, &marker),
+        run_mysql_adhoc_process(&mut process, query),
     )
     .await;
 
@@ -682,49 +780,171 @@ async fn run_mysql_adhoc_with_program(
 async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
     query: &str,
-    marker: &str,
 ) -> Result<MysqlResultSet, DbOperationError> {
-    let mut input_error = None;
-    if let Err(error) = process.stdin.write_all(query.as_bytes()).await {
-        input_error = Some(DbOperationError::ConnectionLost(error.to_string()));
-    } else if let Err(error) = process.stdin.write_all(b"\n").await {
-        input_error = Some(DbOperationError::ConnectionLost(error.to_string()));
-    }
-    if let Err(error) = process.stdin.shutdown().await
-        && input_error.is_none()
-    {
-        input_error = Some(DbOperationError::ConnectionLost(error.to_string()));
-    }
+    let marker = Uuid::new_v4().simple().to_string();
+    let probe_query =
+        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
+    write_mysql_statement(process, &probe_query).await?;
+    let probe_xml = read_one_mysql_resultset(process).await?;
+    let probe = parse_mysql_xml(&probe_xml)?;
+    validate_mode_probe(&probe, &marker)?;
 
+    write_mysql_statement(process, query).await?;
+
+    #[cfg(not(unix))]
+    process
+        .stdin
+        .shutdown()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+    #[cfg(unix)]
+    let stdout = {
+        let stdout = read_one_mysql_resultset(process).await?;
+        write_mysql_input(process, b"\\q\n").await?;
+        let tail = read_pty_all(&mut process.pty.output)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let mut output = stdout;
+        output.extend_from_slice(&tail);
+        output
+    };
+
+    #[cfg(not(unix))]
     let (stdout, stderr) =
         tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    #[cfg(not(unix))]
     let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+
     let status = process
         .child
         .wait()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
 
-    if let Some(error) = classify_mysql_mode_probe_failure(&stderr, marker) {
-        return Err(error);
-    }
+    #[cfg(unix)]
+    let error_bytes = stdout.as_slice();
+    #[cfg(not(unix))]
+    let error_bytes = stderr.as_slice();
     if !status.success() {
-        return Err(classify_mysql_query_failure(&stderr));
-    }
-    if let Some(error) = input_error {
-        return Err(error);
+        return Err(classify_mysql_query_failure(error_bytes));
     }
 
     parse_mysql_xml(&stdout)
 }
 
+async fn write_mysql_statement(
+    process: &mut MysqlProcess,
+    query: &str,
+) -> Result<(), DbOperationError> {
+    write_mysql_input(process, query.as_bytes()).await?;
+    write_mysql_input(process, b"\n;\n").await
+}
+
+async fn write_mysql_input(
+    process: &mut MysqlProcess,
+    input: &[u8],
+) -> Result<(), DbOperationError> {
+    #[cfg(unix)]
+    process
+        .pty
+        .input
+        .write_all(input)
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    #[cfg(not(unix))]
+    process
+        .stdin
+        .write_all(input)
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    #[cfg(unix)]
+    process
+        .pty
+        .input
+        .flush()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    #[cfg(not(unix))]
+    process
+        .stdin
+        .flush()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok(())
+}
+
 async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     let _ = process.child.kill().await;
+    #[cfg(unix)]
+    let _ = read_pty_all(&mut process.pty.output).await;
+    #[cfg(not(unix))]
     let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
     let _ = process.child.wait().await;
 }
 
+async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>, DbOperationError> {
+    #[cfg(unix)]
+    {
+        return read_one_pty_resultset(&mut process.pty.output).await;
+    }
+    #[cfg(not(unix))]
+    read_one_mysql_resultset_from_pipes(&mut process.stdout, &mut process.stderr).await
+}
+
+#[cfg(unix)]
+async fn read_one_pty_resultset(reader: &mut TokioFile) -> Result<Vec<u8>, DbOperationError> {
+    const RESULTSET_END: &[u8] = b"</resultset>";
+    let mut output = Vec::new();
+    let mut chunk = [0; 4096];
+    loop {
+        let count = match reader.read(&mut chunk).await {
+            Ok(count) => count,
+            Err(error) if error.raw_os_error() == Some(libc::EIO) => 0,
+            Err(error) => return Err(DbOperationError::ConnectionLost(error.to_string())),
+        };
+        if count == 0 {
+            return Err(DbOperationError::EmptyResponse(
+                "mysql query returned no resultset".to_string(),
+            ));
+        }
+        output.extend_from_slice(&chunk[..count]);
+        if output
+            .windows(RESULTSET_END.len())
+            .any(|window| window == RESULTSET_END)
+        {
+            return Ok(output);
+        }
+        if has_mysql_cli_error(&output) {
+            return Err(classify_mysql_query_failure(&output));
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn read_pty_all(reader: &mut TokioFile) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut chunk = [0; 4096];
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => return Ok(output),
+            Ok(count) => output.extend_from_slice(&chunk[..count]),
+            Err(error) if error.raw_os_error() == Some(libc::EIO) => return Ok(output),
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+#[cfg(unix)]
+fn has_mysql_cli_error(output: &[u8]) -> bool {
+    output
+        .split(|byte| *byte == b'\n' || *byte == b'\r')
+        .any(|line| line.starts_with(b"ERROR ") || line == b"ERROR")
+}
+
+#[cfg(not(unix))]
 async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
@@ -734,39 +954,115 @@ where
     Ok(output)
 }
 
-fn mysql_query_args(option_file: &std::path::Path, init_command: Option<&str>) -> Vec<String> {
-    let mut args = vec![
+#[cfg(not(unix))]
+fn read_one_mysql_resultset_from_pipes<R, E>(
+    reader: &mut R,
+    stderr: &mut E,
+) -> Result<Vec<u8>, DbOperationError>
+where
+    R: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
+    const RESULTSET_END: &[u8] = b"</resultset>";
+    let mut output = Vec::new();
+    let mut chunk = [0; 4096];
+    let mut stderr_chunk = [0; 4096];
+    let mut stderr_closed = false;
+    loop {
+        if stderr_closed {
+            let count = reader
+                .read(&mut chunk)
+                .await
+                .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+            if count == 0 {
+                return Err(DbOperationError::EmptyResponse(
+                    "mysql mode probe returned no resultset".to_string(),
+                ));
+            }
+            output.extend_from_slice(&chunk[..count]);
+        } else {
+            tokio::select! {
+                result = reader.read(&mut chunk) => {
+                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                    if count == 0 {
+                        return Err(DbOperationError::EmptyResponse(
+                            "mysql mode probe returned no resultset".to_string(),
+                        ));
+                    }
+                    output.extend_from_slice(&chunk[..count]);
+                }
+                result = stderr.read(&mut stderr_chunk) => {
+                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                    if count == 0 {
+                        stderr_closed = true;
+                    } else {
+                        let details = String::from_utf8_lossy(&stderr_chunk[..count]);
+                        let lower = details.to_ascii_lowercase();
+                        if lower.contains("error")
+                            || lower.contains("access denied")
+                            || lower.contains("can't connect")
+                            || lower.contains("lost connection")
+                        {
+                            return Err(classify_mysql_query_failure(&stderr_chunk[..count]));
+                        }
+                    }
+                }
+            }
+        }
+        if output
+            .windows(RESULTSET_END.len())
+            .any(|window| window == RESULTSET_END)
+        {
+            return Ok(output);
+        }
+    }
+}
+
+fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
+    let args = vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
         "--protocol=TCP".to_string(),
         "--connect-timeout=10".to_string(),
-        "--batch".to_string(),
         "--xml".to_string(),
         "--binary-as-hex".to_string(),
+        "--binary-mode".to_string(),
         "--unbuffered".to_string(),
         "--skip-reconnect".to_string(),
         "--default-character-set=utf8mb4".to_string(),
+        "--silent".to_string(),
+        "--prompt=".to_string(),
     ];
-    if let Some(init_command) = init_command {
-        args.push(format!("--init-command={init_command}"));
-    }
-    args.push("--execute=source /dev/stdin".to_string());
+    #[cfg(not(unix))]
+    return args
+        .into_iter()
+        .chain(std::iter::once("--batch".to_string()))
+        .collect();
+    #[cfg(unix)]
     args
 }
 
-fn mysql_mode_probe_query(marker: &str) -> String {
-    format!(
-        "SET SESSION sql_mode = IF(FIND_IN_SET('NO_BACKSLASH_ESCAPES', @@SESSION.sql_mode) OR FIND_IN_SET('ANSI_QUOTES', @@SESSION.sql_mode), CONCAT(@@SESSION.sql_mode, ',SABIQL_UNSUPPORTED_SQL_MODE_{marker}'), @@SESSION.sql_mode)"
-    )
-}
-
-fn classify_mysql_mode_probe_failure(stderr: &[u8], marker: &str) -> Option<DbOperationError> {
-    let details = clean_mysql_stderr(stderr, "mysql sql_mode probe failed");
-    details.contains(marker).then(|| {
-        DbOperationError::UnsupportedOperation(format!(
-            "{MYSQL_SQL_MODE_UNSUPPORTED_MARKER}: {details}"
-        ))
-    })
+fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
+    if result.values.len() != 1 || result.columns != ["__sabiql_probe", "__sabiql_sql_mode"] {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe returned an unexpected result".to_string(),
+        ));
+    }
+    let values = &result.values[0];
+    if values.len() != 2 {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe returned an unexpected result".to_string(),
+        ));
+    }
+    if values[0].as_str() != Some(marker) {
+        return Err(DbOperationError::QueryFailed(
+            "mysql sql_mode probe marker did not match".to_string(),
+        ));
+    }
+    let mode = values[1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql sql_mode probe returned no mode".to_string())
+    })?;
+    validate_sql_mode(mode)
 }
 
 fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
@@ -1649,48 +1945,53 @@ mod query_tests {
     }
 
     #[test]
-    fn mode_probe_rejects_unsupported_mode_in_init_error() {
-        let query = mysql_mode_probe_query("marker");
-        assert!(query.contains("NO_BACKSLASH_ESCAPES"));
-        assert!(query.contains("ANSI_QUOTES"));
-        assert!(query.contains("SABIQL_UNSUPPORTED_SQL_MODE_marker"));
+    fn mode_probe_requires_marker_and_allowed_mode_before_user_sql() {
+        let probe = MysqlResultSet {
+            columns: vec![
+                "__sabiql_probe".to_string(),
+                "__sabiql_sql_mode".to_string(),
+            ],
+            values: vec![vec![
+                QueryValue::Text("marker".to_string()),
+                QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
+            ]],
+        };
+        assert!(validate_mode_probe(&probe, "marker").is_ok());
+
+        let mut unsupported = probe;
+        unsupported.values[0][1] = QueryValue::Text("ANSI_QUOTES".to_string());
         assert!(matches!(
-            classify_mysql_mode_probe_failure(
-                b"ERROR 1231 (42000): Variable 'sql_mode' can't be set to the value of 'SABIQL_UNSUPPORTED_SQL_MODE_marker'",
-                "marker",
-            ),
-            Some(DbOperationError::UnsupportedOperation(details))
+            validate_mode_probe(&unsupported, "marker"),
+            Err(DbOperationError::UnsupportedOperation(details))
                 if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER)
         ));
     }
 
     #[test]
     fn arguments_keep_credentials_out_of_argv() {
-        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"), None);
+        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
 
         assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
         assert_eq!(args[1], "--no-login-paths");
         for expected in [
-            "--batch",
             "--xml",
             "--binary-as-hex",
+            "--binary-mode",
             "--unbuffered",
             "--skip-reconnect",
             "--default-character-set=utf8mb4",
         ] {
             assert!(args.contains(&expected.to_string()), "{expected}");
         }
-        assert!(args.contains(&"--execute=source /dev/stdin".to_string()));
+        #[cfg(unix)]
+        {
+            assert!(args.contains(&"--silent".to_string()));
+            assert!(args.contains(&"--prompt=".to_string()));
+            assert!(!args.contains(&"--batch".to_string()));
+        }
+        #[cfg(not(unix))]
+        assert!(args.contains(&"--batch".to_string()));
         assert!(args.iter().all(|argument| !argument.contains("password")));
-    }
-
-    #[test]
-    fn adhoc_args_run_the_mode_probe_after_connecting() {
-        let probe = mysql_mode_probe_query("marker");
-        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"), Some(&probe));
-
-        assert!(args.contains(&format!("--init-command={probe}")));
-        assert_eq!(args.last().unwrap(), "--execute=source /dev/stdin");
     }
 
     #[test]
@@ -1738,14 +2039,15 @@ mod executor_tests {
         fs::write(&option_file, "[client]\n").unwrap();
         let log_file = PathBuf::from(format!("{}.log", option_file.display()));
         let program = directory.path().join("mysql");
-        let init_response = match mode {
-            "missing" | "invalid" => "exit 0".to_string(),
-            "unsupported" => {
-                "printf '%s\\n' 'ERROR 123 (HY000): SABIQL_UNSUPPORTED_SQL_MODE_'\"$marker\" >&2\n    exit 1"
+        let probe_response = match mode {
+            "missing" => "exit 0".to_string(),
+            "invalid" => {
+                "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
                     .to_string()
             }
+            "unsupported" => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">ANSI_QUOTES</field></row></resultset>'".to_string(),
             "timeout" => "while :; do :; done".to_string(),
-            _ => ":".to_string(),
+            _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
         };
         let user_response = if mode == "failure" {
             "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
@@ -1756,20 +2058,18 @@ mod executor_tests {
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
-for argument in "$@"; do
-  case "$argument" in
-    --init-command=*)
-      probe=$(printf '%s\n' "$argument" | sed 's/^--init-command=//')
-      printf '%s\n' "$probe" >> "$log"
-      marker=$(printf '%s\n' "$probe" | sed "s/.*SABIQL_UNSUPPORTED_SQL_MODE_\([^']*\).*/\1/")
-      {init_response}
-      ;;
-  esac
-done
+phase=probe
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
-  {user_response}
-  exit 0
+  [ "$line" = ";" ] && continue
+  if [ "$phase" = probe ]; then
+    marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)'.*/\\1/")
+    {probe_response}
+    phase=user
+  else
+    {user_response}
+    exit 0
+  fi
 done
 "#,
         );
@@ -1797,7 +2097,7 @@ done
         assert_eq!(result.columns, vec!["value"]);
         assert_eq!(result.values[0][0].as_str(), Some("ok"));
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(log.contains("NO_BACKSLASH_ESCAPES"));
+        assert!(log.contains("__sabiql_probe"));
         assert!(log.contains("SELECT 123"));
     }
 
