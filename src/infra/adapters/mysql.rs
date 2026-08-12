@@ -955,7 +955,7 @@ where
 }
 
 #[cfg(not(unix))]
-fn read_one_mysql_resultset_from_pipes<R, E>(
+async fn read_one_mysql_resultset_from_pipes<R, E>(
     reader: &mut R,
     stderr: &mut E,
 ) -> Result<Vec<u8>, DbOperationError>
