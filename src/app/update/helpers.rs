@@ -3,7 +3,7 @@ use std::time::Instant;
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::domain::DatabaseType;
-use crate::domain::connection::SqliteConnectionConfig;
+use crate::domain::connection::{MySqlConnectionConfig, SqliteConnectionConfig};
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::QueryStatus;
@@ -461,9 +461,15 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 require_non_empty(state, field, "Required");
             }
         }
-        ConnectionField::Host | ConnectionField::User
-            if state.database_type() == DatabaseType::MySQL =>
-        {
+        ConnectionField::Host if state.database_type() == DatabaseType::MySQL => {
+            let host = text_input_content(state, field).trim();
+            if host.is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if !MySqlConnectionConfig::is_valid_host(host) {
+                state.set_validation_error(field, "Invalid host");
+            }
+        }
+        ConnectionField::User if state.database_type() == DatabaseType::MySQL => {
             require_non_empty(state, field, "Required");
         }
         ConnectionField::Name => {
@@ -723,6 +729,23 @@ mod tests {
             Some("Required")
         );
         assert_eq!(state.validation_error(ConnectionField::Database), None);
+    }
+
+    #[test]
+    fn mysql_validation_rejects_url_syntax_in_host() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content("db example".to_string());
+
+        validate_field(&mut state, ConnectionField::Host);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Invalid host")
+        );
     }
 
     mod delete_refresh_target_bulk {

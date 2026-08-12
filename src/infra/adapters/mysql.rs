@@ -222,7 +222,7 @@ impl MySqlAdapter {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
-        if !output.status.success() || !is_mysql_84_version(&version_output) {
+        if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
             return Err(DbOperationError::UnsupportedOperation(format!(
                 "{MYSQL_CLI_VERSION_REQUIRED_MARKER}: {}",
                 version_output.trim()
@@ -264,8 +264,14 @@ fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
         .expect("MySQL username is valid URL data");
     url.set_password(Some(&config.password))
         .expect("MySQL password is valid URL data");
-    url.set_host(Some(&config.host))
-        .expect("MySQL host is valid URL data");
+    let host = if config.host.contains(':') && !config.host.starts_with('[') {
+        format!("[{}]", config.host)
+    } else {
+        config.host.clone()
+    };
+    if url.set_host(Some(&host)).is_err() {
+        return "mysql://invalid-host".to_string();
+    }
     url.set_port(Some(config.port))
         .expect("MySQL port is valid URL data");
     if let Some(database) = config.database.as_deref() {
@@ -351,13 +357,26 @@ fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
     Ok(())
 }
 
-fn is_mysql_84_version(value: &str) -> bool {
+fn contains_unsupported_mysql_product(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
-    !lower.contains("mariadb") && version_major_minor(value) == Some((8, 4))
+    ["mariadb", "percona", "tidb", "vitess", "aurora"]
+        .iter()
+        .any(|product| lower.contains(product))
+}
+
+fn is_oracle_mysql_cli_84_version(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("mysql")
+        && !contains_unsupported_mysql_product(value)
+        && version_major_minor(value) == Some((8, 4))
+}
+
+fn is_oracle_mysql_server_84_version(value: &str) -> bool {
+    !contains_unsupported_mysql_product(value) && version_major_minor(value) == Some((8, 4))
 }
 
 fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
-    if is_mysql_84_version(version) {
+    if is_oracle_mysql_server_84_version(version) {
         Ok(())
     } else {
         Err(DbOperationError::UnsupportedOperation(format!(
@@ -600,11 +619,19 @@ mod probe_tests {
 
     #[test]
     fn validates_supported_versions_and_sql_modes() {
-        assert!(is_mysql_84_version("mysql  Ver 8.4.3 for macos"));
-        assert!(!is_mysql_84_version("mysql  Ver 8.0.36 for macos"));
-        assert!(!is_mysql_84_version(
+        assert!(is_oracle_mysql_cli_84_version("mysql  Ver 8.4.3 for macos"));
+        assert!(!is_oracle_mysql_cli_84_version(
+            "mysql  Ver 8.0.36 for macos"
+        ));
+        assert!(!is_oracle_mysql_cli_84_version(
             "mysql  Ver 15.1 Distrib 10.11.8-MariaDB"
         ));
+        assert!(!is_oracle_mysql_cli_84_version(
+            "mysql  Ver 8.4.3-3 for Linux (Percona Server)"
+        ));
+        assert!(is_oracle_mysql_server_84_version("8.4.3"));
+        assert!(!is_oracle_mysql_server_84_version("8.4.3-TiDB"));
+        assert!(!is_oracle_mysql_server_84_version("8.4.3-Percona"));
         assert!(validate_sql_mode("STRICT_TRANS_TABLES").is_ok());
         assert!(validate_sql_mode("STRICT_TRANS_TABLES,ANSI_QUOTES").is_err());
     }
@@ -625,6 +652,16 @@ mod probe_tests {
             args.last()
                 .unwrap()
                 .starts_with("--execute=SELECT JSON_OBJECT")
+        );
+    }
+
+    #[test]
+    fn arguments_do_not_contain_credentials() {
+        let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert!(
+            args.iter()
+                .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
         );
     }
 }

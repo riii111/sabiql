@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use super::ssl_mode::SslMode;
 
@@ -84,6 +85,24 @@ impl MySqlConnectionConfig {
             password: password.into(),
             ssl_mode,
         }
+    }
+
+    pub fn is_valid_host(host: &str) -> bool {
+        let host = host.trim();
+        if host.is_empty() {
+            return false;
+        }
+        let host = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else {
+            host.to_string()
+        };
+        let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
+        url.set_host(Some(&host)).is_ok()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        Self::is_valid_host(&self.host)
     }
 }
 
@@ -252,6 +271,26 @@ mod tests {
                 serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
 
             assert!(result.is_err());
+        }
+    }
+
+    mod mysql_host_validation {
+        use super::*;
+
+        #[test]
+        fn accepts_dns_and_ipv6_hosts() {
+            assert!(MySqlConnectionConfig::is_valid_host("localhost"));
+            assert!(MySqlConnectionConfig::is_valid_host("db.example"));
+            assert!(MySqlConnectionConfig::is_valid_host("::1"));
+        }
+
+        #[test]
+        fn rejects_url_syntax_in_host() {
+            assert!(!MySqlConnectionConfig::is_valid_host("db example"));
+            assert!(!MySqlConnectionConfig::is_valid_host("db/example"));
+            assert!(!MySqlConnectionConfig::is_valid_host(
+                "db?ssl-mode=REQUIRED"
+            ));
         }
     }
 

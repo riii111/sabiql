@@ -2646,6 +2646,7 @@ dependencies = [
  "thiserror 2.0.19",
  "unicode-segmentation",
  "unicode-width",
+ "url",
  "uuid",
 ]
 

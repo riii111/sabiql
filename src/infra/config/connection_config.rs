@@ -154,7 +154,7 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                     id,
                     name.as_str().to_string(),
                     ConnectionConfig::MySQL(MySqlConnectionConfig::new(
-                        required_mysql_field(entry.host.as_ref(), "host")?,
+                        required_mysql_host(entry.host.as_ref())?,
                         entry.port.unwrap_or(3306),
                         database,
                         required_mysql_field(entry.username.as_ref(), "username")?,
@@ -197,6 +197,14 @@ fn required_mysql_field(
         return Err(ConnectionProfileError::MissingMySqlField(field));
     }
     Ok(value.clone())
+}
+
+fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfileError> {
+    let host = required_mysql_field(value, "host")?;
+    if !MySqlConnectionConfig::is_valid_host(host.trim()) {
+        return Err(ConnectionProfileError::InvalidMySqlHost);
+    }
+    Ok(host)
 }
 
 #[cfg(test)]
@@ -395,6 +403,17 @@ mod tests {
         assert!(matches!(
             ConnectionProfile::try_from(&entry),
             Err(ConnectionProfileError::MissingMySqlField("username"))
+        ));
+    }
+
+    #[test]
+    fn mysql_entry_rejects_invalid_host() {
+        let mut entry = mysql_entry(None);
+        entry.host = Some("db example".to_string());
+
+        assert!(matches!(
+            ConnectionProfile::try_from(&entry),
+            Err(ConnectionProfileError::InvalidMySqlHost)
         ));
     }
 }

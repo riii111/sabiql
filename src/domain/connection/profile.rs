@@ -28,6 +28,8 @@ pub enum ConnectionProfileError {
     MissingPostgresField(&'static str),
     #[error("MySQL connection field `{0}` is required")]
     MissingMySqlField(&'static str),
+    #[error("MySQL connection host is invalid")]
+    InvalidMySqlHost,
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
 }
@@ -93,13 +95,13 @@ impl ConnectionProfile {
         password: impl Into<String>,
         ssl_mode: MySqlSslMode,
     ) -> Result<Self, ConnectionProfileError> {
-        Ok(Self {
-            id: ConnectionId::new(),
-            name: ConnectionName::new(name)?,
-            config: ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+        Self::with_id_and_config(
+            ConnectionId::new(),
+            name,
+            ConnectionConfig::MySQL(MySqlConnectionConfig::new(
                 host, port, database, username, password, ssl_mode,
             )),
-        })
+        )
     }
 
     pub fn with_id_postgres(
@@ -138,6 +140,9 @@ impl ConnectionProfile {
         name: impl Into<String>,
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
+        if matches!(&config, ConnectionConfig::MySQL(config) if !config.is_valid()) {
+            return Err(ConnectionProfileError::InvalidMySqlHost);
+        }
         Ok(Self {
             id,
             name: ConnectionName::new(name)?,
@@ -205,6 +210,24 @@ mod tests {
                 SslMode::Prefer,
             );
             assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_mysql_host_returns_error() {
+            let result = ConnectionProfile::new_mysql(
+                "MySQL",
+                "db example",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Preferred,
+            );
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::InvalidMySqlHost)
+            ));
         }
     }
 

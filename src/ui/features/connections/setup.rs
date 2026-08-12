@@ -492,7 +492,7 @@ fn focused_placeholder_spans(
     spans
 }
 
-fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
+fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
     let port = state
         .field_value(ConnectionField::Port)
         .trim()
@@ -527,7 +527,7 @@ fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
         DatabaseType::SQLite => unreachable!("SQLite has no DSN preview"),
     };
     ConnectionProfile::with_id_and_config(ConnectionId::from_string("preview"), "preview", config)
-        .expect("static preview connection name is valid")
+        .ok()
 }
 
 fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Option<String> {
@@ -535,7 +535,7 @@ fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Op
         return None;
     }
 
-    let profile = preview_profile(form_state);
+    let profile = preview_profile(form_state)?;
     Some(mask_password(&services.dsn_builder.build_dsn(&profile)))
 }
 
@@ -663,7 +663,7 @@ mod tests {
             .unwrap()
             .set_content("  pass  ".to_string());
 
-        let profile = preview_profile(&form_state);
+        let profile = preview_profile(&form_state).unwrap();
 
         let ConnectionConfig::PostgreSQL(config) = profile.config else {
             panic!("preview profile must be PostgreSQL");
@@ -672,6 +672,18 @@ mod tests {
         assert_eq!(config.database, "app_db");
         assert_eq!(config.username, "postgres");
         assert_eq!(config.password, "  pass  ");
+    }
+
+    #[test]
+    fn invalid_mysql_host_does_not_panic_during_preview() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state.set_database_type(DatabaseType::MySQL);
+        form_state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content("db example".to_string());
+
+        assert!(preview_profile(&form_state).is_none());
     }
 
     #[test]
