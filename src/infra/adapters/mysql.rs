@@ -851,14 +851,20 @@ fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOp
 fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
+    let error_code = mysql_server_error_code(&lower);
     if is_mysql_connect_timeout_message(&details)
         || lower.contains("connect timeout")
         || lower.contains("connection timed out")
     {
         DbOperationError::Timeout(details)
-    } else if lower.contains("command denied") || lower.contains("access denied for user") {
+    } else if matches!(error_code, Some(1044 | 1142 | 1143 | 1227))
+        || lower.contains("command denied")
+    {
         DbOperationError::PermissionDenied(details)
-    } else if lower.contains("access denied") || lower.contains("authentication") {
+    } else if error_code == Some(1045)
+        || lower.contains("access denied")
+        || lower.contains("authentication")
+    {
         DbOperationError::ConnectionFailed(details)
     } else if lower.contains("lost connection") || lower.contains("server has gone away") {
         DbOperationError::ConnectionLost(details)
@@ -875,6 +881,16 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     } else {
         DbOperationError::QueryFailed(details)
     }
+}
+
+fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let marker = "error ";
+    let start = lowercase_details.find(marker)? + marker.len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
 }
 
 fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
@@ -1756,6 +1772,12 @@ mod query_tests {
 
     #[test]
     fn classifies_mysql_query_failures_by_server_error() {
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 1045 (28000): Access denied for user 'app'@'localhost' (using password: YES)"
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1142 (42000): command denied to user"),
             DbOperationError::PermissionDenied(_)
