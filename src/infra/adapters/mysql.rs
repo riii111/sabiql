@@ -1751,7 +1751,7 @@ mod query_tests {
     }
 
     #[test]
-    fn query_arguments_keep_credentials_out_of_argv() {
+    fn arguments_keep_credentials_out_of_argv() {
         let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
 
         assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
