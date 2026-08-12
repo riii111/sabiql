@@ -1,48 +1,142 @@
-//! Integration tests for the MySQL connection probe.
+//! Integration tests for the Oracle MySQL 8.4 server and mysql CLI.
 //!
-//! These tests require an Oracle MySQL 8.4 server and the matching `mysql` CLI.
-//! Set `SABIQL_MYSQL_TEST_PASSWORD` to a password containing option-file syntax
-//! characters, then run:
-//! `cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_mysql)'`
+//! Start the exact fixture and CLI wrapper with:
+//! bash scripts/mysql_integration.sh test
 
-use sabiql_app::ports::outbound::{ConnectionProbe, DsnBuilder};
-use sabiql_domain::connection::{ConnectionProfile, MySqlSslMode};
-use sabiql_infra::adapters::mysql::MySqlAdapter;
+use sabiql_app::ports::outbound::{
+    AccessMode, DbOperationError, MYSQL_SQL_MODE_UNSUPPORTED_MARKER, QueryExecutor,
+};
+use sabiql_domain::QueryValue;
 
-fn mysql_integration_profile() -> ConnectionProfile {
-    let password = std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
-        .expect("SABIQL_MYSQL_TEST_PASSWORD must be set for MySQL integration tests");
-    assert!(
-        password
-            .chars()
-            .any(|character| " #;=\\\"".contains(character)),
-        "the integration password must contain an option-file syntax character"
-    );
+use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
 
-    ConnectionProfile::new_mysql(
-        "mysql-integration",
-        std::env::var("SABIQL_MYSQL_TEST_HOST").unwrap_or_else(|_| "localhost".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PORT")
-            .ok()
-            .and_then(|port| port.parse().ok())
-            .unwrap_or(3306),
-        std::env::var("SABIQL_MYSQL_TEST_DATABASE").ok(),
-        std::env::var("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|_| "root".to_string()),
-        password,
-        MySqlSslMode::Disabled,
-    )
-    .expect("integration MySQL connection settings must be valid")
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn connects_to_oracle_mysql_84_fixture() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            if result.columns != ["id"] || result.values() != [[QueryValue::Text("1".to_string())]]
+            {
+                return Err(format!("unexpected MySQL connection result: {result:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
 }
 
 #[tokio::test]
-#[ignore = "requires Oracle MySQL 8.4 CLI/server"]
-async fn probe_real_mysql_84_uses_special_password_and_tcp() {
-    let adapter = MySqlAdapter::new();
-    let profile = mysql_integration_profile();
-    let dsn = adapter.build_dsn(&profile);
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn preserves_xml_value_boundaries_for_real_mysql_results() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value FROM {MYSQL_FIXTURE_TABLE}"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        let expected = vec![
+            QueryValue::Null,
+            QueryValue::Text(String::new()),
+            QueryValue::Text("日本語の値 🐬".to_string()),
+            QueryValue::Text("[1, true]".to_string()),
+            QueryValue::Text("\"空文字ではない\"".to_string()),
+            QueryValue::Text("0x00FF10".to_string()),
+        ];
+        if result.values() != [expected] {
+            return Err(format!("unexpected XML values: {:?}", result.values()));
+        }
+        Ok(())
+    }))
+    .await;
+}
 
-    adapter
-        .probe(&dsn)
-        .await
-        .expect("Oracle MySQL 8.4 TCP probe should succeed");
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn discards_real_cli_results_when_query_fails() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!("SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"),
+                AccessMode::ReadWrite,
+            )
+            .await;
+        if !matches!(result, Err(DbOperationError::QueryFailed(ref details)) if details.contains("missing_column")) {
+            return Err(format!("expected a query failure without a result: {result:?}"));
+        }
+        Ok(())
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn times_out_real_cli_query_and_discards_output() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let result = db
+                .adapter()
+                .execute_adhoc(db.dsn(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
+                .await;
+            if !matches!(result, Err(DbOperationError::Timeout(_))) {
+                return Err(format!("expected a query timeout: {result:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn rejects_next_process_when_global_sql_mode_is_unsupported() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let original = db.global_sql_mode().await?;
+        let unsupported = if original.is_empty() {
+            "ANSI_QUOTES".to_string()
+        } else {
+            format!("{original},ANSI_QUOTES")
+        };
+        let test_result = async {
+            db.set_global_sql_mode(&unsupported).await?;
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT 'user SQL must not run'",
+                    AccessMode::ReadWrite,
+                )
+                .await;
+            if !matches!(result, Err(DbOperationError::UnsupportedOperation(ref details)) if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER)) {
+                return Err(format!("expected unsupported sql_mode rejection: {result:?}"));
+            }
+            Ok::<(), String>(())
+        }
+        .await;
+        let restore_result = db.set_global_sql_mode(&original).await;
+        if let Err(error) = restore_result {
+            return Err(format!("failed to restore MySQL global sql_mode: {error}"));
+        }
+        if db.global_sql_mode().await? != original {
+            return Err("MySQL global sql_mode was not restored".to_string());
+        }
+        test_result
+    }))
+    .await;
 }

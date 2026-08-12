@@ -18,5 +18,22 @@ services:
       timeout: 5s
       retries: 5
 
+  mysql:
+    image: mysql:8.4.10
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: sabiql_test
+      MYSQL_USER: sabiql
+      MYSQL_PASSWORD: 'p a#ss;="\word'
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
 volumes:
   postgres_data:
