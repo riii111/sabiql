@@ -41,9 +41,9 @@ INSERT INTO mysql_cli_fixture (
 CREATE TABLE mysql_preview_composite (
     first_key INT NOT NULL,
     second_key INT NOT NULL,
-    payload TEXT NOT NULL,
+    payload VARCHAR(255) NOT NULL,
     PRIMARY KEY (second_key, first_key),
-    UNIQUE KEY uq_mysql_preview_composite_payload (payload(32)),
+    UNIQUE KEY uq_mysql_preview_composite_payload (payload),
     FULLTEXT KEY ft_mysql_preview_composite_payload (payload)
 ) CHARACTER SET utf8mb4;
 

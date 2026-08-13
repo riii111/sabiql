@@ -85,7 +85,8 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        fetch_table(dsn, schema, table).await
+        let metadata = self.fetch_metadata(dsn).await?;
+        fetch_table(dsn, schema, table, &metadata.table_summaries).await
     }
 
     async fn fetch_table_columns_and_fks(
@@ -94,28 +95,9 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        let table_metadata = find_table(dsn, schema, table).await?;
-        let columns = fetch_columns(dsn, schema, table).await?;
-        let foreign_keys = fetch_foreign_keys(dsn, schema, table).await?;
-        let primary_key = primary_key_names(&columns);
-        Ok(Table {
-            schema: schema.to_string(),
-            name: table_metadata.name,
-            owner: None,
-            columns: columns.iter().map(column_from_metadata).collect(),
-            primary_key: (!primary_key.is_empty()).then_some(primary_key),
-            foreign_keys,
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: table_metadata.row_count_estimate,
-            comment: table_metadata.comment,
-            source_ddl: None,
-            kind_info: TableKindInfo {
-                kind: table_metadata.kind,
-                ..TableKindInfo::default()
-            },
-        })
+        let metadata = self.fetch_metadata(dsn).await?;
+        fetch_table_columns_and_fks_with_summaries(dsn, schema, table, &metadata.table_summaries)
+            .await
     }
 
     async fn fetch_table_signatures(
@@ -124,13 +106,18 @@ impl MetadataProvider for MySqlAdapter {
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         let metadata = self.fetch_metadata(dsn).await?;
         let mut signatures = Vec::with_capacity(metadata.table_summaries.len());
-        for summary in metadata.table_summaries {
-            let detail = self
-                .fetch_table_columns_and_fks(dsn, &summary.schema, &summary.name)
-                .await?;
+        let summaries = metadata.table_summaries;
+        for summary in &summaries {
+            let detail = fetch_table_columns_and_fks_with_summaries(
+                dsn,
+                &summary.schema,
+                &summary.name,
+                &summaries,
+            )
+            .await?;
             signatures.push(TableSignature {
-                schema: summary.schema,
-                name: summary.name,
+                schema: summary.schema.clone(),
+                name: summary.name.clone(),
                 signature: table_signature(&detail),
             });
         }
@@ -248,11 +235,16 @@ fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
     QueryValue::Text(value.clone())
 }
 
-async fn fetch_table(dsn: &str, schema: &str, table: &str) -> Result<Table, DbOperationError> {
+async fn fetch_table(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    summaries: &[TableSummary],
+) -> Result<Table, DbOperationError> {
     let table_metadata = find_table(dsn, schema, table).await?;
     let columns = fetch_columns(dsn, schema, table).await?;
     let indexes = fetch_indexes(dsn, schema, table).await?;
-    let foreign_keys = fetch_foreign_keys(dsn, schema, table).await?;
+    let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
     let primary_key = primary_key_names(&columns);
     let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
@@ -263,6 +255,36 @@ async fn fetch_table(dsn: &str, schema: &str, table: &str) -> Result<Table, DbOp
         primary_key: (!primary_key.is_empty()).then_some(primary_key),
         foreign_keys,
         indexes,
+        rls: None,
+        triggers: Vec::new(),
+        row_count_estimate: table_metadata.row_count_estimate,
+        comment: table_metadata.comment,
+        source_ddl: None,
+        kind_info: TableKindInfo {
+            kind: table_metadata.kind,
+            ..TableKindInfo::default()
+        },
+    })
+}
+
+async fn fetch_table_columns_and_fks_with_summaries(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    summaries: &[TableSummary],
+) -> Result<Table, DbOperationError> {
+    let table_metadata = find_table(dsn, schema, table).await?;
+    let columns = fetch_columns(dsn, schema, table).await?;
+    let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
+    let primary_key = primary_key_names(&columns);
+    Ok(Table {
+        schema: schema.to_string(),
+        name: table_metadata.name,
+        owner: None,
+        columns: columns.iter().map(column_from_metadata).collect(),
+        primary_key: (!primary_key.is_empty()).then_some(primary_key),
+        foreign_keys,
+        indexes: Vec::new(),
         rls: None,
         triggers: Vec::new(),
         row_count_estimate: table_metadata.row_count_estimate,
@@ -414,6 +436,7 @@ async fn fetch_foreign_keys(
     dsn: &str,
     schema: &str,
     table: &str,
+    summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     let query = format!(
         "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
@@ -427,7 +450,7 @@ async fn fetch_foreign_keys(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
     }
-    foreign_keys_from_metadata(raw)
+    foreign_keys_from_metadata(raw, summaries)
 }
 
 fn parse_column_metadata(
@@ -591,6 +614,7 @@ fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
 
 fn foreign_keys_from_metadata(
     mut raw: Vec<MysqlForeignKeyMetadata>,
+    summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     raw.sort_by(|left, right| {
         left.name
@@ -599,6 +623,9 @@ fn foreign_keys_from_metadata(
     });
     let mut foreign_keys = Vec::new();
     for column in raw {
+        let reference_resolved = summaries
+            .iter()
+            .any(|summary| summary.schema == column.to_schema && summary.name == column.to_table);
         if let Some(foreign_key) = foreign_keys
             .iter_mut()
             .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
@@ -614,6 +641,7 @@ fn foreign_keys_from_metadata(
             }
             foreign_key.from_columns.push(column.from_column);
             foreign_key.to_columns.push(column.to_column);
+            foreign_key.reference_resolved &= reference_resolved;
             continue;
         }
         foreign_keys.push(ForeignKey {
@@ -626,7 +654,7 @@ fn foreign_keys_from_metadata(
             to_columns: vec![column.to_column],
             on_delete: column.on_delete,
             on_update: column.on_update,
-            reference_resolved: true,
+            reference_resolved,
         });
     }
     Ok(foreign_keys)
@@ -1104,8 +1132,15 @@ mod tests {
             ],
         );
 
+        let summaries = [TableSummary::new(
+            "sabiql_test".to_string(),
+            "parent".to_string(),
+            None,
+            false,
+        )];
         let foreign_keys =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap()).unwrap();
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &summaries)
+                .unwrap();
 
         assert_eq!(foreign_keys.len(), 1);
         assert_eq!(
@@ -1115,5 +1150,9 @@ mod tests {
         assert_eq!(foreign_keys[0].to_columns, ["first_key", "second_key"]);
         assert_eq!(foreign_keys[0].on_update, FkAction::Cascade);
         assert_eq!(foreign_keys[0].on_delete, FkAction::SetNull);
+
+        let unresolved =
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &[]).unwrap();
+        assert!(!unresolved[0].is_reference_resolved());
     }
 }
