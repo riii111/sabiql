@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use std::collections::{HashMap, HashSet};
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider};
 use crate::domain::{
@@ -12,7 +13,9 @@ use super::{
     validate_mysql_values,
 };
 
-const TABLES_QUERY: &str = "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_NAME";
+const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_SCHEMA, TABLE_NAME";
+const SIGNATURE_COLUMNS_QUERY: &str = "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE()) ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION";
+const SIGNATURE_FOREIGN_KEYS_QUERY: &str = "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION";
 const PREVIEW_IDENTITY_ALIAS_PREFIX: &str = "__sabiql_row_identity_";
 
 #[derive(Debug, Clone)]
@@ -26,6 +29,13 @@ struct MysqlColumnMetadata {
     primary_key_position: Option<i32>,
     invisible: bool,
     generated: bool,
+}
+
+#[derive(Debug, Clone)]
+struct MysqlSignatureColumnMetadata {
+    schema: String,
+    table: String,
+    column: MysqlColumnMetadata,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +78,7 @@ pub(super) struct ConvertedPreviewValues {
 
 #[derive(Debug, Clone)]
 struct MysqlTableMetadata {
+    schema: String,
     name: String,
     kind: TableKind,
     row_count_estimate: Option<i64>,
@@ -139,23 +150,14 @@ impl MetadataProvider for MySqlAdapter {
         dsn: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         let snapshot = fetch_metadata_snapshot(dsn).await?;
-        let mut signatures = Vec::with_capacity(snapshot.table_summaries.len());
-        for summary in &snapshot.table_summaries {
-            let detail = fetch_table_columns_and_fks_with_summaries(
-                dsn,
-                &summary.schema,
-                &summary.name,
-                &snapshot.tables,
-                &snapshot.table_summaries,
-            )
-            .await?;
-            signatures.push(TableSignature {
-                schema: summary.schema.clone(),
-                name: summary.name.clone(),
-                signature: table_signature(&detail),
-            });
-        }
-        Ok(signatures)
+        let columns = execute_metadata_query(dsn, SIGNATURE_COLUMNS_QUERY).await?;
+        let foreign_keys = execute_metadata_query(dsn, SIGNATURE_FOREIGN_KEYS_QUERY).await?;
+        table_signatures_from_metadata(
+            &snapshot.tables,
+            &snapshot.table_summaries,
+            parse_signature_column_metadata(&columns)?,
+            parse_foreign_key_metadata(&foreign_keys)?,
+        )
     }
 }
 
@@ -347,7 +349,7 @@ async fn fetch_table(
     let primary_key = primary_key_names(&columns);
     let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
-        schema: schema.to_string(),
+        schema: table_metadata.schema,
         name: table_metadata.name,
         owner: None,
         columns,
@@ -378,7 +380,7 @@ async fn fetch_table_columns_and_fks_with_summaries(
     let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
     let primary_key = primary_key_names(&columns);
     Ok(Table {
-        schema: schema.to_string(),
+        schema: table_metadata.schema,
         name: table_metadata.name,
         owner: None,
         columns: columns.iter().map(column_from_metadata).collect(),
@@ -404,7 +406,7 @@ fn find_table(
 ) -> Result<MysqlTableMetadata, DbOperationError> {
     tables
         .iter()
-        .find(|candidate| candidate.name == table)
+        .find(|candidate| candidate.schema.eq_ignore_ascii_case(schema) && candidate.name == table)
         .cloned()
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
@@ -467,7 +469,7 @@ fn validate_selected_schema(dsn: &str, schema: &str) -> Result<(), DbOperationEr
 }
 
 fn validate_selected_schema_name(database: &str, schema: &str) -> Result<(), DbOperationError> {
-    if schema != database {
+    if !schema.eq_ignore_ascii_case(database) {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
@@ -476,44 +478,33 @@ fn validate_selected_schema_name(database: &str, schema: &str) -> Result<(), DbO
 }
 
 async fn fetch_metadata_snapshot(dsn: &str) -> Result<MysqlMetadataSnapshot, DbOperationError> {
-    fetch_metadata_snapshot_with_runner(dsn, None, |query| async move {
-        execute_metadata_query(dsn, &query).await
-    })
-    .await
+    let database = selected_database(dsn)?;
+    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    metadata_snapshot_from_result(&database, None, &result)
 }
 
 async fn fetch_metadata_snapshot_for_schema(
     dsn: &str,
     schema: &str,
 ) -> Result<MysqlMetadataSnapshot, DbOperationError> {
-    fetch_metadata_snapshot_with_runner(dsn, Some(schema), |query| async move {
-        execute_metadata_query(dsn, &query).await
-    })
-    .await
+    let database = selected_database(dsn)?;
+    validate_selected_schema_name(&database, schema)?;
+    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    metadata_snapshot_from_result(&database, Some(schema), &result)
 }
 
-async fn fetch_metadata_snapshot_with_runner<F, Fut>(
-    dsn: &str,
+fn metadata_snapshot_from_result(
+    database: &str,
     requested_schema: Option<&str>,
-    mut run_query: F,
-) -> Result<MysqlMetadataSnapshot, DbOperationError>
-where
-    F: FnMut(String) -> Fut,
-    Fut: std::future::Future<Output = Result<MysqlResultSet, DbOperationError>>,
-{
-    let database = selected_database(dsn)?;
+    result: &MysqlResultSet,
+) -> Result<MysqlMetadataSnapshot, DbOperationError> {
     if let Some(schema) = requested_schema {
-        validate_selected_schema_name(&database, schema)?;
+        validate_selected_schema_name(database, schema)?;
     }
-    let result = run_query(TABLES_QUERY.to_string()).await?;
-    let tables = parse_table_metadata(&result)?;
-    let table_summaries = tables
-        .iter()
-        .cloned()
-        .map(|table| table_summary(&database, table))
-        .collect();
+    let tables = parse_table_metadata(result)?;
+    let table_summaries = tables.iter().cloned().map(table_summary).collect();
     Ok(MysqlMetadataSnapshot {
-        database,
+        database: database.to_string(),
         tables,
         table_summaries,
     })
@@ -524,20 +515,27 @@ fn parse_table_metadata(
 ) -> Result<Vec<MysqlTableMetadata>, DbOperationError> {
     expect_columns(
         result,
-        &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
+        &[
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "TABLE_TYPE",
+            "TABLE_ROWS",
+            "TABLE_COMMENT",
+        ],
     )?;
     let tables = result
         .values
         .iter()
         .map(|row| {
-            if row.len() != 4 {
+            if row.len() != 5 {
                 return Err(metadata_shape_error("TABLES row"));
             }
             if row.iter().all(|value| matches!(value, QueryValue::Null)) {
                 return Ok(None);
             }
-            let name = required_text(&row[0], "TABLE_NAME")?.to_string();
-            let kind = match required_text(&row[1], "TABLE_TYPE")? {
+            let schema = required_text(&row[0], "TABLE_SCHEMA")?.to_string();
+            let name = required_text(&row[1], "TABLE_NAME")?.to_string();
+            let kind = match required_text(&row[2], "TABLE_TYPE")? {
                 "BASE TABLE" => TableKind::Table,
                 "VIEW" => TableKind::View,
                 value => {
@@ -546,7 +544,7 @@ fn parse_table_metadata(
                     )));
                 }
             };
-            let row_count_estimate = optional_text(&row[2], "TABLE_ROWS")?
+            let row_count_estimate = optional_text(&row[3], "TABLE_ROWS")?
                 .map(|value| {
                     value.parse::<i64>().map_err(|_| {
                         DbOperationError::MetadataParseFailed(
@@ -555,10 +553,11 @@ fn parse_table_metadata(
                     })
                 })
                 .transpose()?;
-            let comment = optional_text(&row[3], "TABLE_COMMENT")?
+            let comment = optional_text(&row[4], "TABLE_COMMENT")?
                 .filter(|value| !value.is_empty())
                 .map(str::to_string);
             Ok(Some(MysqlTableMetadata {
+                schema,
                 name,
                 kind,
                 row_count_estimate,
@@ -753,32 +752,75 @@ fn parse_column_metadata(
     result
         .values
         .iter()
-        .map(|row| {
-            if row.len() != 8 {
-                return Err(metadata_shape_error("COLUMNS row"));
-            }
-            let extra = required_text(&row[4], "EXTRA")?;
-            Ok(MysqlColumnMetadata {
-                name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
-                data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
-                nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
-                default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
-                comment: optional_text(&row[5], "COLUMN_COMMENT")?
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_string),
-                ordinal_position: parse_positive_i32(&row[6], "ORDINAL_POSITION")?,
-                primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
-                    .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
-                    .transpose()?,
-                invisible: extra
-                    .split_ascii_whitespace()
-                    .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
-                generated: extra
-                    .split_ascii_whitespace()
-                    .any(|word| word.eq_ignore_ascii_case("GENERATED")),
-            })
-        })
+        .map(|row| parse_column_metadata_row(row, "COLUMNS row"))
         .collect()
+}
+
+fn parse_signature_column_metadata(
+    result: &MysqlResultSet,
+) -> Result<Vec<MysqlSignatureColumnMetadata>, DbOperationError> {
+    expect_columns(
+        result,
+        &[
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "COLUMN_TYPE",
+            "IS_NULLABLE",
+            "COLUMN_DEFAULT",
+            "EXTRA",
+            "COLUMN_COMMENT",
+            "ORDINAL_POSITION",
+            "PRIMARY_KEY_POSITION",
+        ],
+    )?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != 10 {
+                return Err(metadata_shape_error("signature COLUMNS row"));
+            }
+            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
+                return Ok(None);
+            }
+            Ok(Some(MysqlSignatureColumnMetadata {
+                schema: required_text(&row[0], "TABLE_SCHEMA")?.to_string(),
+                table: required_text(&row[1], "TABLE_NAME")?.to_string(),
+                column: parse_column_metadata_row(&row[2..], "signature COLUMNS row")?,
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|rows| rows.into_iter().flatten().collect())
+}
+
+fn parse_column_metadata_row(
+    row: &[QueryValue],
+    field: &str,
+) -> Result<MysqlColumnMetadata, DbOperationError> {
+    if row.len() != 8 {
+        return Err(metadata_shape_error(field));
+    }
+    let extra = required_text(&row[4], "EXTRA")?;
+    Ok(MysqlColumnMetadata {
+        name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
+        data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
+        nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
+        default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
+        comment: optional_text(&row[5], "COLUMN_COMMENT")?
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        ordinal_position: parse_positive_i32(&row[6], "ORDINAL_POSITION")?,
+        primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
+            .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
+            .transpose()?,
+        invisible: extra
+            .split_ascii_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
+        generated: extra
+            .split_ascii_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED")),
+    })
 }
 
 fn parse_index_metadata(
@@ -1026,6 +1068,99 @@ fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperat
     })
 }
 
+fn table_signatures_from_metadata(
+    tables: &[MysqlTableMetadata],
+    summaries: &[TableSummary],
+    columns: Vec<MysqlSignatureColumnMetadata>,
+    foreign_keys: Vec<MysqlForeignKeyMetadata>,
+) -> Result<Vec<TableSignature>, DbOperationError> {
+    let known_tables: HashSet<(String, String)> = tables
+        .iter()
+        .map(|table| (table.schema.clone(), table.name.clone()))
+        .collect();
+    let mut columns_by_table: HashMap<(String, String), Vec<MysqlColumnMetadata>> = HashMap::new();
+    for metadata in columns {
+        let key = (metadata.schema.clone(), metadata.table.clone());
+        if !known_tables.contains(&key) {
+            return Err(DbOperationError::MetadataParseFailed(format!(
+                "MySQL signature metadata references unknown table: {}.{}",
+                metadata.schema, metadata.table
+            )));
+        }
+        columns_by_table
+            .entry(key)
+            .or_default()
+            .push(metadata.column);
+    }
+
+    let mut foreign_keys_by_table: HashMap<(String, String), Vec<MysqlForeignKeyMetadata>> =
+        HashMap::new();
+    for foreign_key in foreign_keys {
+        let key = (
+            foreign_key.from_schema.clone(),
+            foreign_key.from_table.clone(),
+        );
+        if !known_tables.contains(&key) {
+            return Err(DbOperationError::MetadataParseFailed(format!(
+                "MySQL signature metadata references unknown table: {}.{}",
+                foreign_key.from_schema, foreign_key.from_table
+            )));
+        }
+        foreign_keys_by_table
+            .entry(key)
+            .or_default()
+            .push(foreign_key);
+    }
+
+    tables
+        .iter()
+        .map(|table| {
+            let key = (table.schema.clone(), table.name.clone());
+            let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
+                DbOperationError::MetadataParseFailed(format!(
+                    "MySQL object has no column metadata: {}.{}",
+                    table.schema, table.name
+                ))
+            })?;
+            if columns.is_empty() {
+                return Err(DbOperationError::MetadataParseFailed(format!(
+                    "MySQL object has no column metadata: {}.{}",
+                    table.schema, table.name
+                )));
+            }
+            columns.sort_by_key(|column| column.ordinal_position);
+            let primary_key = primary_key_names(&columns);
+            let foreign_keys = foreign_keys_from_metadata(
+                foreign_keys_by_table.remove(&key).unwrap_or_default(),
+                summaries,
+            )?;
+            let detail = Table {
+                schema: table.schema.clone(),
+                name: table.name.clone(),
+                owner: None,
+                columns: columns.iter().map(column_from_metadata).collect(),
+                primary_key: (!primary_key.is_empty()).then_some(primary_key),
+                foreign_keys,
+                indexes: Vec::new(),
+                rls: None,
+                triggers: Vec::new(),
+                row_count_estimate: table.row_count_estimate,
+                comment: table.comment.clone(),
+                source_ddl: None,
+                kind_info: TableKindInfo {
+                    kind: table.kind,
+                    ..TableKindInfo::default()
+                },
+            };
+            Ok(TableSignature {
+                schema: table.schema.clone(),
+                name: table.name.clone(),
+                signature: table_signature(&detail),
+            })
+        })
+        .collect()
+}
+
 fn table_signature(table: &Table) -> String {
     format!(
         "{:?}|{:?}|{:?}",
@@ -1033,17 +1168,13 @@ fn table_signature(table: &Table) -> String {
     )
 }
 
-fn table_summary(database: &str, table: MysqlTableMetadata) -> TableSummary {
-    TableSummary::new(
-        database.to_string(),
-        table.name,
-        table.row_count_estimate,
-        false,
+fn table_summary(table: MysqlTableMetadata) -> TableSummary {
+    TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
+        TableKindInfo {
+            kind: table.kind,
+            ..TableKindInfo::default()
+        },
     )
-    .with_kind_info(TableKindInfo {
-        kind: table.kind,
-        ..TableKindInfo::default()
-    })
 }
 
 fn expect_columns(result: &MysqlResultSet, expected: &[&str]) -> Result<(), DbOperationError> {
@@ -1204,9 +1335,6 @@ fn is_sql_numeric_literal(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
     use super::*;
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
@@ -1227,54 +1355,182 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn metadata_snapshot_runs_tables_query_once() {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let snapshot = fetch_metadata_snapshot_with_runner("mysql://localhost:3306/app", None, {
-            let calls = Arc::clone(&calls);
-            move |query| {
-                assert_eq!(query, TABLES_QUERY);
-                calls.fetch_add(1, Ordering::SeqCst);
-                async {
-                    Ok(result(
-                        &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
-                        vec![vec![
-                            QueryValue::Text("users".to_string()),
-                            QueryValue::Text("BASE TABLE".to_string()),
-                            QueryValue::Text("1".to_string()),
-                            QueryValue::Null,
-                        ]],
-                    ))
-                }
-            }
-        })
-        .await
+    #[test]
+    fn metadata_snapshot_uses_server_schema() {
+        let snapshot = metadata_snapshot_from_result(
+            "APP",
+            Some("app"),
+            &result(
+                &[
+                    "TABLE_SCHEMA",
+                    "TABLE_NAME",
+                    "TABLE_TYPE",
+                    "TABLE_ROWS",
+                    "TABLE_COMMENT",
+                ],
+                vec![vec![
+                    QueryValue::Text("app".to_string()),
+                    QueryValue::Text("users".to_string()),
+                    QueryValue::Text("BASE TABLE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                ]],
+            ),
+        )
         .unwrap();
 
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(snapshot.table_summaries[0].name, "users");
+        assert_eq!(snapshot.table_summaries[0].schema, "app");
     }
 
-    #[tokio::test]
-    async fn metadata_schema_mismatch_rejects_before_runner() {
-        let calls = Arc::new(AtomicUsize::new(0));
+    #[test]
+    fn metadata_schema_mismatch_rejects_before_parsing() {
         let error =
-            fetch_metadata_snapshot_with_runner("mysql://localhost:3306/app", Some("other"), {
-                let calls = Arc::clone(&calls);
-                move |_query| {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    async { Ok(result(&[], vec![])) }
-                }
-            })
-            .await
-            .unwrap_err();
+            metadata_snapshot_from_result("app", Some("other"), &result(&[], vec![])).unwrap_err();
 
         assert!(matches!(
             error,
             DbOperationError::UnsupportedOperation(message)
                 if message == "MySQL metadata is limited to the selected database"
         ));
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn signature_metadata_batches_columns_and_foreign_keys_by_server_table() {
+        let tables = vec![
+            MysqlTableMetadata {
+                schema: "App".to_string(),
+                name: "child".to_string(),
+                kind: TableKind::Table,
+                row_count_estimate: None,
+                comment: None,
+            },
+            MysqlTableMetadata {
+                schema: "App".to_string(),
+                name: "parent".to_string(),
+                kind: TableKind::Table,
+                row_count_estimate: None,
+                comment: None,
+            },
+        ];
+        let summaries = tables
+            .iter()
+            .cloned()
+            .map(table_summary)
+            .collect::<Vec<_>>();
+        let columns = parse_signature_column_metadata(&result(
+            &[
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "COLUMN_TYPE",
+                "IS_NULLABLE",
+                "COLUMN_DEFAULT",
+                "EXTRA",
+                "COLUMN_COMMENT",
+                "ORDINAL_POSITION",
+                "PRIMARY_KEY_POSITION",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("App".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("parent_id".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("1".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("App".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("2".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("App".to_string()),
+                    QueryValue::Text("parent".to_string()),
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("1".to_string()),
+                ],
+            ],
+        ))
+        .unwrap();
+        let foreign_keys = parse_foreign_key_metadata(&result(
+            &[
+                "CONSTRAINT_NAME",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "REFERENCED_TABLE_SCHEMA",
+                "REFERENCED_TABLE_NAME",
+                "REFERENCED_COLUMN_NAME",
+                "ORDINAL_POSITION",
+                "UPDATE_RULE",
+                "DELETE_RULE",
+            ],
+            vec![vec![
+                QueryValue::Text("fk_child_parent".to_string()),
+                QueryValue::Text("App".to_string()),
+                QueryValue::Text("child".to_string()),
+                QueryValue::Text("parent_id".to_string()),
+                QueryValue::Text("App".to_string()),
+                QueryValue::Text("parent".to_string()),
+                QueryValue::Text("id".to_string()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Text("CASCADE".to_string()),
+                QueryValue::Text("SET NULL".to_string()),
+            ]],
+        ))
+        .unwrap();
+
+        let signatures =
+            table_signatures_from_metadata(&tables, &summaries, columns, foreign_keys).unwrap();
+
+        assert_eq!(signatures.len(), 2);
+        assert_eq!(signatures[0].qualified_name(), "App.child");
+        assert!(signatures[0].signature.contains("id"));
+        assert!(signatures[0].signature.contains("fk_child_parent"));
+    }
+
+    #[test]
+    fn signature_metadata_requires_columns_for_each_table() {
+        let tables = vec![MysqlTableMetadata {
+            schema: "app".to_string(),
+            name: "users".to_string(),
+            kind: TableKind::Table,
+            row_count_estimate: None,
+            comment: None,
+        }];
+        let summaries = tables
+            .iter()
+            .cloned()
+            .map(table_summary)
+            .collect::<Vec<_>>();
+
+        let error = table_signatures_from_metadata(&tables, &summaries, Vec::new(), Vec::new())
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message.contains("no column metadata: app.users")
+        ));
     }
 
     #[test]
@@ -1589,8 +1845,15 @@ mod tests {
     #[test]
     fn empty_table_list_sentinel_parses_as_no_tables() {
         let result = result(
-            &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
+            &[
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "TABLE_TYPE",
+                "TABLE_ROWS",
+                "TABLE_COMMENT",
+            ],
             vec![vec![
+                QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Null,
