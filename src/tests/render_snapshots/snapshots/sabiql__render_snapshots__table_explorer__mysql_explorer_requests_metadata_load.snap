@@ -4,7 +4,7 @@ expression: output
 ---
 test_project ▸ app ▸ -                                                                                                                             not loaded | mysql
 ┌ [1] Explorer ─────────────────────────┐[Info]                                                                                                                      
-│ MySQL metadata is not available yet   │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

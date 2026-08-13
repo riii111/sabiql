@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::er_state::ErStatus;
@@ -140,12 +139,6 @@ pub(super) fn reduce_loading(
             })
         }
         Action::LoadMetadata => {
-            if state.session.active_database_type() == Some(DatabaseType::MySQL) {
-                state
-                    .messages
-                    .set_error_at("MySQL metadata is not available yet".to_string(), now);
-                return DispatchResult::handled();
-            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_metadata_refresh();
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
@@ -154,12 +147,6 @@ pub(super) fn reduce_loading(
             }
         }
         Action::ReloadMetadata => {
-            if state.session.active_database_type() == Some(DatabaseType::MySQL) {
-                state
-                    .messages
-                    .set_error_at("MySQL metadata is not available yet".to_string(), now);
-                return DispatchResult::handled();
-            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
