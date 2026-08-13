@@ -105,8 +105,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        validate_selected_schema(dsn, schema)?;
-        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
         fetch_table(
             dsn,
             schema,
@@ -123,8 +122,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        validate_selected_schema(dsn, schema)?;
-        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
         fetch_table_columns_and_fks_with_summaries(
             dsn,
             schema,
@@ -165,8 +163,7 @@ pub(super) async fn fetch_preview_metadata(
     schema: &str,
     table: &str,
 ) -> Result<PreviewMetadata, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let snapshot = fetch_metadata_snapshot(dsn).await?;
+    let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
     find_table(schema, table, &snapshot.tables)?;
     let column_metadata = fetch_columns(dsn, schema, table).await?;
     let columns = column_metadata
@@ -467,7 +464,11 @@ fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
 }
 
 fn validate_selected_schema(dsn: &str, schema: &str) -> Result<(), DbOperationError> {
-    if schema != selected_database(dsn)? {
+    validate_selected_schema_name(&selected_database(dsn)?, schema)
+}
+
+fn validate_selected_schema_name(database: &str, schema: &str) -> Result<(), DbOperationError> {
+    if schema != database {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
@@ -476,8 +477,36 @@ fn validate_selected_schema(dsn: &str, schema: &str) -> Result<(), DbOperationEr
 }
 
 async fn fetch_metadata_snapshot(dsn: &str) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    fetch_metadata_snapshot_with_runner(dsn, None, |query| async move {
+        execute_metadata_query(dsn, &query).await
+    })
+    .await
+}
+
+async fn fetch_metadata_snapshot_for_schema(
+    dsn: &str,
+    schema: &str,
+) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    fetch_metadata_snapshot_with_runner(dsn, Some(schema), |query| async move {
+        execute_metadata_query(dsn, &query).await
+    })
+    .await
+}
+
+async fn fetch_metadata_snapshot_with_runner<F, Fut>(
+    dsn: &str,
+    requested_schema: Option<&str>,
+    mut run_query: F,
+) -> Result<MysqlMetadataSnapshot, DbOperationError>
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Result<MysqlResultSet, DbOperationError>>,
+{
     let database = selected_database(dsn)?;
-    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    if let Some(schema) = requested_schema {
+        validate_selected_schema_name(&database, schema)?;
+    }
+    let result = run_query(TABLES_QUERY.to_string()).await?;
     let tables = parse_table_metadata(&result)?;
     let table_summaries = tables
         .iter()
@@ -1128,6 +1157,9 @@ fn is_sql_numeric_literal(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
@@ -1146,6 +1178,56 @@ mod tests {
             comment: None,
             ordinal_position: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn metadata_snapshot_runs_tables_query_once() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let snapshot = fetch_metadata_snapshot_with_runner("mysql://localhost:3306/app", None, {
+            let calls = Arc::clone(&calls);
+            move |query| {
+                assert_eq!(query, TABLES_QUERY);
+                calls.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Ok(result(
+                        &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
+                        vec![vec![
+                            QueryValue::Text("users".to_string()),
+                            QueryValue::Text("BASE TABLE".to_string()),
+                            QueryValue::Text("1".to_string()),
+                            QueryValue::Null,
+                        ]],
+                    ))
+                }
+            }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(snapshot.table_summaries[0].name, "users");
+    }
+
+    #[tokio::test]
+    async fn metadata_schema_mismatch_rejects_before_runner() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let error =
+            fetch_metadata_snapshot_with_runner("mysql://localhost:3306/app", Some("other"), {
+                let calls = Arc::clone(&calls);
+                move |_query| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    async { Ok(result(&[], vec![])) }
+                }
+            })
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::UnsupportedOperation(message)
+                if message == "MySQL metadata is limited to the selected database"
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

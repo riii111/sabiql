@@ -694,11 +694,18 @@ impl CompletionEngine {
 
     fn identifier_before_dot(prefix: &str) -> Option<String> {
         let name = prefix.strip_suffix('.')?.trim_end();
-        if let Some(quoted) = name
-            .strip_prefix('`')
-            .and_then(|value| value.strip_suffix('`'))
-        {
-            return Some(quoted.replace("``", "`"));
+        if name.ends_with('`') {
+            let mut chars = name.char_indices().rev();
+            let (closing_index, _) = chars.next()?;
+            while let Some((opening_index, character)) = chars.next() {
+                if character != '`' {
+                    continue;
+                }
+                if chars.next().is_some_and(|(_, previous)| previous == '`') {
+                    continue;
+                }
+                return Some(name[opening_index + 1..closing_index].replace("``", "`"));
+            }
         }
 
         let start = name
@@ -1716,6 +1723,10 @@ mod tests {
                 "app.users".to_string(),
                 create_table("app", "users", &["id", "name"]),
             );
+            e.cache_table_detail(
+                "app.audit".to_string(),
+                create_table("app", "audit", &["id", "secret"]),
+            );
             let metadata = metadata();
             let sql = "SELECT `x``y`.na FROM `app`.`users` AS `x``y`";
             let cursor = "SELECT `x``y`.na".chars().count();
@@ -1735,6 +1746,11 @@ mod tests {
             assert!(candidates.iter().any(|candidate| {
                 candidate.text == "name" && candidate.kind == CompletionKind::Column
             }));
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "secret")
+            );
         }
 
         #[test]
@@ -1762,12 +1778,10 @@ mod tests {
         fn mysql_escaped_backtick_database_prefix_returns_selected_tables() {
             let e = engine();
             let mut metadata = DatabaseMetadata::new("app`db".to_string());
-            metadata.table_summaries = vec![TableSummary::new(
-                "app`db".to_string(),
-                "users".to_string(),
-                None,
-                false,
-            )];
+            metadata.table_summaries = vec![
+                TableSummary::new("app`db".to_string(), "users".to_string(), None, false),
+                TableSummary::new("other".to_string(), "events".to_string(), None, false),
+            ];
             let sql = "SELECT * FROM `app``db`.";
             let candidates = e.get_candidates_for_database(
                 sql,
@@ -1783,6 +1797,11 @@ mod tests {
             );
 
             assert!(candidates.iter().any(|candidate| candidate.text == "users"));
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "events")
+            );
         }
     }
 
