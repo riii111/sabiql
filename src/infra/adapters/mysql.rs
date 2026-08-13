@@ -2771,45 +2771,6 @@ done
         assert!(buffer.starts_with(b"\r\n    -> <?xml"));
     }
 
-    #[test]
-    fn error_before_resultset_frame_is_not_accepted() {
-        let mut buffer = b"<resultset><row></row></resultset>".to_vec();
-        let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
-
-        assert!(matches!(
-            take_mysql_resultset_frame_after_error_check(&mut buffer, error),
-            Err(DbOperationError::QueryFailed(_))
-        ));
-        assert_eq!(buffer, b"<resultset><row></row></resultset>");
-    }
-
-    #[cfg(not(unix))]
-    #[tokio::test]
-    async fn pipe_errors_are_checked_before_resultset_frames() {
-        let (mut stdout_writer, mut stdout_reader) = tokio::io::duplex(1024);
-        let (mut stderr_writer, mut stderr_reader) = tokio::io::duplex(1024);
-        stdout_writer
-            .write_all(b"<resultset><row></row></resultset>")
-            .await
-            .unwrap();
-        stderr_writer
-            .write_all(b"ERROR 1054 (42S22): Unknown column missing_column\n")
-            .await
-            .unwrap();
-        drop(stdout_writer);
-        drop(stderr_writer);
-
-        let result = read_one_mysql_resultset_from_pipes(
-            &mut stdout_reader,
-            &mut stderr_reader,
-            &mut Vec::new(),
-            &mut Vec::new(),
-        )
-        .await;
-
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-    }
-
     #[tokio::test]
     async fn probe_failure_never_writes_user_sql() {
         for mode in ["unsupported", "invalid", "missing"] {
@@ -2986,5 +2947,53 @@ done
             aggregate_mysql_command_tag(&events),
             Some(CommandTag::Create("TABLE".to_string()))
         );
+    }
+}
+
+#[cfg(test)]
+mod resultset_frame_tests {
+    use super::*;
+
+    #[test]
+    fn error_before_resultset_frame_is_not_accepted() {
+        let mut buffer = b"<resultset><row></row></resultset>".to_vec();
+        let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
+
+        assert!(matches!(
+            take_mysql_resultset_frame_after_error_check(&mut buffer, error),
+            Err(DbOperationError::QueryFailed(_))
+        ));
+        assert_eq!(buffer, b"<resultset><row></row></resultset>");
+    }
+}
+
+#[cfg(all(test, not(unix)))]
+mod pipe_executor_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pipe_errors_are_checked_before_resultset_frames() {
+        let (mut stdout_writer, mut stdout_reader) = tokio::io::duplex(1024);
+        let (mut stderr_writer, mut stderr_reader) = tokio::io::duplex(1024);
+        stdout_writer
+            .write_all(b"<resultset><row></row></resultset>")
+            .await
+            .unwrap();
+        stderr_writer
+            .write_all(b"ERROR 1054 (42S22): Unknown column missing_column\n")
+            .await
+            .unwrap();
+        drop(stdout_writer);
+        drop(stderr_writer);
+
+        let result = read_one_mysql_resultset_from_pipes(
+            &mut stdout_reader,
+            &mut stderr_reader,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
     }
 }
