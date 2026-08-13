@@ -106,6 +106,8 @@ pub async fn run_mysql_cli_script_for_test(
 
 #[cfg(feature = "test-support")]
 #[doc(hidden)]
+/// Runs the export process without client-side query policy validation so integration tests can
+/// verify that the MySQL read-only session rejects a side effect at the server boundary.
 pub async fn export_mysql_csv_to_path_for_test(
     dsn: &str,
     query: &str,
@@ -114,7 +116,6 @@ pub async fn export_mysql_csv_to_path_for_test(
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
     validate_mysql_tls_files(&target)?;
-    validate_mysql_export_query(query, target.database.as_deref())?;
     let query = query.to_string();
     export_to_path(path, move |temporary_path| async move {
         export_mysql_csv_to_file(target, &query, temporary_path).await

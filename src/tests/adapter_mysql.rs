@@ -1352,11 +1352,15 @@ async fn exports_with_a_read_only_session_and_rejects_writes() {
             let write_path = output_directory.path().join("write.csv");
             let result = export_mysql_csv_to_path_for_test(
                 db.dsn(),
-                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE} FOR UPDATE"),
+                &format!("INSERT INTO {MYSQL_FIXTURE_TABLE} (id) VALUES (2)"),
                 write_path.clone(),
             )
             .await;
-            if !matches!(result, Err(DbOperationError::PermissionDenied(_))) {
+            if !matches!(
+                result,
+                Err(DbOperationError::QueryFailed(ref details))
+                    if details.contains("READ ONLY")
+            ) {
                 return Err(format!("write export was not rejected: {result:?}"));
             }
             if write_path.exists() {
