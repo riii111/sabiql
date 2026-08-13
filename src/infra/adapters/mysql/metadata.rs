@@ -1112,7 +1112,22 @@ fn is_binary_type(data_type: &str) -> bool {
         .to_ascii_lowercase();
     matches!(
         name.as_str(),
-        "binary" | "varbinary" | "tinyblob" | "blob" | "mediumblob" | "longblob" | "bit"
+        "binary"
+            | "varbinary"
+            | "tinyblob"
+            | "blob"
+            | "mediumblob"
+            | "longblob"
+            | "bit"
+            | "geometry"
+            | "point"
+            | "linestring"
+            | "polygon"
+            | "multipoint"
+            | "multilinestring"
+            | "multipolygon"
+            | "geometrycollection"
+            | "geomcollection"
     )
 }
 
@@ -1376,6 +1391,43 @@ mod tests {
 
         assert_eq!(values.visible[0][0], QueryValue::Text("0x41".to_string()));
         assert_eq!(values.visible[0][1], QueryValue::Blob(vec![0, 255]));
+    }
+
+    #[test]
+    fn preview_conversion_decodes_spatial_hex_as_binary() {
+        let result = result(
+            &["location"],
+            vec![vec![QueryValue::Text(
+                "0xE610000001010000000000000000805E40CDCCCCCCCCCC4240".to_string(),
+            )]],
+        );
+        let columns = vec![column("location", "point srid 4326")];
+
+        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+
+        assert_eq!(
+            values.visible[0][0],
+            QueryValue::Blob(vec![
+                0xE6, 0x10, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x80, 0x5E, 0x40, 0xCD, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x42, 0x40,
+            ])
+        );
+    }
+
+    #[test]
+    fn binary_type_recognizes_mysql_spatial_types() {
+        for data_type in [
+            "geometry",
+            "point srid 4326",
+            "linestring",
+            "polygon",
+            "multipoint",
+            "multilinestring",
+            "multipolygon",
+            "geometrycollection",
+        ] {
+            assert!(is_binary_type(data_type), "{data_type}");
+        }
     }
 
     #[test]
