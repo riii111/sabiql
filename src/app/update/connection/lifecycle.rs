@@ -1559,6 +1559,7 @@ mod tests {
 
     mod mysql_database_tests {
         use super::*;
+        use crate::update::action::ErDiagramInfo;
 
         fn mysql_target(id: &ConnectionId, database: Option<&str>) -> ConnectionTarget {
             let database = database.map(str::to_string);
@@ -1627,6 +1628,8 @@ mod tests {
             ]);
             state.ui.set_database_picker(true);
             state.modal.set_mode(InputMode::TablePicker);
+            let stale_er_run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_rendering();
             state
                 .query_history_picker
                 .replace_entries(&[QueryHistoryEntry::new(
@@ -1664,6 +1667,21 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
+
+            let effects = reduce_app(
+                &mut state,
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id: stale_er_run_id,
+                    path: "stale.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_success().is_none());
         }
 
         #[test]
