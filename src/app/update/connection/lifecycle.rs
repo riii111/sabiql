@@ -11,7 +11,8 @@ use crate::update::query_context::termination_effects;
 use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
-    reset_for_database_switch, reset_for_new_connection, restore_cache, save_current_cache,
+    mysql_connection_completion_effects, reset_for_database_switch, reset_for_new_connection,
+    restore_cache, save_current_cache,
 };
 
 pub fn reduce_connection_lifecycle(
@@ -152,32 +153,11 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
-            state.session.mark_probe_connected(database.is_some());
-            state.session.clear_connection_probe();
-            let mut effects = vec![Effect::ClearCompletionEngineCache];
-            if database.is_none() {
-                state.ui.table_picker_mut().clear_filter_and_reset();
-                state.ui.set_database_picker(true);
-                state.modal.set_mode(InputMode::TablePicker);
-                if let (Some(connection_id), Some(server_dsn)) = (
-                    state.session.active_connection_id().cloned(),
-                    state.session.server_dsn(),
-                ) {
-                    effects.push(Effect::FetchMySqlDatabases {
-                        connection_id,
-                        dsn: server_dsn,
-                        connection_generation: state.session.connection_generation(),
-                        database_generation: state.session.database_generation(),
-                    });
-                }
-            } else {
-                let metadata_run_id = state.session.begin_metadata_refresh();
-                effects.push(Effect::FetchMetadata {
-                    dsn: dsn.clone(),
-                    run_id: metadata_run_id,
-                });
-            }
-            DispatchResult::handled_with(termination_effects(&state.query, effects))
+            DispatchResult::handled_with(mysql_connection_completion_effects(
+                state,
+                dsn,
+                database.as_deref(),
+            ))
         }
 
         Action::SwitchMySqlDatabase { database } => {
@@ -903,6 +883,43 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );
+        }
+
+        #[test]
+        fn mysql_probe_completed_fetches_metadata_for_selected_database() {
+            let mut state = AppState::new("test".to_string());
+            let target = ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://user@localhost:3306/app".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            };
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch should include the probe run");
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+            )
+            .expect("probe completion should be handled");
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
+            )));
+            assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
         }
 
         #[test]

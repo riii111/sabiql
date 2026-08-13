@@ -37,12 +37,12 @@ impl JsonbDetail {
         let is_editing = matches!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
         let title = if is_editing {
             format!(
-                " JSONB Edit \u{2500}\u{2500} {} (jsonb) ",
+                " JSON Edit \u{2500}\u{2500} {} (json) ",
                 state.jsonb_detail.column_name()
             )
         } else {
             format!(
-                " JSONB Detail \u{2500}\u{2500} {}",
+                " JSON Detail \u{2500}\u{2500} {}",
                 state.jsonb_detail.column_name()
             )
         };

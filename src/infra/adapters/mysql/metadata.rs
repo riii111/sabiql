@@ -35,6 +35,7 @@ struct MysqlIndexMetadata {
     index_type: String,
     ordinal_position: i32,
     column_name: String,
+    expression: Option<String>,
     primary: bool,
 }
 
@@ -577,7 +578,7 @@ async fn fetch_indexes(
 ) -> Result<Vec<Index>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
     let query = format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(table),
         quote_string(table),
     );
@@ -793,6 +794,7 @@ fn parse_index_metadata(
             "INDEX_TYPE",
             "SEQ_IN_INDEX",
             "COLUMN_NAME",
+            "EXPRESSION",
             "IS_PRIMARY",
         ],
     )?;
@@ -800,19 +802,40 @@ fn parse_index_metadata(
         .values
         .iter()
         .map(|row| {
+            if row.len() != 7 {
+                return Err(metadata_shape_error("STATISTICS row"));
+            }
             if row.iter().all(|value| matches!(value, QueryValue::Null)) {
                 return Ok(None);
             }
-            if row.len() != 6 {
-                return Err(metadata_shape_error("STATISTICS row"));
-            }
+            let column_name = optional_text(&row[4], "COLUMN_NAME")?;
+            let expression = optional_text(&row[5], "EXPRESSION")?;
+            let (column_name, expression) = match (column_name, expression) {
+                (Some(column_name), None) => (column_name.to_string(), None),
+                (None, Some(expression)) => {
+                    let expression = expression.to_string();
+                    (expression.clone(), Some(expression))
+                }
+                (None, None) => {
+                    return Err(DbOperationError::MetadataParseFailed(
+                        "MySQL metadata key part has neither COLUMN_NAME nor EXPRESSION"
+                            .to_string(),
+                    ));
+                }
+                (Some(_), Some(_)) => {
+                    return Err(DbOperationError::MetadataParseFailed(
+                        "MySQL metadata key part has both COLUMN_NAME and EXPRESSION".to_string(),
+                    ));
+                }
+            };
             Ok(Some(MysqlIndexMetadata {
                 name: required_text(&row[0], "INDEX_NAME")?.to_string(),
                 non_unique: parse_boolean_flag(&row[1], "NON_UNIQUE")?,
                 index_type: required_text(&row[2], "INDEX_TYPE")?.to_string(),
                 ordinal_position: parse_positive_i32(&row[3], "SEQ_IN_INDEX")?,
-                column_name: required_text(&row[4], "COLUMN_NAME")?.to_string(),
-                primary: parse_boolean_flag(&row[5], "IS_PRIMARY")?,
+                column_name,
+                expression,
+                primary: parse_boolean_flag(&row[6], "IS_PRIMARY")?,
             }))
         })
         .collect::<Result<Vec<_>, _>>()
@@ -877,18 +900,29 @@ fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
             .find(|index: &&mut Index| index.name == column.name)
         {
             index.columns.push(column.column_name);
+            if let Some(expression) = column.expression {
+                index.attributes = index.attributes | IndexAttributes::EXPRESSION;
+                index.definition = Some(match index.definition.take() {
+                    Some(definition) => format!("{definition}, {expression}"),
+                    None => expression,
+                });
+            }
             continue;
+        }
+        let mut attributes = IndexAttributes::from_parts(!column.non_unique, column.primary);
+        if column.expression.is_some() {
+            attributes = attributes | IndexAttributes::EXPRESSION;
         }
         indexes.push(Index {
             name: column.name,
             columns: vec![column.column_name],
-            attributes: IndexAttributes::from_parts(!column.non_unique, column.primary),
+            attributes,
             index_type: column
                 .index_type
                 .to_ascii_lowercase()
                 .parse::<IndexType>()
                 .unwrap_or_else(|never| match never {}),
-            definition: None,
+            definition: column.expression,
         });
     }
     indexes
@@ -1530,6 +1564,7 @@ mod tests {
                 "INDEX_TYPE",
                 "SEQ_IN_INDEX",
                 "COLUMN_NAME",
+                "EXPRESSION",
                 "IS_PRIMARY",
             ],
             vec![
@@ -1539,6 +1574,7 @@ mod tests {
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("2".to_string()),
                     QueryValue::Text("second_key".to_string()),
+                    QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -1547,6 +1583,7 @@ mod tests {
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("first_key".to_string()),
+                    QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -1555,6 +1592,7 @@ mod tests {
                     QueryValue::Text("FULLTEXT".to_string()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("body".to_string()),
+                    QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
             ],
@@ -1570,6 +1608,109 @@ mod tests {
             IndexType::Other("fulltext".to_string())
         );
         assert!(!indexes[1].is_unique());
+    }
+
+    #[test]
+    fn parses_functional_and_mixed_indexes_in_key_part_order() {
+        let result = result(
+            &[
+                "INDEX_NAME",
+                "NON_UNIQUE",
+                "INDEX_TYPE",
+                "SEQ_IN_INDEX",
+                "COLUMN_NAME",
+                "EXPRESSION",
+                "IS_PRIMARY",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("idx_mixed".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("sort_key".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("idx_functional".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("idx_mixed".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+            ],
+        );
+
+        let indexes = indexes_from_metadata(parse_index_metadata(&result).unwrap());
+        let functional = &indexes[0];
+        assert_eq!(functional.name, "idx_functional");
+        assert_eq!(
+            functional.columns,
+            ["lower(`payload`->>'$.code')".to_string()]
+        );
+        assert!(functional.has_expression());
+        assert_eq!(
+            functional.definition.as_deref(),
+            Some("lower(`payload`->>'$.code')")
+        );
+
+        let mixed = &indexes[1];
+        assert_eq!(mixed.name, "idx_mixed");
+        assert_eq!(
+            mixed.columns,
+            [
+                "lower(`payload`->>'$.code')".to_string(),
+                "sort_key".to_string()
+            ]
+        );
+        assert!(mixed.has_expression());
+        assert_eq!(
+            mixed.definition.as_deref(),
+            Some("lower(`payload`->>'$.code')")
+        );
+    }
+
+    #[test]
+    fn rejects_index_key_part_without_column_or_expression() {
+        let result = result(
+            &[
+                "INDEX_NAME",
+                "NON_UNIQUE",
+                "INDEX_TYPE",
+                "SEQ_IN_INDEX",
+                "COLUMN_NAME",
+                "EXPRESSION",
+                "IS_PRIMARY",
+            ],
+            vec![vec![
+                QueryValue::Text("idx_invalid".to_string()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Text("BTREE".to_string()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Text("NO".to_string()),
+            ]],
+        );
+
+        let error = parse_index_metadata(&result).unwrap_err();
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message.contains("neither COLUMN_NAME nor EXPRESSION")
+        ));
     }
 
     #[test]

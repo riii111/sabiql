@@ -264,7 +264,7 @@ impl HelpOrigin {
             Self::ErTablePicker { .. } => "ER Table Picker",
             Self::QueryHistoryPicker => "Query History Picker",
             Self::JsonbDetail { mode } => mode.label(),
-            Self::JsonbEdit => "JSONB Edit",
+            Self::JsonbEdit => "JSON Edit",
             Self::CellDetail { searching: true } => "Cell Detail Search",
             Self::CellDetail { searching: false } => "Cell Detail",
             Self::RowDetail => "Row Detail",
@@ -333,9 +333,9 @@ impl JsonbHelpMode {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Detail => "JSONB Detail",
-            Self::Search => "JSONB Search",
-            Self::Edit => "JSONB Edit",
+            Self::Detail => "JSON Detail",
+            Self::Search => "JSON Search",
+            Self::Edit => "JSON Edit",
         }
     }
 }

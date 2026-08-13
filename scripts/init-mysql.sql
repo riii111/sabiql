@@ -112,6 +112,23 @@ CREATE TABLE mysql_metadata_child (
 INSERT INTO mysql_metadata_child (parent_first, parent_second, payload)
 VALUES (1, 2, 'child row');
 
+CREATE TABLE mysql_metadata_functional (
+    id INT NOT NULL,
+    payload JSON NOT NULL,
+    sort_key INT NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_mysql_metadata_functional_json (
+        (CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.code')) AS CHAR(32)))
+    ),
+    KEY idx_mysql_metadata_functional_mixed (
+        (CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.code')) AS CHAR(32))),
+        sort_key
+    )
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_functional (id, payload, sort_key)
+VALUES (1, '{"code":"A-001"}', 10);
+
 CREATE TABLE mysql_preview_no_pk (
     duplicate_value VARCHAR(20) NOT NULL,
     payload TEXT NOT NULL

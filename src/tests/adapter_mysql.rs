@@ -37,6 +37,7 @@ const MYSQL_EMPTY_TABLE: &str = "mysql_preview_empty";
 const MYSQL_VIEW: &str = "mysql_preview_view";
 const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
 const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
+const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -407,6 +408,82 @@ async fn loads_mysql_tables_views_and_column_attributes() {
                 ));
             }
             Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn loads_and_updates_mysql_functional_index_table() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let detail = db
+                .adapter()
+                .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX)
+                .await
+                .map_err(|error| format!("failed to fetch functional index metadata: {error:?}"))?;
+
+            let functional = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "uq_mysql_metadata_functional_json")
+                .ok_or_else(|| "MySQL functional index was not returned".to_string())?;
+            if !functional.is_unique()
+                || !functional.has_expression()
+                || functional.columns.len() != 1
+                || functional.definition.is_none()
+            {
+                return Err(format!("unexpected MySQL functional index: {functional:?}"));
+            }
+
+            let mixed = detail
+                .indexes
+                .iter()
+                .find(|index| index.name == "idx_mysql_metadata_functional_mixed")
+                .ok_or_else(|| "MySQL mixed functional index was not returned".to_string())?;
+            if !mixed.has_expression()
+                || mixed.columns.len() != 2
+                || mixed.columns[1] != "sort_key"
+                || mixed.definition.is_none()
+            {
+                return Err(format!("unexpected MySQL mixed index: {mixed:?}"));
+            }
+
+            let preview = db
+                .adapter()
+                .execute_preview(db.dsn(), "sabiql_test", MYSQL_FUNCTIONAL_INDEX, 10, 0)
+                .await
+                .map_err(|error| format!("failed to preview functional index table: {error:?}"))?;
+            if preview.columns != ["id", "payload", "sort_key"]
+                || preview.values()
+                    != [[
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::Text("{\"code\": \"A-001\"}".to_string()),
+                        QueryValue::SqlLiteral("10".to_string()),
+                    ]]
+            {
+                return Err(format!("unexpected functional index preview: {preview:?}"));
+            }
+
+            let update_sql = db.adapter().build_update_sql(
+                DatabaseType::MySQL,
+                "sabiql_test",
+                MYSQL_FUNCTIONAL_INDEX,
+                "sort_key",
+                &QueryValue::SqlLiteral("20".to_string()),
+                &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
+            );
+            let update = db
+                .adapter()
+                .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                .await
+                .map_err(|error| format!("failed to update functional index table: {error:?}"))?;
+            if update.affected_rows != 1 {
+                return Err(format!("unexpected functional index update: {update:?}"));
+            }
+
+            Ok::<(), String>(())
         })
     })
     .await;
