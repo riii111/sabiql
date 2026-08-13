@@ -831,20 +831,7 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
 
 pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
     let trimmed = sql.trim();
-    let (is_analyze, target) = if let Some(target) =
-        strip_ascii_prefix_case_insensitive(trimmed, "EXPLAIN ANALYZE FORMAT=TREE")
-    {
-        (true, target)
-    } else if let Some(target) = strip_ascii_prefix_case_insensitive(trimmed, "EXPLAIN FORMAT=TREE")
-    {
-        (false, target)
-    } else {
-        return None;
-    };
-
-    if target.is_empty() || !target.chars().next().is_some_and(char::is_whitespace) {
-        return None;
-    }
+    let (is_analyze, target) = strip_mysql_tree_explain_prefix(trimmed)?;
     let target = target.trim();
 
     let valid = if is_analyze {
@@ -864,10 +851,64 @@ pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
     valid.then_some(is_analyze)
 }
 
-fn strip_ascii_prefix_case_insensitive<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
-    text.get(..prefix.len())
-        .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
-        .map(|_| &text[prefix.len()..])
+fn strip_mysql_tree_explain_prefix(text: &str) -> Option<(bool, &str)> {
+    let mut index = 0;
+    consume_mysql_keyword(text, &mut index, "EXPLAIN")?;
+    consume_required_ascii_whitespace(text, &mut index)?;
+
+    let is_analyze = if consume_mysql_keyword(text, &mut index, "ANALYZE").is_some() {
+        consume_required_ascii_whitespace(text, &mut index)?;
+        true
+    } else {
+        false
+    };
+
+    consume_mysql_keyword(text, &mut index, "FORMAT")?;
+    skip_ascii_whitespace(text, &mut index);
+    if text.as_bytes().get(index) != Some(&b'=') {
+        return None;
+    }
+    index += 1;
+    skip_ascii_whitespace(text, &mut index);
+    consume_mysql_keyword(text, &mut index, "TREE")?;
+
+    let target = text.get(index..)?;
+    if target.is_empty() || !target.as_bytes()[0].is_ascii_whitespace() {
+        return None;
+    }
+    Some((is_analyze, target))
+}
+
+fn consume_mysql_keyword(text: &str, index: &mut usize, keyword: &str) -> Option<()> {
+    let candidate = text.get(*index..(*index).saturating_add(keyword.len()))?;
+    if !candidate.eq_ignore_ascii_case(keyword) {
+        return None;
+    }
+    if text
+        .as_bytes()
+        .get(index.saturating_add(keyword.len()))
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
+    {
+        return None;
+    }
+    *index += keyword.len();
+    Some(())
+}
+
+fn skip_ascii_whitespace(text: &str, index: &mut usize) {
+    while text
+        .as_bytes()
+        .get(*index)
+        .is_some_and(u8::is_ascii_whitespace)
+    {
+        *index += 1;
+    }
+}
+
+fn consume_required_ascii_whitespace(text: &str, index: &mut usize) -> Option<()> {
+    let start = *index;
+    skip_ascii_whitespace(text, index);
+    (*index > start).then_some(())
 }
 
 pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {
@@ -1207,5 +1248,30 @@ mod tests {
             mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE DELETE FROM items"),
             None
         );
+    }
+
+    #[test]
+    fn recognizes_tree_explain_queries_with_whitespace_around_equals() {
+        assert_eq!(
+            mysql_tree_explain_query_kind("EXPLAIN FORMAT = TREE UPDATE items SET value = 1"),
+            Some(false)
+        );
+        assert_eq!(
+            mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT = TREE TABLE items"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn tree_explain_prefix_keeps_keyword_boundaries_and_ignores_non_sql_text() {
+        for sql in [
+            "EXPLAIN FORMAT = JSON SELECT 1",
+            "EXPLAIN FORMAT = TREEish SELECT 1",
+            "EXPLAINFORMAT = TREE SELECT 1",
+            "/* EXPLAIN FORMAT = TREE */ SELECT 1",
+            "SELECT 'EXPLAIN FORMAT = TREE SELECT 1'",
+        ] {
+            assert_eq!(mysql_tree_explain_query_kind(sql), None, "{sql}");
+        }
     }
 }

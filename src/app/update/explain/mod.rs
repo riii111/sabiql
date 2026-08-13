@@ -1240,6 +1240,59 @@ mod tests {
             assert_eq!(state.explain.error, None);
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
+
+        #[test]
+        fn mismatched_database_generation_does_not_replace_plan_with_error() {
+            let mut state = sql_modal_state();
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+            state.explain.set_plan(
+                "original plan".to_string(),
+                DatabaseType::MySQL,
+                false,
+                10,
+                "SELECT old",
+            );
+            state.explain.set_plan(
+                "latest plan".to_string(),
+                DatabaseType::MySQL,
+                false,
+                20,
+                "SELECT latest",
+            );
+            let left_query = state.explain.left().unwrap().full_query.clone();
+            let right_query = state.explain.right().unwrap().full_query.clone();
+            let database_generation = state.session.database_generation();
+            let run_id = state.query.begin_running(Instant::now());
+            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+
+            let id = state.session.active_connection_id().cloned().unwrap();
+            let name = state.session.active_connection_name().unwrap().to_string();
+            state.session.activate_connection_with_target(
+                &id,
+                &name,
+                DatabaseType::MySQL,
+                "mysql://test",
+                Some("analytics"),
+            );
+
+            reduce_explain(
+                &mut state,
+                &Action::ExplainFailed {
+                    dsn: "mysql://test".to_string(),
+                    database_generation,
+                    run_id,
+                    error: DbOperationError::QueryFailed("stale error".to_string()),
+                    is_analyze: false,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.plan_text(), Some("latest plan"));
+            assert_eq!(state.explain.error(), None);
+            assert_eq!(state.explain.left().unwrap().full_query, left_query);
+            assert_eq!(state.explain.right().unwrap().full_query, right_query);
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
     }
 
     mod compare_workflow {

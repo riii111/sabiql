@@ -129,16 +129,18 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 Install the CLI for the database you want to open:
 
 - **PostgreSQL:** `psql` (PostgreSQL client)
-- **MySQL:** Oracle MySQL server 8.4 LTS and the Oracle `mysql` CLI from the 8.4 series
+- **MySQL:** the Oracle `mysql` CLI from the 8.4 series
 - **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later.
+
+The supported MySQL server is Oracle MySQL 8.4 LTS. When connecting to a remote TCP server, install the local `mysql` CLI; a local MySQL server is not required.
 
 Optional:
 
-- Graphviz (for ER diagrams on PostgreSQL and MySQL): `brew install graphviz`
+- Graphviz (for ER diagrams on PostgreSQL and MySQL): on macOS, `brew install graphviz`. On Linux or Windows, install Graphviz from the [official Graphviz site](https://graphviz.org/download/) or your platform's package manager.
 
 ### Android / Termux
 
-Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. Install `psql` for PostgreSQL, `mysql` for MySQL, and `sqlite3` for SQLite.
+Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. Install `psql` for PostgreSQL, `mysql` for MySQL, and `sqlite3` for SQLite. Graphviz and ER diagram use are not guaranteed on Android/Termux.
 
 ## SQLite Limitations
 
@@ -161,10 +163,10 @@ MySQL support targets Oracle MySQL server 8.4 LTS with the Oracle `mysql` CLI fr
 - **No persistent session state** — sabiql starts a new `mysql` process for each operation. Temporary tables, session variables, and transactions do not carry over to the next SQL submission. Multiple statements in one submission share one process and session.
 - **Supported SQL scope** — The SQL modal supports reads such as `SELECT`, `TABLE`, `SHOW`, and `DESCRIBE`, DML (`INSERT`, `UPDATE`, and `DELETE`), table/view/index DDL, and simple explicit transactions. Database/account/role/replication/server/plugin/routine/event/trigger administration statements are not supported. `REPLACE`, `CALL`, `DO`, `HANDLER`, `LOAD DATA`/`LOAD XML`, table-maintenance statements, prepared statements, XA statements, and compound statements are also rejected.
 - **No session or table-control SQL** — User `USE`, `SET`, `LOCK TABLES`, and `UNLOCK TABLES` statements are rejected. MySQL client commands such as `source`, `system`, `charset`, and backslash commands are rejected, as is `DELIMITER`.
-- **SQL mode** — Connections using `NO_BACKSLASH_ESCAPES` or `ANSI_QUOTES` are rejected. Those modes are required for some MySQL quoting styles that sabiql does not support.
+- **SQL mode** — Connections using `NO_BACKSLASH_ESCAPES` or `ANSI_QUOTES` are rejected because those modes enable escape or identifier-quoting semantics that sabiql does not support.
 - **NUL in text** — The MySQL CLI XML output cannot preserve NUL characters embedded in text values.
 - **Binary values in arbitrary SQL** — Arbitrary SQL results do not include reliable column type metadata, so binary values are kept as the CLI's `0x...` text representation. Known binary columns in table previews are handled as Blob values.
-- **TLS client keys** — Passphrase-protected client keys are not supported. Use an unencrypted PEM private key.
+- **TLS client keys** — Passphrase-protected client keys are not supported. An unencrypted PEM private key can be used, but it weakens at-rest protection; store it with restrictive file permissions.
 - **System databases** — `information_schema`, `mysql`, `performance_schema`, and `sys` are omitted from the MySQL Database Picker.
 - **Grid editing scope** — Views, tables without a retrievable primary key, and generated columns are read-only in the grid. Invisible primary keys and generated invisible primary keys are used for row identity when available but are not shown as grid columns.
 - **CSV representation** — NULL values are exported as empty fields. Known cached Blob values use uppercase hexadecimal strings; binary values from type-unknown arbitrary SQL keep the CLI's `0x...` representation.
