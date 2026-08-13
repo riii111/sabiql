@@ -1651,6 +1651,10 @@ mod tests {
             );
             assert!(state.session.metadata().is_none());
             assert!(state.session.is_read_only());
+            assert_eq!(
+                state.session.available_databases(),
+                ["analytics".to_string()]
+            );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query_history_picker.entries().is_empty());
             assert!(
