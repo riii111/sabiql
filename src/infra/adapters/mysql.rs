@@ -805,15 +805,15 @@ async fn run_mysql_adhoc_process(
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
 
     #[cfg(unix)]
-    let stdout = {
+    let (stdout, tail) = {
         let stdout = read_one_mysql_resultset(process).await?;
         write_mysql_input(process, b"\\q\n").await?;
         let tail = read_pty_all(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let mut output = stdout;
-        output.extend_from_slice(&tail);
-        output
+        trace_mysql_frame("discard tail", tail.len());
+        trace_mysql_error(&tail);
+        (stdout, tail)
     };
 
     #[cfg(not(unix))]
@@ -831,7 +831,7 @@ async fn run_mysql_adhoc_process(
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
 
     #[cfg(unix)]
-    let error_bytes = stdout.as_slice();
+    let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
     if !status.success() {
@@ -945,7 +945,6 @@ async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     }
 }
 
-#[cfg(unix)]
 fn has_mysql_cli_error(output: &[u8]) -> bool {
     output
         .split(|byte| *byte == b'\n' || *byte == b'\r')
@@ -986,14 +985,20 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 fn trace_mysql_frame(kind: &str, bytes: usize) {
     if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() {
-        eprintln!("sabiql mysql frame: {kind}, bytes={bytes}");
+        write_mysql_transcript_line(&format!("sabiql mysql frame: {kind}, bytes={bytes}"));
     }
 }
 
 fn trace_mysql_error(output: &[u8]) {
     if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() && has_mysql_cli_error(output) {
-        eprintln!("sabiql mysql frame: ERROR line observed");
+        write_mysql_transcript_line("sabiql mysql frame: ERROR line observed");
     }
+}
+
+fn write_mysql_transcript_line(line: &str) {
+    let mut stderr = io::stderr();
+    let _ = stderr.write_all(line.as_bytes());
+    let _ = stderr.write_all(b"\n");
 }
 
 #[cfg(not(unix))]
