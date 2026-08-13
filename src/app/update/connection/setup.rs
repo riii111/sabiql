@@ -195,6 +195,7 @@ pub fn reduce_connection_setup(
                 }
             };
             if state.session.connection_state() == ConnectionState::Connected
+                && state.session.active_database_type() != Some(DatabaseType::MySQL)
                 && let Some(current_id) = state.session.active_connection_id().cloned()
             {
                 let cache = save_current_cache(state);
@@ -202,6 +203,7 @@ pub fn reduce_connection_setup(
             }
             state.query.reset_for_context_change();
             state.session.clear_connection_probe();
+            state.session.invalidate_connection_generation();
             state.session.mark_connecting();
             DispatchResult::handled_with(termination_effects(
                 &state.query,
@@ -243,15 +245,29 @@ pub fn reduce_connection_setup(
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
+            state.ui.set_database_picker(false);
             state.connection_caches.remove(id);
 
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
             if *database_type == DatabaseType::MySQL {
                 state.session.mark_probe_connected(database.is_some());
-                return DispatchResult::handled_with(termination_effects(
-                    &state.query,
-                    vec![Effect::ClearCompletionEngineCache],
-                ));
+                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                if database.is_none() {
+                    state.ui.set_database_picker(true);
+                    state.modal.set_mode(InputMode::TablePicker);
+                    if let (Some(connection_id), Some(server_dsn)) = (
+                        state.session.active_connection_id().cloned(),
+                        state.session.server_dsn(),
+                    ) {
+                        effects.push(Effect::FetchMySqlDatabases {
+                            connection_id,
+                            dsn: server_dsn,
+                            connection_generation: state.session.connection_generation(),
+                            database_generation: state.session.database_generation(),
+                        });
+                    }
+                }
+                return DispatchResult::handled_with(termination_effects(&state.query, effects));
             }
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::handled_with(connection_save_fetch_effects(

@@ -175,6 +175,41 @@ pub(crate) async fn run(
             Ok(())
         }
 
+        Effect::FetchMySqlDatabases {
+            connection_id,
+            dsn,
+            connection_generation,
+            database_generation,
+        } => {
+            let probe = Arc::clone(&connection.connection_probe);
+            let tx = action_tx.clone();
+            tokio::spawn(async move {
+                match probe.fetch_databases(&dsn).await {
+                    Ok(databases) => tx
+                        .send(Action::MySqlDatabasesLoaded {
+                            connection_id,
+                            dsn,
+                            connection_generation,
+                            database_generation,
+                            databases,
+                        })
+                        .await
+                        .ok(),
+                    Err(error) => tx
+                        .send(Action::MySqlDatabasesFailed {
+                            connection_id,
+                            dsn,
+                            connection_generation,
+                            database_generation,
+                            error,
+                        })
+                        .await
+                        .ok(),
+                };
+            });
+            Ok(())
+        }
+
         Effect::LoadConnectionForEdit { id } => {
             let store = Arc::clone(&connection.connection_store);
             let tx = action_tx.clone();

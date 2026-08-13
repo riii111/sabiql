@@ -266,6 +266,9 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
+            if state.session.connection_state().is_awaiting_database() {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {

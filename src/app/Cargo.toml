@@ -27,6 +27,7 @@ unicode-casefold.workspace = true
 unicode-width.workspace = true
 sabiql-domain.workspace = true
 uuid.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 mockall.workspace = true
