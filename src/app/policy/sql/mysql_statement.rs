@@ -192,6 +192,7 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
     let mut tokens = Vec::new();
     let mut index = 0;
     let mut depth = 0usize;
+    let mut leading_executable_version_comment = false;
 
     while index < bytes.len() {
         if bytes[index].is_ascii_whitespace() {
@@ -223,8 +224,12 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
                 let executable_statement = inner.first().is_some_and(|token| {
                     matches!(&token.kind, TokenKind::Word(word) if is_mysql_statement_keyword(word))
                 });
-                if tokens.is_empty() && executable_statement {
+                let contains_statement_separator = inner
+                    .iter()
+                    .any(|token| matches!(token.kind, TokenKind::Symbol(';')));
+                if tokens.is_empty() && executable_statement && !contains_statement_separator {
                     tokens.extend(inner);
+                    leading_executable_version_comment = true;
                 } else if !inner.is_empty() {
                     tokens.push(Token {
                         kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
@@ -234,6 +239,14 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             }
             index = end;
             continue;
+        }
+
+        if leading_executable_version_comment {
+            tokens.push(Token {
+                kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
+                depth,
+            });
+            leading_executable_version_comment = false;
         }
 
         let byte = bytes[index];
@@ -836,6 +849,8 @@ mod tests {
     #[test]
     fn rejects_executable_version_comment_clause() {
         assert!(classify_mysql_statement("SELECT 1 /*!80000 INTO OUTFILE '/tmp/x' */").is_err());
+        assert!(classify_mysql_statement("/*!80000 SELECT 1 */ SELECT 2").is_err());
+        assert!(classify_mysql_statement("/*!80000 SELECT 1; DROP TABLE items */").is_err());
     }
 
     #[test]
