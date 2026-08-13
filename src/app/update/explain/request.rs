@@ -1,9 +1,11 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::policy::write::sql_risk::evaluate_mysql_explain_target;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
@@ -36,6 +38,15 @@ pub(super) fn reduce_request(
             let database_type = state.session.active_database_type_or_default();
             if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
+                return DispatchResult::handled();
+            }
+            if database_type == DatabaseType::MySQL
+                && evaluate_mysql_explain_target(&content, false).is_none()
+            {
+                show_explain_error_on_plan(
+                    state,
+                    "MySQL EXPLAIN only supports side-effect-free read statements",
+                );
                 return DispatchResult::handled();
             }
 

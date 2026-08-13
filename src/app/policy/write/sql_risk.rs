@@ -1,9 +1,9 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_top_level_into_clause,
-    split_mysql_statements, statement_contains_unsupported_mysql_control,
-    target_is_selected_database,
+    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
+    has_top_level_into_clause, split_mysql_statements,
+    statement_contains_unsupported_mysql_control, target_is_selected_database,
 };
 use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
 use crate::policy::sql::sqlite_transaction::{
@@ -68,6 +68,56 @@ mod mysql_tests {
             mysql("/*!80000 SELECT 1 */"),
             MultiStatementDecision::Allow { .. }
         ));
+    }
+
+    #[test]
+    fn read_only_allows_only_side_effect_free_mysql_reads() {
+        for sql in [
+            "SELECT 1",
+            "TABLE items",
+            "SHOW TABLES",
+            "DESCRIBE items",
+            "WITH rows AS (SELECT 1) SELECT * FROM rows",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(risk.read_only_allowed, "{sql}");
+        }
+
+        for sql in [
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items FOR SHARE",
+            "SELECT * FROM items LOCK IN SHARE MODE",
+            "SELECT @value := value FROM items",
+            "SELECT GET_LOCK('sabiql', 0)",
+            "SELECT RELEASE_LOCK('sabiql')",
+            "SELECT RELEASE_ALL_LOCKS()",
+            "/*!80000 SELECT 1 */",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(!risk.read_only_allowed, "{sql}");
+        }
+    }
+
+    #[test]
+    fn explain_targets_share_the_read_only_allowlist() {
+        for sql in ["SELECT 1", "TABLE items", "SHOW TABLES", "DESCRIBE items"] {
+            assert!(evaluate_mysql_explain_target(sql, false).is_some(), "{sql}");
+        }
+        for sql in [
+            "UPDATE items SET value = 1",
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items INTO OUTFILE '/tmp/items'",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
+        }
+        assert!(evaluate_mysql_explain_target("SELECT 1", true).is_some());
+        assert!(evaluate_mysql_explain_target("TABLE items", true).is_some());
+        assert!(evaluate_mysql_explain_target("SHOW TABLES", true).is_none());
     }
 
     #[test]
@@ -232,15 +282,17 @@ fn mysql_statement_risk(statement: &MysqlStatement) -> SqlRiskDecision {
         MysqlStatementKind::Select
         | MysqlStatementKind::Table
         | MysqlStatementKind::Show
-        | MysqlStatementKind::Describe
-        | MysqlStatementKind::Begin
+        | MysqlStatementKind::Describe => {
+            mysql_low(!has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true))
+        }
+        MysqlStatementKind::Begin
         | MysqlStatementKind::StartTransaction
         | MysqlStatementKind::Commit
         | MysqlStatementKind::Rollback
         | MysqlStatementKind::Savepoint
         | MysqlStatementKind::RollbackToSavepoint
-        | MysqlStatementKind::ReleaseSavepoint => mysql_low(true),
-        MysqlStatementKind::Insert
+        | MysqlStatementKind::ReleaseSavepoint
+        | MysqlStatementKind::Insert
         | MysqlStatementKind::CreateTable { .. }
         | MysqlStatementKind::CreateView
         | MysqlStatementKind::CreateIndex => mysql_low(false),
@@ -746,6 +798,9 @@ pub fn evaluate_sql_risk_for_database(
     kind: &StatementKind,
     sql: &str,
 ) -> SqlRiskDecision {
+    if database_type == DatabaseType::MySQL {
+        return evaluate_mysql_statement_risk(sql);
+    }
     if database_type == DatabaseType::SQLite
         && let Some(decision) = evaluate_sqlite_specific_risk(sql)
     {
@@ -811,6 +866,47 @@ pub fn evaluate_sql_risk_for_database(
             None => high_acknowledge(kind),
         },
     }
+}
+
+fn evaluate_mysql_statement_risk(sql: &str) -> SqlRiskDecision {
+    if let Ok(statement) = classify_mysql_statement(sql) {
+        return mysql_statement_risk(&statement);
+    }
+
+    SqlRiskDecision {
+        risk_level: RiskLevel::Low,
+        confirmation: ConfirmationType::Acknowledge {
+            reason: AcknowledgeReason::UnknownRisk,
+            label: first_keyword(sql).unwrap_or_else(|| "SQL".to_string()),
+        },
+        read_only_allowed: false,
+    }
+}
+
+pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRiskDecision> {
+    let statements = split_mysql_statements(sql).ok()?;
+    if statements.len() != 1 {
+        return None;
+    }
+    let statement = classify_mysql_statement(&statements[0]).ok()?;
+    let allowed_kind = if analyze {
+        matches!(
+            statement.kind,
+            MysqlStatementKind::Select | MysqlStatementKind::Table
+        )
+    } else {
+        matches!(
+            statement.kind,
+            MysqlStatementKind::Select
+                | MysqlStatementKind::Table
+                | MysqlStatementKind::Show
+                | MysqlStatementKind::Describe
+        )
+    };
+    let risk = mysql_statement_risk(&statement);
+    allowed_kind
+        .then_some(risk)
+        .filter(|risk| risk.read_only_allowed)
 }
 
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {

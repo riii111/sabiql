@@ -780,6 +780,99 @@ pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {
     }))
 }
 
+pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MysqlLexError> {
+    if has_mysql_version_comment(sql)? {
+        return Ok(true);
+    }
+
+    let tokens = lex_mysql_statement(sql)?;
+    for (index, token) in tokens.iter().enumerate() {
+        if matches!(&token.kind, TokenKind::Word(word) if word == "INTO") {
+            return Ok(true);
+        }
+        if matches!(&token.kind, TokenKind::Word(word) if matches!(
+            word.as_str(),
+            "GET_LOCK" | "RELEASE_LOCK" | "RELEASE_ALL_LOCKS"
+        )) {
+            return Ok(true);
+        }
+        if matches!(&token.kind, TokenKind::Symbol(':'))
+            && matches!(
+                tokens.get(index + 1).map(|token| &token.kind),
+                Some(TokenKind::Symbol('='))
+            )
+        {
+            return Ok(true);
+        }
+        if word_at(&tokens, index) == Some("FOR")
+            && matches!(word_at(&tokens, index + 1), Some("UPDATE" | "SHARE"))
+        {
+            return Ok(true);
+        }
+        if word_at(&tokens, index) == Some("LOCK")
+            && word_at(&tokens, index + 1) == Some("IN")
+            && word_at(&tokens, index + 2) == Some("SHARE")
+            && word_at(&tokens, index + 3) == Some("MODE")
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn word_at(tokens: &[Token], index: usize) -> Option<&str> {
+    match tokens.get(index)?.kind {
+        TokenKind::Word(ref word) => Some(word),
+        _ => None,
+    }
+}
+
+pub fn has_mysql_version_comment(sql: &str) -> Result<bool, MysqlLexError> {
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+    let mut quote = None;
+
+    while index < bytes.len() {
+        if let Some(delimiter) = quote {
+            if bytes[index] == b'\\' && delimiter != b'`' {
+                index = (index + 2).min(bytes.len());
+            } else if bytes[index] == delimiter {
+                if bytes.get(index + 1) == Some(&delimiter) {
+                    index += 2;
+                } else {
+                    quote = None;
+                    index += 1;
+                }
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if is_line_comment_start(bytes, index) {
+            index = skip_line_comment(bytes, index);
+            continue;
+        }
+        if bytes.get(index..index + 2) == Some(b"/*") {
+            if bytes.get(index + 2) == Some(&b'!') {
+                return Ok(true);
+            }
+            index = skip_block_comment(bytes, index)?;
+            continue;
+        }
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            quote = Some(bytes[index]);
+        }
+        index += 1;
+    }
+
+    if quote.is_some() {
+        return Err(MysqlLexError(
+            "unterminated MySQL quoted literal".to_string(),
+        ));
+    }
+    Ok(false)
+}
+
 pub fn target_is_selected_database(
     statement: &MysqlStatement,
     selected_database: Option<&str>,
