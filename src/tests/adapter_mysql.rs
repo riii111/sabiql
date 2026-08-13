@@ -18,6 +18,8 @@ use sabiql_domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
 };
 use sabiql_infra::adapters::mysql::MySqlAdapter;
+#[cfg(unix)]
+use tempfile::NamedTempFile;
 
 fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
     ConnectionProfile::with_id_and_config(
@@ -64,21 +66,23 @@ async fn connects_to_oracle_mysql_84_fixture() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn batch_mysql_cli_does_not_execute_shell_commands() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
+            let marker = NamedTempFile::new().map_err(|error| error.to_string())?;
+            let marker = marker.into_temp_path();
+            std::fs::remove_file(&marker).map_err(|error| error.to_string())?;
             let output = db
-                .run_batch_script("SELECT 1;\n\\! printf SAB403_SHELL\n")
+                .run_pty_script(&format!("SELECT 1;\n\\! touch '{}'\n", marker.display()))
                 .await
                 .map_err(|error| format!("failed to run MySQL CLI: {error}"))?;
-            let output = format!(
-                "{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            if output.contains("SAB403_SHELL") {
-                return Err(format!("MySQL CLI executed a shell command: {output}"));
+            if marker.exists() {
+                return Err(format!(
+                    "MySQL CLI executed a shell command: {}",
+                    String::from_utf8_lossy(&output)
+                ));
             }
             Ok(())
         })
@@ -149,7 +153,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             .execute_adhoc(
                 db.dsn(),
                 &format!(
-                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value FROM {MYSQL_FIXTURE_TABLE}"
+                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4) FROM {MYSQL_FIXTURE_TABLE}"
                 ),
                 AccessMode::ReadWrite,
             )
@@ -162,6 +166,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             QueryValue::Text("[1, true]".to_string()),
             QueryValue::Text("\"空文字ではない\"".to_string()),
             QueryValue::Text("0x00FF10".to_string()),
+            QueryValue::Text("line one\r\nERROR 1146 (42S02): not a CLI error".to_string()),
         ];
         if result.values() != [expected] {
             return Err(format!("unexpected XML values: {:?}", result.values()));

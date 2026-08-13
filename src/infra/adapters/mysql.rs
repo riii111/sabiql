@@ -76,6 +76,33 @@ impl Default for MySqlAdapter {
     }
 }
 
+#[cfg(unix)]
+#[doc(hidden)]
+pub async fn run_mysql_cli_script_for_test(
+    dsn: &str,
+    script: &str,
+) -> Result<Vec<u8>, DbOperationError> {
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    validate_mysql_tls_files(&target)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
+    let result = async {
+        write_mysql_input(&mut process, script.as_bytes()).await?;
+        write_mysql_input(&mut process, b"\x04").await?;
+        read_pty_all(&mut process.pty)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+    }
+    .await;
+    if result.is_err() {
+        cleanup_mysql_process(&mut process).await;
+    } else {
+        let _ = process.child.wait().await;
+    }
+    result
+}
+
 #[async_trait]
 impl QueryExecutor for MySqlAdapter {
     async fn execute_preview(
