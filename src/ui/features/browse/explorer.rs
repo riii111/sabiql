@@ -63,7 +63,7 @@ impl Explorer {
                 .collect()
         } else if state.session.connection_state().is_awaiting_database() {
             vec![
-                ListItem::new(" Select a database with the database picker"),
+                ListItem::new(" Open database picker"),
                 ListItem::new(format!(
                     " ({}: database picker)",
                     global::DATABASE_PICKER.key

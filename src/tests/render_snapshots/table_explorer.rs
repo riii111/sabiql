@@ -153,7 +153,7 @@ fn mysql_explorer_guides_to_database_picker_when_database_is_unselected() {
     state.session.mark_probe_connected(false);
 
     let mut terminal = create_test_terminal();
-    let output = render_to_string(&mut terminal, &mut state);
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
 
     insta::assert_snapshot!(output);
 }
