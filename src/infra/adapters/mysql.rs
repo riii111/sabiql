@@ -700,6 +700,8 @@ struct MysqlProcess {
     stderr: ChildStderr,
     #[cfg(not(unix))]
     pending: Vec<u8>,
+    #[cfg(not(unix))]
+    pending_stderr: Vec<u8>,
 }
 
 #[cfg(unix)]
@@ -755,6 +757,7 @@ impl MysqlProcess {
                 stdout,
                 stderr,
                 pending: Vec::new(),
+                pending_stderr: Vec::new(),
             });
         }
     }
@@ -1404,6 +1407,7 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
         &mut process.stdout,
         &mut process.stderr,
         &mut process.pending,
+        &mut process.pending_stderr,
     )
     .await
 }
@@ -1464,6 +1468,13 @@ fn has_mysql_cli_error(output: &[u8]) -> bool {
 }
 
 fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
+    let (start, end) = mysql_resultset_frame_bounds(buffer)?;
+    let frame = buffer[start..end].to_vec();
+    buffer.drain(..end);
+    Some(frame)
+}
+
+fn mysql_resultset_frame_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
     let start = [&b"<?xml"[..], &b"<resultset"[..]]
         .iter()
         .filter_map(|prefix| find_bytes(buffer, prefix))
@@ -1473,9 +1484,18 @@ fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
         .position(|window| window == b"</resultset>")?
         + start
         + b"</resultset>".len();
-    let frame = buffer[start..end].to_vec();
-    buffer.drain(..end);
-    Some(frame)
+    Some((start, end))
+}
+
+fn take_mysql_resultset_frame_after_error_check(
+    buffer: &mut Vec<u8>,
+    error_output: &[u8],
+) -> Result<Option<Vec<u8>>, DbOperationError> {
+    if has_mysql_cli_error(error_output) {
+        trace_mysql_error(error_output);
+        return Err(classify_mysql_query_failure(error_output));
+    }
+    Ok(take_mysql_resultset_frame(buffer))
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -1517,6 +1537,7 @@ async fn read_one_mysql_resultset_from_pipes<R, E>(
     reader: &mut R,
     stderr: &mut E,
     pending: &mut Vec<u8>,
+    pending_stderr: &mut Vec<u8>,
 ) -> Result<Vec<u8>, DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -1526,11 +1547,22 @@ where
     let mut stderr_chunk = [0; 4096];
     let mut stderr_closed = false;
     loop {
-        if has_mysql_cli_error(pending) {
-            trace_mysql_error(pending);
-            return Err(classify_mysql_query_failure(pending));
+        if mysql_resultset_frame_bounds(pending).is_some() && !stderr_closed {
+            tokio::select! {
+                biased;
+                result = stderr.read(&mut stderr_chunk) => {
+                    let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+                    if count == 0 {
+                        stderr_closed = true;
+                    } else {
+                        pending_stderr.extend_from_slice(&stderr_chunk[..count]);
+                    }
+                }
+                _ = tokio::task::yield_now() => {}
+            }
         }
-        if let Some(frame) = take_mysql_resultset_frame(pending) {
+        if let Some(frame) = take_mysql_resultset_frame_after_error_check(pending, pending_stderr)?
+        {
             trace_mysql_frame("receive resultset", frame.len());
             return Ok(frame);
         }
@@ -1561,15 +1593,7 @@ where
                     if count == 0 {
                         stderr_closed = true;
                     } else {
-                        let details = String::from_utf8_lossy(&stderr_chunk[..count]);
-                        let lower = details.to_ascii_lowercase();
-                        if lower.contains("error")
-                            || lower.contains("access denied")
-                            || lower.contains("can't connect")
-                            || lower.contains("lost connection")
-                        {
-                            return Err(classify_mysql_query_failure(&stderr_chunk[..count]));
-                        }
+                        pending_stderr.extend_from_slice(&stderr_chunk[..count]);
                     }
                 }
             }
@@ -2744,6 +2768,45 @@ done
             "an incomplete following frame must remain buffered"
         );
         assert!(buffer.starts_with(b"\r\n    -> <?xml"));
+    }
+
+    #[test]
+    fn error_before_resultset_frame_is_not_accepted() {
+        let mut buffer = b"<resultset><row></row></resultset>".to_vec();
+        let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
+
+        assert!(matches!(
+            take_mysql_resultset_frame_after_error_check(&mut buffer, error),
+            Err(DbOperationError::QueryFailed(_))
+        ));
+        assert_eq!(buffer, b"<resultset><row></row></resultset>");
+    }
+
+    #[cfg(not(unix))]
+    #[tokio::test]
+    async fn pipe_errors_are_checked_before_resultset_frames() {
+        let (mut stdout_writer, mut stdout_reader) = tokio::io::duplex(1024);
+        let (mut stderr_writer, mut stderr_reader) = tokio::io::duplex(1024);
+        stdout_writer
+            .write_all(b"<resultset><row></row></resultset>")
+            .await
+            .unwrap();
+        stderr_writer
+            .write_all(b"ERROR 1054 (42S22): Unknown column missing_column\n")
+            .await
+            .unwrap();
+        drop(stdout_writer);
+        drop(stderr_writer);
+
+        let result = read_one_mysql_resultset_from_pipes(
+            &mut stdout_reader,
+            &mut stderr_reader,
+            &mut Vec::new(),
+            &mut Vec::new(),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
     }
 
     #[tokio::test]
