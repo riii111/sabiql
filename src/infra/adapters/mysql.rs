@@ -831,9 +831,17 @@ fn validate_mysql_export_query(
     selected_database: Option<&str>,
 ) -> Result<(), DbOperationError> {
     let statements = validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
-    if statements.len() != 1 || !matches!(statements[0].kind, MysqlStatementKind::Select) {
+    if statements.len() != 1
+        || !matches!(
+            statements[0].kind,
+            MysqlStatementKind::Select
+                | MysqlStatementKind::Table
+                | MysqlStatementKind::Show
+                | MysqlStatementKind::Describe
+        )
+    {
         return Err(DbOperationError::UnsupportedOperation(
-            "MySQL CSV export supports a single read-only SELECT query".to_string(),
+            "MySQL CSV export supports a single read-only result query".to_string(),
         ));
     }
     Ok(())
@@ -3194,8 +3202,14 @@ line2]]></field>
     }
 
     #[test]
-    fn csv_export_accepts_only_one_read_only_select() {
+    fn csv_export_accepts_one_read_only_result_query() {
         assert!(validate_mysql_export_query("SELECT 1", Some("app")).is_ok());
+        for query in ["TABLE users", "SHOW TABLES", "DESCRIBE users"] {
+            assert!(
+                validate_mysql_export_query(query, Some("app")).is_ok(),
+                "{query}"
+            );
+        }
         assert!(matches!(
             validate_mysql_export_query("INSERT INTO users VALUES (1)", Some("app")),
             Err(DbOperationError::PermissionDenied(_))
@@ -3203,7 +3217,7 @@ line2]]></field>
         assert!(matches!(
             validate_mysql_export_query("SELECT 1; SELECT 2", Some("app")),
             Err(DbOperationError::UnsupportedOperation(details))
-                if details.contains("single read-only SELECT")
+                if details.contains("single read-only result")
         ));
     }
 
