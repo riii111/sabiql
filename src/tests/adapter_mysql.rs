@@ -3,12 +3,27 @@
 //! Start the exact fixture and CLI wrapper with:
 //! bash scripts/mysql_integration.sh test
 
+use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
-    AccessMode, DbOperationError, MYSQL_SQL_MODE_UNSUPPORTED_MARKER, QueryExecutor,
+    AccessMode, ConnectionProbe, DbOperationError, DsnBuilder, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    QueryExecutor,
 };
 use sabiql_domain::QueryValue;
 
-use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
+use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
+use sabiql_domain::connection::{
+    ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
+};
+use sabiql_infra::adapters::mysql::MySqlAdapter;
+
+fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
+    ConnectionProfile::with_id_and_config(
+        ConnectionId::new(),
+        name,
+        ConnectionConfig::MySQL(config),
+    )
+    .unwrap()
+}
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -32,6 +47,61 @@ async fn connects_to_oracle_mysql_84_fixture() {
         })
     })
     .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
+    let config = mysql_tls_config();
+    let profile = mysql_tls_profile("mysql-tls-integration", config);
+    let adapter = MySqlAdapter::new();
+    let dsn = adapter.build_dsn(&profile);
+
+    adapter.probe(&dsn).await.unwrap();
+    let result = adapter
+        .execute_adhoc(
+            &dsn,
+            &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+            AccessMode::ReadWrite,
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn rejects_oracle_mysql_84_fixture_with_wrong_ca() {
+    let mut config = mysql_tls_config();
+    config.ssl_ca = config.ssl_cert.clone();
+    let profile = mysql_tls_profile("mysql-tls-wrong-ca", config);
+    let adapter = MySqlAdapter::new();
+    let error = adapter
+        .probe(&adapter.build_dsn(&profile))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        ConnectionErrorInfo::from_db_operation_error(&error).kind,
+        ConnectionErrorKind::MySqlCaVerificationFailed
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn rejects_oracle_mysql_84_fixture_with_wrong_hostname() {
+    let mut config = mysql_tls_config();
+    config.host = "host.docker.internal".to_string();
+    config.ssl_mode = MySqlSslMode::VerifyIdentity;
+    let profile = mysql_tls_profile("mysql-tls-wrong-host", config);
+    let adapter = MySqlAdapter::new();
+    let error = adapter
+        .probe(&adapter.build_dsn(&profile))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        ConnectionErrorInfo::from_db_operation_error(&error).kind,
+        ConnectionErrorKind::MySqlHostnameVerificationFailed
+    );
 }
 
 #[tokio::test]

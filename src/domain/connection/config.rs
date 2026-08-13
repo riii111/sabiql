@@ -10,11 +10,21 @@ pub enum MySqlSslMode {
     #[default]
     Preferred,
     Required,
+    #[serde(rename = "VERIFY_CA")]
+    VerifyCa,
+    #[serde(rename = "VERIFY_IDENTITY")]
+    VerifyIdentity,
 }
 
 impl MySqlSslMode {
     pub const fn all_variants() -> &'static [Self] {
-        &[Self::Disabled, Self::Preferred, Self::Required]
+        &[
+            Self::Disabled,
+            Self::Preferred,
+            Self::Required,
+            Self::VerifyCa,
+            Self::VerifyIdentity,
+        ]
     }
 }
 
@@ -24,6 +34,8 @@ impl std::fmt::Display for MySqlSslMode {
             Self::Disabled => "DISABLED",
             Self::Preferred => "PREFERRED",
             Self::Required => "REQUIRED",
+            Self::VerifyCa => "VERIFY_CA",
+            Self::VerifyIdentity => "VERIFY_IDENTITY",
         })
     }
 }
@@ -66,6 +78,12 @@ pub struct MySqlConnectionConfig {
     pub username: String,
     pub password: String,
     pub ssl_mode: MySqlSslMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_ca: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_cert: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_key: Option<String>,
 }
 
 impl MySqlConnectionConfig {
@@ -84,7 +102,23 @@ impl MySqlConnectionConfig {
             username: username.into(),
             password: password.into(),
             ssl_mode,
+            ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_tls_paths(
+        mut self,
+        ssl_ca: Option<String>,
+        ssl_cert: Option<String>,
+        ssl_key: Option<String>,
+    ) -> Self {
+        self.ssl_ca = ssl_ca;
+        self.ssl_cert = ssl_cert;
+        self.ssl_key = ssl_key;
+        self
     }
 
     pub fn is_valid_host(host: &str) -> bool {
@@ -219,6 +253,18 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mysql_tls_modes_use_mysql_option_names() {
+        assert_eq!(
+            serde_json::to_string(&MySqlSslMode::VerifyCa).unwrap(),
+            "\"VERIFY_CA\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MySqlSslMode::VerifyIdentity).unwrap(),
+            "\"VERIFY_IDENTITY\""
+        );
+    }
 
     mod sqlite_deserialize {
         use super::*;

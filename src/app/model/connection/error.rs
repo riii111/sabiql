@@ -12,6 +12,10 @@ pub enum ConnectionErrorKind {
     MySqlCliVersionUnsupported,
     MySqlServerVersionUnsupported,
     MySqlSqlModeUnsupported,
+    MySqlTlsHandshakeFailed,
+    MySqlCaVerificationFailed,
+    MySqlHostnameVerificationFailed,
+    MySqlClientCertificateRejected,
     SqliteCliNotFound,
     HostUnreachable,
     AuthFailed,
@@ -60,6 +64,22 @@ impl ConnectionErrorKind {
             return Self::AuthFailed;
         }
 
+        if is_mysql_client_certificate_error(&stderr_lower) {
+            return Self::MySqlClientCertificateRejected;
+        }
+
+        if is_mysql_hostname_verification_error(&stderr_lower) {
+            return Self::MySqlHostnameVerificationFailed;
+        }
+
+        if is_mysql_ca_verification_error(&stderr_lower) {
+            return Self::MySqlCaVerificationFailed;
+        }
+
+        if is_mysql_tls_handshake_error(&stderr_lower) {
+            return Self::MySqlTlsHandshakeFailed;
+        }
+
         if stderr_lower.contains("does not exist")
             && (stderr_lower.contains("database") || stderr_lower.contains("fatal:"))
         {
@@ -94,6 +114,10 @@ impl ConnectionErrorKind {
             Self::MySqlCliVersionUnsupported => "Unsupported MySQL CLI version",
             Self::MySqlServerVersionUnsupported => "Unsupported MySQL server version",
             Self::MySqlSqlModeUnsupported => "Unsupported MySQL sql_mode",
+            Self::MySqlTlsHandshakeFailed => "MySQL TLS handshake failed",
+            Self::MySqlCaVerificationFailed => "MySQL server certificate could not be verified",
+            Self::MySqlHostnameVerificationFailed => "MySQL server hostname could not be verified",
+            Self::MySqlClientCertificateRejected => "MySQL client certificate was rejected",
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_summary(),
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
@@ -121,6 +145,18 @@ impl ConnectionErrorKind {
             Self::MySqlServerVersionUnsupported => "Connect to an Oracle MySQL 8.4 server",
             Self::MySqlSqlModeUnsupported => {
                 "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
+            }
+            Self::MySqlTlsHandshakeFailed => {
+                "Check that the server and client support the selected TLS settings"
+            }
+            Self::MySqlCaVerificationFailed => {
+                "Check the CA certificate path and server certificate"
+            }
+            Self::MySqlHostnameVerificationFailed => {
+                "Use the hostname covered by the server certificate"
+            }
+            Self::MySqlClientCertificateRejected => {
+                "Check the client certificate, key, and server account requirements"
             }
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_hint(),
             Self::HostUnreachable => "Check the hostname",
@@ -151,6 +187,42 @@ impl ConnectionErrorKind {
 fn is_mysql_connect_timeout_message(value: &str) -> bool {
     value.contains("can't connect to mysql server")
         && (value.contains("(110)") || value.contains("(10060)"))
+}
+
+fn is_mysql_client_certificate_error(value: &str) -> bool {
+    (value.contains("certificate")
+        && (value.contains("certificate required")
+            || value.contains("client certificate")
+            || value.contains("peer did not return a certificate")
+            || value.contains("bad certificate")))
+        || value.contains("tlsv1 alert certificate required")
+}
+
+fn is_mysql_hostname_verification_error(value: &str) -> bool {
+    value.contains("hostname mismatch")
+        || value.contains("host name mismatch")
+        || value.contains("hostname does not match")
+        || value.contains("subject alternative name")
+        || (value.contains("verify identity") && value.contains("certificate"))
+}
+
+fn is_mysql_ca_verification_error(value: &str) -> bool {
+    value.contains("unable to get local issuer")
+        || value.contains("self-signed certificate")
+        || value.contains("unknown ca")
+        || value.contains("certificate verify failed")
+        || value.contains("certificate verification failure")
+        || value.contains("certificate validation failure")
+        || value.contains("certificate signature failure")
+}
+
+fn is_mysql_tls_handshake_error(value: &str) -> bool {
+    value.contains("tls/ssl error")
+        || value.contains("ssl handshake")
+        || value.contains("tls handshake")
+        || value.contains("handshake failure")
+        || value.contains("ssl connection error")
+        || value.contains("tlsv1 alert")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -348,6 +420,34 @@ mod tests {
                 ConnectionErrorKind::Timeout
             );
         }
+
+        #[test]
+        fn stderr_as_mysql_tls_error() {
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: certificate verify failed: hostname mismatch"
+                ),
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: unable to get local issuer certificate"
+                ),
+                ConnectionErrorKind::MySqlCaVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: peer did not return a certificate"
+                ),
+                ConnectionErrorKind::MySqlClientCertificateRejected
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: handshake failure"
+                ),
+                ConnectionErrorKind::MySqlTlsHandshakeFailed
+            );
+        }
     }
 
     mod error_kind {
@@ -366,6 +466,10 @@ mod tests {
         #[case(ConnectionErrorKind::MySqlCliVersionUnsupported)]
         #[case(ConnectionErrorKind::MySqlServerVersionUnsupported)]
         #[case(ConnectionErrorKind::MySqlSqlModeUnsupported)]
+        #[case(ConnectionErrorKind::MySqlTlsHandshakeFailed)]
+        #[case(ConnectionErrorKind::MySqlCaVerificationFailed)]
+        #[case(ConnectionErrorKind::MySqlHostnameVerificationFailed)]
+        #[case(ConnectionErrorKind::MySqlClientCertificateRejected)]
         #[case(ConnectionErrorKind::SqliteVersionTooOld)]
         #[case(ConnectionErrorKind::SqliteFileNotFound)]
         #[case(ConnectionErrorKind::SqlitePathIsDirectory)]

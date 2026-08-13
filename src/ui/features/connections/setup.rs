@@ -451,6 +451,8 @@ fn mysql_ssl_mode_label(mode: MySqlSslMode) -> &'static str {
         MySqlSslMode::Disabled => "DISABLED",
         MySqlSslMode::Preferred => "PREFERRED",
         MySqlSslMode::Required => "REQUIRED",
+        MySqlSslMode::VerifyCa => "VERIFY_CA",
+        MySqlSslMode::VerifyIdentity => "VERIFY_IDENTITY",
     }
 }
 
