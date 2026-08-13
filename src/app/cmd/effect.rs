@@ -144,6 +144,7 @@ pub enum Effect {
         failed_tables: Vec<(String, String)>,
     },
     ExtractFkNeighbors {
+        run_id: u64,
         seed_tables: Vec<String>,
     },
     SmartErRefresh {

@@ -13,14 +13,20 @@ pub(super) fn reduce_er_neighbors(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::ExpandPrefetchWithFkNeighbors => {
-            let seed_tables = state.er_preparation.seed_tables().to_vec();
-            DispatchResult::handled_with(vec![Effect::ExtractFkNeighbors { seed_tables }])
-        }
-        Action::FkNeighborsDiscovered { tables } => {
-            let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
+        Action::ExpandPrefetchWithFkNeighbors { run_id } => {
+            if !state.sql_modal.is_current_prefetch_run(*run_id) {
                 return DispatchResult::handled();
-            };
+            }
+            let seed_tables = state.er_preparation.seed_tables().to_vec();
+            DispatchResult::handled_with(vec![Effect::ExtractFkNeighbors {
+                run_id: *run_id,
+                seed_tables,
+            }])
+        }
+        Action::FkNeighborsDiscovered { run_id, tables } => {
+            if !state.sql_modal.is_current_prefetch_run(*run_id) {
+                return DispatchResult::handled();
+            }
             state.er_preparation.mark_fk_expanded();
 
             if tables.is_empty() {
@@ -36,7 +42,7 @@ pub(super) fn reduce_er_neighbors(
                     state.sql_modal.queue_table_prefetch(qualified_name.clone());
                 }
             }
-            DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
+            DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id: *run_id }])
         }
         _ => DispatchResult::pass(),
     }
