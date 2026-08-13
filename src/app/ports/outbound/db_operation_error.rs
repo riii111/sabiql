@@ -93,7 +93,8 @@ impl DbOperationError {
             Self::UniqueViolation(_) => "Unique constraint violation",
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
-            Self::QueryFailed(_) | Self::QueryFailedAfterChange { .. } => "Query failed",
+            Self::QueryFailed(_) => "Query failed",
+            Self::QueryFailedAfterChange { .. } => "Query failed after a change",
             Self::UnsupportedOperation(_) => "Unsupported operation",
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
@@ -119,8 +120,9 @@ impl DbOperationError {
                 "Retry; if it persists, check for blocking transactions or timeout settings"
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
-            Self::QueryFailed(_) | Self::QueryFailedAfterChange { .. } => {
-                "Review the database error details and SQL"
+            Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::QueryFailedAfterChange { .. } => {
+                "Some changes may have been committed; refresh the database state before retrying"
             }
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
             Self::MetadataParseFailed(_) => {
@@ -320,6 +322,21 @@ mod tests {
             assert_eq!(
                 error.user_message(),
                 "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
+            );
+        }
+
+        #[test]
+        fn change_failure_warns_about_possible_commits() {
+            let error = DbOperationError::QueryFailedAfterChange {
+                details: "syntax error".to_string(),
+                refresh_scope: RefreshScope::Metadata,
+            };
+
+            assert_eq!(error.summary(), "Query failed after a change");
+            assert!(
+                error
+                    .user_message()
+                    .contains("Some changes may have been committed")
             );
         }
 
