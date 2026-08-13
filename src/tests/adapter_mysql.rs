@@ -98,9 +98,12 @@ async fn rejects_oracle_mysql_84_fixture_with_wrong_hostname() {
         .probe(&adapter.build_dsn(&profile))
         .await
         .unwrap_err();
+    let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
     assert_eq!(
-        ConnectionErrorInfo::from_db_operation_error(&error).kind,
-        ConnectionErrorKind::MySqlHostnameVerificationFailed
+        error_info.kind,
+        ConnectionErrorKind::MySqlHostnameVerificationFailed,
+        "masked connection error details: {}",
+        error_info.masked_details()
     );
 }
 
