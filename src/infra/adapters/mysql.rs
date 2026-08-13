@@ -122,6 +122,7 @@ impl QueryExecutor for MySqlAdapter {
         validate_mysql_adhoc_query(query)?;
         let target = parse_mysql_dsn(dsn)?;
         validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
 
         #[expect(
             clippy::disallowed_methods,
@@ -228,6 +229,7 @@ impl ConnectionProbe for MySqlAdapter {
     async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
         let target = parse_mysql_dsn(dsn)?;
         validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
         self.check_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
@@ -289,6 +291,9 @@ struct MySqlDsn {
     username: String,
     password: String,
     ssl_mode: MySqlSslMode,
+    ssl_ca: Option<String>,
+    ssl_cert: Option<String>,
+    ssl_key: Option<String>,
 }
 
 fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
@@ -314,6 +319,15 @@ fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     }
     url.query_pairs_mut()
         .append_pair("ssl-mode", &config.ssl_mode.to_string());
+    if let Some(path) = config.ssl_ca.as_deref() {
+        url.query_pairs_mut().append_pair("ssl-ca", path);
+    }
+    if let Some(path) = config.ssl_cert.as_deref() {
+        url.query_pairs_mut().append_pair("ssl-cert", path);
+    }
+    if let Some(path) = config.ssl_key.as_deref() {
+        url.query_pairs_mut().append_pair("ssl-key", path);
+    }
     url.to_string()
 }
 
@@ -343,6 +357,15 @@ fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         .find_map(|(key, value)| (key == "ssl-mode").then(|| parse_ssl_mode(&value)))
         .transpose()?
         .unwrap_or_default();
+    let ssl_ca = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "ssl-ca").then(|| value.into_owned()));
+    let ssl_cert = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "ssl-cert").then(|| value.into_owned()));
+    let ssl_key = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "ssl-key").then(|| value.into_owned()));
 
     Ok(MySqlDsn {
         host,
@@ -351,6 +374,9 @@ fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         username,
         password,
         ssl_mode,
+        ssl_ca,
+        ssl_cert,
+        ssl_key,
     })
 }
 
@@ -366,6 +392,8 @@ fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
         "DISABLED" => Ok(MySqlSslMode::Disabled),
         "PREFERRED" => Ok(MySqlSslMode::Preferred),
         "REQUIRED" => Ok(MySqlSslMode::Required),
+        "VERIFY_CA" => Ok(MySqlSslMode::VerifyCa),
+        "VERIFY_IDENTITY" => Ok(MySqlSslMode::VerifyIdentity),
         _ => Err(DbOperationError::ConnectionFailed(
             "Invalid MySQL TLS mode".to_string(),
         )),
@@ -394,6 +422,81 @@ fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
         return Err(DbOperationError::ConnectionFailed(
             "MySQL connection settings contain a control character".to_string(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    let has_tls_path =
+        target.ssl_ca.is_some() || target.ssl_cert.is_some() || target.ssl_key.is_some();
+    if target.ssl_mode == MySqlSslMode::Disabled && has_tls_path {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL TLS paths require an enabled TLS mode".to_string(),
+        ));
+    }
+    if matches!(
+        target.ssl_mode,
+        MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
+    ) && target.ssl_ca.is_none()
+    {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL CA path is required for certificate verification".to_string(),
+        ));
+    }
+    if target.ssl_cert.is_some() != target.ssl_key.is_some() {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL client certificate and key must be specified together".to_string(),
+        ));
+    }
+
+    for (kind, path) in [
+        ("CA", target.ssl_ca.as_deref()),
+        ("client certificate", target.ssl_cert.as_deref()),
+        ("client key", target.ssl_key.as_deref()),
+    ] {
+        let Some(path) = path else { continue };
+        let metadata = fs::metadata(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path cannot be accessed: {error}"
+            ))
+        })?;
+        if !metadata.is_file() {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path is not a regular file"
+            )));
+        }
+        let contents = fs::read(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!("MySQL {kind} cannot be read: {error}"))
+        })?;
+        let text = String::from_utf8_lossy(&contents);
+        if matches!(kind, "CA" | "client certificate") && !text.contains("BEGIN CERTIFICATE") {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} is not a PEM certificate"
+            )));
+        }
+        if kind == "client key" {
+            if text.contains("BEGIN ENCRYPTED PRIVATE KEY")
+                || text
+                    .lines()
+                    .any(|line| line.trim().eq_ignore_ascii_case("Proc-Type: 4,ENCRYPTED"))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "Encrypted MySQL client keys are not supported".to_string(),
+                ));
+            }
+            if ![
+                "BEGIN PRIVATE KEY",
+                "BEGIN RSA PRIVATE KEY",
+                "BEGIN EC PRIVATE KEY",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL client key is not a PEM private key".to_string(),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -526,6 +629,7 @@ struct MySqlOptionFile {
 
 impl MySqlOptionFile {
     fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
+        validate_mysql_tls_files(target)?;
         let sequence = OPTION_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let mut path = std::env::temp_dir();
         path.push(format!(
@@ -574,6 +678,15 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
         push_option(&mut contents, "database", database);
     }
     push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
+    if let Some(path) = target.ssl_ca.as_deref() {
+        push_option(&mut contents, "ssl-ca", path);
+    }
+    if let Some(path) = target.ssl_cert.as_deref() {
+        push_option(&mut contents, "ssl-cert", path);
+    }
+    if let Some(path) = target.ssl_key.as_deref() {
+        push_option(&mut contents, "ssl-key", path);
+    }
     contents
 }
 
@@ -1126,7 +1239,9 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if is_mysql_connect_timeout_message(&details)
+    if is_mysql_tls_error(&lower) {
+        DbOperationError::ConnectionFailed(details)
+    } else if is_mysql_connect_timeout_message(&details)
         || lower.contains("connect timeout")
         || lower.contains("connection timed out")
     {
@@ -1155,6 +1270,28 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     } else {
         DbOperationError::QueryFailed(details)
     }
+}
+
+fn is_mysql_tls_error(lowercase_details: &str) -> bool {
+    [
+        "error 2026",
+        "tls/ssl error",
+        "ssl connection error",
+        "ssl handshake",
+        "tls handshake",
+        "handshake failure",
+        "tlsv1 alert",
+        "certificate verify failed",
+        "certificate verification failure",
+        "certificate validation failure",
+        "unable to get local issuer",
+        "self-signed certificate",
+        "unknown ca",
+        "certificate required",
+        "peer did not return a certificate",
+    ]
+    .iter()
+    .any(|marker| lowercase_details.contains(marker))
 }
 
 fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
@@ -1675,6 +1812,8 @@ fn parse_mysql_field(
 
 #[cfg(test)]
 mod probe_tests {
+    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+
     use super::*;
 
     #[test]
@@ -1696,6 +1835,29 @@ mod probe_tests {
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
+    }
+
+    #[test]
+    fn builds_and_parses_mysql_dsn_with_tls_paths() {
+        let config = MySqlConnectionConfig::new(
+            "db.example",
+            3307,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::VerifyIdentity,
+        )
+        .with_tls_paths(
+            Some(r"C:\certs\ca #1.pem".to_string()),
+            Some(r"C:\certs\client.pem".to_string()),
+            Some(r"C:\certs\client-key.pem".to_string()),
+        );
+        let parsed = parse_mysql_dsn(&build_mysql_dsn(&config)).unwrap();
+
+        assert_eq!(parsed.ssl_mode, MySqlSslMode::VerifyIdentity);
+        assert_eq!(parsed.ssl_ca.as_deref(), Some(r"C:\certs\ca #1.pem"));
+        assert_eq!(parsed.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
+        assert_eq!(parsed.ssl_key.as_deref(), Some(r"C:\certs\client-key.pem"));
     }
 
     #[test]
@@ -1723,6 +1885,9 @@ mod probe_tests {
             username: "user".to_string(),
             password: "p a#ss;=\"\\word".to_string(),
             ssl_mode: MySqlSslMode::Preferred,
+            ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
         };
         let contents = serialize_option_file(&target);
 
@@ -1737,6 +1902,82 @@ mod probe_tests {
     }
 
     #[test]
+    fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
+        let target = MySqlDsn {
+            host: "localhost".to_string(),
+            port: 3306,
+            database: None,
+            username: "user".to_string(),
+            password: "password".to_string(),
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(r"C:\certs\ca #1.pem".to_string()),
+            ssl_cert: Some(r"C:\certs\client.pem".to_string()),
+            ssl_key: Some(r"C:\certs\client-key.pem".to_string()),
+        };
+
+        let contents = serialize_option_file(&target);
+
+        assert!(contents.contains("ssl-mode = \"VERIFY_CA\"\n"));
+        assert!(contents.contains("ssl-ca = \"C:\\\\certs\\\\ca #1.pem\"\n"));
+        assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
+        assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn rejects_encrypted_client_keys_before_process_start() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
+        let target = MySqlDsn {
+            host: "localhost".to_string(),
+            port: 3306,
+            database: None,
+            username: "user".to_string(),
+            password: "password".to_string(),
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+        };
+
+        let result = validate_mysql_tls_files(&target);
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "Encrypted MySQL client keys are not supported"
+        ));
+    }
+
+    #[test]
+    fn rejects_traditional_encrypted_client_keys_before_process_start() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
+        let target = MySqlDsn {
+            host: "localhost".to_string(),
+            port: 3306,
+            database: None,
+            username: "user".to_string(),
+            password: "password".to_string(),
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+        };
+
+        assert!(validate_mysql_tls_files(&target).is_err());
+    }
+
+    #[test]
     fn option_file_is_owner_only_and_removed_on_drop() {
         let target = MySqlDsn {
             host: "localhost".to_string(),
@@ -1745,6 +1986,9 @@ mod probe_tests {
             username: "user".to_string(),
             password: "secret".to_string(),
             ssl_mode: MySqlSslMode::Disabled,
+            ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
         };
         let option_file = MySqlOptionFile::create(&target).unwrap();
         assert!(option_file.path.is_absolute());
@@ -1830,10 +2074,25 @@ mod probe_tests {
             DbOperationError::ConnectionFailed(_)
         ));
     }
+
+    #[test]
+    fn classifies_mysql_tls_probe_failure_for_connection_error() {
+        let error = classify_mysql_probe_failure(
+            "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                .to_string(),
+        );
+
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
+            ConnectionErrorKind::MySqlTlsHandshakeFailed
+        );
+    }
 }
 
 #[cfg(test)]
 mod query_tests {
+    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+
     use super::*;
 
     #[test]
@@ -2079,6 +2338,19 @@ mod query_tests {
         ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
+    }
+
+    #[test]
+    fn classifies_mysql_tls_query_failures_as_connection_errors() {
+        let error = classify_mysql_query_failure(
+            b"ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed",
+        );
+
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
+            ConnectionErrorKind::MySqlTlsHandshakeFailed
+        );
+        assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
     }
 }
 

@@ -270,12 +270,23 @@ pub fn reduce_connection_setup(
             if !state.session.connection_state().is_connected() {
                 state.session.mark_disconnected();
             }
-            if let ConnectionSaveError::Metadata(error) = e
-                && state.connection_setup.database_type() == DatabaseType::MySQL
-            {
-                state
-                    .connection_error
-                    .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+            let mysql_error = match e {
+                ConnectionSaveError::Probe { error, dsn }
+                    if state.connection_setup.database_type() == DatabaseType::MySQL =>
+                {
+                    Some(ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                        error, dsn,
+                    ))
+                }
+                ConnectionSaveError::Metadata(error)
+                    if state.connection_setup.database_type() == DatabaseType::MySQL =>
+                {
+                    Some(ConnectionErrorInfo::from_db_operation_error(error))
+                }
+                _ => None,
+            };
+            if let Some(error_info) = mysql_error {
+                state.connection_error.set_error(error_info);
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
@@ -591,10 +602,13 @@ mod tests {
         use std::sync::Arc;
 
         use super::*;
+        use crate::domain::connection::MySqlSslMode;
         use crate::domain::{
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
         use crate::model::connection::cache::ConnectionCache;
+        use crate::model::connection::error::ConnectionErrorKind;
+        use crate::ports::outbound::DbOperationError;
 
         fn fill_valid_form(state: &mut AppState) {
             state
@@ -641,6 +655,34 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn mysql_probe_failure_uses_tls_mode_to_classify_hostname_verification() {
+            let mut state = AppState::new("test".to_string());
+            state
+                .connection_setup
+                .set_database_type(DatabaseType::MySQL);
+            state.connection_setup.mysql_ssl_mode = MySqlSslMode::VerifyIdentity;
+
+            let error = DbOperationError::ConnectionFailed(
+                "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                    .to_string(),
+            );
+            let dsn =
+                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY".to_string();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveFailed(ConnectionSaveError::Probe { error, dsn }),
+                Instant::now(),
+            );
+
+            assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
+            assert_eq!(
+                state.connection_error.error_info().unwrap().kind,
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
         }
 
         #[test]

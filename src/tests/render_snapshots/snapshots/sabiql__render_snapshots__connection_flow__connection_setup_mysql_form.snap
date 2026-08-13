@@ -19,23 +19,23 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Type:       [ MySQL                    ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       ││          │  Port:       [ 3306                       ]                │                                                  │
-│                                       │└──────────│  Database:   [ app                        ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  User:       [ mysql_user                 ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Password:   [ empty = no password        ]                │                                                  │
-│                                       ││          │  SSL Mode:   [ PREFERRED                ▼ ]                │                                                  │
+│                                       ││          │  Database:   [ app                        ]                │                                                  │
+│                                       │└──────────│  User:       [ mysql_user                 ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  SSL Mode:   [ PREFERRED                ▼ ]                │                                                  │
+│                                       ││          │  Cert Path:  [                            ]                │                                                  │
+│                                       ││          │  Key Path:   [                            ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  → stub-dsn                                                │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

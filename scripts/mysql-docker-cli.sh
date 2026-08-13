@@ -17,6 +17,10 @@ for argument in "$@"; do
     esac
 done
 
+if [[ -n "${SABIQL_MYSQL_TEST_TLS_DIR:-}" ]]; then
+    mount_args+=(--volume "$SABIQL_MYSQL_TEST_TLS_DIR:$SABIQL_MYSQL_TEST_TLS_DIR:ro")
+fi
+
 docker_args=(--rm --interactive)
 if [[ -t 0 && -t 1 ]]; then
     docker_args+=(--tty)
