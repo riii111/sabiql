@@ -1487,6 +1487,7 @@ mod tests {
                 preview.sql,
                 "UPDATE `public`.`users` SET `settings` = '{\"theme\":\"light\"}' WHERE `id` = '1'"
             );
+            assert!(preview.diff[0].json_diff.is_some());
         }
 
         #[test]
@@ -1533,6 +1534,10 @@ mod tests {
             };
 
             assert!(preview.sql.contains("WHERE `id` = '1'"));
+            assert!(preview.sql.contains("SET `settings` ="));
+            assert!(!preview.sql.contains("SET `id` ="));
+            assert_eq!(preview.diff[0].column, "settings");
+            assert!(preview.diff[0].json_diff.is_some());
         }
 
         #[test]

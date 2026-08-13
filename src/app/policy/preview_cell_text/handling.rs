@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_json_uses_structured_handling_without_edit_capability() {
+    fn mysql_json_uses_structured_handling_with_edit_capability() {
         let policy = CellPresentationPolicy::new(DatabaseType::MySQL, "json", "");
 
         assert_eq!(
