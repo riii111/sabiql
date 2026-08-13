@@ -86,10 +86,12 @@ pub(super) fn reduce_request(
                 }
             };
             let run_id = begin_explain_running(state, now);
+            let database_generation = state.session.database_generation();
 
             DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                 dsn,
                 database_type,
+                database_generation,
                 run_id,
                 query,
                 source_query: content,

@@ -25,6 +25,7 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::DatabaseType;
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -1056,6 +1057,7 @@ mod tests {
                     is_analyze,
                     execution_time_ms: ms,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT 1".to_string(),
                 full_query: "SELECT 1".to_string(),
                 source,
@@ -1248,6 +1250,7 @@ mod tests {
                     is_analyze: false,
                     execution_time_ms: 420,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users".to_string(),
                 source: SlotSource::AutoPrevious,
@@ -1266,6 +1269,7 @@ mod tests {
                     is_analyze: false,
                     execution_time_ms: 50,
                 },
+                database_type: DatabaseType::PostgreSQL,
                 query_snippet: "SELECT *".to_string(),
                 full_query: "SELECT * FROM users WHERE id=1".to_string(),
                 source: SlotSource::AutoLatest,

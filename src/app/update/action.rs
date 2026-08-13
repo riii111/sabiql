@@ -566,6 +566,7 @@ pub enum Action {
     ExplainCompleted {
         dsn: String,
         database_type: DatabaseType,
+        database_generation: u64,
         run_id: u64,
         query: String,
         plan_text: String,
@@ -574,6 +575,7 @@ pub enum Action {
     },
     ExplainFailed {
         dsn: String,
+        database_generation: u64,
         run_id: u64,
         error: DbOperationError,
         is_analyze: bool,
@@ -726,8 +728,8 @@ impl Action {
 
     pub fn feature_requirement(&self) -> FeatureRequirement {
         use FeatureRequirement::{
-            ErDiagram, Explain, ExplainAnalyze, JsonbDetail, None, PlanComparison,
-            SqliteDiagnostics,
+            ErDiagram, Explain, ExplainAnalyze, JsonDocumentDetail, JsonDocumentEdit, None,
+            PlanComparison, SqliteDiagnostics,
         };
 
         match self {
@@ -781,35 +783,52 @@ impl Action {
             | Self::ToggleModal(ModalKind::JsonbDetail)
             | Self::JsonbYankAll
             | Self::JsonbYankSuccess
-            | Self::JsonbEnterEdit
-            | Self::JsonbAppendInsert
-            | Self::JsonbExitEdit
             | Self::JsonbEnterSearch
             | Self::JsonbExitSearch
             | Self::JsonbSearchNext
             | Self::JsonbSearchPrev
             | Self::JsonbSearchSubmit
             | Self::TextInput {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonbSearch,
                 ..
             }
             | Self::TextBackspace {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonbSearch,
             }
             | Self::TextDelete {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonbSearch,
             }
             | Self::TextKill {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonbSearch,
                 ..
             }
             | Self::TextYank {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonbSearch,
             }
             | Self::TextMoveCursor {
                 target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
                 ..
-            } => JsonbDetail,
+            } => JsonDocumentDetail,
+            Self::JsonbEnterEdit
+            | Self::JsonbAppendInsert
+            | Self::JsonbExitEdit
+            | Self::TextInput {
+                target: InputTarget::JsonbEdit,
+                ..
+            }
+            | Self::TextBackspace {
+                target: InputTarget::JsonbEdit,
+            }
+            | Self::TextDelete {
+                target: InputTarget::JsonbEdit,
+            }
+            | Self::TextKill {
+                target: InputTarget::JsonbEdit,
+                ..
+            }
+            | Self::TextYank {
+                target: InputTarget::JsonbEdit,
+            } => JsonDocumentEdit,
             Self::ExplainRequest
             | Self::Scroll {
                 target: ScrollTarget::ExplainPlan,
@@ -877,7 +896,8 @@ impl Action {
             }
             Self::Paste(_) => match state.input_mode() {
                 InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
-                InputMode::JsonbDetail | InputMode::JsonbEdit => FeatureRequirement::JsonbDetail,
+                InputMode::JsonbDetail => FeatureRequirement::JsonDocumentDetail,
+                InputMode::JsonbEdit => FeatureRequirement::JsonDocumentEdit,
                 _ => FeatureRequirement::None,
             },
             Self::BeginKeySequence(Prefix::G)
@@ -886,7 +906,7 @@ impl Action {
                     InputMode::JsonbDetail | InputMode::JsonbEdit
                 ) =>
             {
-                FeatureRequirement::JsonbDetail
+                FeatureRequirement::JsonDocumentDetail
             }
             _ => self.feature_requirement(),
         }
@@ -942,6 +962,7 @@ mod tests {
             Action::ExplainCompleted {
                 dsn: "dsn".to_string(),
                 database_type: DatabaseType::PostgreSQL,
+                database_generation: 0,
                 run_id: 1,
                 query: "SELECT 1".to_string(),
                 plan_text: "plan".to_string(),
@@ -954,6 +975,7 @@ mod tests {
         assert_eq!(
             Action::ExplainFailed {
                 dsn: "dsn".to_string(),
+                database_generation: 0,
                 run_id: 1,
                 error: DbOperationError::QueryFailed("error".to_string()),
                 is_analyze: false,
@@ -1013,7 +1035,7 @@ mod tests {
         let normal_state = AppState::new("test".to_string());
         assert_eq!(
             Action::JsonbExitEdit.feature_requirement_for_state(&normal_state),
-            FeatureRequirement::JsonbDetail
+            FeatureRequirement::JsonDocumentEdit
         );
     }
 

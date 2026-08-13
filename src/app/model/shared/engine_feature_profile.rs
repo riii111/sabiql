@@ -16,7 +16,8 @@ pub enum InspectorInfoField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionFeature {
     ErDiagram,
-    JsonbDetail,
+    JsonDocumentDetail,
+    JsonDocumentEdit,
     SqliteDiagnostics,
 }
 
@@ -121,10 +122,16 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
 );
 
 const NO_CONNECTION_FEATURES: &[ConnectionFeature] = &[];
-const POSTGRESQL_FEATURES: &[ConnectionFeature] =
-    &[ConnectionFeature::ErDiagram, ConnectionFeature::JsonbDetail];
+const POSTGRESQL_FEATURES: &[ConnectionFeature] = &[
+    ConnectionFeature::ErDiagram,
+    ConnectionFeature::JsonDocumentDetail,
+    ConnectionFeature::JsonDocumentEdit,
+];
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
-const MYSQL_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::ErDiagram];
+const MYSQL_FEATURES: &[ConnectionFeature] = &[
+    ConnectionFeature::ErDiagram,
+    ConnectionFeature::JsonDocumentDetail,
+];
 
 impl EngineFeatureProfile {
     fn new(
@@ -189,7 +196,7 @@ impl EngineFeatureProfile {
         Self::new(
             MYSQL_INSPECTOR,
             ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Unsupported,
+                comparison: ComparisonSupport::Supported,
             },
             MYSQL_FEATURES,
         )
@@ -236,8 +243,12 @@ impl EngineFeatureProfile {
         )
     }
 
-    pub fn supports_jsonb_detail(&self) -> bool {
-        self.supports_connection_feature(ConnectionFeature::JsonbDetail)
+    pub fn supports_json_document_detail(&self) -> bool {
+        self.supports_connection_feature(ConnectionFeature::JsonDocumentDetail)
+    }
+
+    pub fn supports_json_document_edit(&self) -> bool {
+        self.supports_connection_feature(ConnectionFeature::JsonDocumentEdit)
     }
 
     pub fn supports_sqlite_diagnostics(&self) -> bool {
@@ -365,7 +376,8 @@ mod tests {
         assert!(profile.supports_explain_analyze());
         assert!(profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
-        assert!(profile.supports_jsonb_detail());
+        assert!(profile.supports_json_document_detail());
+        assert!(profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert!(profile.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(
@@ -400,7 +412,8 @@ mod tests {
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
-        assert!(!profile.supports_jsonb_detail());
+        assert!(!profile.supports_json_document_detail());
+        assert!(!profile.supports_json_document_edit());
         assert!(profile.supports_sqlite_diagnostics());
         assert_eq!(
             profile.supported_inspector_tabs(),
@@ -446,14 +459,15 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_browse_metadata_ddl_and_analyze_without_compare() {
+    fn mysql_profile_exposes_browse_metadata_ddl_analyze_and_compare() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
         assert!(profile.supports_explain_analyze());
-        assert!(!profile.supports_plan_comparison());
+        assert!(profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
-        assert!(!profile.supports_jsonb_detail());
+        assert!(profile.supports_json_document_detail());
+        assert!(!profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert_eq!(
             profile.supported_inspector_tabs(),
@@ -478,7 +492,7 @@ mod tests {
         );
         assert_eq!(
             profile.supported_sql_modal_tabs(),
-            &[SqlModalTab::Sql, SqlModalTab::Plan]
+            &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
         );
     }
 
@@ -490,7 +504,8 @@ mod tests {
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
-        assert!(!profile.supports_jsonb_detail());
+        assert!(!profile.supports_json_document_detail());
+        assert!(!profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert_eq!(profile.supported_inspector_tabs(), &[InspectorTab::Info]);
         assert_eq!(

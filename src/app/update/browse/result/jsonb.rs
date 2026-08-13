@@ -446,6 +446,15 @@ mod tests {
         state
     }
 
+    fn state_with_mysql_json_value(cell_value: &str) -> AppState {
+        let mut state = state_with_jsonb_value(cell_value);
+        test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+        let mut table = jsonb_table();
+        table.columns[1].data_type = "json".to_string();
+        state.session.set_table_detail_raw(Some(table));
+        state
+    }
+
     fn open_detail(state: &mut AppState) {
         reduce_jsonb(
             state,
@@ -477,6 +486,7 @@ mod tests {
         use super::*;
         use crate::domain::DatabaseType;
         use crate::domain::connection::ConnectionId;
+        use rstest::rstest;
 
         #[test]
         fn opens_on_valid_jsonb_cell() {
@@ -490,6 +500,49 @@ mod tests {
 
             assert!(state.jsonb_detail.is_active());
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+        }
+
+        #[rstest]
+        #[case(r#"{"key":"value"}"#)]
+        #[case(r"[1,2,3]")]
+        #[case("42")]
+        #[case("null")]
+        #[case(r#""null""#)]
+        fn opens_on_mysql_json_documents(#[case] cell_value: &str) {
+            let mut state = state_with_mysql_json_value(cell_value);
+
+            reduce_jsonb(
+                &mut state,
+                &Action::OpenModal(ModalKind::JsonbDetail),
+                Instant::now(),
+            );
+
+            assert!(state.jsonb_detail.is_active());
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.original_json(), cell_value);
+        }
+
+        #[test]
+        fn mysql_json_sql_null_does_not_open_detail() {
+            let mut state = state_with_mysql_json_value("");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "settings".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+
+            reduce_jsonb(
+                &mut state,
+                &Action::OpenModal(ModalKind::JsonbDetail),
+                Instant::now(),
+            );
+
+            assert!(!state.jsonb_detail.is_active());
+            assert_eq!(state.messages.last_error(), None);
         }
 
         #[test]
@@ -637,6 +690,7 @@ mod tests {
         use super::*;
         use crate::model::shared::key_sequence::Prefix;
         use crate::update::action::CursorMove;
+        use crate::update::reducer::reduce;
         use rstest::rstest;
 
         #[test]
@@ -648,6 +702,24 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::JsonbEdit);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        }
+
+        #[test]
+        fn mysql_json_detail_does_not_start_edit_mode() {
+            let mut state = state_with_mysql_json_value(r#"{"key":"value"}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce(&mut state, Action::JsonbEnterEdit, now, &services);
+
+            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
         }
 
         #[test]

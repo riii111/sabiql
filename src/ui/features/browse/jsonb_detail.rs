@@ -9,6 +9,7 @@ use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::render_output::JsonbDetailLayout;
 use crate::app::model::shared::text_input::TextInputLike;
+use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::features::browse::detail_view::render_detail_search;
 use crate::primitives::atoms::scroll_indicator::{
     VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
@@ -48,12 +49,14 @@ impl JsonbDetail {
         let hints = if is_editing {
             vec![("Esc", "Normal")]
         } else {
-            vec![
-                ("y", "Copy"),
-                ("/", "Search"),
-                ("i", "Insert"),
-                ("Esc", "Close"),
-            ]
+            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            let mut hints = vec![("y", "Copy")];
+            hints.push(("/", "Search"));
+            if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
+                hints.push(("i", "Insert"));
+            }
+            hints.push(("Esc", "Close"));
+            hints
         };
 
         let (_area, inner) = render_modal(

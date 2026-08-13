@@ -141,6 +141,7 @@ pub async fn run(
         Effect::ExecuteExplain {
             dsn,
             database_type,
+            database_generation,
             run_id,
             query,
             source_query,
@@ -165,6 +166,7 @@ pub async fn run(
                         tx.send(Action::ExplainCompleted {
                             dsn,
                             database_type,
+                            database_generation,
                             run_id,
                             query: source_query,
                             plan_text,
@@ -177,6 +179,7 @@ pub async fn run(
                     Err(e) => {
                         tx.send(Action::ExplainFailed {
                             dsn,
+                            database_generation,
                             run_id,
                             error: e,
                             is_analyze,
@@ -873,6 +876,7 @@ mod tests {
                 Effect::ExecuteExplain {
                     dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database_generation: 0,
                     run_id: 2,
                     query: "EXPLAIN SELECT 1".to_string(),
                     source_query: "SELECT 1".to_string(),
