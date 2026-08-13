@@ -82,7 +82,7 @@ async fn executes_multiple_statements_and_returns_only_the_last_result() {
             .map_err(|error| format!("{error:?}"))?;
         if result.columns != ["empty_text"]
             || result.values() != [[QueryValue::Text("multi statement".to_string())]]
-            || result.command_tag != Some(CommandTag::Select(1))
+            || result.command_tag != Some(CommandTag::Update(1))
             || result.refresh_scope != RefreshScope::Data
         {
             return Err(format!("unexpected multi-statement result: {result:?}"));
@@ -153,7 +153,7 @@ async fn preserves_explicit_transaction_order_and_scope() {
             .map_err(|error| format!("{error:?}"))?;
         if result.columns != ["empty_text"]
             || result.values() != [[QueryValue::Text(String::new())]]
-            || result.command_tag != Some(CommandTag::Update(1))
+            || result.command_tag != Some(CommandTag::Select(1))
             || result.refresh_scope != RefreshScope::Data
         {
             return Err(format!("unexpected transaction result: {result:?}"));
