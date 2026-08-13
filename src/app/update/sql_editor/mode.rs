@@ -12,6 +12,9 @@ pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) 
     match action {
         // Modal open/submit
         Action::OpenModal(ModalKind::SqlModal) => {
+            if state.session.connection_state().is_awaiting_database() {
+                return DispatchResult::handled();
+            }
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.open_sql_tab();
             state.flash_timers.clear(FlashId::SqlModal);

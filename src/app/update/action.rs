@@ -21,6 +21,7 @@ use crate::ports::outbound::query_history::QueryHistoryError;
 use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
+use url::Url;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table};
@@ -191,6 +192,7 @@ pub enum ListMotion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalKind {
     TablePicker,
+    DatabasePicker,
     CommandPalette,
     Settings,
     Help,
@@ -267,6 +269,24 @@ impl fmt::Debug for ConnectionTarget {
             .field("database_type", &self.database_type)
             .field("database", &self.database)
             .finish()
+    }
+}
+
+impl ConnectionTarget {
+    pub fn with_database(&self, database: &str) -> Option<Self> {
+        let mut url = Url::parse(&self.dsn).ok()?;
+        url.path_segments_mut().ok()?.clear().push(database);
+        Some(Self {
+            dsn: url.to_string(),
+            database: Some(database.to_string()),
+            ..self.clone()
+        })
+    }
+
+    pub fn server_dsn(&self) -> Option<String> {
+        let mut url = Url::parse(&self.dsn).ok()?;
+        url.path_segments_mut().ok()?.clear();
+        Some(url.to_string())
     }
 }
 
@@ -367,6 +387,23 @@ pub enum Action {
     ConnectionProbeFailed {
         target: ConnectionTarget,
         run_id: u64,
+        error: DbOperationError,
+    },
+    SwitchMySqlDatabase {
+        database: String,
+    },
+    MySqlDatabasesLoaded {
+        connection_id: ConnectionId,
+        dsn: String,
+        connection_generation: u64,
+        database_generation: u64,
+        databases: Vec<String>,
+    },
+    MySqlDatabasesFailed {
+        connection_id: ConnectionId,
+        dsn: String,
+        connection_generation: u64,
+        database_generation: u64,
         error: DbOperationError,
     },
     ConnectionEditLoaded(Box<ConnectionProfile>),

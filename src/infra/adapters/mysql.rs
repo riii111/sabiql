@@ -267,6 +267,25 @@ impl ConnectionProbe for MySqlAdapter {
         validate_sql_mode(&response.sql_mode)?;
         Ok(())
     }
+
+    async fn fetch_databases(&self, dsn: &str) -> Result<Vec<String>, DbOperationError> {
+        let mut target = parse_mysql_dsn(dsn)?;
+        target.database = None;
+        validate_mysql_values(&target)?;
+        self.check_cli_version().await?;
+
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_adhoc(&option_file.path, "SHOW DATABASES").await;
+        drop(option_file);
+        result.map(|result| {
+            result
+                .values
+                .into_iter()
+                .filter_map(|mut row| row.drain(..).next())
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        })
+    }
 }
 
 impl MySqlAdapter {
@@ -2222,6 +2241,16 @@ mod probe_tests {
             quote_option_value(r"C:\certs\server.pem"),
             r#""C:\\certs\\server.pem""#
         );
+    }
+
+    #[test]
+    fn server_database_listing_option_file_omits_selected_database() {
+        let mut target = parse_mysql_dsn("mysql://user:password@localhost:3306/app").unwrap();
+        target.database = None;
+
+        let contents = serialize_option_file(&target);
+
+        assert!(!contents.contains("database ="));
     }
 
     #[test]

@@ -12,13 +12,33 @@ pub struct TablePicker;
 
 impl TablePicker {
     pub fn render(frame: &mut Frame, state: &AppState, theme: &ThemePalette) -> PickerLayout {
-        let filtered_count = state.filtered_tables().len();
+        let database_picker = state.ui.database_picker();
+        let filtered_tables = state.filtered_tables();
+        let filtered_databases = state.filtered_databases();
+        let filtered_count = if database_picker {
+            filtered_databases.len()
+        } else {
+            filtered_tables.len()
+        };
+        let title = if database_picker {
+            " Database Picker "
+        } else {
+            " Table Picker "
+        };
+        let item_label = if database_picker {
+            "databases"
+        } else {
+            "tables"
+        };
         let (_, inner) = render_modal(
             frame,
             Constraint::Percentage(60),
             Constraint::Percentage(70),
-            " Table Picker ",
-            FooterHintBar::with_prefix(format!("{filtered_count} tables"), [("Enter", "Select")]),
+            title,
+            FooterHintBar::with_prefix(
+                format!("{filtered_count} {item_label}"),
+                [("Enter", "Select")],
+            ),
             theme,
         );
 
@@ -33,14 +53,23 @@ impl TablePicker {
             theme,
         );
 
-        let filtered = state.filtered_tables();
-        let items: Vec<ListItem> = filtered
-            .iter()
-            .map(|t| {
-                let content = format!("  {}", t.qualified_name());
-                ListItem::new(content).style(Style::default().fg(theme.semantic.text.secondary))
-            })
-            .collect();
+        let items: Vec<ListItem> = if database_picker {
+            filtered_databases
+                .iter()
+                .map(|database| {
+                    ListItem::new(format!("  {database}"))
+                        .style(Style::default().fg(theme.semantic.text.secondary))
+                })
+                .collect()
+        } else {
+            filtered_tables
+                .iter()
+                .map(|t| {
+                    let content = format!("  {}", t.qualified_name());
+                    ListItem::new(content).style(Style::default().fg(theme.semantic.text.secondary))
+                })
+                .collect()
+        };
 
         let list = List::new(items)
             .highlight_style(theme.picker_selected_style())

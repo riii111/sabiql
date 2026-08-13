@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::error::ConnectionErrorInfo;
+use crate::model::connection::state::ConnectionState;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
@@ -9,12 +10,14 @@ use crate::update::query_context::termination_effects;
 
 use crate::update::dispatch_result::DispatchResult;
 
-use super::helpers::{reset_for_new_connection, restore_cache, save_current_cache};
+use super::helpers::{
+    reset_for_database_switch, reset_for_new_connection, restore_cache, save_current_cache,
+};
 
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
-    _now: std::time::Instant,
+    now: std::time::Instant,
     _services: &AppServices,
 ) -> DispatchResult {
     match action {
@@ -72,7 +75,9 @@ pub fn reduce_connection_lifecycle(
             } = target;
 
             if *database_type == DatabaseType::MySQL {
-                if let Some(current_id) = state.session.active_connection_id().cloned() {
+                if state.session.active_database_type() != Some(DatabaseType::MySQL)
+                    && let Some(current_id) = state.session.active_connection_id().cloned()
+                {
                     let cache = save_current_cache(state);
                     state.connection_caches.save(&current_id, cache);
                 }
@@ -91,7 +96,9 @@ pub fn reduce_connection_lifecycle(
 
             state.session.clear_connection_probe();
 
-            if let Some(current_id) = state.session.active_connection_id().cloned() {
+            if state.session.active_database_type() != Some(DatabaseType::MySQL)
+                && let Some(current_id) = state.session.active_connection_id().cloned()
+            {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
@@ -147,10 +154,108 @@ pub fn reduce_connection_lifecycle(
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
             state.session.mark_probe_connected(database.is_some());
             state.session.clear_connection_probe();
+            let mut effects = vec![Effect::ClearCompletionEngineCache];
+            if database.is_none() {
+                state.ui.set_database_picker(true);
+                state.modal.set_mode(InputMode::TablePicker);
+                if let (Some(connection_id), Some(server_dsn)) = (
+                    state.session.active_connection_id().cloned(),
+                    state.session.server_dsn(),
+                ) {
+                    effects.push(Effect::FetchMySqlDatabases {
+                        connection_id,
+                        dsn: server_dsn,
+                        connection_generation: state.session.connection_generation(),
+                        database_generation: state.session.database_generation(),
+                    });
+                }
+            }
+            DispatchResult::handled_with(termination_effects(&state.query, effects))
+        }
+
+        Action::SwitchMySqlDatabase { database } => {
+            if state.session.active_database_type() != Some(DatabaseType::MySQL)
+                || !matches!(
+                    state.session.connection_state(),
+                    ConnectionState::Connected | ConnectionState::AwaitingDatabase
+                )
+            {
+                return DispatchResult::handled();
+            }
+            let Some(target) = (|| {
+                let target = ConnectionTarget {
+                    id: state.session.active_connection_id()?.clone(),
+                    dsn: state.session.dsn()?.to_string(),
+                    name: state.session.active_connection_name()?.to_string(),
+                    database_type: DatabaseType::MySQL,
+                    database: state.session.active_database().map(str::to_string),
+                };
+                target.with_database(database)
+            })() else {
+                state.messages.set_error_at(
+                    "Unable to build the selected MySQL database target".to_string(),
+                    now,
+                );
+                return DispatchResult::handled();
+            };
+            reset_for_database_switch(state, &target);
+            state.ui.set_database_picker(false);
+            state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled_with(termination_effects(
                 &state.query,
                 vec![Effect::ClearCompletionEngineCache],
             ))
+        }
+
+        Action::MySqlDatabasesLoaded {
+            connection_id,
+            dsn,
+            connection_generation,
+            database_generation,
+            databases,
+        } => {
+            if !state.session.is_current_database_fetch(
+                connection_id,
+                dsn,
+                *connection_generation,
+                *database_generation,
+            ) {
+                return DispatchResult::handled();
+            }
+            state.session.set_available_databases(databases.clone());
+            if state.session.available_databases().is_empty() {
+                state
+                    .messages
+                    .set_error_at("No selectable MySQL databases are visible".to_string(), now);
+            }
+            DispatchResult::handled()
+        }
+
+        Action::MySqlDatabasesFailed {
+            connection_id,
+            dsn,
+            connection_generation,
+            database_generation,
+            error,
+        } => {
+            if !state.session.is_current_database_fetch(
+                connection_id,
+                dsn,
+                *connection_generation,
+                *database_generation,
+            ) {
+                return DispatchResult::handled();
+            }
+            state.messages.set_error_at(error.user_message(), now);
+            if state.session.active_database().is_none() {
+                state.ui.set_database_picker(false);
+                state.session.mark_connection_failed(error.user_message());
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+                state.modal.replace_mode(InputMode::ConnectionError);
+            }
+            DispatchResult::handled()
         }
 
         Action::ConnectionProbeFailed {
@@ -248,6 +353,76 @@ mod tests {
             let saved = state.connection_caches.get(&current_id).unwrap();
             assert_eq!(saved.explorer_selected, 5);
             assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
+        }
+
+        fn assert_non_mysql_cache_survives_mysql_switch(
+            database_type: DatabaseType,
+            dsn: &str,
+            name: &str,
+        ) {
+            let mut state = AppState::new("test".to_string());
+            let source_id = ConnectionId::from_string("source");
+            let mysql_id = ConnectionId::from_string("mysql");
+            let source = ConnectionTarget {
+                id: source_id.clone(),
+                dsn: dsn.to_string(),
+                name: name.to_string(),
+                database_type,
+                database: None,
+            };
+
+            state
+                .session
+                .activate_connection_with_dsn(&source_id, name, database_type, dsn);
+            state.ui.set_explorer_selected_raw(5);
+            state.ui.set_inspector_tab(InspectorTab::Indexes);
+
+            let mysql = ConnectionTarget {
+                id: mysql_id,
+                dsn: "mysql://user@localhost:3306/app".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            };
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switching to MySQL should probe the connection");
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target: mysql,
+                    run_id,
+                },
+            );
+
+            reduce(&mut state, &Action::SwitchConnection(source));
+
+            assert_eq!(state.session.active_connection_id(), Some(&source_id));
+            assert_eq!(state.ui.explorer_selected(), 5);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
+        }
+
+        #[test]
+        fn restores_postgres_cache_after_switching_through_mysql() {
+            assert_non_mysql_cache_survives_mysql_switch(
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+                "postgres",
+            );
+        }
+
+        #[test]
+        fn restores_sqlite_cache_after_switching_through_mysql() {
+            assert_non_mysql_cache_survives_mysql_switch(
+                DatabaseType::SQLite,
+                "sqlite:///tmp/current.db",
+                "sqlite",
+            );
         }
 
         #[test]
@@ -1363,6 +1538,140 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
             );
+        }
+    }
+
+    mod mysql_database_tests {
+        use super::*;
+
+        fn mysql_target(id: &ConnectionId, database: Option<&str>) -> ConnectionTarget {
+            let database = database.map(str::to_string);
+            let dsn = format!(
+                "mysql://user:secret@localhost:3306/{}?ssl-mode=PREFERRED",
+                database.as_deref().unwrap_or("")
+            );
+            ConnectionTarget {
+                id: id.clone(),
+                dsn,
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database,
+            }
+        }
+
+        #[test]
+        fn connection_without_database_opens_picker_and_fetches_server_databases() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql");
+            let target = mysql_target(&id, None);
+            let probe_run_id = state.session.begin_connection_probe(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                None,
+            );
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+            )
+            .unwrap();
+
+            assert!(state.session.connection_state().is_awaiting_database());
+            assert_eq!(state.session.active_database(), None);
+            assert!(state.ui.database_picker());
+            assert_eq!(state.input_mode(), InputMode::TablePicker);
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMySqlDatabases { connection_id, .. } if connection_id == &id
+            )));
+        }
+
+        #[test]
+        fn database_selection_resets_context_and_preserves_read_only() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql");
+            let target = mysql_target(&id, Some("app"));
+            state.session.activate_connection_with_target(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                target.database.as_deref(),
+            );
+            state.session.mark_probe_connected(true);
+            state.session.enable_read_only();
+            state.session.set_available_databases(vec![
+                "information_schema".to_string(),
+                "analytics".to_string(),
+            ]);
+            state.ui.set_database_picker(true);
+            state.modal.set_mode(InputMode::TablePicker);
+
+            let effects = reduce_app(
+                &mut state,
+                Action::ConfirmSelection,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_database(), Some("analytics"));
+            assert!(
+                state
+                    .session
+                    .dsn()
+                    .is_some_and(|dsn| dsn.contains("/analytics"))
+            );
+            assert!(state.session.metadata().is_none());
+            assert!(state.session.is_read_only());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+        }
+
+        #[test]
+        fn stale_database_list_from_previous_connection_generation_is_ignored() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql");
+            let target = mysql_target(&id, None);
+            state.session.activate_connection_with_target(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                None,
+            );
+            state.session.mark_probe_connected(false);
+            let stale_generation = state.session.connection_generation();
+            let _ = state.session.begin_connection_probe(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                None,
+            );
+            let server_dsn = state.session.server_dsn().unwrap();
+            let database_generation = state.session.database_generation();
+
+            let _ = reduce(
+                &mut state,
+                &Action::MySqlDatabasesLoaded {
+                    connection_id: id,
+                    dsn: server_dsn,
+                    connection_generation: stale_generation,
+                    database_generation,
+                    databases: vec!["stale".to_string()],
+                },
+            );
+
+            assert!(state.session.available_databases().is_empty());
         }
     }
 }

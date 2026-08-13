@@ -254,6 +254,12 @@ pub fn reduce_write(
         }
 
         Action::ExecuteWrite(query) => {
+            if state.session.connection_state().is_awaiting_database() {
+                state
+                    .messages
+                    .set_error_at("Select a MySQL database first".to_string(), now);
+                return DispatchResult::handled();
+            }
             if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),

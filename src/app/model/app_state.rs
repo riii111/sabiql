@@ -287,6 +287,20 @@ impl AppState {
             .unwrap_or_default()
     }
 
+    pub fn filtered_databases(&self) -> Vec<&String> {
+        let filter_lower = self
+            .ui
+            .table_picker()
+            .filter_input()
+            .content()
+            .to_lowercase();
+        self.session
+            .available_databases()
+            .iter()
+            .filter(|database| database.to_lowercase().contains(&filter_lower))
+            .collect()
+    }
+
     pub fn er_filtered_tables(&self) -> Vec<&TableSummary> {
         let filter_lower = self.ui.er_picker().filter_input().content().to_lowercase();
         self.session
