@@ -803,6 +803,110 @@ pub fn statement_contains_unsupported_mysql_control(sql: &str) -> bool {
     ]
     .iter()
     .any(|prefix| lower.starts_with(prefix))
+        || contains_mysql_client_command(sql)
+}
+
+fn contains_mysql_client_command(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+    let mut line_start = true;
+    let mut quote = None;
+    let mut block_comment = false;
+
+    while index < bytes.len() {
+        if let Some(delimiter) = quote {
+            if bytes[index] == b'\\' && delimiter != b'`' {
+                index = (index + 2).min(bytes.len());
+            } else if bytes[index] == delimiter {
+                if bytes.get(index + 1) == Some(&delimiter) {
+                    index += 2;
+                } else {
+                    quote = None;
+                    index += 1;
+                }
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+        if block_comment {
+            if bytes.get(index..index + 2) == Some(b"*/") {
+                block_comment = false;
+                index += 2;
+            } else {
+                line_start = bytes[index] == b'\n' || line_start;
+                index += 1;
+            }
+            continue;
+        }
+        if line_start {
+            if matches!(bytes[index], b' ' | b'\t' | b'\r') {
+                index += 1;
+                continue;
+            }
+            if bytes[index] == b'\n' {
+                index += 1;
+                continue;
+            }
+            if bytes[index] == b'\\' {
+                return true;
+            }
+            if bytes.get(index..index + 2) == Some(b"/*") {
+                block_comment = true;
+                index += 2;
+                continue;
+            }
+            if is_line_comment_start(bytes, index) {
+                index = skip_line_comment(bytes, index);
+                continue;
+            }
+            if bytes[index].is_ascii_alphabetic() {
+                let start = index;
+                index += 1;
+                while index < bytes.len()
+                    && (bytes[index].is_ascii_alphanumeric() || bytes[index] == b'_')
+                {
+                    index += 1;
+                }
+                let word = &sql[start..index];
+                if matches!(
+                    word.to_ascii_lowercase().as_str(),
+                    "delimiter"
+                        | "charset"
+                        | "source"
+                        | "system"
+                        | "use"
+                        | "set"
+                        | "lock"
+                        | "unlock"
+                ) && (index == bytes.len() || bytes[index].is_ascii_whitespace())
+                {
+                    return true;
+                }
+                line_start = false;
+                continue;
+            }
+            line_start = false;
+        }
+
+        if bytes.get(index..index + 2) == Some(b"/*") {
+            block_comment = true;
+            index += 2;
+        } else if is_line_comment_start(bytes, index) {
+            index = skip_line_comment(bytes, index);
+            line_start = true;
+        } else if bytes[index] == b'\n' {
+            line_start = true;
+            index += 1;
+        } else if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            quote = Some(bytes[index]);
+            line_start = false;
+            index += 1;
+        } else {
+            index += 1;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -865,6 +969,23 @@ mod tests {
         assert!(
             classify_mysql_statement("SELECT 1 /*!80000 SET sql_mode='ANSI_QUOTES' */").is_err()
         );
+    }
+
+    #[test]
+    fn rejects_mysql_client_commands_at_line_start() {
+        for sql in [
+            "DELIMITER //\nSELECT 1//",
+            "charset utf8mb4\nSELECT 1",
+            "source ./script.sql",
+            "system echo unsafe",
+            "\\C /tmp/other.sock\nSELECT 1",
+            "SELECT 1\nsource ./script.sql",
+        ] {
+            assert!(statement_contains_unsupported_mysql_control(sql), "{sql}");
+        }
+        assert!(!statement_contains_unsupported_mysql_control(
+            "SELECT 'source ./script.sql\\n'"
+        ));
     }
 
     #[test]

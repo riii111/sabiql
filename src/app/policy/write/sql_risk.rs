@@ -81,9 +81,23 @@ mod mysql_tests {
             "CALL do_work()",
             "LOAD DATA INFILE 'x' INTO TABLE items",
             "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
+            "SELECT 1\n\\! echo unsafe",
+            "SELECT 1\nsystem echo unsafe",
+            "SELECT 1\nSET sql_mode = 'ANSI_QUOTES'",
+            "SELECT 1\nUSE app",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "SELECT 'source ./script.sql\\n'",
+            "SELECT /* source ./script.sql */ 1",
+            "SELECT `system echo unsafe`",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
                 "{sql}"
             );
         }
@@ -132,7 +146,6 @@ mod mysql_tests {
             "BEGIN",
             "BEGIN; UPDATE items SET value = 1",
             "SAVEPOINT named",
-            "CREATE TEMPORARY TABLE temp_items (id INT)",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Block { .. }),
@@ -145,6 +158,7 @@ mod mysql_tests {
             "BEGIN; COMMIT",
             "START TRANSACTION; ROLLBACK",
             "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
+            "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); SELECT * FROM temp_items",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
@@ -414,11 +428,6 @@ fn mysql_validate_submission_state(
 
     if transaction_open {
         return Err("MySQL explicit transaction must finish in one submission".to_string());
-    }
-    if !temporary_tables.is_empty() {
-        return Err(
-            "MySQL temporary tables must be created and dropped in one submission".to_string(),
-        );
     }
     Ok(())
 }
