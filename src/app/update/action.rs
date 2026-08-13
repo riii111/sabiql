@@ -33,6 +33,11 @@ pub enum ConnectionSaveError {
     Store(#[from] ConnectionStoreError),
     #[error("{0}")]
     Metadata(#[from] DbOperationError),
+    #[error("{error}")]
+    Probe {
+        error: DbOperationError,
+        dsn: String,
+    },
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
