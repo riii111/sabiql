@@ -424,8 +424,8 @@ fn append_trigger_ddls(ddl: &mut String, triggers: &[Trigger]) {
     for trigger in triggers {
         ddl.push('\n');
         ddl.push('\n');
-        ddl.push_str(trigger.function_name.trim());
-        if !trigger.function_name.trim_end().ends_with(';') {
+        ddl.push_str(trigger.definition.trim());
+        if !trigger.definition.trim_end().ends_with(';') {
             ddl.push(';');
         }
     }
@@ -1111,10 +1111,9 @@ mod tests {
                 name: "users_audit".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Insert],
-                function_name:
-                    "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
-                        .to_string(),
-                security_definer: false,
+                definition: "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
+                    .to_string(),
+                security_context: None,
             });
 
             let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);

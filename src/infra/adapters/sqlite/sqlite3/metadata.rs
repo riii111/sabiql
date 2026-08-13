@@ -599,7 +599,7 @@ impl SqliteAdapter {
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(","),
-                trigger.function_name
+                trigger.definition
             )
         }));
 
@@ -1972,7 +1972,7 @@ mod tests {
             assert_eq!(detail.triggers[0].events, vec![TriggerEvent::Insert]);
             assert!(
                 !detail.triggers[0]
-                    .function_name
+                    .definition
                     .to_ascii_uppercase()
                     .contains("TEMP")
             );
