@@ -98,10 +98,15 @@ impl QueryExecutor for MySqlAdapter {
         validate_mysql_values(&target)?;
         validate_mysql_tls_files(&target)?;
         let statements =
-            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadOnly)?;
+            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadWrite)?;
         let option_file = MySqlOptionFile::create(&target)?;
-        let result =
-            run_mysql_adhoc(&option_file.path, &query, &statements, AccessMode::ReadOnly).await;
+        let result = run_mysql_adhoc(
+            &option_file.path,
+            &query,
+            &statements,
+            AccessMode::ReadWrite,
+        )
+        .await;
         drop(option_file);
         let result_set = result?.result_set.ok_or_else(|| {
             DbOperationError::MetadataParseFailed(
@@ -3159,6 +3164,70 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
         assert!(!log.contains("SELECT 123"), "{log}");
+    }
+
+    #[tokio::test]
+    async fn generated_preview_and_metadata_queries_skip_read_only_session_setup() {
+        for query in [
+            "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
+        ] {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements(query)
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            run_mysql_adhoc_with_program_and_statements(
+                OsStr::new(&program),
+                &option_file,
+                query,
+                &statements,
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT), "{query}: {log}");
+        }
+    }
+
+    #[test]
+    fn read_only_rejects_temporary_table_dml_before_starting_mysql() {
+        let (_directory, _program, option_file) = fake_mysql_multi();
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let query = "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); DROP TEMPORARY TABLE temp_items";
+
+        let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::PermissionDenied(details))
+                if details.contains("read-only mode blocks MySQL write statements")
+        ));
+        assert!(!log_file.exists());
+    }
+
+    #[test]
+    fn read_only_rejects_read_write_overrides_before_starting_mysql() {
+        for query in [
+            "SET SESSION TRANSACTION READ WRITE",
+            "START TRANSACTION READ WRITE",
+        ] {
+            let (_directory, _program, option_file) = fake_mysql_multi();
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+
+            let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(_))
+            ));
+            assert!(!log_file.exists(), "{query}");
+        }
     }
 
     #[test]

@@ -276,10 +276,14 @@ async fn execute_metadata_query(
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
     super::validate_mysql_tls_files(&target)?;
-    let statements =
-        super::validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadOnly)?;
+    let statements = super::validate_mysql_multi_query(
+        query,
+        target.database.as_deref(),
+        AccessMode::ReadWrite,
+    )?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let result = run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadOnly).await;
+    let result =
+        run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadWrite).await;
     drop(option_file);
     result?.result_set.ok_or_else(|| {
         DbOperationError::MetadataParseFailed(
