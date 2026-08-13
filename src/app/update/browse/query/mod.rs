@@ -146,8 +146,8 @@ pub(super) mod tests {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Update],
-                function_name: "f".to_string(),
-                security_definer: false,
+                definition: "f".to_string(),
+                security_context: None,
             }],
             ..test_support::table::minimal("", "")
         }

@@ -85,8 +85,8 @@ pub struct Trigger {
     pub name: String,
     pub timing: TriggerTiming,
     pub events: Vec<TriggerEvent>,
-    pub function_name: String,
-    pub security_definer: bool,
+    pub definition: String,
+    pub security_context: Option<String>,
 }
 
 #[cfg(test)]

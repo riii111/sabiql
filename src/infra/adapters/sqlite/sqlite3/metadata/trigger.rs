@@ -254,8 +254,8 @@ pub(super) fn parse_sqlite_trigger(
         name: trigger_name.to_string(),
         timing,
         events,
-        function_name: sql.to_string(),
-        security_definer: false,
+        definition: sql.to_string(),
+        security_context: None,
     })
 }
 
@@ -271,8 +271,8 @@ mod tests {
         assert_eq!(trigger.name, "users_audit");
         assert_eq!(trigger.timing, TriggerTiming::After);
         assert_eq!(trigger.events, vec![TriggerEvent::Insert]);
-        assert_eq!(trigger.function_name, sql);
-        assert!(!trigger.security_definer);
+        assert_eq!(trigger.definition, sql);
+        assert_eq!(trigger.security_context, None);
     }
 
     #[test]
