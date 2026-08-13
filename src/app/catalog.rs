@@ -35,10 +35,14 @@ impl HelpDocument {
             filter.cursor(),
             state.settings.saved_keymap_preset(),
             state.session.active_engine_feature_profile(),
-            state
-                .session
-                .active_database_type()
-                .map(|database_type| CellPresentationPolicy::new(database_type, "jsonb", "")),
+            state.session.active_database_type().map(|database_type| {
+                let data_type = if database_type == DatabaseType::MySQL {
+                    "json"
+                } else {
+                    "jsonb"
+                };
+                CellPresentationPolicy::new(database_type, data_type, "")
+            }),
         )
     }
 
@@ -400,7 +404,7 @@ fn reference_sections(
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if feature_policy.is_visible(jsonb_edit::ESC_NORMAL.feature_requirement())
+    if feature_policy.is_visible(FeatureRequirement::JsonDocumentEdit)
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
     {
         editing_rows.extend(rows_from_mode_rows_if_visible(
@@ -430,7 +434,7 @@ fn reference_sections(
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::JsonbDetail)
+    if feature_policy.is_visible(FeatureRequirement::JsonDocumentDetail)
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
     {
         advanced_rows.extend(rows_from_mode_rows_if_visible(

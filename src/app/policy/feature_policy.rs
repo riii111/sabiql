@@ -4,7 +4,8 @@ use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 pub enum FeatureRequirement {
     None,
     ErDiagram,
-    JsonbDetail,
+    JsonDocumentDetail,
+    JsonDocumentEdit,
     SqliteDiagnostics,
     Explain,
     ExplainAnalyze,
@@ -31,7 +32,8 @@ impl FeaturePolicy {
         let supported = match requirement {
             FeatureRequirement::None => true,
             FeatureRequirement::ErDiagram => self.profile.supports_er_diagram(),
-            FeatureRequirement::JsonbDetail => self.profile.supports_jsonb_detail(),
+            FeatureRequirement::JsonDocumentDetail => self.profile.supports_json_document_detail(),
+            FeatureRequirement::JsonDocumentEdit => self.profile.supports_json_document_edit(),
             FeatureRequirement::SqliteDiagnostics => self.profile.supports_sqlite_diagnostics(),
             FeatureRequirement::Explain => self.profile.supports_explain(),
             FeatureRequirement::ExplainAnalyze => self.profile.supports_explain_analyze(),
@@ -67,7 +69,11 @@ mod tests {
             FeatureAvailability::Enabled
         );
         assert_eq!(
-            policy.availability(FeatureRequirement::JsonbDetail),
+            policy.availability(FeatureRequirement::JsonDocumentDetail),
+            FeatureAvailability::Enabled
+        );
+        assert_eq!(
+            policy.availability(FeatureRequirement::JsonDocumentEdit),
             FeatureAvailability::Enabled
         );
         assert_eq!(
@@ -93,7 +99,11 @@ mod tests {
             FeatureAvailability::Hidden
         );
         assert_eq!(
-            policy.availability(FeatureRequirement::JsonbDetail),
+            policy.availability(FeatureRequirement::JsonDocumentDetail),
+            FeatureAvailability::Hidden
+        );
+        assert_eq!(
+            policy.availability(FeatureRequirement::JsonDocumentEdit),
             FeatureAvailability::Hidden
         );
         assert_eq!(

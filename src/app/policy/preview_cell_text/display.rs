@@ -15,6 +15,7 @@ pub fn format_for_cell_detail(
         PreviewCellTextDisplayHandling::SqliteText
             | PreviewCellTextDisplayHandling::PostgreSqlJson
             | PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+            | PreviewCellTextDisplayHandling::StructuredJson
     );
     if !should_pretty_print {
         return CellDetailDisplay {
@@ -54,6 +55,20 @@ mod tests {
         let formatted = format_for_cell_detail(r#"{"b":2,"a":1}"#, handling);
         assert_eq!(formatted.content, "{\n  \"a\": 1,\n  \"b\": 2\n}");
         assert!(formatted.formatted_json);
+    }
+
+    #[test]
+    fn mysql_json_scalar_pretty_prints() {
+        let handling =
+            CellPresentationPolicy::new(DatabaseType::MySQL, "json", "42").display_handling();
+
+        assert_eq!(
+            format_for_cell_detail("42", handling),
+            CellDetailDisplay {
+                content: "42".to_string(),
+                formatted_json: true,
+            }
+        );
     }
 
     #[test]
