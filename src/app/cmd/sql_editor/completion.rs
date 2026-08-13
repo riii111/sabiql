@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
-use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
@@ -44,10 +44,13 @@ pub async fn run(
         Effect::TriggerCompletion => {
             let cursor = state.sql_modal.editor().cursor();
             let content = state.sql_modal.editor().content();
+            let database_type = state.session.active_database_type_or_default();
+            let active_database = state.session.active_database();
+            let available_databases = state.session.available_databases();
 
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
-                let prep = engine.prepare(content, cursor);
+                let prep = engine.prepare_for_database(content, cursor, database_type);
                 let missing = engine
                     .missing_tables_prepared(&prep, state.session.metadata().map(AsRef::as_ref));
                 (prep, missing)
@@ -80,13 +83,18 @@ pub async fn run(
                 let engine = completion_engine.borrow();
                 let token_len = CompletionEngine::current_token_len_prepared(&prep);
                 let recent_cols = state.sql_modal.completion().recent_columns_vec();
-                let candidates = engine.get_candidates_prepared(
+                let candidates = engine.get_candidates_prepared_for_database(
                     content,
                     cursor,
                     &prep,
                     state.session.metadata().map(AsRef::as_ref),
                     state.session.table_detail(),
                     &recent_cols,
+                    CompletionDatabaseScope {
+                        database_type,
+                        active_database,
+                        available_databases,
+                    },
                 );
                 let visible = !candidates.is_empty() && !content.trim().is_empty();
                 (candidates, token_len, visible)
@@ -97,6 +105,10 @@ pub async fn run(
                     candidates,
                     trigger_position: cursor.saturating_sub(token_len),
                     visible,
+                    dsn: state.session.dsn().map(str::to_string),
+                    connection_generation: state.session.connection_generation(),
+                    database_generation: state.session.database_generation(),
+                    metadata_generation: state.session.metadata_generation(),
                 })
                 .await
                 .ok();

@@ -7,6 +7,8 @@ use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
 
 fn reset_connection_scoped_state(state: &mut AppState) {
+    state.query_history_picker.reset();
+    state.sql_modal.reset_completion();
     state.sql_modal.reset_prefetch();
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
@@ -31,6 +33,7 @@ pub(super) fn reset_for_new_connection(
     dsn: &str,
     name: &str,
     database_type: DatabaseType,
+    database: Option<&str>,
 ) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
@@ -39,7 +42,7 @@ pub(super) fn reset_for_new_connection(
     state.sql_modal.set_active_tab(sql_modal_tab);
     state
         .session
-        .activate_connection_with_dsn(id, name, database_type, dsn);
+        .activate_connection_with_target(id, name, database_type, dsn, database);
     reconcile_connection_state(state, inspector_tab);
 }
 
@@ -87,6 +90,29 @@ pub(super) fn reset_active_connection_state(state: &mut AppState) {
     reconcile_connection_state(state, inspector_tab);
 }
 
+pub(super) fn reset_for_database_switch(state: &mut AppState, target: &ConnectionTarget) {
+    let inspector_tab = state.ui.inspector_tab();
+    let sql_modal_tab = state.sql_modal.active_tab();
+    let read_only = state.session.is_read_only();
+    let available_databases = state.session.available_databases().to_vec();
+    reset_active_connection_state_inner(state);
+    state.ui.set_inspector_tab(inspector_tab);
+    state.sql_modal.set_active_tab(sql_modal_tab);
+    state.session.activate_connection_with_target(
+        &target.id,
+        &target.name,
+        target.database_type,
+        &target.dsn,
+        target.database.as_deref(),
+    );
+    state.session.mark_probe_connected(true);
+    state.session.set_available_databases(available_databases);
+    if read_only {
+        state.session.enable_read_only();
+    }
+    reconcile_connection_state(state, inspector_tab);
+}
+
 fn reset_active_connection_state_inner(state: &mut AppState) {
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
@@ -106,6 +132,7 @@ pub(super) fn restore_cache(
         &target.name,
         target.database_type,
         &target.dsn,
+        target.database.as_deref(),
     );
     reconcile_connection_state(state, cache.inspector_tab);
     state

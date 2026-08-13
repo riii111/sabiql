@@ -31,8 +31,10 @@ dotenvy = "0.15"
 futures = "0.3"
 insta = "1"
 lru = "0.18"
+libc = "0.2"
 mockall = "0.13"
 nucleo-matcher = "0.3"
+quick-xml = { version = "0.37", features = ["async-tokio"] }
 ratatui = "0.30"
 rstest = "0.19"
 serde = { version = "1", features = ["derive"] }
@@ -47,6 +49,7 @@ unicode-casefold = "0.2"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 urlencoding = "2"
+url = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
 
 [package]
@@ -54,12 +57,12 @@ name = "sabiql"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases"
+description = "A fast, driver-less TUI for browsing and editing PostgreSQL, MySQL, and SQLite databases"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
-keywords = ["postgresql", "sqlite", "tui", "database", "sql"]
+keywords = ["postgresql", "mysql", "sqlite", "tui", "database"]
 categories = ["command-line-utilities", "database"]
 
 [dependencies]

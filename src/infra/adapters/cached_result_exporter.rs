@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use sabiql_app::domain::QueryValue;
 use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
-use tokio::io::{AsyncWriteExt, BufWriter};
 
-use crate::adapters::csv_export::export_to_downloads;
+use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 
-const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
+#[cfg(test)]
+use crate::adapters::csv_export::CSV_FLUSH_THRESHOLD;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CsvCachedResultExporter;
@@ -45,73 +45,12 @@ async fn write_cached_result_csv(
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
 ) -> Result<(), DbOperationError> {
-    let file = tokio::fs::File::create(path)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let mut file = BufWriter::new(file);
-    let mut csv_writer =
-        csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD));
-    let mut bytes_since_flush = 0;
-
-    csv_writer = write_csv_record(
-        csv_writer,
-        &mut file,
-        columns.iter(),
-        &mut bytes_since_flush,
-    )
-    .await?;
+    let mut file = CsvFileWriter::create(path).await?;
+    file.write_record(columns.iter()).await?;
     for row in &values {
-        csv_writer = write_csv_record(
-            csv_writer,
-            &mut file,
-            row.iter().map(cached_csv_cell),
-            &mut bytes_since_flush,
-        )
-        .await?;
+        file.write_record(row.iter().map(cached_csv_cell)).await?;
     }
-    let encoded = csv_writer
-        .into_inner()
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    file.write_all(&encoded)
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    file.flush()
-        .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    Ok(())
-}
-
-async fn write_csv_record<I>(
-    mut csv_writer: csv::Writer<Vec<u8>>,
-    file: &mut BufWriter<tokio::fs::File>,
-    record: I,
-    bytes_since_flush: &mut usize,
-) -> Result<csv::Writer<Vec<u8>>, DbOperationError>
-where
-    I: IntoIterator,
-    I::Item: AsRef<[u8]>,
-{
-    csv_writer.write_record(record)?;
-    csv_writer
-        .flush()
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
-    *bytes_since_flush = csv_writer.get_ref().len();
-    if *bytes_since_flush >= CSV_FLUSH_THRESHOLD {
-        let mut encoded = csv_writer
-            .into_inner()
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        file.write_all(&encoded)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        file.flush()
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        *bytes_since_flush = 0;
-        encoded.clear();
-        csv_writer = csv::WriterBuilder::new().from_writer(encoded);
-    }
-    Ok(csv_writer)
+    file.finish().await
 }
 
 #[cfg(test)]

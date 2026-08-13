@@ -3,6 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use sabiql_app::ports::outbound::DbOperationError;
+use tokio::io::{AsyncWriteExt, BufWriter};
+
+pub const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
@@ -101,6 +104,73 @@ where
     Fut: Future<Output = Result<(), DbOperationError>>,
 {
     export_to_path_with_cleanup(final_path, write, |path| std::fs::remove_file(path)).await
+}
+
+pub struct CsvFileWriter {
+    file: BufWriter<tokio::fs::File>,
+    csv_writer: csv::Writer<Vec<u8>>,
+    bytes_since_flush: usize,
+}
+
+impl CsvFileWriter {
+    pub(crate) async fn create(path: PathBuf) -> Result<Self, DbOperationError> {
+        let file = tokio::fs::File::create(path)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        Ok(Self {
+            file: BufWriter::new(file),
+            csv_writer: csv::WriterBuilder::new()
+                .from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD)),
+            bytes_since_flush: 0,
+        })
+    }
+
+    pub(crate) async fn write_record<I>(&mut self, record: I) -> Result<(), DbOperationError>
+    where
+        I: IntoIterator,
+        I::Item: AsRef<[u8]>,
+    {
+        self.csv_writer.write_record(record)?;
+        self.csv_writer
+            .flush()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        self.bytes_since_flush = self.csv_writer.get_ref().len();
+        if self.bytes_since_flush >= CSV_FLUSH_THRESHOLD {
+            self.flush_buffer().await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn finish(mut self) -> Result<(), DbOperationError> {
+        let encoded = self
+            .csv_writer
+            .into_inner()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        self.file
+            .write_all(&encoded)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        self.file
+            .flush()
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+    }
+
+    async fn flush_buffer(&mut self) -> Result<(), DbOperationError> {
+        let encoded = self.csv_writer.get_ref().as_slice().to_vec();
+        self.file
+            .write_all(&encoded)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        self.file
+            .flush()
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        self.csv_writer =
+            csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD));
+        self.bytes_since_flush = 0;
+        Ok(())
+    }
 }
 
 async fn export_to_path_with_cleanup<F, Fut, C>(

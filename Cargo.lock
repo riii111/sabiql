@@ -2149,6 +2149,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
 dependencies = [
  "memchr",
+ "tokio",
 ]
 
 [[package]]
@@ -2633,6 +2634,7 @@ dependencies = [
  "toml",
  "unicode-casefold",
  "unicode-width",
+ "url",
  "uuid",
 ]
 
@@ -2646,6 +2648,7 @@ dependencies = [
  "thiserror 2.0.19",
  "unicode-segmentation",
  "unicode-width",
+ "url",
  "uuid",
 ]
 
@@ -2657,6 +2660,8 @@ dependencies = [
  "async-trait",
  "csv",
  "dirs",
+ "libc",
+ "quick-xml",
  "rstest",
  "sabiql-app",
  "sabiql-domain",
@@ -2666,7 +2671,9 @@ dependencies = [
  "thiserror 2.0.19",
  "tokio",
  "toml",
+ "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

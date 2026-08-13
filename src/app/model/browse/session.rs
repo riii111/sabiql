@@ -1,5 +1,7 @@
+use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
@@ -11,6 +13,7 @@ use crate::model::connection::state::ConnectionState;
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::inspector_tab::InspectorTab;
+use crate::policy::mask_password;
 
 #[derive(Debug, Clone)]
 struct ActiveConnection {
@@ -18,6 +21,31 @@ struct ActiveConnection {
     name: String,
     database_type: DatabaseType,
     origin: ConnectionOrigin,
+    database: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PendingConnectionProbe {
+    pub id: ConnectionId,
+    pub name: String,
+    pub database_type: DatabaseType,
+    pub dsn: String,
+    pub database: Option<String>,
+    pub run_id: u64,
+}
+
+impl fmt::Debug for PendingConnectionProbe {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PendingConnectionProbe")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("database_type", &self.database_type)
+            .field("dsn", &mask_password(&self.dsn))
+            .field("database", &self.database)
+            .field("run_id", &self.run_id)
+            .finish()
+    }
 }
 
 // # Invariants
@@ -56,6 +84,11 @@ pub struct BrowseSession {
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
     active_connection: Option<ActiveConnection>,
+    connection_probe_run: AsyncRun,
+    pending_connection_probe: Option<PendingConnectionProbe>,
+    connection_generation: u64,
+    database_generation: u64,
+    available_databases: Vec<String>,
     active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
@@ -76,6 +109,11 @@ impl Default for BrowseSession {
             table_detail_run: AsyncRun::default(),
             dsn: None,
             active_connection: None,
+            connection_probe_run: AsyncRun::default(),
+            pending_connection_probe: None,
+            connection_generation: 0,
+            database_generation: 0,
+            available_databases: Vec::new(),
             active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
@@ -136,7 +174,90 @@ impl BrowseSession {
     }
 
     #[must_use]
+    pub fn begin_connection_probe(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) -> u64 {
+        self.cancel_metadata_for_connection_probe();
+        self.connection_generation = self.connection_generation.wrapping_add(1);
+        let run_id = self.connection_probe_run.begin();
+        self.pending_connection_probe = Some(PendingConnectionProbe {
+            id: id.clone(),
+            name: name.to_string(),
+            database_type,
+            dsn: dsn.to_string(),
+            database: database.map(str::to_string),
+            run_id,
+        });
+        run_id
+    }
+
+    pub fn invalidate_connection_generation(&mut self) {
+        self.connection_generation = self.connection_generation.wrapping_add(1);
+    }
+
+    fn cancel_metadata_for_connection_probe(&mut self) {
+        self.metadata_run.clear_active();
+        self.effective_user_run.clear_active();
+        self.table_detail_run.clear_active();
+        self.is_reloading = false;
+        match self.connection_state {
+            ConnectionState::Connecting => {
+                self.connection_state = ConnectionState::NotConnected;
+                self.metadata_state = MetadataState::NotLoaded;
+            }
+            ConnectionState::Connected => {
+                self.metadata_state = if self.metadata.is_some() {
+                    MetadataState::Loaded
+                } else {
+                    MetadataState::NotLoaded
+                };
+            }
+            ConnectionState::AwaitingDatabase
+            | ConnectionState::Failed
+            | ConnectionState::NotConnected => {}
+        }
+    }
+
+    pub fn is_current_connection_probe(
+        &self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+        run_id: u64,
+    ) -> bool {
+        self.connection_probe_run.is_current(run_id)
+            && self
+                .pending_connection_probe
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.run_id == run_id
+                        && pending.id == *id
+                        && pending.name == name
+                        && pending.database_type == database_type
+                        && pending.dsn == dsn
+                        && pending.database.as_deref() == database
+                })
+    }
+
+    pub fn pending_connection_probe(&self) -> Option<&PendingConnectionProbe> {
+        self.pending_connection_probe.as_ref()
+    }
+
+    pub fn clear_connection_probe(&mut self) {
+        self.connection_probe_run.clear_active();
+        self.pending_connection_probe = None;
+    }
+
+    #[must_use]
     pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
+        self.clear_connection_probe();
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
         self.begin_metadata_run()
@@ -149,15 +270,30 @@ impl BrowseSession {
         database_type: DatabaseType,
         dsn: &str,
     ) {
+        self.activate_connection_with_target(id, name, database_type, dsn, None);
+    }
+
+    pub fn activate_connection_with_target(
+        &mut self,
+        id: &ConnectionId,
+        name: &str,
+        database_type: DatabaseType,
+        dsn: &str,
+        database: Option<&str>,
+    ) {
+        self.database_generation = self.database_generation.wrapping_add(1);
+        self.available_databases.clear();
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
             database_type,
             origin: ConnectionOrigin::Profile,
+            database: database.map(str::to_string),
         });
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
+        self.clear_connection_probe();
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
@@ -166,11 +302,13 @@ impl BrowseSession {
             name: name.to_string(),
             database_type: DatabaseType::SQLite,
             origin: ConnectionOrigin::CliEphemeral,
+            database: None,
         });
         self.active_engine_feature_profile =
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
+        self.clear_connection_probe();
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -186,6 +324,7 @@ impl BrowseSession {
             name: name.to_string(),
             database_type,
             origin: ConnectionOrigin::Profile,
+            database: None,
         });
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
     }
@@ -199,6 +338,8 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
+        self.available_databases.clear();
+        self.clear_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
 
@@ -206,6 +347,19 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
+        self.metadata_run.clear_active();
+        self.effective_user = None;
+        self.effective_user_run.clear_active();
+    }
+
+    pub fn mark_probe_connected(&mut self, has_database: bool) {
+        self.connection_state = if has_database {
+            ConnectionState::Connected
+        } else {
+            ConnectionState::AwaitingDatabase
+        };
+        self.metadata_state = MetadataState::NotLoaded;
+        self.metadata = None;
         self.metadata_run.clear_active();
         self.effective_user = None;
         self.effective_user_run.clear_active();
@@ -226,6 +380,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_metadata_refresh(&mut self) -> u64 {
+        self.clear_connection_probe();
         self.metadata_state = MetadataState::Loading;
         self.begin_metadata_run()
     }
@@ -238,10 +393,12 @@ impl BrowseSession {
         self.effective_user = None;
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
+        self.clear_connection_probe();
     }
 
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
+        self.clear_connection_probe();
         self.is_reloading = true;
         self.begin_metadata_run()
     }
@@ -265,6 +422,23 @@ impl BrowseSession {
 
     pub fn is_current_metadata_run(&self, run_id: u64) -> bool {
         self.metadata_run.is_current(run_id)
+    }
+
+    pub fn metadata_generation(&self) -> u64 {
+        self.metadata_run.last_id()
+    }
+
+    pub fn is_current_completion_scope(
+        &self,
+        dsn: Option<&str>,
+        connection_generation: u64,
+        database_generation: u64,
+        metadata_generation: u64,
+    ) -> bool {
+        self.dsn() == dsn
+            && self.connection_generation == connection_generation
+            && self.database_generation == database_generation
+            && self.metadata_generation() == metadata_generation
     }
 
     #[must_use]
@@ -316,6 +490,7 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
+        self.clear_connection_probe();
         match &cache.query_result {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
@@ -331,9 +506,10 @@ impl BrowseSession {
         name: &str,
         database_type: DatabaseType,
         dsn: &str,
+        database: Option<&str>,
     ) {
         self.restore_from_cache(cache, query);
-        self.activate_connection_with_dsn(id, name, database_type, dsn);
+        self.activate_connection_with_target(id, name, database_type, dsn, database);
     }
 
     // Caller must also call `result_interaction.reset_view()` and restore UI state.
@@ -372,7 +548,8 @@ impl BrowseSession {
     }
 
     pub fn database_name(&self) -> Option<&str> {
-        self.metadata.as_ref().map(|m| m.database_name.as_str())
+        self.active_database()
+            .or_else(|| self.metadata.as_ref().map(|m| m.database_name.as_str()))
     }
 
     pub fn effective_user(&self) -> Option<&str> {
@@ -401,6 +578,52 @@ impl BrowseSession {
         self.dsn() == Some(expected)
     }
 
+    pub fn connection_generation(&self) -> u64 {
+        self.connection_generation
+    }
+
+    pub fn database_generation(&self) -> u64 {
+        self.database_generation
+    }
+
+    pub fn is_current_database_fetch(
+        &self,
+        id: &ConnectionId,
+        dsn: &str,
+        connection_generation: u64,
+        database_generation: u64,
+    ) -> bool {
+        self.connection_generation == connection_generation
+            && self.database_generation == database_generation
+            && self.active_connection_id() == Some(id)
+            && self.active_database_type() == Some(DatabaseType::MySQL)
+            && self.dsn().is_some_and(|current| {
+                self.server_dsn().as_deref() == Some(dsn) && current.starts_with("mysql:")
+            })
+    }
+
+    pub fn server_dsn(&self) -> Option<String> {
+        let mut url = url::Url::parse(self.dsn()?).ok()?;
+        url.path_segments_mut().ok()?.clear();
+        Some(url.to_string())
+    }
+
+    pub fn set_available_databases(&mut self, databases: Vec<String>) {
+        self.available_databases = databases
+            .into_iter()
+            .filter(|database| {
+                !matches!(
+                    database.to_ascii_lowercase().as_str(),
+                    "information_schema" | "mysql" | "performance_schema" | "sys"
+                )
+            })
+            .collect();
+    }
+
+    pub fn available_databases(&self) -> &[String] {
+        &self.available_databases
+    }
+
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
         self.active_connection
             .as_ref()
@@ -421,6 +644,21 @@ impl BrowseSession {
 
     pub fn active_database_type_or_default(&self) -> DatabaseType {
         self.active_database_type().unwrap_or_default()
+    }
+
+    pub fn active_database(&self) -> Option<&str> {
+        self.active_connection
+            .as_ref()
+            .and_then(|connection| connection.database.as_deref())
+    }
+
+    pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {
+        let connection_id = self.active_connection_id()?.clone();
+        let database = match self.active_database_type() {
+            Some(DatabaseType::MySQL) => self.active_database().map(str::to_owned),
+            Some(DatabaseType::PostgreSQL | DatabaseType::SQLite) | None => None,
+        };
+        Some(QueryHistoryScope::new(connection_id, database))
     }
 
     pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {
@@ -1026,6 +1264,42 @@ mod tests {
         }
     }
 
+    mod query_history_scope_tests {
+        use super::*;
+
+        #[test]
+        fn mysql_scope_includes_selected_database() {
+            let mut session = BrowseSession::default();
+            session.activate_connection_with_target(
+                &ConnectionId::from_string("mysql"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/app",
+                Some("app"),
+            );
+
+            let scope = session.query_history_scope().unwrap();
+
+            assert_eq!(scope.database.as_deref(), Some("app"));
+        }
+
+        #[test]
+        fn postgres_and_sqlite_scopes_omit_database() {
+            for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+                let mut session = BrowseSession::default();
+                session.activate_connection_with_target(
+                    &ConnectionId::from_string("connection"),
+                    "connection",
+                    database_type,
+                    "dsn://connection",
+                    Some("database"),
+                );
+
+                assert_eq!(session.query_history_scope().unwrap().database, None);
+            }
+        }
+    }
+
     // ── Getters ──────────────────────────────────────────────────────
 
     mod getter_tests {
@@ -1089,6 +1363,23 @@ mod tests {
 
             assert!(!session.is_ephemeral_connection());
             assert!(session.can_reenter_connection_setup());
+        }
+
+        #[test]
+        fn pending_probe_debug_masks_password() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::new();
+            let _ = session.begin_connection_probe(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user:secret@localhost:3306/app",
+                Some("app"),
+            );
+
+            let debug = format!("{session:?}");
+            assert!(!debug.contains("secret"));
+            assert!(debug.contains("mysql://user:****@localhost:3306/app"));
         }
 
         #[test]
