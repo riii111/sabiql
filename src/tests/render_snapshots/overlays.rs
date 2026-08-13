@@ -188,6 +188,25 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
 }
 
 #[test]
+fn sql_modal_analyze_read_only_acknowledge() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+            query: "SELECT * FROM users".to_string(),
+            reason: AcknowledgeReason::AnalyzeExecution,
+        });
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

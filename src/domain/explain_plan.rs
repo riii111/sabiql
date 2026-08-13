@@ -8,6 +8,10 @@ pub struct ExplainPlan {
     pub top_node_type: Option<String>,
     pub total_cost: Option<f64>,
     pub estimated_rows: Option<f64>,
+    pub actual_start_ms: Option<f64>,
+    pub actual_end_ms: Option<f64>,
+    pub actual_rows: Option<f64>,
+    pub loops: Option<u64>,
     pub is_analyze: bool,
     pub execution_time_ms: u64,
 }
@@ -186,6 +190,96 @@ fn mysql_node_name(line: &str) -> Option<String> {
     (!node_name.is_empty()).then(|| node_name.to_string())
 }
 
+fn parse_finite_f64(token: &str) -> Option<f64> {
+    let value: f64 = token.parse().ok()?;
+    value.is_finite().then_some(value)
+}
+
+fn parse_mysql_loops(token: &str) -> Option<u64> {
+    let token = token.trim();
+    let (mantissa, exponent) = token
+        .split_once(['e', 'E'])
+        .map_or((token, 0i64), |(mantissa, exponent)| {
+            (mantissa, exponent.parse().unwrap_or(i64::MIN))
+        });
+    if exponent == i64::MIN || mantissa.is_empty() {
+        return None;
+    }
+
+    let mantissa = mantissa.strip_prefix('+').unwrap_or(mantissa);
+    if mantissa.starts_with('-') || mantissa.is_empty() {
+        return None;
+    }
+    let mut parts = mantissa.split('.');
+    let whole = parts.next().unwrap_or_default();
+    let fraction = parts.next().unwrap_or_default();
+    if parts.next().is_some()
+        || whole.is_empty() && fraction.is_empty()
+        || !whole.bytes().all(|byte| byte.is_ascii_digit())
+        || !fraction.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return None;
+    }
+
+    let digits = format!("{whole}{fraction}");
+    let decimal_places = fraction.len() as i64 - exponent;
+    let significant = if decimal_places > 0 {
+        let decimal_places = usize::try_from(decimal_places).ok()?;
+        if decimal_places > digits.len()
+            || !digits[digits.len() - decimal_places..]
+                .bytes()
+                .all(|byte| byte == b'0')
+        {
+            return None;
+        }
+        &digits[..digits.len() - decimal_places]
+    } else {
+        &digits
+    };
+
+    let trailing_zeroes = usize::try_from(decimal_places.saturating_neg()).ok()?;
+    let significant = significant.trim_start_matches('0');
+    if significant.is_empty() {
+        return Some(0);
+    }
+    if significant.len().saturating_add(trailing_zeroes) > 20 {
+        return None;
+    }
+
+    let mut integer = significant.to_string();
+    integer.push_str(&"0".repeat(trailing_zeroes));
+    if integer.len() == 20 && integer.as_str() > u64::MAX.to_string().as_str() {
+        return None;
+    }
+    integer.parse().ok()
+}
+
+fn parse_mysql_actual_fragment(line: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<u64>) {
+    let Some(start) = line.find("(actual time=") else {
+        return (None, None, None, None);
+    };
+    let fragment = line.get(start + 1..).unwrap_or_default();
+    let mut actual_start_ms = None;
+    let mut actual_end_ms = None;
+    let mut actual_rows = None;
+    let mut loops = None;
+
+    for token in fragment.split_whitespace() {
+        if let Some(time) = token.strip_prefix("time=") {
+            if let Some((start, end)) = time.split_once("..") {
+                actual_start_ms = parse_finite_f64(start);
+                actual_end_ms = parse_finite_f64(end.trim_end_matches(')'));
+            }
+        } else if let Some(rows) = token.strip_prefix("rows=") {
+            actual_rows = parse_finite_f64(rows.trim_end_matches(')'));
+        } else if let Some(value) = token.strip_prefix("loops=") {
+            loops = parse_mysql_loops(value.trim_end_matches(')'));
+        }
+    }
+
+    (actual_start_ms, actual_end_ms, actual_rows, loops)
+}
+
 pub fn parse_explain_text(text: &str, is_analyze: bool, execution_time_ms: u64) -> ExplainPlan {
     let first_cost_line = text.lines().find(|line| line.contains("(cost="));
 
@@ -214,6 +308,10 @@ pub fn parse_explain_text(text: &str, is_analyze: bool, execution_time_ms: u64) 
         top_node_type,
         total_cost,
         estimated_rows,
+        actual_start_ms: None,
+        actual_end_ms: None,
+        actual_rows: None,
+        loops: None,
         is_analyze,
         execution_time_ms,
     }
@@ -225,17 +323,38 @@ pub fn parse_mysql_tree_explain_text(
     execution_time_ms: u64,
 ) -> ExplainPlan {
     let first_cost_line = text.lines().find(|line| line.contains("(cost="));
-    let (top_node_type, total_cost, estimated_rows) =
-        first_cost_line.map_or((None, None, None), |line| {
-            let (cost, rows) = parse_mysql_cost_fragment(line);
-            (mysql_node_name(line), cost, rows)
-        });
+    let (
+        top_node_type,
+        total_cost,
+        estimated_rows,
+        actual_start_ms,
+        actual_end_ms,
+        actual_rows,
+        loops,
+    ) = first_cost_line.map_or((None, None, None, None, None, None, None), |line| {
+        let (cost, rows) = parse_mysql_cost_fragment(line);
+        let (actual_start_ms, actual_end_ms, actual_rows, loops) =
+            parse_mysql_actual_fragment(line);
+        (
+            mysql_node_name(line),
+            cost,
+            rows,
+            actual_start_ms,
+            actual_end_ms,
+            actual_rows,
+            loops,
+        )
+    });
 
     ExplainPlan {
         raw_text: text.to_string(),
         top_node_type,
         total_cost,
         estimated_rows,
+        actual_start_ms,
+        actual_end_ms,
+        actual_rows,
+        loops,
         is_analyze,
         execution_time_ms,
     }
@@ -420,6 +539,52 @@ Execution Time: 0.600 ms";
             assert!(plan.total_cost.is_none());
             assert!(plan.estimated_rows.is_none());
         }
+
+        #[test]
+        fn mysql_tree_parses_top_level_actual_metrics() {
+            let text = "-> Table scan on users  (cost=1.25 rows=2.5) (actual time=0.010..0.500 rows=95 loops=1)";
+            let plan = parse_mysql_tree_explain_text(text, true, 7);
+
+            assert_eq!(plan.actual_start_ms, Some(0.010));
+            assert_eq!(plan.actual_end_ms, Some(0.500));
+            assert_eq!(plan.actual_rows, Some(95.0));
+            assert_eq!(plan.loops, Some(1));
+        }
+
+        #[test]
+        fn mysql_tree_parses_scientific_loop_count() {
+            let plan = parse_mysql_tree_explain_text(
+                "-> Table scan on users  (cost=1 rows=1) (actual time=0..1 rows=1 loops=1e+6)",
+                true,
+                0,
+            );
+
+            assert_eq!(plan.loops, Some(1_000_000));
+        }
+
+        #[test]
+        fn mysql_tree_rejects_invalid_loop_counts_but_keeps_raw_text() {
+            for loops in ["1.5", "-1", "NaN", "inf", "1e309", "18446744073709551616"] {
+                let text = format!(
+                    "-> Table scan on users  (cost=1 rows=1) (actual time=0..1 rows=1 loops={loops})"
+                );
+                let plan = parse_mysql_tree_explain_text(&text, true, 0);
+
+                assert_eq!(plan.loops, None, "{loops}");
+                assert_eq!(plan.raw_text, text, "{loops}");
+            }
+        }
+
+        #[test]
+        fn mysql_tree_marks_missing_actual_metrics_unavailable() {
+            let plan =
+                parse_mysql_tree_explain_text("-> Table scan on users  (cost=1 rows=1)", true, 0);
+
+            assert_eq!(plan.actual_start_ms, None);
+            assert_eq!(plan.actual_end_ms, None);
+            assert_eq!(plan.actual_rows, None);
+            assert_eq!(plan.loops, None);
+        }
     }
 
     #[test]
@@ -450,6 +615,10 @@ Execution Time: 0.600 ms";
                 top_node_type: node.map(ToString::to_string),
                 total_cost: cost,
                 estimated_rows: rows,
+                actual_start_ms: None,
+                actual_end_ms: None,
+                actual_rows: None,
+                loops: None,
                 is_analyze: false,
                 execution_time_ms: 0,
             }

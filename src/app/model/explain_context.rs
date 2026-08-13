@@ -57,6 +57,10 @@ impl ExplainContext {
         self.plan_query_snippet.as_deref()
     }
 
+    pub fn current_plan(&self) -> Option<&ExplainPlan> {
+        self.right.as_ref().map(|slot| &slot.plan)
+    }
+
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
