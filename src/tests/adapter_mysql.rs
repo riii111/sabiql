@@ -76,12 +76,10 @@ async fn rejects_oracle_mysql_84_fixture_with_wrong_ca() {
     config.ssl_ca = config.ssl_cert.clone();
     let profile = mysql_tls_profile("mysql-tls-wrong-ca", config);
     let adapter = MySqlAdapter::new();
-    let error = adapter
-        .probe(&adapter.build_dsn(&profile))
-        .await
-        .unwrap_err();
+    let dsn = adapter.build_dsn(&profile);
+    let error = adapter.probe(&dsn).await.unwrap_err();
     assert_eq!(
-        ConnectionErrorInfo::from_db_operation_error(&error).kind,
+        ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn).kind,
         ConnectionErrorKind::MySqlCaVerificationFailed
     );
 }
@@ -94,11 +92,9 @@ async fn rejects_oracle_mysql_84_fixture_with_wrong_hostname() {
     config.ssl_mode = MySqlSslMode::VerifyIdentity;
     let profile = mysql_tls_profile("mysql-tls-wrong-host", config);
     let adapter = MySqlAdapter::new();
-    let error = adapter
-        .probe(&adapter.build_dsn(&profile))
-        .await
-        .unwrap_err();
-    let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
+    let dsn = adapter.build_dsn(&profile);
+    let error = adapter.probe(&dsn).await.unwrap_err();
+    let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
     assert_eq!(
         error_info.kind,
         ConnectionErrorKind::MySqlHostnameVerificationFailed,

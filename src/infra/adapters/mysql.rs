@@ -2076,15 +2076,15 @@ mod probe_tests {
     }
 
     #[test]
-    fn classifies_mysql_tls_probe_hostname_failure_for_connection_error() {
+    fn classifies_mysql_tls_probe_failure_for_connection_error() {
         let error = classify_mysql_probe_failure(
-            "ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate"
+            "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
                 .to_string(),
         );
 
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&error).kind,
-            ConnectionErrorKind::MySqlHostnameVerificationFailed
+            ConnectionErrorKind::MySqlTlsHandshakeFailed
         );
     }
 }
@@ -2343,12 +2343,12 @@ mod query_tests {
     #[test]
     fn classifies_mysql_tls_query_failures_as_connection_errors() {
         let error = classify_mysql_query_failure(
-            b"ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate",
+            b"ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed",
         );
 
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error(&error).kind,
-            ConnectionErrorKind::MySqlHostnameVerificationFailed
+            ConnectionErrorKind::MySqlTlsHandshakeFailed
         );
         assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
     }

@@ -4,6 +4,8 @@ use crate::ports::outbound::{
     MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
     SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
 };
+use sabiql_domain::connection::MySqlSslMode;
+use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -199,8 +201,7 @@ fn is_mysql_client_certificate_error(value: &str) -> bool {
 }
 
 fn is_mysql_hostname_verification_error(value: &str) -> bool {
-    value.contains("error:0a000086:ssl routines::certificate verify failed")
-        || value.contains("hostname mismatch")
+    value.contains("hostname mismatch")
         || value.contains("host name mismatch")
         || value.contains("hostname does not match")
         || value.contains("host name does not match")
@@ -220,6 +221,32 @@ fn is_mysql_ca_verification_error(value: &str) -> bool {
         || value.contains("self-signed certificate")
         || value.contains("unknown ca")
         || value.contains("certificate signature failure")
+}
+
+fn is_mysql_ambiguous_certificate_verification_error(value: &str) -> bool {
+    value
+        .to_ascii_lowercase()
+        .contains("error:0a000086:ssl routines::certificate verify failed")
+}
+
+fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
+    let url = Url::parse(dsn).ok()?;
+    if url.scheme() != "mysql" {
+        return None;
+    }
+    url.query_pairs().find_map(|(key, value)| {
+        if key != "ssl-mode" {
+            return None;
+        }
+        Some(match value.as_ref() {
+            "DISABLED" => MySqlSslMode::Disabled,
+            "PREFERRED" => MySqlSslMode::Preferred,
+            "REQUIRED" => MySqlSslMode::Required,
+            "VERIFY_CA" => MySqlSslMode::VerifyCa,
+            "VERIFY_IDENTITY" => MySqlSslMode::VerifyIdentity,
+            _ => return None,
+        })
+    })
 }
 
 fn is_mysql_tls_handshake_error(value: &str) -> bool {
@@ -300,6 +327,27 @@ impl ConnectionErrorInfo {
             }
             _ => ConnectionErrorKind::Unknown,
         };
+        Self::with_kind(kind, raw_details)
+    }
+
+    pub fn from_db_operation_error_with_dsn(error: &DbOperationError, dsn: &str) -> Self {
+        let raw_details = error.raw_details().into_owned();
+        let kind = mysql_ssl_mode_from_dsn(dsn)
+            .and_then(|ssl_mode| match (ssl_mode, error) {
+                (MySqlSslMode::VerifyCa, DbOperationError::ConnectionFailed(_))
+                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
+                {
+                    Some(ConnectionErrorKind::MySqlCaVerificationFailed)
+                }
+                (MySqlSslMode::VerifyIdentity, DbOperationError::ConnectionFailed(_))
+                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
+                {
+                    Some(ConnectionErrorKind::MySqlHostnameVerificationFailed)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| Self::from_db_operation_error(error).kind);
+
         Self::with_kind(kind, raw_details)
     }
 
@@ -439,7 +487,7 @@ mod tests {
                 ConnectionErrorKind::classify(
                     "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
                 ),
-                ConnectionErrorKind::MySqlHostnameVerificationFailed
+                ConnectionErrorKind::MySqlTlsHandshakeFailed
             );
             assert_eq!(
                 ConnectionErrorKind::classify(
@@ -529,6 +577,28 @@ mod tests {
             assert_eq!(
                 info.masked_details(),
                 "FATAL: database \"nonexistent\" does not exist"
+            );
+        }
+
+        #[test]
+        fn from_db_operation_error_with_dsn_uses_mysql_tls_mode_for_ambiguous_verification() {
+            let error = DbOperationError::ConnectionFailed(
+                "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                    .to_string(),
+            );
+            let ca = ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                &error,
+                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_CA",
+            );
+            let identity = ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                &error,
+                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY",
+            );
+
+            assert_eq!(ca.kind, ConnectionErrorKind::MySqlCaVerificationFailed);
+            assert_eq!(
+                identity.kind,
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
             );
         }
 
