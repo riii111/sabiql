@@ -275,10 +275,16 @@ impl ConnectionProbe for MySqlAdapter {
         self.check_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, "SHOW DATABASES").await;
+        let statements = validate_mysql_multi_query("SHOW DATABASES", None, AccessMode::ReadWrite)?;
+        let result = run_mysql_adhoc(&option_file.path, "SHOW DATABASES", &statements).await;
         drop(option_file);
-        result.map(|result| {
-            result
+        result.map(|execution| {
+            execution
+                .result_set
+                .unwrap_or(MysqlResultSet {
+                    columns: Vec::new(),
+                    values: Vec::new(),
+                })
                 .values
                 .into_iter()
                 .filter_map(|mut row| row.drain(..).next())

@@ -242,8 +242,6 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             let text = &sql[index + 1..end - 1];
             let kind = if byte == b'`' {
                 TokenKind::Identifier(text.replace("``", "`"))
-            } else if byte == b'\'' {
-                TokenKind::StringLiteral
             } else {
                 TokenKind::StringLiteral
             };
@@ -464,8 +462,8 @@ fn skip_parenthesized_tokens(tokens: &[Token], index: usize) -> Option<usize> {
         return None;
     }
     let mut depth = 0usize;
-    for cursor in index..tokens.len() {
-        match tokens[cursor].kind {
+    for (cursor, token) in tokens.iter().enumerate().skip(index) {
+        match token.kind {
             TokenKind::Symbol('(') => depth += 1,
             TokenKind::Symbol(')') => {
                 depth = depth.checked_sub(1)?;
