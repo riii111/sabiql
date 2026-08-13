@@ -5,6 +5,7 @@ use crate::policy::write::write_update::build_pk_pairs;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StableRowIdentity {
     PrimaryKey(Vec<String>),
+    Explicit(Vec<String>),
 }
 
 impl StableRowIdentity {
@@ -13,9 +14,22 @@ impl StableRowIdentity {
         result: &QueryResult,
         row_idx: usize,
     ) -> Option<Vec<(String, QueryValue)>> {
-        let Self::PrimaryKey(columns) = self;
-        let row = result.values().get(row_idx)?;
-        build_pk_pairs(&result.columns, row, columns)
+        match self {
+            Self::PrimaryKey(columns) => {
+                let row = result.values().get(row_idx)?;
+                build_pk_pairs(&result.columns, row, columns)
+            }
+            Self::Explicit(columns) => {
+                let values = result.explicit_row_identity()?.values_for_row(row_idx)?;
+                (columns.len() == values.len()).then(|| {
+                    columns
+                        .iter()
+                        .cloned()
+                        .zip(values.iter().cloned())
+                        .collect()
+                })
+            }
+        }
     }
 
     pub fn predicate_pairs_for_row(
@@ -27,8 +41,11 @@ impl StableRowIdentity {
     }
 
     pub fn is_primary_key_column(&self, column_name: &str) -> bool {
-        let Self::PrimaryKey(columns) = self;
-        columns.iter().any(|pk| pk == column_name)
+        match self {
+            Self::PrimaryKey(columns) | Self::Explicit(columns) => {
+                columns.iter().any(|pk| pk == column_name)
+            }
+        }
     }
 }
 
@@ -42,6 +59,17 @@ pub fn stable_row_identity_for_table(table: &Table) -> Option<StableRowIdentity>
         return None;
     }
     table.primary_key.clone().map(StableRowIdentity::PrimaryKey)
+}
+
+pub fn stable_row_identity_for_preview(
+    table: &Table,
+    result: &QueryResult,
+) -> Option<StableRowIdentity> {
+    if let Some(explicit) = result.explicit_row_identity() {
+        return valid_explicit_row_identity(table, result)
+            .then(|| StableRowIdentity::Explicit(explicit.columns().to_vec()));
+    }
+    stable_row_identity_for_table(table)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +90,32 @@ pub fn preview_writeability(table: &Table) -> PreviewWriteability {
         return PreviewWriteability::MissingStableRowIdentity;
     }
     PreviewWriteability::Writable
+}
+
+pub fn preview_writeability_for_result(table: &Table, result: &QueryResult) -> PreviewWriteability {
+    let writeability = preview_writeability(table);
+    if writeability == PreviewWriteability::Writable
+        && result.explicit_row_identity().is_some()
+        && !valid_explicit_row_identity(table, result)
+    {
+        return PreviewWriteability::ReadOnly("invalid row identity");
+    }
+    writeability
+}
+
+fn valid_explicit_row_identity(table: &Table, result: &QueryResult) -> bool {
+    let Some(primary_key) = table.primary_key.as_ref() else {
+        return false;
+    };
+    let Some(identity) = result.explicit_row_identity() else {
+        return false;
+    };
+    identity.columns() == primary_key
+        && identity.values().len() == result.data_row_count()
+        && identity
+            .values()
+            .iter()
+            .all(|values| values.len() == primary_key.len())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -194,7 +248,7 @@ pub fn evaluate_guardrails(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::TableKindInfo;
+    use crate::domain::{QueryResult, QuerySource, TableKindInfo};
     use crate::test_support;
 
     mod guardrail_evaluation {
@@ -255,6 +309,88 @@ mod tests {
             assert_eq!(
                 stable_row_identity_for_table(&table),
                 Some(StableRowIdentity::PrimaryKey(vec!["id".to_string()]))
+            );
+        }
+
+        #[test]
+        fn explicit_identity_uses_values_separate_from_display_columns() {
+            let table = primary_key_table();
+            let result = QueryResult::success_with_values(
+                "SELECT name".to_string(),
+                vec!["name".to_string()],
+                vec![vec![QueryValue::text("alice")]],
+                0,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(vec!["id".to_string()], vec![vec![QueryValue::text("42")]]);
+
+            let identity = stable_row_identity_for_preview(&table, &result).unwrap();
+
+            assert_eq!(
+                identity.identity_pairs_for_row(&result, 0),
+                Some(vec![("id".to_string(), QueryValue::text("42"))])
+            );
+        }
+
+        #[test]
+        fn malformed_explicit_identity_makes_preview_read_only() {
+            let table = primary_key_table();
+            let result = QueryResult::success_with_values(
+                "SELECT name".to_string(),
+                vec!["name".to_string()],
+                vec![vec![QueryValue::text("alice")]],
+                0,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["wrong_id".to_string()],
+                vec![vec![QueryValue::text("42")]],
+            );
+
+            assert_eq!(
+                preview_writeability_for_result(&table, &result),
+                PreviewWriteability::ReadOnly("invalid row identity")
+            );
+            assert!(stable_row_identity_for_preview(&table, &result).is_none());
+        }
+
+        #[test]
+        fn row_count_mismatch_in_explicit_identity_makes_preview_read_only() {
+            let table = primary_key_table();
+            let result = QueryResult::success_with_values(
+                "SELECT name".to_string(),
+                vec!["name".to_string()],
+                vec![vec![QueryValue::text("alice")]],
+                0,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(vec!["id".to_string()], Vec::new());
+
+            assert_eq!(
+                preview_writeability_for_result(&table, &result),
+                PreviewWriteability::ReadOnly("invalid row identity")
+            );
+        }
+
+        #[test]
+        fn value_count_mismatch_in_explicit_identity_makes_preview_read_only() {
+            let mut table = primary_key_table();
+            table.primary_key = Some(vec!["first_id".to_string(), "second_id".to_string()]);
+            let result = QueryResult::success_with_values(
+                "SELECT name".to_string(),
+                vec!["name".to_string()],
+                vec![vec![QueryValue::text("alice")]],
+                0,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["first_id".to_string(), "second_id".to_string()],
+                vec![vec![QueryValue::text("42")]],
+            );
+
+            assert_eq!(
+                preview_writeability_for_result(&table, &result),
+                PreviewWriteability::ReadOnly("invalid row identity")
             );
         }
 

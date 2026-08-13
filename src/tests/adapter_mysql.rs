@@ -29,6 +29,9 @@ fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionPro
 }
 
 const MYSQL_COMPOSITE_TABLE: &str = "mysql_preview_composite";
+const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
+const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
+const MYSQL_GIPK_TABLE: &str = "mysql_edit_gipk";
 const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
 const MYSQL_EMPTY_TABLE: &str = "mysql_preview_empty";
 const MYSQL_VIEW: &str = "mysql_preview_view";
@@ -496,6 +499,136 @@ async fn previews_empty_mysql_table_with_metadata_columns() {
                 .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["id", "payload"] || !result.values().is_empty() {
                 return Err(format!("unexpected empty preview: {result:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let invisible = db
+                .adapter()
+                .execute_preview(db.dsn(), "sabiql_test", MYSQL_INVISIBLE_PK_TABLE, 10, 0)
+                .await
+                .map_err(|error| format!("failed to preview invisible primary key: {error:?}"))?;
+            if invisible.columns != ["payload"]
+                || invisible.query.contains("__sabiql_row_identity_")
+                || invisible.values()
+                    != [[QueryValue::Text("invisible single primary key".to_string())]]
+            {
+                return Err(format!(
+                    "unexpected invisible primary key preview: {invisible:?}"
+                ));
+            }
+            let identity = invisible
+                .explicit_row_identity()
+                .ok_or_else(|| "invisible primary key identity was not returned".to_string())?;
+            if identity.columns() != ["id"]
+                || identity.values() != [[QueryValue::SqlLiteral("1".to_string())]]
+            {
+                return Err(format!(
+                    "unexpected invisible primary key identity: {identity:?}"
+                ));
+            }
+
+            let composite = db
+                .adapter()
+                .execute_preview(
+                    db.dsn(),
+                    "sabiql_test",
+                    MYSQL_INVISIBLE_COMPOSITE_TABLE,
+                    10,
+                    0,
+                )
+                .await
+                .map_err(|error| format!("failed to preview invisible composite key: {error:?}"))?;
+            let composite_identity = composite
+                .explicit_row_identity()
+                .ok_or_else(|| "invisible composite identity was not returned".to_string())?;
+            if composite.columns != ["payload"]
+                || composite.query.contains("__sabiql_row_identity_")
+                || composite_identity.columns() != ["second_key", "first_key"]
+                || composite_identity.values()
+                    != [[
+                        QueryValue::SqlLiteral("20".to_string()),
+                        QueryValue::SqlLiteral("1".to_string()),
+                    ]]
+            {
+                return Err(format!(
+                    "unexpected invisible composite preview: {composite:?}"
+                ));
+            }
+
+            let gipk_detail = db
+                .adapter()
+                .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE)
+                .await
+                .map_err(|error| format!("failed to fetch GIPK metadata: {error:?}"))?;
+            if gipk_detail.primary_key != Some(vec!["my_row_id".to_string()]) {
+                return Err(format!(
+                    "GIPK was not exposed by INFORMATION_SCHEMA: {:?}",
+                    gipk_detail.primary_key
+                ));
+            }
+            let gipk = db
+                .adapter()
+                .execute_preview(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE, 10, 0)
+                .await
+                .map_err(|error| format!("failed to preview GIPK: {error:?}"))?;
+            if gipk.columns != ["payload"]
+                || gipk.query.contains("__sabiql_row_identity_")
+                || gipk
+                    .explicit_row_identity()
+                    .is_none_or(|identity| identity.columns() != ["my_row_id"])
+            {
+                return Err(format!("unexpected GIPK preview: {gipk:?}"));
+            }
+
+            let update_sql = db.adapter().build_update_sql(
+                DatabaseType::MySQL,
+                "sabiql_test",
+                MYSQL_GIPK_TABLE,
+                "payload",
+                &QueryValue::text("updated through GIPK"),
+                &[(
+                    "my_row_id".to_string(),
+                    QueryValue::SqlLiteral("1".to_string()),
+                )],
+            );
+            let update = db
+                .adapter()
+                .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                .await
+                .map_err(|error| format!("failed to update through GIPK: {error:?}"))?;
+            if update.affected_rows != 1 {
+                return Err(format!("unexpected GIPK update result: {update:?}"));
+            }
+
+            let delete_sql = db.adapter().build_bulk_delete_sql(
+                DatabaseType::MySQL,
+                "sabiql_test",
+                MYSQL_INVISIBLE_PK_TABLE,
+                &[vec![(
+                    "id".to_string(),
+                    QueryValue::SqlLiteral("1".to_string()),
+                )]],
+            );
+            let delete = db
+                .adapter()
+                .execute_write(db.dsn(), &delete_sql, AccessMode::ReadWrite)
+                .await
+                .map_err(|error| {
+                    format!("failed to delete through invisible primary key: {error:?}")
+                })?;
+            if delete.affected_rows != 1 {
+                return Err(format!(
+                    "unexpected invisible primary key delete result: {delete:?}"
+                ));
             }
             Ok(())
         })

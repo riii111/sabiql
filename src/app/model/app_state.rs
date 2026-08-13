@@ -33,7 +33,9 @@ use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
-use crate::policy::write::write_guardrails::{PreviewWriteability, preview_writeability};
+use crate::policy::write::write_guardrails::{
+    PreviewWriteability, preview_writeability_for_result,
+};
 use crate::ports::outbound::DdlGenerator;
 
 pub struct AppState {
@@ -385,7 +387,8 @@ impl AppState {
         if !self.query.pagination.matches_table(table_detail) {
             return None;
         }
-        match preview_writeability(table_detail) {
+        let result = self.query.visible_result()?;
+        match preview_writeability_for_result(table_detail, result) {
             PreviewWriteability::Writable => None,
             PreviewWriteability::ReadOnly(reason) => Some(reason),
             PreviewWriteability::MissingStableRowIdentity => Some("table without PRIMARY KEY"),

@@ -55,6 +55,34 @@ CREATE TABLE mysql_preview_composite (
 INSERT INTO mysql_preview_composite (first_key, second_key, payload)
 VALUES (1, 20, 'first'), (2, 10, 'second');
 
+CREATE TABLE mysql_edit_invisible_pk (
+    id INT NOT NULL INVISIBLE,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_edit_invisible_pk (id, payload)
+VALUES (1, 'invisible single primary key');
+
+CREATE TABLE mysql_edit_invisible_composite (
+    first_key INT NOT NULL INVISIBLE,
+    second_key INT NOT NULL INVISIBLE,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (second_key, first_key)
+) ENGINE=InnoDB CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_edit_invisible_composite (first_key, second_key, payload)
+VALUES (1, 20, 'invisible composite primary key');
+
+SET SESSION sql_generate_invisible_primary_key = ON;
+
+CREATE TABLE mysql_edit_gipk (
+    payload TEXT NOT NULL
+) ENGINE=InnoDB CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_edit_gipk (payload)
+VALUES ('generated invisible primary key');
+
 CREATE TABLE mysql_metadata_parent (
     first_key INT NOT NULL,
     second_key INT NOT NULL,
