@@ -29,6 +29,8 @@ pub enum AcknowledgeReason {
     // SQLite cannot run this multi-statement script inside the automatic
     // transaction because one statement changes connection-level settings.
     NonAtomicTransaction,
+    // MySQL EXPLAIN ANALYZE executes an otherwise read-only target statement.
+    AnalyzeExecution,
 }
 
 #[cfg(test)]
@@ -118,8 +120,18 @@ mod mysql_tests {
             assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
             assert!(evaluate_mysql_explain_target(sql, true).is_none(), "{sql}");
         }
-        assert!(evaluate_mysql_explain_target("SELECT 1", true).is_some());
-        assert!(evaluate_mysql_explain_target("TABLE items", true).is_some());
+        for (sql, label) in [("SELECT 1", "SELECT"), ("TABLE items", "TABLE")] {
+            let risk = evaluate_mysql_explain_target(sql, true).expect(sql);
+            assert_eq!(risk.risk_level, RiskLevel::Low);
+            assert!(risk.read_only_allowed);
+            assert_eq!(
+                risk.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                    label: label.to_string(),
+                }
+            );
+        }
         assert!(evaluate_mysql_explain_target("SHOW TABLES", true).is_none());
     }
 
@@ -917,7 +929,13 @@ pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRisk
                 | MysqlStatementKind::Describe
         )
     };
-    let risk = mysql_statement_risk(&statement);
+    let mut risk = mysql_statement_risk(&statement);
+    if analyze && risk.read_only_allowed {
+        risk.confirmation = ConfirmationType::Acknowledge {
+            reason: AcknowledgeReason::AnalyzeExecution,
+            label: mysql_statement_label(&statement.kind).to_string(),
+        };
+    }
     allowed_kind
         .then_some(risk)
         .filter(|risk| risk.read_only_allowed)
