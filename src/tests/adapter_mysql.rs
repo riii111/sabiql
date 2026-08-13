@@ -5,11 +5,12 @@
 
 use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
-    AccessMode, ConnectionProbe, DbOperationError, DsnBuilder, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
-    MetadataProvider, QueryExecutor, SqlDialect,
+    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder,
+    MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider, QueryExecutor, SqlDialect,
 };
 use sabiql_domain::{
     CommandTag, DatabaseType, FkAction, IndexType, QueryValue, RefreshScope, TableKind,
+    TriggerEvent, TriggerTiming,
 };
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};

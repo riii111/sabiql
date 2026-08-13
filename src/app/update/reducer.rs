@@ -352,6 +352,7 @@ mod tests {
             assert_unsupported_action_is_a_noop(
                 &mut state,
                 Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id: 0,
                     path: "diagram.svg".to_string(),
                     table_count: 1,
                     total_tables: 1,

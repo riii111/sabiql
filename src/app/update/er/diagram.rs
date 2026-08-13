@@ -13,10 +13,14 @@ pub(super) fn reduce_diagram_lifecycle(
 ) -> DispatchResult {
     match action {
         Action::ErDiagramOpened(ErDiagramInfo {
+            run_id,
             path,
             table_count,
             total_tables,
         }) => {
+            if !state.er_preparation.is_current_run(*run_id) {
+                return DispatchResult::handled();
+            }
             state.er_preparation.mark_idle();
             // Reset so next ErOpenDiagram re-evaluates target_tables from scratch.
             state.sql_modal.invalidate_prefetch();
@@ -28,9 +32,12 @@ pub(super) fn reduce_diagram_lifecycle(
             );
             DispatchResult::handled()
         }
-        Action::ErDiagramFailed(error) => {
+        Action::ErDiagramFailed(failure) => {
+            if !state.er_preparation.is_current_run(failure.run_id) {
+                return DispatchResult::handled();
+            }
             state.er_preparation.mark_idle();
-            state.messages.set_error_at(error.to_string(), now);
+            state.messages.set_error_at(failure.error.to_string(), now);
             DispatchResult::handled()
         }
         Action::ErLogWriteFailed(error) => {
@@ -75,12 +82,14 @@ pub(super) fn reduce_diagram_lifecycle(
             }
 
             state.er_preparation.mark_rendering();
+            let run_id = state.er_preparation.run_id();
             let total_tables = state
                 .session
                 .metadata()
                 .map_or(0, |m| m.table_summaries.len());
 
             DispatchResult::handled_with(vec![Effect::GenerateErDiagramFromCache {
+                run_id,
                 total_tables,
                 project_name: state.runtime.project_name.clone(),
                 target_tables: state.er_preparation.target_tables().to_vec(),

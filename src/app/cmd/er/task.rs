@@ -5,11 +5,12 @@ use tokio::sync::mpsc;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
-use crate::update::action::{Action, ErDiagramError, ErDiagramInfo};
+use crate::update::action::{Action, ErDiagramError, ErDiagramFailure, ErDiagramInfo};
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
     tables: Vec<ErTableInfo>,
+    run_id: u64,
     total_tables: usize,
     cache_dir: PathBuf,
     tx: mpsc::Sender<Action>,
@@ -27,6 +28,7 @@ pub fn spawn_er_diagram_task(
             Ok(Ok(path)) => {
                 let _ = tx
                     .send(Action::ErDiagramOpened(ErDiagramInfo {
+                        run_id,
                         path: path.display().to_string(),
                         table_count,
                         total_tables,
@@ -35,16 +37,18 @@ pub fn spawn_er_diagram_task(
             }
             Ok(Err(e)) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramError::ExportFailed(
-                        e.to_string(),
-                    )))
+                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                        run_id,
+                        error: ErDiagramError::ExportFailed(e.to_string()),
+                    }))
                     .await;
             }
             Err(e) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramError::TaskPanicked(
-                        e.to_string(),
-                    )))
+                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                        run_id,
+                        error: ErDiagramError::TaskPanicked(e.to_string()),
+                    }))
                     .await;
             }
         }
@@ -122,6 +126,7 @@ mod tests {
             spawn_er_diagram_task(
                 exporter,
                 vec![],
+                1,
                 5,
                 temp_dir.path().to_path_buf(),
                 tx,
@@ -132,6 +137,7 @@ mod tests {
             let action = receive_action(&mut rx).await;
             match action {
                 Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
                     path,
                     table_count,
                     total_tables,
@@ -139,6 +145,7 @@ mod tests {
                     assert!(path.contains("test.svg"));
                     assert_eq!(table_count, 0);
                     assert_eq!(total_tables, 5);
+                    assert_eq!(run_id, 1);
                 }
                 _ => panic!("expected ErDiagramOpened, got {action:?}"),
             }
@@ -153,6 +160,7 @@ mod tests {
             spawn_er_diagram_task(
                 exporter,
                 vec![],
+                1,
                 5,
                 temp_dir.path().to_path_buf(),
                 tx,
@@ -178,6 +186,7 @@ mod tests {
             spawn_er_diagram_task(
                 exporter,
                 vec![],
+                1,
                 5,
                 temp_dir.path().to_path_buf(),
                 tx,

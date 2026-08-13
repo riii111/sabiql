@@ -4,7 +4,7 @@ assertion_line: 140
 expression: output
 ---
 test_project ▸ app ▸ -                                                                                                                             not loaded | mysql
-┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK]                                                                                                    
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK] [Trig] [DDL]                                                                                       
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
 │                                       ││                                                                                                                          │
