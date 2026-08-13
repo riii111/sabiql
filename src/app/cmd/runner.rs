@@ -170,6 +170,7 @@ impl EffectRunner {
 
             e @ (Effect::SaveAndConnect { .. }
             | Effect::ProbeConnection { .. }
+            | Effect::FetchMySqlDatabases { .. }
             | Effect::LoadConnectionForEdit { .. }
             | Effect::LoadConnections
             | Effect::DeleteConnection { .. }

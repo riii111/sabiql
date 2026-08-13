@@ -99,6 +99,23 @@ fn reduce_inner(
 
         Action::ConfirmSelection => {
             if state.modal.active_mode() == InputMode::TablePicker {
+                if state.ui.database_picker() {
+                    let database = state
+                        .filtered_databases()
+                        .get(state.ui.table_picker().selected())
+                        .map(|database| (*database).clone());
+                    if let Some(database) = database {
+                        state.modal.set_mode(InputMode::Normal);
+                        state.ui.set_database_picker(false);
+                        return reduce(
+                            state,
+                            Action::SwitchMySqlDatabase { database },
+                            now,
+                            services,
+                        );
+                    }
+                    return vec![];
+                }
                 let table = state
                     .filtered_tables()
                     .get(state.ui.table_picker().selected())

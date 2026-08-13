@@ -330,6 +330,17 @@ impl ConnectionProbe for DbAdapterRegistry {
             }
         }
     }
+
+    async fn fetch_databases(&self, dsn: &str) -> Result<Vec<String>, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::MySQL => self.mysql.fetch_databases(dsn).await,
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                Err(DbOperationError::UnsupportedOperation(
+                    "Database listing is only implemented for MySQL".to_string(),
+                ))
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -85,6 +85,9 @@ pub struct BrowseSession {
     active_connection: Option<ActiveConnection>,
     connection_probe_run: AsyncRun,
     pending_connection_probe: Option<PendingConnectionProbe>,
+    connection_generation: u64,
+    database_generation: u64,
+    available_databases: Vec<String>,
     active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
@@ -107,6 +110,9 @@ impl Default for BrowseSession {
             active_connection: None,
             connection_probe_run: AsyncRun::default(),
             pending_connection_probe: None,
+            connection_generation: 0,
+            database_generation: 0,
+            available_databases: Vec::new(),
             active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
@@ -176,6 +182,7 @@ impl BrowseSession {
         database: Option<&str>,
     ) -> u64 {
         self.cancel_metadata_for_connection_probe();
+        self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.connection_probe_run.begin();
         self.pending_connection_probe = Some(PendingConnectionProbe {
             id: id.clone(),
@@ -186,6 +193,10 @@ impl BrowseSession {
             run_id,
         });
         run_id
+    }
+
+    pub fn invalidate_connection_generation(&mut self) {
+        self.connection_generation = self.connection_generation.wrapping_add(1);
     }
 
     fn cancel_metadata_for_connection_probe(&mut self) {
@@ -269,6 +280,8 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) {
+        self.database_generation = self.database_generation.wrapping_add(1);
+        self.available_databases.clear();
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
@@ -324,6 +337,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
+        self.available_databases.clear();
         self.clear_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
@@ -516,7 +530,8 @@ impl BrowseSession {
     }
 
     pub fn database_name(&self) -> Option<&str> {
-        self.metadata.as_ref().map(|m| m.database_name.as_str())
+        self.active_database()
+            .or_else(|| self.metadata.as_ref().map(|m| m.database_name.as_str()))
     }
 
     pub fn effective_user(&self) -> Option<&str> {
@@ -543,6 +558,52 @@ impl BrowseSession {
     // effects from a previous connection.
     pub fn dsn_matches(&self, expected: &str) -> bool {
         self.dsn() == Some(expected)
+    }
+
+    pub fn connection_generation(&self) -> u64 {
+        self.connection_generation
+    }
+
+    pub fn database_generation(&self) -> u64 {
+        self.database_generation
+    }
+
+    pub fn is_current_database_fetch(
+        &self,
+        id: &ConnectionId,
+        dsn: &str,
+        connection_generation: u64,
+        database_generation: u64,
+    ) -> bool {
+        self.connection_generation == connection_generation
+            && self.database_generation == database_generation
+            && self.active_connection_id() == Some(id)
+            && self.active_database_type() == Some(DatabaseType::MySQL)
+            && self.dsn().is_some_and(|current| {
+                self.server_dsn().as_deref() == Some(dsn) && current.starts_with("mysql:")
+            })
+    }
+
+    pub fn server_dsn(&self) -> Option<String> {
+        let mut url = url::Url::parse(self.dsn()?).ok()?;
+        url.path_segments_mut().ok()?.clear();
+        Some(url.to_string())
+    }
+
+    pub fn set_available_databases(&mut self, databases: Vec<String>) {
+        self.available_databases = databases
+            .into_iter()
+            .filter(|database| {
+                !matches!(
+                    database.to_ascii_lowercase().as_str(),
+                    "information_schema" | "mysql" | "performance_schema" | "sys"
+                )
+            })
+            .collect();
+    }
+
+    pub fn available_databases(&self) -> &[String] {
+        &self.available_databases
     }
 
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
