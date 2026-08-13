@@ -222,6 +222,20 @@ pub enum QuerySource {
     Adhoc,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RefreshScope {
+    None,
+    Data,
+    Metadata,
+}
+
+impl RefreshScope {
+    #[must_use]
+    pub fn merge(self, other: Self) -> Self {
+        self.max(other)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct QueryResult {
     pub query: String,
@@ -230,6 +244,7 @@ pub struct QueryResult {
     pub source: QuerySource,
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
+    pub refresh_scope: RefreshScope,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
     row_count: usize,
@@ -261,6 +276,7 @@ impl QueryResult {
             source,
             error: None,
             command_tag: None,
+            refresh_scope: RefreshScope::None,
         }
     }
 
@@ -284,6 +300,7 @@ impl QueryResult {
             source,
             error: None,
             command_tag: None,
+            refresh_scope: RefreshScope::None,
         }
     }
 
@@ -305,12 +322,20 @@ impl QueryResult {
             source,
             error: Some(error),
             command_tag: None,
+            refresh_scope: RefreshScope::None,
         }
     }
 
     #[must_use]
     pub fn with_command_tag(mut self, tag: CommandTag) -> Self {
+        self.refresh_scope = tag.refresh_scope();
         self.command_tag = Some(tag);
+        self
+    }
+
+    #[must_use]
+    pub fn with_refresh_scope(mut self, refresh_scope: RefreshScope) -> Self {
+        self.refresh_scope = refresh_scope;
         self
     }
 
