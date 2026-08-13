@@ -29,15 +29,14 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{
     AccessMode, ConnectionProbe, DatabaseCli, DbOperationError, DdlGenerator, DsnBuilder,
     MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_SERVER_VERSION_REQUIRED_MARKER,
-    MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider, QueryExecutor, SqlDialect,
+    MYSQL_SQL_MODE_UNSUPPORTED_MARKER, QueryExecutor, SqlDialect,
 };
 use crate::domain::connection::{
     ConnectionProfile, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
 };
-use crate::domain::{
-    DatabaseMetadata, QueryResult, QuerySource, QueryValue, Table, TableSignature,
-    WriteExecutionResult,
-};
+use crate::domain::{QueryResult, QuerySource, QueryValue, Table, WriteExecutionResult};
+
+mod metadata;
 
 pub struct MySqlAdapter;
 
@@ -59,57 +58,48 @@ impl Default for MySqlAdapter {
 }
 
 #[async_trait]
-impl MetadataProvider for MySqlAdapter {
-    async fn fetch_metadata(&self, _dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL metadata is not implemented".to_string(),
-        ))
-    }
-
-    async fn fetch_table_detail(
-        &self,
-        _dsn: &str,
-        _schema: &str,
-        _table: &str,
-    ) -> Result<Table, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL metadata is not implemented".to_string(),
-        ))
-    }
-
-    async fn fetch_table_columns_and_fks(
-        &self,
-        _dsn: &str,
-        _schema: &str,
-        _table: &str,
-    ) -> Result<Table, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL metadata is not implemented".to_string(),
-        ))
-    }
-
-    async fn fetch_table_signatures(
-        &self,
-        _dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL metadata is not implemented".to_string(),
-        ))
-    }
-}
-
-#[async_trait]
 impl QueryExecutor for MySqlAdapter {
     async fn execute_preview(
         &self,
-        _dsn: &str,
-        _schema: &str,
-        _table: &str,
-        _limit: usize,
-        _offset: usize,
+        dsn: &str,
+        schema: &str,
+        table: &str,
+        limit: usize,
+        offset: usize,
     ) -> Result<QueryResult, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL query execution is not implemented".to_string(),
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures mysql execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+        let preview = metadata::fetch_preview_metadata(dsn, schema, table).await?;
+        let query = metadata::build_preview_query(
+            schema,
+            table,
+            &preview.order_columns,
+            &preview.visible_columns,
+            limit,
+            offset,
+        );
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_adhoc(&option_file.path, &query).await;
+        drop(option_file);
+        let result_set = result?;
+        let values = metadata::convert_preview_values(&result_set, &preview.visible_columns)?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        Ok(QueryResult::success_with_values(
+            query,
+            preview
+                .visible_columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect(),
+            values,
+            elapsed,
+            QuerySource::Preview,
         ))
     }
 

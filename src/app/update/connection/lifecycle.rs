@@ -169,6 +169,12 @@ pub fn reduce_connection_lifecycle(
                         database_generation: state.session.database_generation(),
                     });
                 }
+            } else {
+                let metadata_run_id = state.session.begin_metadata_refresh();
+                effects.push(Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id: metadata_run_id,
+                });
             }
             DispatchResult::handled_with(termination_effects(&state.query, effects))
         }
@@ -201,9 +207,16 @@ pub fn reduce_connection_lifecycle(
             reset_for_database_switch(state, &target);
             state.ui.set_database_picker(false);
             state.modal.set_mode(InputMode::Normal);
+            let metadata_run_id = state.session.begin_metadata_refresh();
             DispatchResult::handled_with(termination_effects(
                 &state.query,
-                vec![Effect::ClearCompletionEngineCache],
+                vec![
+                    Effect::ClearCompletionEngineCache,
+                    Effect::FetchMetadata {
+                        dsn: target.dsn,
+                        run_id: metadata_run_id,
+                    },
+                ],
             ))
         }
 
@@ -1641,7 +1654,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query_history_picker.entries().is_empty());
             assert!(
-                !effects
+                effects
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
             );

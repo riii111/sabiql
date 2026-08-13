@@ -484,12 +484,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mysql_dsn_is_dispatched_to_mysql_adapter() {
+    async fn mysql_dsn_requires_a_selected_database_for_metadata() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
-        let result = registry.fetch_metadata("mysql://localhost/db").await;
+        let result = registry.fetch_metadata("mysql://localhost").await;
 
-        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
+        assert!(matches!(
+            result,
+            Err(DbOperationError::UnsupportedOperation(_))
+        ));
     }
 
     #[test]

@@ -123,7 +123,7 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
 }
 
 #[test]
-fn mysql_explorer_explains_metadata_is_not_available() {
+fn mysql_explorer_requests_metadata_load() {
     let mut state = create_test_state();
     state.session.activate_connection_with_target(
         &ConnectionId::from_string("mysql-test"),
