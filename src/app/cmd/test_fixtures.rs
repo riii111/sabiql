@@ -9,10 +9,10 @@ use crate::cmd::runner::{
 };
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
-    ConnectionId, DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource,
-    QueryValue, SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
+    DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
+    SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
@@ -158,7 +158,7 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn append(
         &self,
         _project_name: &str,
-        _connection_id: &ConnectionId,
+        _scope: &QueryHistoryScope,
         _entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError> {
         Ok(())
@@ -167,7 +167,7 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     async fn load(
         &self,
         _project_name: &str,
-        _connection_id: &ConnectionId,
+        _scope: &QueryHistoryScope,
     ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError> {
         Ok(Vec::new())
     }

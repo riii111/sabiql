@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
@@ -634,6 +635,15 @@ impl BrowseSession {
             .and_then(|connection| connection.database.as_deref())
     }
 
+    pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {
+        let connection_id = self.active_connection_id()?.clone();
+        let database = match self.active_database_type() {
+            Some(DatabaseType::MySQL) => self.active_database().map(str::to_owned),
+            Some(DatabaseType::PostgreSQL | DatabaseType::SQLite) | None => None,
+        };
+        Some(QueryHistoryScope::new(connection_id, database))
+    }
+
     pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {
         &self.active_engine_feature_profile
     }
@@ -1234,6 +1244,42 @@ mod tests {
             session.restore_from_cache(&cache, &mut query);
 
             assert!(session.database_name().is_none());
+        }
+    }
+
+    mod query_history_scope_tests {
+        use super::*;
+
+        #[test]
+        fn mysql_scope_includes_selected_database() {
+            let mut session = BrowseSession::default();
+            session.activate_connection_with_target(
+                &ConnectionId::from_string("mysql"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/app",
+                Some("app"),
+            );
+
+            let scope = session.query_history_scope().unwrap();
+
+            assert_eq!(scope.database.as_deref(), Some("app"));
+        }
+
+        #[test]
+        fn postgres_and_sqlite_scopes_omit_database() {
+            for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+                let mut session = BrowseSession::default();
+                session.activate_connection_with_target(
+                    &ConnectionId::from_string("connection"),
+                    "connection",
+                    database_type,
+                    "dsn://connection",
+                    Some("database"),
+                );
+
+                assert_eq!(session.query_history_scope().unwrap().database, None);
+            }
         }
     }
 
