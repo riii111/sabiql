@@ -199,7 +199,8 @@ fn is_mysql_client_certificate_error(value: &str) -> bool {
 }
 
 fn is_mysql_hostname_verification_error(value: &str) -> bool {
-    value.contains("hostname mismatch")
+    value.contains("error:0a000086:ssl routines::certificate verify failed")
+        || value.contains("hostname mismatch")
         || value.contains("host name mismatch")
         || value.contains("hostname does not match")
         || value.contains("host name does not match")
@@ -218,9 +219,6 @@ fn is_mysql_ca_verification_error(value: &str) -> bool {
     value.contains("unable to get local issuer")
         || value.contains("self-signed certificate")
         || value.contains("unknown ca")
-        || value.contains("certificate verify failed")
-        || value.contains("certificate verification failure")
-        || value.contains("certificate validation failure")
         || value.contains("certificate signature failure")
 }
 
@@ -434,6 +432,12 @@ mod tests {
             assert_eq!(
                 ConnectionErrorKind::classify(
                     "ERROR 2026 (HY000): TLS/SSL error: certificate verify failed: hostname mismatch"
+                ),
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
                 ),
                 ConnectionErrorKind::MySqlHostnameVerificationFailed
             );
