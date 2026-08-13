@@ -134,6 +134,7 @@ pub enum Effect {
     TriggerCompletion,
 
     GenerateErDiagramFromCache {
+        run_id: u64,
         total_tables: usize,
         project_name: String,
         target_tables: Vec<String>,
