@@ -1475,10 +1475,7 @@ fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
 }
 
 fn mysql_resultset_frame_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
-    let start = [&b"<?xml"[..], &b"<resultset"[..]]
-        .iter()
-        .filter_map(|prefix| find_bytes(buffer, prefix))
-        .min()?;
+    let start = find_bytes(buffer, b"<resultset")?;
     let end = buffer[start..]
         .windows(b"</resultset>".len())
         .position(|window| window == b"</resultset>")?
@@ -2761,7 +2758,7 @@ done
 
         assert_eq!(
             take_mysql_resultset_frame(&mut buffer),
-            Some(b"<?xml version=\"1.0\"?>\n<resultset></resultset>".to_vec())
+            Some(b"<resultset></resultset>".to_vec())
         );
         assert_eq!(
             take_mysql_resultset_frame(&mut buffer),
@@ -2769,6 +2766,18 @@ done
             "an incomplete following frame must remain buffered"
         );
         assert!(buffer.starts_with(b"\r\n    -> <?xml"));
+    }
+
+    #[test]
+    fn frames_resultset_after_mysql_cli_text() {
+        let mut buffer =
+            b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
+
+        assert_eq!(
+            take_mysql_resultset_frame(&mut buffer),
+            Some(b"<resultset></resultset>".to_vec())
+        );
+        assert!(buffer.is_empty());
     }
 
     #[tokio::test]
