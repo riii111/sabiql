@@ -1,7 +1,7 @@
 # sabiql
 ![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
-A fast, driver-less TUI to browse, query, and edit PostgreSQL and SQLite databases — no drivers, no setup, just your database CLI (`psql` or `sqlite3`).
+A fast, driver-less TUI to browse, query, and edit PostgreSQL, MySQL, and SQLite databases — no drivers, no setup, just your database CLI (`psql`, `mysql`, or `sqlite3`).
 
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,7 +10,7 @@ A fast, driver-less TUI to browse, query, and edit PostgreSQL and SQLite databas
 
 > Vim-first · Safe by design · Oil-and-vinegar UI · Fast and lightweight
 
-sabiql wraps your existing database CLI. For PostgreSQL it uses `psql`; for SQLite it uses `sqlite3`. No Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI. Your `psql` config, `.pgpass`, and SSL setup all just work for PostgreSQL connections.
+sabiql wraps your existing database CLI. For PostgreSQL it uses `psql`, for MySQL it uses `mysql`, and for SQLite it uses `sqlite3`. No Rust database drivers, no connection pools, no extra dependencies. Point it at your database and get a full-featured TUI. Your `psql` config, `.pgpass`, and SSL setup all just work for PostgreSQL connections.
 
 Inspired by [oil.nvim](https://github.com/stevearc/oil.nvim)'s "oil and vinegar" philosophy: UI elements appear only when needed, never occupying your screen permanently. Vim-native keybindings (`j/k`, `dd`, `/`) let you navigate and edit without leaving your muscle memory.
 
@@ -22,7 +22,7 @@ Built in Rust for minimal memory footprint and near-zero idle CPU. A full-featur
 
 sabiql treats the SQL modal as SQL-only input. CLI meta-commands such as psql backslash commands and sqlite3 dot commands are rejected instead of being passed to the underlying client.
 
-Read-only mode combines app-level write blocking with the database client guard available for the active adapter. PostgreSQL uses a read-only session option. SQLite also runs every sqlite3 command in safe mode, preventing SQL from accessing files, extensions, or databases outside the selected database file.
+Read-only mode combines app-level write blocking with the database client guard available for the active adapter. PostgreSQL uses a read-only session option. MySQL uses a read-only transaction session. SQLite also runs every sqlite3 command in safe mode, preventing SQL from accessing files, extensions, or databases outside the selected database file.
 
 PostgreSQL multi-statement SQL runs in one transaction. SQLite wraps transactional writes, including persistent PRAGMAs such as `user_version`, unless the input contains transaction control or a session-side-effect / transaction-incompatible statement such as `PRAGMA journal_mode`, `PRAGMA foreign_keys`, or `PRAGMA synchronous`. SQLite safe mode also rejects operations such as `ATTACH` and `VACUUM` that require capabilities unavailable in safe mode.
 
@@ -33,8 +33,9 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite wraps transaction
 
 - **Read-Only Mode** (`Ctrl+R`) — Toggle safe-browse mode; writes are blocked at both app and DB session level
 - **SQL Modal** (`s`) — Ad-hoc queries with auto-completion for tables, columns, and keywords; recall previous queries with `Ctrl+O`
-- **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz, opened instantly in your browser (PostgreSQL only)
-- **Inspector Pane** (`2`) — Column details, types, constraints, and indexes for any table
+- **ER Diagram** (`e`) — Generate relationship diagrams via Graphviz for PostgreSQL and MySQL, opened instantly in your browser
+- **Inspector Pane** (`2`) — Column details, types, constraints, indexes, foreign keys, triggers, and DDL for tables and views
+- **MySQL Database Picker** (`Ctrl+Shift+B`) — Switch databases on the active MySQL server without recreating the connection
 
 ### Editing
 
@@ -42,10 +43,11 @@ PostgreSQL multi-statement SQL runs in one transaction. SQLite wraps transaction
 - **Row Deletion** (`dd` in Result) — DELETE with mandatory preview; risk level color-coded (yellow/orange/red)
 - **Yank** (`y`) — Copy any cell value to clipboard
 - **CSV Export** (`Ctrl+E`) — Export query results to a CSV file
+- **JSON / JSONB detail** — View, search, validate, and edit JSON documents where the database supports it
 
 ### Query Analysis
 
-- **EXPLAIN / EXPLAIN ANALYZE** — PostgreSQL: run your query, then switch tabs to view its execution plan or compare two plans side-by-side.
+- **EXPLAIN / EXPLAIN ANALYZE / Compare** — PostgreSQL and MySQL: run supported queries, then switch tabs to view execution plans, analyze supported read-only targets, or compare plans from the same database.
 - **EXPLAIN QUERY PLAN** — SQLite: view query plans for single SELECT statements in the Plan tab.
 
 ### Navigation
@@ -110,7 +112,11 @@ On first run without a startup argument, enter your connection details. They are
 
 Windows support is experimental.
 
-For PostgreSQL, fill in host, port, database, and credentials. For SQLite, set **Type** to `SQLite` and enter the path to a database file (for example `/path/to/app.db`).
+For PostgreSQL, fill in host, port, database, and credentials. For MySQL, set **Type** to `MySQL`, fill in host, port, user, and password, and optionally enter an initial database. After connecting, use the MySQL Database Picker (`Ctrl+Shift+B`) to choose or switch databases; a connection without an initial database opens the picker after the connection succeeds. Select the TLS mode in the connection form when required.
+
+Enable Read-Only Mode with `Ctrl+R` before browsing or investigating data. It applies to SQL execution, grid edits, and execution plans.
+
+For SQLite, set **Type** to `SQLite` and enter the path to a database file (for example `/path/to/app.db`).
 
 Press `?` for help.
 
@@ -123,15 +129,16 @@ Open Settings with `,` to switch themes, keymap presets, and the ER diagram brow
 Install the CLI for the database you want to open:
 
 - **PostgreSQL:** `psql` (PostgreSQL client)
+- **MySQL:** Oracle MySQL server 8.4 LTS and the Oracle `mysql` CLI from the 8.4 series
 - **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later.
 
 Optional:
 
-- Graphviz (for ER diagrams on PostgreSQL): `brew install graphviz`
+- Graphviz (for ER diagrams on PostgreSQL and MySQL): `brew install graphviz`
 
 ### Android / Termux
 
-Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. Install `psql` for PostgreSQL and `sqlite3` for SQLite.
+Android/Termux support is build-only, not full platform support. `cargo install sabiql` should compile on Android, but clipboard yank is unavailable because the desktop clipboard backend is not supported there. Install `psql` for PostgreSQL, `mysql` for MySQL, and `sqlite3` for SQLite.
 
 ## SQLite Limitations
 
@@ -146,6 +153,23 @@ SQLite support covers browsing, editing, and ad-hoc SQL on regular database file
 - **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
 - **No JSON tree view** — Structured JSON editing is PostgreSQL-only.
 
+## MySQL Limitations
+
+MySQL support targets Oracle MySQL server 8.4 LTS with the Oracle `mysql` CLI from the 8.4 series. MariaDB, Percona Server, TiDB, and other MySQL-compatible products are not formally supported.
+
+- **TCP connections only** — MySQL connections use TCP. Unix sockets and Windows named pipes are not supported.
+- **No persistent session state** — sabiql starts a new `mysql` process for each operation. Temporary tables, session variables, and transactions do not carry over to the next SQL submission. Multiple statements in one submission share one process and session.
+- **Supported SQL scope** — The SQL modal supports reads such as `SELECT`, `TABLE`, `SHOW`, and `DESCRIBE`, DML (`INSERT`, `UPDATE`, and `DELETE`), table/view/index DDL, and simple explicit transactions. Database/account/role/replication/server/plugin/routine/event/trigger administration statements are not supported. `REPLACE`, `CALL`, `DO`, `HANDLER`, `LOAD DATA`/`LOAD XML`, table-maintenance statements, prepared statements, XA statements, and compound statements are also rejected.
+- **No session or table-control SQL** — User `USE`, `SET`, `LOCK TABLES`, and `UNLOCK TABLES` statements are rejected. MySQL client commands such as `source`, `system`, `charset`, and backslash commands are rejected, as is `DELIMITER`.
+- **SQL mode** — Connections using `NO_BACKSLASH_ESCAPES` or `ANSI_QUOTES` are rejected. Those modes are required for some MySQL quoting styles that sabiql does not support.
+- **NUL in text** — The MySQL CLI XML output cannot preserve NUL characters embedded in text values.
+- **Binary values in arbitrary SQL** — Arbitrary SQL results do not include reliable column type metadata, so binary values are kept as the CLI's `0x...` text representation. Known binary columns in table previews are handled as Blob values.
+- **TLS client keys** — Passphrase-protected client keys are not supported. Use an unencrypted PEM private key.
+- **System databases** — `information_schema`, `mysql`, `performance_schema`, and `sys` are omitted from the MySQL Database Picker.
+- **Grid editing scope** — Views, tables without a retrievable primary key, and generated columns are read-only in the grid. Invisible primary keys and generated invisible primary keys are used for row identity when available but are not shown as grid columns.
+- **CSV representation** — NULL values are exported as empty fields. Known cached Blob values use uppercase hexadecimal strings; binary values from type-unknown arbitrary SQL keep the CLI's `0x...` representation.
+- **Read-Only Mode is not a sandbox** — It blocks supported writes at the application and MySQL session levels, but it does not isolate external side effects from user-defined functions (UDFs).
+
 ## Roadmap
 
 - [x] Connection management UI
@@ -158,10 +182,10 @@ SQLite support covers browsing, editing, and ad-hoc SQL on regular database file
 - [x] JSON/JSONB support (tree view, editing, validation)
 - [x] Theme switching (Sabiql Dark / Light)
 - [x] SQLite support
+- [x] MySQL support (Oracle MySQL 8.4 server and `mysql` CLI)
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
-- [ ] MySQL support
 
 Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new) feedback is welcome!
 
