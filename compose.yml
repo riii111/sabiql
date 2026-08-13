@@ -24,11 +24,12 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sabiql_test
       MYSQL_USER: sabiql
-      MYSQL_PASSWORD: 'p a#ss;="word'
+      MYSQL_PASSWORD: sabiql
     ports:
       - "3306:3306"
     volumes:
       - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./scripts/seed-mysql.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
       interval: 2s

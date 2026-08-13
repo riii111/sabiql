@@ -128,4 +128,6 @@ CREATE TABLE mysql_preview_empty (
 CREATE VIEW mysql_preview_view AS
 SELECT id, unicode_text FROM mysql_cli_fixture;
 
-GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'sabiql'@'%';
+CREATE USER 'sabiql_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word';
+GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_test_runner'@'%';
+GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'sabiql'@'%', 'sabiql_test_runner'@'%';

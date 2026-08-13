@@ -113,7 +113,8 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
             std::env::var("SABIQL_MYSQL_TEST_DATABASE")
                 .unwrap_or_else(|_| "sabiql_test".to_string()),
         ),
-        std::env::var("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|_| "sabiql".to_string()),
+        std::env::var("SABIQL_MYSQL_TEST_USER")
+            .unwrap_or_else(|_| "sabiql_test_runner".to_string()),
         std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
             .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
         MySqlSslMode::Disabled,
@@ -132,7 +133,8 @@ pub fn mysql_tls_config() -> MySqlConnectionConfig {
             std::env::var("SABIQL_MYSQL_TEST_DATABASE")
                 .unwrap_or_else(|_| "sabiql_test".to_string()),
         ),
-        std::env::var("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|_| "sabiql".to_string()),
+        std::env::var("SABIQL_MYSQL_TEST_USER")
+            .unwrap_or_else(|_| "sabiql_test_runner".to_string()),
         std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
             .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
         MySqlSslMode::VerifyCa,

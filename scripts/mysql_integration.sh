@@ -13,7 +13,7 @@ readonly mysql_image="mysql:8.4.10"
 readonly mysql_host="${SABIQL_MYSQL_TEST_HOST:-host.docker.internal}"
 readonly mysql_port="${SABIQL_MYSQL_TEST_PORT:-3306}"
 readonly mysql_database="${SABIQL_MYSQL_TEST_DATABASE:-sabiql_test}"
-readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql}"
+readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 
 mysql_option_file=''
@@ -27,7 +27,7 @@ cleanup() {
         rm -rf -- "$mysql_bin_dir"
     fi
     rm -rf -- "$temp_dir"
-    docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop mysql >/dev/null 2>&1 || true
+    docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
@@ -130,14 +130,14 @@ run_tests() {
         -E 'test(tests::adapter_mysql)' \
         --test-threads 1 \
         --no-fail-fast \
-        --show-progress=none
+        --hide-progress-bar
 }
 
 case "${1:-test}" in
     test)
         mkdir -p -- "$temp_dir"
         export TMPDIR="$temp_dir"
-        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop mysql >/dev/null 2>&1 || true
+        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
         create_tls_material
         docker compose --file "$compose_file" --file "$tls_compose_file" up --detach --wait mysql
         install_cli_wrapper
@@ -146,7 +146,7 @@ case "${1:-test}" in
         run_tests
         ;;
     stop)
-        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop mysql
+        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql
         ;;
     *)
         echo "usage: $0 [test|stop]" >&2
