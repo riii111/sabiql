@@ -2,8 +2,10 @@ use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
@@ -15,9 +17,7 @@ use quick_xml::events::Event;
 use serde::Deserialize;
 #[cfg(unix)]
 use tokio::fs::File as TokioFile;
-#[cfg(not(unix))]
-use tokio::io::AsyncRead;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, ReadBuf};
 use tokio::process::Child;
 use tokio::process::Command;
 #[cfg(not(unix))]
@@ -26,6 +26,9 @@ use tokio::time::timeout;
 use url::Url;
 use uuid::Uuid;
 
+#[cfg(test)]
+use crate::adapters::csv_export::export_to_path;
+use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 #[cfg(test)]
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
@@ -176,21 +179,44 @@ impl QueryExecutor for MySqlAdapter {
         ))
     }
 
-    async fn count_query_rows(&self, _dsn: &str, _query: &str) -> Result<usize, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL query execution is not implemented".to_string(),
-        ))
+    async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
+        validate_mysql_export_query(query, target.database.as_deref())?;
+
+        let result = self.execute_adhoc(dsn, query, AccessMode::ReadOnly).await?;
+        let value = result
+            .values()
+            .first()
+            .and_then(|row| row.first())
+            .and_then(QueryValue::as_str)
+            .ok_or_else(|| {
+                DbOperationError::QueryFailed(
+                    "MySQL row count query returned an invalid result".to_string(),
+                )
+            })?;
+        value.parse::<usize>().map_err(|_| {
+            DbOperationError::QueryFailed("MySQL row count was not an integer".to_string())
+        })
     }
 
     async fn export_to_csv(
         &self,
-        _dsn: &str,
-        _query: &str,
-        _file_name: &str,
+        dsn: &str,
+        query: &str,
+        file_name: &str,
     ) -> Result<std::path::PathBuf, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL query execution is not implemented".to_string(),
-        ))
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
+        validate_mysql_export_query(query, target.database.as_deref())?;
+
+        let query = query.to_string();
+        export_to_downloads(file_name, move |path| async move {
+            export_mysql_csv_to_file(target, &query, path).await
+        })
+        .await
     }
 }
 
@@ -800,6 +826,19 @@ fn validate_mysql_multi_query(
         .collect()
 }
 
+fn validate_mysql_export_query(
+    query: &str,
+    selected_database: Option<&str>,
+) -> Result<(), DbOperationError> {
+    let statements = validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
+    if statements.len() != 1 || !matches!(statements[0].kind, MysqlStatementKind::Select) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL CSV export supports a single read-only SELECT query".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 struct MysqlProcess {
     child: Child,
     #[cfg(unix)]
@@ -965,6 +1004,389 @@ async fn run_mysql_adhoc(
         MYSQL_QUERY_TIMEOUT,
     )
     .await
+}
+
+async fn export_mysql_csv_to_file(
+    target: MySqlDsn,
+    query: &str,
+    path: PathBuf,
+) -> Result<(), DbOperationError> {
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
+    let result = timeout(
+        MYSQL_QUERY_TIMEOUT,
+        run_mysql_export_process(&mut process, query, path),
+    )
+    .await;
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    }
+}
+
+async fn run_mysql_export_process(
+    process: &mut MysqlProcess,
+    query: &str,
+    path: PathBuf,
+) -> Result<(), DbOperationError> {
+    let marker = Uuid::new_v4().simple().to_string();
+    let probe_query =
+        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
+    write_mysql_statement(process, &probe_query).await?;
+    let probe_xml = read_one_mysql_resultset(process).await?;
+    let probe = parse_mysql_xml(&probe_xml)?;
+    validate_mode_probe(&probe, &marker)?;
+
+    write_mysql_statement(process, query).await?;
+    let mut csv_writer = CsvFileWriter::create(path).await?;
+    stream_mysql_resultset_to_csv(process, &mut csv_writer).await?;
+
+    #[cfg(not(unix))]
+    process
+        .stdin
+        .shutdown()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+    #[cfg(unix)]
+    let tail = {
+        write_mysql_input(process, b"\\q\n").await?;
+        read_pty_all(&mut process.pty)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+    };
+
+    #[cfg(not(unix))]
+    let (_stdout, stderr) =
+        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    #[cfg(not(unix))]
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+
+    let status = process
+        .child
+        .wait()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    #[cfg(unix)]
+    let error_bytes = tail.as_slice();
+    #[cfg(not(unix))]
+    let error_bytes = stderr.as_slice();
+    if !status.success() {
+        return Err(classify_mysql_query_failure(error_bytes));
+    }
+
+    csv_writer.finish().await
+}
+
+async fn stream_mysql_resultset_to_csv(
+    process: &mut MysqlProcess,
+    csv_writer: &mut CsvFileWriter,
+) -> Result<(), DbOperationError> {
+    #[cfg(unix)]
+    {
+        let source = MysqlExportPtySource {
+            pty: &mut process.pty,
+            error_output: Vec::new(),
+        };
+        let mut reader = Reader::from_reader(BufReader::new(source));
+        reader.config_mut().trim_text(false);
+        let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
+        let buffered = reader.into_inner();
+        let unread = buffered.buffer().to_vec();
+        let source = buffered.into_inner();
+        source.pty.pending.extend(unread);
+        if !source.error_output.is_empty() {
+            return Err(classify_mysql_query_failure(&source.error_output));
+        }
+        result
+    }
+
+    #[cfg(not(unix))]
+    {
+        let source = MysqlExportPipeSource {
+            stdout: &mut process.stdout,
+            pending: &mut process.pending,
+            error_output: Vec::new(),
+        };
+        let mut reader = Reader::from_reader(BufReader::new(source));
+        reader.config_mut().trim_text(false);
+        let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
+        let mut buffered = reader.into_inner();
+        let unread = buffered.buffer().to_vec();
+        let source = buffered.into_inner();
+        source.pending.extend(unread);
+        if !source.error_output.is_empty() {
+            return Err(classify_mysql_query_failure(&source.error_output));
+        }
+        return result;
+    }
+}
+
+async fn stream_mysql_xml_to_csv<R>(
+    reader: &mut Reader<BufReader<R>>,
+    csv_writer: &mut CsvFileWriter,
+) -> Result<(), DbOperationError>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut buffer = Vec::new();
+    let mut resultset_count = 0;
+    let mut in_resultset = false;
+    let mut current_row: Option<Vec<(String, String)>> = None;
+    let mut current_field: Option<MysqlField> = None;
+    let mut columns: Option<Vec<String>> = None;
+
+    loop {
+        let event = reader
+            .read_event_into_async(&mut buffer)
+            .await
+            .map_err(|error| {
+                DbOperationError::QueryFailed(format!("invalid MySQL XML result: {error}"))
+            })?;
+        match event {
+            Event::Start(element) => match element.name().as_ref() {
+                b"resultset" => {
+                    if in_resultset || resultset_count > 0 {
+                        return Err(DbOperationError::QueryFailed(
+                            "mysql returned more than one resultset".to_string(),
+                        ));
+                    }
+                    resultset_count += 1;
+                    in_resultset = true;
+                }
+                b"row" if in_resultset && current_row.is_none() => {
+                    current_row = Some(Vec::new());
+                }
+                b"field" if current_row.is_some() && current_field.is_none() => {
+                    current_field = Some(parse_mysql_field(&element)?);
+                }
+                _ => {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected element in MySQL XML result".to_string(),
+                    ));
+                }
+            },
+            Event::Empty(element) if element.name().as_ref() == b"field" => {
+                let row = current_row.as_mut().ok_or_else(|| {
+                    DbOperationError::QueryFailed("MySQL XML field is outside a row".to_string())
+                })?;
+                if current_field.is_some() {
+                    return Err(DbOperationError::QueryFailed(
+                        "nested MySQL XML fields are not supported".to_string(),
+                    ));
+                }
+                row.push(parse_mysql_field(&element)?.finish_raw());
+            }
+            Event::Text(text) => {
+                let text = text.unescape().map_err(|error| {
+                    DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                })?;
+                if let Some(field) = current_field.as_mut() {
+                    field.value.push_str(&text);
+                } else if !text.chars().all(char::is_whitespace) {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected text in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::CData(data) => {
+                if let Some(field) = current_field.as_mut() {
+                    field
+                        .value
+                        .push_str(std::str::from_utf8(data.as_ref()).map_err(|error| {
+                            DbOperationError::QueryFailed(format!(
+                                "invalid MySQL XML text: {error}"
+                            ))
+                        })?);
+                } else {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected CDATA in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::End(element) => match element.name().as_ref() {
+                b"field" => {
+                    let row = current_row.as_mut().ok_or_else(|| {
+                        DbOperationError::QueryFailed(
+                            "MySQL XML field is outside a row".to_string(),
+                        )
+                    })?;
+                    let field = current_field.take().ok_or_else(|| {
+                        DbOperationError::QueryFailed("unexpected MySQL XML field end".to_string())
+                    })?;
+                    row.push(field.finish_raw());
+                }
+                b"row" => {
+                    let row = current_row.take().ok_or_else(|| {
+                        DbOperationError::QueryFailed("unexpected MySQL XML row end".to_string())
+                    })?;
+                    let row_columns = row.iter().map(|(name, _)| name.clone()).collect::<Vec<_>>();
+                    if let Some(columns) = columns.as_ref() {
+                        if row_columns != *columns {
+                            return Err(DbOperationError::QueryFailed(
+                                "MySQL XML rows have inconsistent fields".to_string(),
+                            ));
+                        }
+                    } else {
+                        csv_writer.write_record(row_columns.iter()).await?;
+                        columns = Some(row_columns);
+                    }
+                    csv_writer
+                        .write_record(row.iter().map(|(_, value)| value))
+                        .await?;
+                }
+                b"resultset" => {
+                    if !in_resultset || current_row.is_some() || current_field.is_some() {
+                        return Err(DbOperationError::QueryFailed(
+                            "malformed MySQL XML resultset".to_string(),
+                        ));
+                    }
+                    return Ok(());
+                }
+                _ => {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected MySQL XML closing element".to_string(),
+                    ));
+                }
+            },
+            Event::Decl(_) | Event::Comment(_) => {}
+            Event::Eof => break,
+            _ => {
+                return Err(DbOperationError::QueryFailed(
+                    "unexpected event in MySQL XML result".to_string(),
+                ));
+            }
+        }
+        buffer.clear();
+    }
+
+    if resultset_count != 1 || in_resultset || current_row.is_some() || current_field.is_some() {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL XML result did not contain one complete resultset".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+struct MysqlExportPtySource<'a> {
+    pty: &'a mut MysqlPty,
+    error_output: Vec<u8>,
+}
+
+#[cfg(unix)]
+impl MysqlExportPtySource<'_> {
+    fn capture_error(&mut self, bytes: &[u8]) {
+        if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
+            self.error_output
+                .extend_from_slice(&bytes[..bytes.len().min(32 * 1024)]);
+        }
+    }
+}
+
+#[cfg(unix)]
+impl AsyncRead for MysqlExportPtySource<'_> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        if !this.pty.pending.is_empty() {
+            let count = buffer.remaining().min(this.pty.pending.len());
+            let bytes = this.pty.pending.drain(..count).collect::<Vec<_>>();
+            this.capture_error(&bytes);
+            buffer.put_slice(&bytes);
+            return Poll::Ready(Ok(()));
+        }
+
+        let filled_before = buffer.filled().len();
+        let result = Pin::new(&mut this.pty.output).poll_read(cx, buffer);
+        if matches!(&result, Poll::Ready(Ok(()))) {
+            this.capture_error(&buffer.filled()[filled_before..]);
+        }
+        result
+    }
+}
+
+#[cfg(not(unix))]
+struct MysqlExportPipeSource<'a> {
+    stdout: &'a mut ChildStdout,
+    pending: &'a mut Vec<u8>,
+    error_output: Vec<u8>,
+}
+
+#[cfg(not(unix))]
+impl MysqlExportPipeSource<'_> {
+    fn capture_error(&mut self, bytes: &[u8]) {
+        if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
+            self.error_output
+                .extend_from_slice(&bytes[..bytes.len().min(32 * 1024)]);
+        }
+    }
+}
+
+#[cfg(not(unix))]
+impl AsyncRead for MysqlExportPipeSource<'_> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.get_mut();
+        if !this.pending.is_empty() {
+            let count = buffer.remaining().min(this.pending.len());
+            let bytes = this.pending.drain(..count).collect::<Vec<_>>();
+            this.capture_error(&bytes);
+            buffer.put_slice(&bytes);
+            return Poll::Ready(Ok(()));
+        }
+
+        let filled_before = buffer.filled().len();
+        let result = Pin::new(&mut *this.stdout).poll_read(cx, buffer);
+        if matches!(&result, Poll::Ready(Ok(()))) {
+            this.capture_error(&buffer.filled()[filled_before..]);
+        }
+        result
+    }
+}
+
+#[cfg(test)]
+async fn export_mysql_csv_with_program(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+    path: PathBuf,
+    execution_timeout: Duration,
+) -> Result<(), DbOperationError> {
+    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+    let result = timeout(
+        execution_timeout,
+        run_mysql_export_process(&mut process, query, path),
+    )
+    .await;
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2315,6 +2737,15 @@ impl MysqlField {
         };
         (self.name, value)
     }
+
+    fn finish_raw(self) -> (String, String) {
+        let value = if self.is_null {
+            String::new()
+        } else {
+            self.value
+        };
+        (self.name, value)
+    }
 }
 
 fn parse_mysql_field(
@@ -2636,6 +3067,7 @@ mod probe_tests {
 #[cfg(test)]
 mod query_tests {
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+    use tempfile::tempdir;
 
     use super::*;
 
@@ -2720,6 +3152,59 @@ mod query_tests {
         let result = parse_mysql_xml(xml).unwrap();
         assert!(result.columns.is_empty());
         assert!(result.values.is_empty());
+    }
+
+    #[tokio::test]
+    async fn streams_mysql_xml_rows_into_csv_without_binary_type_inference() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row>
+<field name="comma">a,b</field>
+<field name="quote">a&quot;b</field>
+<field name="newline"><![CDATA[line1
+line2]]></field>
+<field name="tab">a	b</field>
+<field name="unicode">日本語</field>
+<field name="null" xsi:nil="true"/>
+<field name="empty"></field>
+<field name="binary">0x00FF</field>
+</row></resultset>"#;
+        let (mut input, output) = tokio::io::duplex(32);
+        let producer = tokio::spawn(async move {
+            input.write_all(xml.as_bytes()).await.unwrap();
+        });
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("stream.csv");
+        let mut csv_writer = CsvFileWriter::create(path.clone()).await.unwrap();
+        let mut reader = Reader::from_reader(BufReader::new(output));
+        reader.config_mut().trim_text(false);
+
+        stream_mysql_xml_to_csv(&mut reader, &mut csv_writer)
+            .await
+            .unwrap();
+        csv_writer.finish().await.unwrap();
+        producer.await.unwrap();
+
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            "comma,quote,newline,tab,unicode,null,empty,binary\n\
+             \"a,b\",\"a\"\"b\",\"line1\n\
+             line2\",a\tb,日本語,,,0x00FF\n"
+                .replace("             ", "")
+        );
+    }
+
+    #[test]
+    fn csv_export_accepts_only_one_read_only_select() {
+        assert!(validate_mysql_export_query("SELECT 1", Some("app")).is_ok());
+        assert!(matches!(
+            validate_mysql_export_query("INSERT INTO users VALUES (1)", Some("app")),
+            Err(DbOperationError::PermissionDenied(_))
+        ));
+        assert!(matches!(
+            validate_mysql_export_query("SELECT 1; SELECT 2", Some("app")),
+            Err(DbOperationError::UnsupportedOperation(details))
+                if details.contains("single read-only SELECT")
+        ));
     }
 
     #[test]
@@ -3020,6 +3505,68 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert!(log.contains("__sabiql_probe"));
         assert!(log.contains("SELECT 123"));
+    }
+
+    #[tokio::test]
+    async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let path = option_file.with_file_name("export.csv");
+
+        export_mysql_csv_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 1",
+            path.clone(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(fs::read_to_string(path).unwrap(), "value\none\n");
+    }
+
+    #[tokio::test]
+    async fn export_failure_removes_the_partial_file() {
+        let (_directory, program, option_file) = fake_mysql("failure");
+        let output_directory = tempfile::tempdir().unwrap();
+        let final_path = output_directory.path().join("export.csv");
+
+        let result = export_to_path(final_path.clone(), |path| {
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 1",
+                path,
+                Duration::from_secs(5),
+            )
+        })
+        .await;
+
+        assert!(result.is_err());
+        assert!(!final_path.exists());
+        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn export_timeout_kills_the_process_and_removes_the_partial_file() {
+        let (_directory, program, option_file) = fake_mysql("timeout");
+        let output_directory = tempfile::tempdir().unwrap();
+        let final_path = output_directory.path().join("export.csv");
+
+        let result = export_to_path(final_path.clone(), |path| {
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 1",
+                path,
+                Duration::from_millis(50),
+            )
+        })
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        assert!(!final_path.exists());
+        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
     }
 
     #[test]
