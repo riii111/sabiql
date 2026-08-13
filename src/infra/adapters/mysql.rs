@@ -250,8 +250,8 @@ impl QueryExecutor for MySqlAdapter {
 }
 
 impl DdlGenerator for MySqlAdapter {
-    fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
+    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+        table.source_ddl().unwrap_or_default().to_string()
     }
 }
 

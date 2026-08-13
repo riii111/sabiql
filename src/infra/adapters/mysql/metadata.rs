@@ -4,6 +4,7 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryValue, Schema, Table, TableKind, TableKindInfo, TableSignature, TableSummary,
+    Trigger, TriggerEvent, TriggerTiming,
 };
 
 use super::{
@@ -62,6 +63,15 @@ struct MysqlTableMetadata {
     kind: TableKind,
     row_count_estimate: Option<i64>,
     comment: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct MysqlTriggerMetadata {
+    name: String,
+    timing: TriggerTiming,
+    event: TriggerEvent,
+    definition: String,
+    security_context: Option<String>,
 }
 
 #[async_trait]
@@ -245,6 +255,8 @@ async fn fetch_table(
     let columns = fetch_columns(dsn, schema, table).await?;
     let indexes = fetch_indexes(dsn, schema, table).await?;
     let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
+    let triggers = fetch_triggers(dsn, schema, table).await?;
+    let source_ddl = fetch_source_ddl(dsn, table, table_metadata.kind).await?;
     let primary_key = primary_key_names(&columns);
     let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
@@ -256,10 +268,10 @@ async fn fetch_table(
         foreign_keys,
         indexes,
         rls: None,
-        triggers: Vec::new(),
+        triggers,
         row_count_estimate: table_metadata.row_count_estimate,
         comment: table_metadata.comment,
-        source_ddl: None,
+        source_ddl: Some(source_ddl),
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
             ..TableKindInfo::default()
@@ -462,6 +474,142 @@ async fn fetch_foreign_keys(
         ));
     }
     foreign_keys_from_metadata(raw, summaries)
+}
+
+async fn fetch_triggers(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<Trigger>, DbOperationError> {
+    if schema != selected_database(dsn)? {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    let result = execute_metadata_query(dsn, &triggers_query(table)).await?;
+    triggers_from_metadata(parse_trigger_metadata(&result)?)
+}
+
+async fn fetch_source_ddl(
+    dsn: &str,
+    table: &str,
+    kind: TableKind,
+) -> Result<String, DbOperationError> {
+    let result = execute_metadata_query(dsn, &show_create_query(table, kind)).await?;
+    parse_source_ddl(&result, kind)
+}
+
+fn triggers_query(table: &str) -> String {
+    format!(
+        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {}) ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+        quote_string(table),
+        quote_string(table),
+    )
+}
+
+fn show_create_query(table: &str, kind: TableKind) -> String {
+    let object_type = if kind == TableKind::View {
+        "VIEW"
+    } else {
+        "TABLE"
+    };
+    format!("SHOW CREATE {object_type} {}", quote_identifier(table))
+}
+
+fn parse_trigger_metadata(
+    result: &MysqlResultSet,
+) -> Result<Vec<MysqlTriggerMetadata>, DbOperationError> {
+    expect_columns(
+        result,
+        &[
+            "TRIGGER_NAME",
+            "ACTION_TIMING",
+            "EVENT_MANIPULATION",
+            "ACTION_STATEMENT",
+            "DEFINER",
+        ],
+    )?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != 5 {
+                return Err(metadata_shape_error("TRIGGERS row"));
+            }
+            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
+                return Ok(None);
+            }
+            let timing = required_text(&row[1], "ACTION_TIMING")?
+                .parse::<TriggerTiming>()
+                .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+            let event = required_text(&row[2], "EVENT_MANIPULATION")?
+                .parse::<TriggerEvent>()
+                .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
+            Ok(Some(MysqlTriggerMetadata {
+                name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
+                timing,
+                event,
+                definition: required_text(&row[3], "ACTION_STATEMENT")?.to_string(),
+                security_context: optional_text(&row[4], "DEFINER")?.map(str::to_string),
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|rows| rows.into_iter().flatten().collect())
+}
+
+fn triggers_from_metadata(
+    raw: Vec<MysqlTriggerMetadata>,
+) -> Result<Vec<Trigger>, DbOperationError> {
+    let mut triggers = Vec::new();
+    for metadata in raw {
+        if let Some(trigger) = triggers
+            .iter_mut()
+            .find(|trigger: &&mut Trigger| trigger.name == metadata.name)
+        {
+            if trigger.timing != metadata.timing
+                || trigger.definition != metadata.definition
+                || trigger.security_context != metadata.security_context
+            {
+                return Err(metadata_shape_error("TRIGGERS definition"));
+            }
+            trigger.events.push(metadata.event);
+        } else {
+            triggers.push(Trigger {
+                name: metadata.name,
+                timing: metadata.timing,
+                events: vec![metadata.event],
+                definition: metadata.definition,
+                security_context: metadata.security_context,
+            });
+        }
+    }
+    Ok(triggers)
+}
+
+fn parse_source_ddl(result: &MysqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
+    let expected_columns = if kind == TableKind::View {
+        ["View", "Create View"]
+    } else {
+        ["Table", "Create Table"]
+    };
+    if result.columns.len() < 2
+        || result.columns[0] != expected_columns[0]
+        || result.columns[1] != expected_columns[1]
+        || result.values.len() != 1
+    {
+        return Err(metadata_shape_error("SHOW CREATE result"));
+    }
+    let row = &result.values[0];
+    if row.len() != result.columns.len() {
+        return Err(metadata_shape_error("SHOW CREATE row"));
+    }
+    let ddl = required_text(&row[1], expected_columns[1])?;
+    if ddl.is_empty() {
+        return Err(DbOperationError::MetadataParseFailed(
+            "MySQL SHOW CREATE returned empty DDL".to_string(),
+        ));
+    }
+    Ok(ddl.to_string())
 }
 
 fn parse_column_metadata(
@@ -904,6 +1052,100 @@ mod tests {
             comment: None,
             ordinal_position: 1,
         }
+    }
+
+    #[test]
+    fn trigger_metadata_preserves_action_definer_and_event_order() {
+        let result = result(
+            &[
+                "TRIGGER_NAME",
+                "ACTION_TIMING",
+                "EVENT_MANIPULATION",
+                "ACTION_STATEMENT",
+                "DEFINER",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("audit_changes".to_string()),
+                    QueryValue::Text("BEFORE".to_string()),
+                    QueryValue::Text("INSERT".to_string()),
+                    QueryValue::Text("BEGIN\n  SET @seen = 1;\nEND".to_string()),
+                    QueryValue::Text("sabiql@%".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("audit_changes".to_string()),
+                    QueryValue::Text("BEFORE".to_string()),
+                    QueryValue::Text("UPDATE".to_string()),
+                    QueryValue::Text("BEGIN\n  SET @seen = 1;\nEND".to_string()),
+                    QueryValue::Text("sabiql@%".to_string()),
+                ],
+            ],
+        );
+
+        let triggers = triggers_from_metadata(parse_trigger_metadata(&result).unwrap()).unwrap();
+
+        assert_eq!(triggers.len(), 1);
+        assert_eq!(
+            triggers[0].events,
+            [TriggerEvent::Insert, TriggerEvent::Update]
+        );
+        assert_eq!(triggers[0].definition, "BEGIN\n  SET @seen = 1;\nEND");
+        assert_eq!(triggers[0].security_context.as_deref(), Some("sabiql@%"));
+    }
+
+    #[test]
+    fn empty_trigger_sentinel_returns_no_triggers() {
+        let result = result(
+            &[
+                "TRIGGER_NAME",
+                "ACTION_TIMING",
+                "EVENT_MANIPULATION",
+                "ACTION_STATEMENT",
+                "DEFINER",
+            ],
+            vec![vec![
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        );
+
+        assert!(parse_trigger_metadata(&result).unwrap().is_empty());
+    }
+
+    #[test]
+    fn show_create_query_uses_object_kind_and_identifier_quoting() {
+        assert_eq!(
+            show_create_query("table`name", TableKind::Table),
+            "SHOW CREATE TABLE `table``name`"
+        );
+        assert_eq!(
+            show_create_query("view_name", TableKind::View),
+            "SHOW CREATE VIEW `view_name`"
+        );
+    }
+
+    #[test]
+    fn show_create_parser_preserves_view_ddl_and_extra_server_columns() {
+        let ddl = "CREATE ALGORITHM=UNDEFINED VIEW `v` AS select 1";
+        let result = result(
+            &[
+                "View",
+                "Create View",
+                "character_set_client",
+                "collation_connection",
+            ],
+            vec![vec![
+                QueryValue::Text("v".to_string()),
+                QueryValue::Text(ddl.to_string()),
+                QueryValue::Text("utf8mb4".to_string()),
+                QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+            ]],
+        );
+
+        assert_eq!(parse_source_ddl(&result, TableKind::View).unwrap(), ddl);
     }
 
     #[test]

@@ -106,8 +106,8 @@ pub fn sample_table_detail() -> Table {
         name: "audit_users".to_string(),
         timing: TriggerTiming::After,
         events: vec![TriggerEvent::Insert, TriggerEvent::Update],
-        function_name: "audit_func".to_string(),
-        security_definer: false,
+        definition: "audit_func".to_string(),
+        security_context: Some("INVOKER".to_string()),
     }];
     table.row_count_estimate = Some(100);
     table.comment = Some("User accounts".to_string());
