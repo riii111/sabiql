@@ -450,6 +450,11 @@ impl AppState {
     pub fn is_stale_query_run(&self, dsn: &str, run_id: u64) -> bool {
         !self.session.dsn_matches(dsn) || !self.query.is_current_run(run_id)
     }
+
+    pub fn is_stale_explain_run(&self, dsn: &str, database_generation: u64, run_id: u64) -> bool {
+        self.is_stale_query_run(dsn, run_id)
+            || self.session.database_generation() != database_generation
+    }
 }
 
 #[cfg(test)]

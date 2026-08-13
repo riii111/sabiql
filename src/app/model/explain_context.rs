@@ -22,6 +22,7 @@ impl SlotSource {
 #[derive(Debug, Clone)]
 pub struct CompareSlot {
     pub plan: ExplainPlan,
+    pub database_type: DatabaseType,
     pub query_snippet: String,
     pub full_query: String,
     pub source: SlotSource,
@@ -130,6 +131,7 @@ impl ExplainContext {
 
         let new_slot = CompareSlot {
             plan: parsed,
+            database_type,
             query_snippet: snippet,
             full_query: query.to_string(),
             source: SlotSource::AutoLatest,

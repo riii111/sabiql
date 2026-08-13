@@ -566,6 +566,7 @@ pub enum Action {
     ExplainCompleted {
         dsn: String,
         database_type: DatabaseType,
+        database_generation: u64,
         run_id: u64,
         query: String,
         plan_text: String,
@@ -574,6 +575,7 @@ pub enum Action {
     },
     ExplainFailed {
         dsn: String,
+        database_generation: u64,
         run_id: u64,
         error: DbOperationError,
         is_analyze: bool,
@@ -960,6 +962,7 @@ mod tests {
             Action::ExplainCompleted {
                 dsn: "dsn".to_string(),
                 database_type: DatabaseType::PostgreSQL,
+                database_generation: 0,
                 run_id: 1,
                 query: "SELECT 1".to_string(),
                 plan_text: "plan".to_string(),
@@ -972,6 +975,7 @@ mod tests {
         assert_eq!(
             Action::ExplainFailed {
                 dsn: "dsn".to_string(),
+                database_generation: 0,
                 run_id: 1,
                 error: DbOperationError::QueryFailed("error".to_string()),
                 is_analyze: false,

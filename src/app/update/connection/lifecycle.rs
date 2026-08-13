@@ -1699,6 +1699,20 @@ mod tests {
             state.session.mark_probe_connected(true);
             state.modal.set_mode(InputMode::QueryHistoryPicker);
             state.sql_modal.completion_mut_for_test().visible = true;
+            state.explain.set_plan(
+                "-> Table scan on users  (cost=1 rows=10)".to_string(),
+                DatabaseType::MySQL,
+                false,
+                1,
+                "SELECT * FROM users",
+            );
+            state.explain.set_plan(
+                "-> Index lookup on users  (cost=0.5 rows=1)".to_string(),
+                DatabaseType::MySQL,
+                false,
+                1,
+                "SELECT * FROM users WHERE id = 1",
+            );
             state
                 .query_history_picker
                 .replace_entries(&[QueryHistoryEntry::new_with_database(
@@ -1723,6 +1737,9 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query_history_picker.entries().is_empty());
             assert!(!state.sql_modal.completion().visible);
+            assert!(state.explain.left().is_none());
+            assert!(state.explain.right().is_none());
+            assert!(state.explain.history().is_empty());
             assert!(
                 effects
                     .iter()
