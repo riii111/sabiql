@@ -1487,6 +1487,7 @@ fn mysql_resultset_frame_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
+#[cfg(any(not(unix), test))]
 fn take_mysql_resultset_frame_after_error_check(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
