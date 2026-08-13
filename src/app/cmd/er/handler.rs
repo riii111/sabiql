@@ -56,9 +56,10 @@ pub async fn run(
             )
             .await
         }
-        Effect::ExtractFkNeighbors { seed_tables } => {
-            handle_extract_fk_neighbors(action_tx, completion_engine, seed_tables).await
-        }
+        Effect::ExtractFkNeighbors {
+            run_id,
+            seed_tables,
+        } => handle_extract_fk_neighbors(action_tx, completion_engine, run_id, seed_tables).await,
         Effect::WriteErFailureLog { failed_tables } => {
             handle_write_failure_log(
                 action_tx,
@@ -149,6 +150,7 @@ async fn handle_generate_diagram(
 async fn handle_extract_fk_neighbors(
     action_tx: &mpsc::Sender<Action>,
     completion_engine: &RefCell<CompletionEngine>,
+    run_id: u64,
     seed_tables: Vec<String>,
 ) -> Result<()> {
     let seed_set: HashSet<&str> = seed_tables.iter().map(String::as_str).collect();
@@ -156,7 +158,10 @@ async fn handle_extract_fk_neighbors(
     let neighbors = fk_neighbors_of_seeds(&cached_seeds, &seed_set, &cached_names);
 
     action_tx
-        .send(Action::FkNeighborsDiscovered { tables: neighbors })
+        .send(Action::FkNeighborsDiscovered {
+            run_id,
+            tables: neighbors,
+        })
         .await
         .ok();
     Ok(())

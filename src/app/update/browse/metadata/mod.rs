@@ -17,8 +17,11 @@ pub(super) fn check_er_completion(state: &mut AppState, now: Instant) -> Vec<Eff
     }
 
     if !state.er_preparation.fk_expanded() {
+        let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
+            return vec![];
+        };
         return vec![Effect::DispatchActions(vec![
-            Action::ExpandPrefetchWithFkNeighbors,
+            Action::ExpandPrefetchWithFkNeighbors { run_id },
         ])];
     }
 
@@ -899,6 +902,7 @@ mod tests {
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
@@ -908,7 +912,11 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ExpandPrefetchWithFkNeighbors))
+                    if actions.iter().any(|a| matches!(
+                        a,
+                        Action::ExpandPrefetchWithFkNeighbors { run_id: action_run_id }
+                            if *action_run_id == run_id
+                    ))
             )));
         }
 
@@ -926,6 +934,28 @@ mod tests {
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
             )));
         }
+
+        #[test]
+        fn stale_expand_does_not_start_neighbor_extraction() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_run_id = state.sql_modal.begin_prefetch();
+            let current_run_id = state.sql_modal.begin_prefetch();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ExpandPrefetchWithFkNeighbors {
+                    run_id: stale_run_id,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(current_run_id)
+            );
+            assert!(effects.is_empty());
+        }
     }
 
     mod fk_neighbors_discovered {
@@ -935,12 +965,15 @@ mod tests {
         #[test]
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::FkNeighborsDiscovered { tables: vec![] },
+                &Action::FkNeighborsDiscovered {
+                    run_id,
+                    tables: vec![],
+                },
                 Instant::now(),
             )
             .unwrap();
@@ -956,12 +989,13 @@ mod tests {
         #[test]
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id,
                     tables: vec!["public.posts".to_string(), "public.tags".to_string()],
                 },
                 Instant::now(),
@@ -998,6 +1032,7 @@ mod tests {
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id: 1,
                     tables: vec!["public.posts".to_string()],
                 },
                 Instant::now(),
@@ -1011,9 +1046,35 @@ mod tests {
         }
 
         #[test]
+        fn stale_neighbors_from_previous_run_do_not_mutate_current_run() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_run_id = state.sql_modal.begin_prefetch();
+            let current_run_id = state.sql_modal.begin_prefetch();
+            state.er_preparation.mark_waiting_for_test();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    run_id: stale_run_id,
+                    tables: vec!["public.posts".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(current_run_id)
+            );
+            assert!(!state.er_preparation.fk_expanded());
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
@@ -1028,6 +1089,7 @@ mod tests {
             dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id,
                     tables: vec![
                         "public.posts".to_string(),
                         "public.tags".to_string(),
