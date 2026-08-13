@@ -38,6 +38,20 @@ const MYSQL_VIEW: &str = "mysql_preview_view";
 const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
 const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
 const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
+const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
+    if value.is_empty() || !value.len().is_multiple_of(2) {
+        return Err(format!("invalid HEX value: {value}"));
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16)
+                .map_err(|error| format!("invalid HEX value: {value}: {error}"))
+        })
+        .collect()
+}
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -559,6 +573,50 @@ async fn previews_mysql_rows_with_visible_columns_types_and_pagination() {
                 ));
             }
             Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn previews_mysql_spatial_point_as_binary_equal_to_hex() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let hex_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT HEX(location) FROM demo_warehouses WHERE code = 'TYO001'",
+                    AccessMode::ReadOnly,
+                )
+                .await
+                .map_err(|error| format!("failed to read spatial HEX value: {error:?}"))?;
+            let hex = match hex_result.values().first().and_then(|row| row.first()) {
+                Some(QueryValue::Text(value)) => value,
+                value => return Err(format!("unexpected spatial HEX result: {value:?}")),
+            };
+            let expected = decode_hex(hex)?;
+
+            let preview = db
+                .adapter()
+                .execute_preview(db.dsn(), "sabiql_test", MYSQL_SPATIAL_TABLE, 1, 0)
+                .await
+                .map_err(|error| format!("failed to preview spatial table: {error:?}"))?;
+            let location_index = preview
+                .columns
+                .iter()
+                .position(|column| column == "location")
+                .ok_or_else(|| format!("spatial column missing from preview: {preview:?}"))?;
+            let value = preview
+                .values()
+                .first()
+                .and_then(|row| row.get(location_index))
+                .ok_or_else(|| format!("spatial value missing from preview: {preview:?}"))?;
+            if value != &QueryValue::Blob(expected) {
+                return Err(format!("unexpected spatial preview value: {value:?}"));
+            }
+            Ok::<(), String>(())
         })
     })
     .await;
