@@ -537,12 +537,10 @@ fn kind_and_target(
                     &["LOW_PRIORITY", "DELAYED", "HIGH_PRIORITY", "IGNORE"],
                 )
             } else {
-                start + 1
+                skip_mysql_modifiers(tokens, start + 1, &["LOW_PRIORITY", "DELAYED"])
             };
             let target_index = if word(tokens, index) == Some("INTO") {
                 index + 1
-            } else if first == "REPLACE" {
-                return Err(MysqlLexError("REPLACE requires INTO".to_string()));
             } else {
                 index
             };

@@ -261,6 +261,9 @@ mod explain_tests {
             "TABLE users",
             "INSERT INTO users VALUES (1)",
             "REPLACE INTO users VALUES (1)",
+            "REPLACE users VALUES (1)",
+            "REPLACE LOW_PRIORITY INTO users VALUES (1)",
+            "REPLACE DELAYED users VALUES (1)",
             "UPDATE users SET name = 'Ada' WHERE id = 1",
             "DELETE FROM users WHERE id = 1",
         ] {
