@@ -7,7 +7,7 @@ use sabiql_app::ports::outbound::{
     AccessMode, DbOperationError, MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider,
     QueryExecutor,
 };
-use sabiql_domain::{QueryValue, TableKind};
+use sabiql_domain::{FkAction, IndexType, QueryValue, TableKind};
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
 
@@ -15,6 +15,8 @@ const MYSQL_COMPOSITE_TABLE: &str = "mysql_preview_composite";
 const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
 const MYSQL_EMPTY_TABLE: &str = "mysql_preview_empty";
 const MYSQL_VIEW: &str = "mysql_preview_view";
+const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
+const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -152,6 +154,14 @@ async fn loads_mysql_tables_views_and_column_attributes() {
                     detail.primary_key
                 ));
             }
+            if detail.comment.as_deref() != Some("MySQL fixture table")
+                || detail.row_count_estimate.is_none()
+            {
+                return Err(format!(
+                    "unexpected MySQL table info: comment={:?}, rows={:?}",
+                    detail.comment, detail.row_count_estimate
+                ));
+            }
 
             let composite = db
                 .adapter()
@@ -164,6 +174,96 @@ async fn loads_mysql_tables_views_and_column_attributes() {
                 return Err(format!(
                     "unexpected composite primary key: {:?}",
                     composite.primary_key
+                ));
+            }
+            let unique_index = composite
+                .indexes
+                .iter()
+                .find(|index| index.name == "uq_mysql_preview_composite_payload")
+                .ok_or_else(|| "MySQL unique index was not returned".to_string())?;
+            if !unique_index.is_unique() || unique_index.columns != ["payload"] {
+                return Err(format!("unexpected MySQL unique index: {unique_index:?}"));
+            }
+            let fulltext_index = composite
+                .indexes
+                .iter()
+                .find(|index| index.name == "ft_mysql_preview_composite_payload")
+                .ok_or_else(|| "MySQL fulltext index was not returned".to_string())?;
+            if fulltext_index.index_type != IndexType::Other("fulltext".to_string())
+                || fulltext_index.columns != ["payload"]
+            {
+                return Err(format!(
+                    "unexpected MySQL fulltext index: {fulltext_index:?}"
+                ));
+            }
+
+            let parent = db
+                .adapter()
+                .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_PARENT)
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            let parent_unique_index = parent
+                .indexes
+                .iter()
+                .find(|index| index.name == "uq_mysql_metadata_parent_code")
+                .ok_or_else(|| "MySQL parent unique index was not returned".to_string())?;
+            if !parent_unique_index.is_unique() || parent_unique_index.columns != ["unique_code"] {
+                return Err(format!(
+                    "unexpected MySQL parent unique index: {parent_unique_index:?}"
+                ));
+            }
+
+            let child = db
+                .adapter()
+                .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            if child.foreign_keys.len() != 1 {
+                return Err(format!(
+                    "unexpected MySQL foreign keys: {:?}",
+                    child.foreign_keys
+                ));
+            }
+            let foreign_key = &child.foreign_keys[0];
+            if foreign_key.from_columns != ["parent_first", "parent_second"]
+                || foreign_key.to_schema != "sabiql_test"
+                || foreign_key.to_table != MYSQL_FK_PARENT
+                || foreign_key.to_columns != ["first_key", "second_key"]
+                || foreign_key.on_update != FkAction::Cascade
+                || foreign_key.on_delete != FkAction::SetNull
+                || !foreign_key.is_reference_resolved()
+            {
+                return Err(format!("unexpected MySQL foreign key: {foreign_key:?}"));
+            }
+
+            let columns_and_fks = db
+                .adapter()
+                .fetch_table_columns_and_fks(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            if columns_and_fks.foreign_keys != child.foreign_keys
+                || !columns_and_fks.indexes.is_empty()
+            {
+                return Err(format!(
+                    "unexpected columns-and-fks metadata: {columns_and_fks:?}"
+                ));
+            }
+
+            let signatures = db
+                .adapter()
+                .fetch_table_signatures(db.dsn())
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            let child_signature = signatures
+                .iter()
+                .find(|signature| signature.name == MYSQL_FK_CHILD)
+                .ok_or_else(|| "MySQL child signature was not returned".to_string())?;
+            if !child_signature
+                .signature
+                .contains("fk_mysql_metadata_child_parent")
+            {
+                return Err(format!(
+                    "unexpected MySQL table signature: {child_signature:?}"
                 ));
             }
             Ok(())

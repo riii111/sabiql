@@ -1,9 +1,10 @@
 ---
 source: src/tests/render_snapshots/table_explorer.rs
+assertion_line: 140
 expression: output
 ---
 test_project ▸ app ▸ -                                                                                                                             not loaded | mysql
-┌ [1] Explorer ─────────────────────────┐[Info]                                                                                                                      
+┌ [1] Explorer ─────────────────────────┐[Info] [Cols] [Idx] [FK]                                                                                                    
 │ Press 'r' to load metadata            │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                       ││(select a table)                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +52,4 @@ test_project ▸ app ▸ -                                                      
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  c:Connections  ^⇧B:Database  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
+r:Reload  s:SQL  e:ER Diagram  c:Connections  ^⇧B:Database  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
