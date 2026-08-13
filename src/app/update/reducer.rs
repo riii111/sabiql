@@ -431,6 +431,7 @@ mod tests {
                 Action::ExplainCompleted {
                     dsn: "sqlite://test.db".to_string(),
                     database_type: DatabaseType::SQLite,
+                    database_generation: 0,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "QUERY PLAN".to_string(),
@@ -443,6 +444,7 @@ mod tests {
                 &mut explain_state,
                 Action::ExplainFailed {
                     dsn: "sqlite://test.db".to_string(),
+                    database_generation: 0,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("error".to_string()),
                     is_analyze: true,

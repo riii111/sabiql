@@ -162,21 +162,25 @@ fn parse_mysql_cost_fragment(line: &str) -> (Option<f64>, Option<f64>) {
         .find(|c: char| c.is_whitespace() || c == ')')
         .unwrap_or(after_cost.len());
     let cost_token = after_cost.get(..cost_end).unwrap_or_default();
-    let total_cost = cost_token
+    let total_cost_token = cost_token
         .rsplit_once("..")
-        .map_or(cost_token, |(_, total)| total)
-        .parse()
-        .ok();
+        .map_or(cost_token, |(_, total)| total);
+    let total_cost = parse_mysql_metric(total_cost_token);
 
     let estimated_rows = line.find("rows=").and_then(|rows_start| {
         let after_rows = line.get(rows_start + 5..)?;
         let rows_end = after_rows
             .find(|c: char| c.is_whitespace() || c == ')')
             .unwrap_or(after_rows.len());
-        after_rows.get(..rows_end)?.parse().ok()
+        parse_mysql_metric(after_rows.get(..rows_end)?)
     });
 
     (total_cost, estimated_rows)
+}
+
+fn parse_mysql_metric(token: &str) -> Option<f64> {
+    let value: f64 = token.parse().ok()?;
+    (value.is_finite() && value >= 0.0).then_some(value)
 }
 
 fn mysql_node_name(line: &str) -> Option<String> {
@@ -188,11 +192,6 @@ fn mysql_node_name(line: &str) -> Option<String> {
         .trim_start_matches("->")
         .trim();
     (!node_name.is_empty()).then(|| node_name.to_string())
-}
-
-fn parse_finite_f64(token: &str) -> Option<f64> {
-    let value: f64 = token.parse().ok()?;
-    value.is_finite().then_some(value)
 }
 
 fn parse_mysql_loops(token: &str) -> Option<u64> {
@@ -267,11 +266,11 @@ fn parse_mysql_actual_fragment(line: &str) -> (Option<f64>, Option<f64>, Option<
     for token in fragment.split_whitespace() {
         if let Some(time) = token.strip_prefix("time=") {
             if let Some((start, end)) = time.split_once("..") {
-                actual_start_ms = parse_finite_f64(start);
-                actual_end_ms = parse_finite_f64(end.trim_end_matches(')'));
+                actual_start_ms = parse_mysql_metric(start);
+                actual_end_ms = parse_mysql_metric(end.trim_end_matches(')'));
             }
         } else if let Some(rows) = token.strip_prefix("rows=") {
-            actual_rows = parse_finite_f64(rows.trim_end_matches(')'));
+            actual_rows = parse_mysql_metric(rows.trim_end_matches(')'));
         } else if let Some(value) = token.strip_prefix("loops=") {
             loops = parse_mysql_loops(value.trim_end_matches(')'));
         }
@@ -333,6 +332,10 @@ pub fn parse_mysql_tree_explain_text(
         loops,
     ) = first_cost_line.map_or((None, None, None, None, None, None, None), |line| {
         let (cost, rows) = parse_mysql_cost_fragment(line);
+        let (cost, rows) = match (cost, rows) {
+            (Some(cost), Some(rows)) => (Some(cost), Some(rows)),
+            _ => (None, None),
+        };
         let (actual_start_ms, actual_end_ms, actual_rows, loops) =
             parse_mysql_actual_fragment(line);
         (
@@ -538,6 +541,23 @@ Execution Time: 0.600 ms";
             assert_eq!(plan.top_node_type.as_deref(), Some("Filter: (id > 10)"));
             assert!(plan.total_cost.is_none());
             assert!(plan.estimated_rows.is_none());
+        }
+
+        #[test]
+        fn mysql_tree_rejects_non_finite_or_negative_comparison_metrics() {
+            for metrics in [
+                "cost=NaN rows=1",
+                "cost=1 rows=NaN",
+                "cost=-1 rows=1",
+                "cost=1 rows=-1",
+            ] {
+                let text = format!("-> Table scan on users  ({metrics})");
+                let plan = parse_mysql_tree_explain_text(&text, false, 0);
+
+                assert_eq!(plan.raw_text, text);
+                assert!(plan.total_cost.is_none(), "{metrics}");
+                assert!(plan.estimated_rows.is_none(), "{metrics}");
+            }
         }
 
         #[test]
@@ -794,6 +814,26 @@ Execution Time: 0.600 ms";
             let result = compare_plans(&baseline, &current);
 
             assert_eq!(result.verdict, ComparisonVerdict::Similar);
+        }
+
+        #[test]
+        fn actual_metrics_do_not_change_comparison_verdict() {
+            let mut baseline = make_plan(Some(100.0), Some(10.0), Some("Table scan"));
+            baseline.actual_start_ms = Some(1.0);
+            baseline.actual_end_ms = Some(2.0);
+            baseline.actual_rows = Some(10.0);
+            baseline.loops = Some(1);
+
+            let mut current = baseline.clone();
+            current.actual_start_ms = Some(100.0);
+            current.actual_end_ms = Some(200.0);
+            current.actual_rows = Some(1_000.0);
+            current.loops = Some(10);
+
+            assert_eq!(
+                compare_plans(&baseline, &current).verdict,
+                ComparisonVerdict::Similar
+            );
         }
     }
 }

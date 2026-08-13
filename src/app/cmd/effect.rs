@@ -84,6 +84,7 @@ pub enum Effect {
     ExecuteExplain {
         dsn: String,
         database_type: DatabaseType,
+        database_generation: u64,
         run_id: u64,
         query: String,
         source_query: String,

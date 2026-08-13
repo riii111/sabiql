@@ -89,9 +89,11 @@ pub(super) fn reduce_analyze(
                         return DispatchResult::handled();
                     };
                     let run_id = begin_explain_running(state, now);
+                    let database_generation = state.session.database_generation();
                     return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                         dsn,
                         database_type,
+                        database_generation,
                         run_id,
                         query: explain_query,
                         source_query: content,
@@ -132,9 +134,11 @@ pub(super) fn reduce_analyze(
                     return DispatchResult::handled();
                 };
                 let run_id = begin_explain_running(state, now);
+                let database_generation = state.session.database_generation();
                 return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                     dsn,
                     database_type,
+                    database_generation,
                     run_id,
                     query: explain_query,
                     source_query: query,
