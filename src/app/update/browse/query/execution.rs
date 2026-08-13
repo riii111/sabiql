@@ -2,27 +2,25 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::cmd::effect::Effect;
-use crate::domain::{QueryResult, QuerySource};
+use crate::domain::{QueryResult, QuerySource, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
-use crate::ports::outbound::AccessMode;
+use crate::ports::outbound::{AccessMode, DbOperationError};
 use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
-fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
-    if result.source != QuerySource::Adhoc || result.is_error() {
-        return vec![];
-    }
-    let Some(tag) = &result.command_tag else {
-        return vec![];
-    };
-    if !tag.needs_refresh() {
+fn refresh_effects_for_scope(
+    state: &mut AppState,
+    refresh_scope: RefreshScope,
+    now: Instant,
+) -> Vec<Effect> {
+    if refresh_scope == RefreshScope::None {
         return vec![];
     }
     let Some(dsn) = state.session.dsn().map(String::from) else {
@@ -31,7 +29,7 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
 
     let mut effects = vec![];
 
-    if tag.is_schema_modifying() {
+    if refresh_scope == RefreshScope::Metadata {
         state.sql_modal.reset_prefetch();
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
@@ -48,6 +46,13 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
     }
 
     effects
+}
+
+fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
+    if result.source != QuerySource::Adhoc || result.is_error() {
+        return vec![];
+    }
+    refresh_effects_for_scope(state, result.refresh_scope, now)
 }
 
 fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
@@ -182,7 +187,16 @@ pub fn reduce_execution(
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            DispatchResult::handled()
+            let refresh_scope = match error {
+                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
+                _ => RefreshScope::None,
+            };
+            let effects = if *source == QuerySource::Adhoc {
+                refresh_effects_for_scope(state, refresh_scope, now)
+            } else {
+                vec![]
+            };
+            DispatchResult::handled_with(effects)
         }
 
         Action::CommandLineSubmit => {
@@ -266,6 +280,9 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
+            if state.session.connection_state().is_awaiting_database() {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
@@ -704,6 +721,67 @@ mod tests {
                     .is_some_and(|message| message.contains("Permission denied"))
             );
             assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
+        fn adhoc_failure_after_data_change_refreshes_preview() {
+            let mut state = state_with_table("public", "users");
+            let action = query_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    details: "later statement failed".to_string(),
+                    refresh_scope: RefreshScope::Data,
+                },
+                0,
+                QuerySource::Adhoc,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview { table, .. } if table == "users"
+            )));
+            assert!(
+                state
+                    .sql_modal
+                    .last_adhoc_error()
+                    .is_some_and(|message| message.contains("later statement failed"))
+            );
+        }
+
+        #[test]
+        fn adhoc_failure_after_schema_change_refreshes_metadata() {
+            let mut state = state_with_table("public", "users");
+            let action = query_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    details: "later DDL failed".to_string(),
+                    refresh_scope: RefreshScope::Metadata,
+                },
+                0,
+                QuerySource::Adhoc,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CacheInvalidate { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ExecutePreview { .. }))
+            );
         }
 
         #[test]

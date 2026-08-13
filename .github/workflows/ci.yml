@@ -140,9 +140,11 @@ jobs:
         with:
           tool: nextest
       - name: Start PostgreSQL
-        run: docker compose up -d --wait
+        run: docker compose up -d --wait postgres
       - name: Run psql integration tests (Tier 2)
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
+      - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
+        run: bash scripts/mysql_integration.sh test
 
   sqlite-safe-mode:
     name: SQLite Safe Mode

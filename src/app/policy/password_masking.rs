@@ -201,6 +201,10 @@ mod tests {
         "postgresql://user:****@/db?host=/var/run/postgresql"
     )]
     #[case("mysql://user:secret@host", "mysql://user:****@host")]
+    #[case(
+        "mysql://user:p@ss%23word@host:3306/db?ssl-mode=REQUIRED",
+        "mysql://user:****@host:3306/db?ssl-mode=REQUIRED"
+    )]
     fn masks_passwords_in_urls(#[case] input: &str, #[case] expected: &str) {
         assert_eq!(mask_password(input), expected);
     }

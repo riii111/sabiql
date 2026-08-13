@@ -25,6 +25,8 @@ impl Header {
 
         let (status_text, status_color) = if state.session.dsn().is_none() {
             ("no dsn", theme.semantic.status.error)
+        } else if state.session.connection_state().is_awaiting_database() {
+            ("database required", theme.semantic.status.warning)
         } else {
             match &state.session.metadata_state() {
                 MetadataState::Loaded => ("connected", theme.semantic.status.success),

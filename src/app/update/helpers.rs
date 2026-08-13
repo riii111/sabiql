@@ -3,7 +3,7 @@ use std::time::Instant;
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::domain::DatabaseType;
-use crate::domain::connection::SqliteConnectionConfig;
+use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig};
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::QueryStatus;
@@ -11,7 +11,7 @@ use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
-    evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
+    evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
@@ -135,7 +135,7 @@ pub fn editable_preview_base(
     if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
-    match preview_writeability(table_detail) {
+    match preview_writeability_for_result(table_detail, result) {
         PreviewWriteability::Writable => {}
         PreviewWriteability::ReadOnly(reason) => {
             return Err(EditGuardrailError::ReadOnlyPreviewTarget(reason));
@@ -144,7 +144,7 @@ pub fn editable_preview_base(
             return Err(EditGuardrailError::EditingRequiresPrimaryKey);
         }
     }
-    let identity = stable_row_identity_for_table(table_detail)
+    let identity = stable_row_identity_for_preview(table_detail, result)
         .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, identity))
@@ -456,7 +456,52 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 }
             }
         }
-        ConnectionField::Database => require_non_empty(state, field, "Required"),
+        ConnectionField::Database => {
+            if state.database_type() == DatabaseType::PostgreSQL {
+                require_non_empty(state, field, "Required");
+            }
+        }
+        ConnectionField::Host if state.database_type() == DatabaseType::MySQL => {
+            let host = text_input_content(state, field).trim();
+            if host.is_empty() {
+                state.set_validation_error(field, "Required");
+            } else if !MySqlConnectionConfig::is_valid_host(host) {
+                state.set_validation_error(field, "Invalid host");
+            }
+        }
+        ConnectionField::User if state.database_type() == DatabaseType::MySQL => {
+            require_non_empty(state, field, "Required");
+        }
+        ConnectionField::SslCa if state.database_type() == DatabaseType::MySQL => {
+            let path = text_input_content(state, field).to_string();
+            if matches!(
+                state.mysql_ssl_mode(),
+                MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
+            ) && path.trim().is_empty()
+            {
+                state.set_validation_error(field, "Required for this TLS mode");
+            } else if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
+        ConnectionField::SslCert | ConnectionField::SslKey
+            if state.database_type() == DatabaseType::MySQL =>
+        {
+            let path = text_input_content(state, field).to_string();
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+            let other_field = match field {
+                ConnectionField::SslCert => ConnectionField::SslKey,
+                ConnectionField::SslKey => ConnectionField::SslCert,
+                _ => unreachable!(),
+            };
+            let other_path = text_input_content(state, other_field).to_string();
+            if path.trim().is_empty() != other_path.trim().is_empty() {
+                state.set_validation_error(field, "Both client paths are required");
+                state.set_validation_error(other_field, "Both client paths are required");
+            }
+        }
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
@@ -467,12 +512,15 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
         | ConnectionField::Host
         | ConnectionField::User
         | ConnectionField::Password
-        | ConnectionField::SslMode => {}
+        | ConnectionField::SslMode
+        | ConnectionField::SslCa
+        | ConnectionField::SslCert
+        | ConnectionField::SslKey => {}
     }
 }
 
 pub fn validate_all(state: &mut ConnectionSetupState) {
-    let active_fields = ConnectionField::fields_for(state.database_type());
+    let active_fields = ConnectionField::fields_for(state.database_type(), state.mysql_ssl_mode());
     state.retain_validation_errors_for_visible_fields();
     for field in active_fields {
         validate_field(state, *field);
@@ -690,6 +738,84 @@ mod tests {
         }
     }
 
+    #[test]
+    fn mysql_validation_requires_host_and_user_but_not_database() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content(" ".to_string());
+        state
+            .input_mut(ConnectionField::User)
+            .unwrap()
+            .set_content(" ".to_string());
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::User),
+            Some("Required")
+        );
+        assert_eq!(state.validation_error(ConnectionField::Database), None);
+    }
+
+    #[test]
+    fn mysql_validation_rejects_url_syntax_in_host() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content("db example".to_string());
+
+        validate_field(&mut state, ConnectionField::Host);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::Host),
+            Some("Invalid host")
+        );
+    }
+
+    #[test]
+    fn mysql_verification_requires_ca_path() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::SslCa),
+            Some("Required for this TLS mode")
+        );
+    }
+
+    #[test]
+    fn mysql_client_certificate_and_key_are_a_pair() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::SslCert),
+            Some("Both client paths are required")
+        );
+        assert_eq!(
+            state.validation_error(ConnectionField::SslKey),
+            Some("Both client paths are required")
+        );
+    }
+
     mod delete_refresh_target_bulk {
         use super::*;
 
@@ -739,6 +865,7 @@ mod tests {
             let dsn = match database_type {
                 DatabaseType::PostgreSQL => "postgres://localhost/test",
                 DatabaseType::SQLite => "sqlite:///tmp/app.db",
+                DatabaseType::MySQL => "mysql://user@localhost/test",
             };
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-connection"),

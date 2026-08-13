@@ -2,15 +2,20 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::RefreshScope;
 use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
+pub const MYSQL_CLI_VERSION_REQUIRED_MARKER: &str = "MYSQL_CLI_VERSION_REQUIRED";
+pub const MYSQL_SERVER_VERSION_REQUIRED_MARKER: &str = "MYSQL_SERVER_VERSION_REQUIRED";
+pub const MYSQL_SQL_MODE_UNSUPPORTED_MARKER: &str = "MYSQL_SQL_MODE_UNSUPPORTED";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseCli {
     Psql,
     Sqlite3,
+    MySql,
 }
 
 impl DatabaseCli {
@@ -18,6 +23,7 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Database CLI not found",
             Self::Sqlite3 => "sqlite3 not found",
+            Self::MySql => "mysql not found",
         }
     }
 
@@ -25,6 +31,7 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Install the database client and add it to PATH",
             Self::Sqlite3 => "Install sqlite3 and add it to PATH",
+            Self::MySql => "Install the Oracle MySQL 8.4 client and add it to PATH",
         }
     }
 }
@@ -48,6 +55,11 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("Query failed after a change")]
+    QueryFailedAfterChange {
+        details: String,
+        refresh_scope: RefreshScope,
+    },
     #[error("Unsupported operation")]
     UnsupportedOperation(String),
     #[error("Metadata parse failed")]
@@ -82,6 +94,7 @@ impl DbOperationError {
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
             Self::QueryFailed(_) => "Query failed",
+            Self::QueryFailedAfterChange { .. } => "Query failed after a change",
             Self::UnsupportedOperation(_) => "Unsupported operation",
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
@@ -108,6 +121,9 @@ impl DbOperationError {
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::QueryFailedAfterChange { .. } => {
+                "Some changes may have been committed; refresh the database state before retrying"
+            }
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
             Self::MetadataParseFailed(_) => {
                 "Check whether the metadata output format changed unexpectedly"
@@ -132,6 +148,7 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
+            | Self::QueryFailedAfterChange { details, .. }
             | Self::UnsupportedOperation(details)
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
@@ -305,6 +322,21 @@ mod tests {
             assert_eq!(
                 error.user_message(),
                 "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
+            );
+        }
+
+        #[test]
+        fn change_failure_warns_about_possible_commits() {
+            let error = DbOperationError::QueryFailedAfterChange {
+                details: "syntax error".to_string(),
+                refresh_scope: RefreshScope::Metadata,
+            };
+
+            assert_eq!(error.summary(), "Query failed after a change");
+            assert!(
+                error
+                    .user_message()
+                    .contains("Some changes may have been committed")
             );
         }
 

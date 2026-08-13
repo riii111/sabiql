@@ -1,5 +1,6 @@
 // State transitions:
 // NotConnected → Connecting → Connected
+//                            → AwaitingDatabase
 //                           → Failed → NotConnected
 // Connected → NotConnected (re-entering connection setup)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -7,6 +8,7 @@ pub enum ConnectionState {
     #[default]
     NotConnected,
     Connecting,
+    AwaitingDatabase,
     Connected,
     Failed,
 }
@@ -18,6 +20,10 @@ impl ConnectionState {
 
     pub fn is_connecting(self) -> bool {
         matches!(self, Self::Connecting)
+    }
+
+    pub fn is_awaiting_database(self) -> bool {
+        matches!(self, Self::AwaitingDatabase)
     }
 
     pub fn is_connected(self) -> bool {
@@ -43,6 +49,7 @@ mod tests {
     #[rstest]
     #[case(ConnectionState::NotConnected, true, false, false, false)]
     #[case(ConnectionState::Connecting, false, true, false, false)]
+    #[case(ConnectionState::AwaitingDatabase, false, false, false, false)]
     #[case(ConnectionState::Connected, false, false, true, false)]
     #[case(ConnectionState::Failed, false, false, false, true)]
     fn predicates_match_expected_flags(
