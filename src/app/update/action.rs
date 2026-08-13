@@ -553,6 +553,7 @@ pub enum Action {
     ExplainAnalyzeCancel,
     ExplainCompleted {
         dsn: String,
+        database_type: DatabaseType,
         run_id: u64,
         query: String,
         plan_text: String,
@@ -928,6 +929,7 @@ mod tests {
         assert_eq!(
             Action::ExplainCompleted {
                 dsn: "dsn".to_string(),
+                database_type: DatabaseType::PostgreSQL,
                 run_id: 1,
                 query: "SELECT 1".to_string(),
                 plan_text: "plan".to_string(),

@@ -489,12 +489,14 @@ mod tests {
             state.sql_modal.set_active_tab(SqlModalTab::Compare);
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users",
             );
             state.explain.set_plan(
                 "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users WHERE id = 1",
@@ -552,9 +554,13 @@ mod tests {
             state.ui.set_inspector_scroll_offset(17);
             state.ui.set_inspector_horizontal_offset(23);
             state.sql_modal.set_active_tab(SqlModalTab::Plan);
-            state
-                .explain
-                .set_plan("SCAN users".to_string(), false, 0, "SELECT * FROM users");
+            state.explain.set_plan(
+                "SCAN users".to_string(),
+                DatabaseType::SQLite,
+                false,
+                0,
+                "SELECT * FROM users",
+            );
             state.explain.set_error("stale error".to_string());
             let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
             state

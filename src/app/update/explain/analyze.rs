@@ -91,6 +91,7 @@ pub(super) fn reduce_analyze(
                     let run_id = begin_explain_running(state, now);
                     return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                         dsn,
+                        database_type,
                         run_id,
                         query: explain_query,
                         source_query: content,
@@ -133,6 +134,7 @@ pub(super) fn reduce_analyze(
                 let run_id = begin_explain_running(state, now);
                 return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                     dsn,
+                    database_type,
                     run_id,
                     query: explain_query,
                     source_query: query,

@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ExplainPlan};
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 
@@ -107,11 +108,19 @@ impl ExplainContext {
     pub fn set_plan(
         &mut self,
         text: String,
+        database_type: DatabaseType,
         is_analyze: bool,
         execution_time_ms: u64,
         query: &str,
     ) {
-        let parsed = explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms);
+        let parsed = match database_type {
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms)
+            }
+            DatabaseType::MySQL => {
+                explain_plan::parse_mysql_tree_explain_text(&text, is_analyze, execution_time_ms)
+            }
+        };
         let snippet = query.lines().next().unwrap_or("").to_string();
         let plan_snippet = snippet.clone();
 
@@ -240,6 +249,7 @@ mod tests {
 
         ctx.set_plan(
             "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             42,
             "SELECT * FROM users",
@@ -253,10 +263,27 @@ mod tests {
     }
 
     #[test]
+    fn mysql_plan_uses_tree_parser() {
+        let mut ctx = ExplainContext::default();
+
+        ctx.set_plan(
+            "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
+            DatabaseType::MySQL,
+            false,
+            0,
+            "SELECT * FROM users",
+        );
+
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(1.25));
+        assert_eq!(ctx.right().unwrap().plan.estimated_rows, Some(2.5));
+    }
+
+    #[test]
     fn second_explain_auto_advances_right_to_left() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT * FROM users",
@@ -264,6 +291,7 @@ mod tests {
 
         ctx.set_plan(
             "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT * FROM users WHERE id = 1",
@@ -281,18 +309,21 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..20.00 rows=2 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
         );
         ctx.set_plan(
             "C  (cost=0.00..30.00 rows=3 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "C",
@@ -308,12 +339,14 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
@@ -337,12 +370,14 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
@@ -368,6 +403,7 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
@@ -384,6 +420,7 @@ mod tests {
         for i in 0..15 {
             ctx.set_plan(
                 format!("Scan  (cost=0.00..{i}.00 rows=1 width=32)"),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 &format!("Q{i}"),
@@ -399,6 +436,7 @@ mod tests {
 
         ctx.set_plan(
             "Seq Scan  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT *\nFROM users\nWHERE id = 1",
@@ -410,7 +448,13 @@ mod tests {
     #[test]
     fn line_count_with_plan() {
         let mut ctx = ExplainContext::default();
-        ctx.set_plan("line1\nline2\nline3".to_string(), false, 0, "Q");
+        ctx.set_plan(
+            "line1\nline2\nline3".to_string(),
+            DatabaseType::PostgreSQL,
+            false,
+            0,
+            "Q",
+        );
 
         assert_eq!(ctx.line_count(), 3);
     }

@@ -20,6 +20,15 @@ pub fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
     );
 }
 
+pub fn activate_mysql_connection(state: &mut AppState, dsn: &str) {
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "mysql",
+        DatabaseType::MySQL,
+        dsn,
+    );
+}
+
 pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: DatabaseType) {
     match database_type {
         DatabaseType::SQLite => {

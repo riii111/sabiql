@@ -32,7 +32,7 @@ use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 #[cfg(test)]
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement,
+    MysqlStatement, MysqlStatementKind, classify_mysql_statement, mysql_explain_rejection_message,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
@@ -227,8 +227,11 @@ impl DdlGenerator for MySqlAdapter {
 }
 
 impl SqlDialect for MySqlAdapter {
-    fn build_explain_sql(&self, _database_type: DatabaseType, _query: &str) -> Option<String> {
-        None
+    fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
+        if mysql_explain_rejection_message(query).is_some() {
+            return None;
+        }
+        Some(format!("EXPLAIN FORMAT=TREE {query}"))
     }
 
     fn build_explain_analyze_sql(
@@ -268,6 +271,52 @@ impl DsnBuilder for MySqlAdapter {
             .mysql_config()
             .expect("MySQL profile requires MySQL config");
         build_mysql_dsn(config)
+    }
+}
+
+#[cfg(test)]
+mod explain_tests {
+    use super::*;
+
+    #[test]
+    fn builds_tree_explain_for_select_table_and_dml() {
+        let adapter = MySqlAdapter::new();
+
+        for query in [
+            "SELECT * FROM users",
+            "TABLE users",
+            "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "REPLACE users VALUES (1)",
+            "REPLACE LOW_PRIORITY INTO users VALUES (1)",
+            "REPLACE DELAYED users VALUES (1)",
+            "UPDATE users SET name = 'Ada' WHERE id = 1",
+            "DELETE FROM users WHERE id = 1",
+        ] {
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::MySQL, query),
+                Some(format!("EXPLAIN FORMAT=TREE {query}")),
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_mysql_explain_for_unsupported_input() {
+        let adapter = MySqlAdapter::new();
+
+        for query in [
+            "CREATE TABLE users(id INT)",
+            "DROP TABLE users",
+            "\\C /tmp/other.sock",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert_eq!(
+                adapter.build_explain_sql(DatabaseType::MySQL, query),
+                None,
+                "{query}"
+            );
+        }
     }
 }
 
@@ -1779,7 +1828,7 @@ fn mysql_command_tag(
         | MysqlStatementKind::Describe => {
             CommandTag::Select(user_result.map_or(0, |result| result.values.len() as u64))
         }
-        MysqlStatementKind::Insert => CommandTag::Insert(rows()),
+        MysqlStatementKind::Insert | MysqlStatementKind::Replace => CommandTag::Insert(rows()),
         MysqlStatementKind::Update { .. } => CommandTag::Update(rows()),
         MysqlStatementKind::Delete { .. } => CommandTag::Delete(rows()),
         MysqlStatementKind::CreateTable { temporary: true } => {
