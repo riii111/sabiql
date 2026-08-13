@@ -1,4 +1,4 @@
-use crate::domain::connection::{ConnectionConfig, ConnectionId};
+use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{QueryValue, Table};
 use crate::ports::outbound::{AccessMode, AppSettings};
@@ -83,6 +83,7 @@ pub enum Effect {
     },
     ExecuteExplain {
         dsn: String,
+        database_type: DatabaseType,
         run_id: u64,
         query: String,
         source_query: String,
