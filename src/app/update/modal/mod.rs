@@ -1066,7 +1066,9 @@ mod tests {
 
     mod query_history_picker {
         use super::*;
-        use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+        use crate::domain::query_history::{
+            QueryHistoryEntry, QueryHistoryScope, QueryResultStatus,
+        };
         use crate::model::shared::text_input::TextInputLike;
         use crate::ports::outbound::query_history::QueryHistoryError;
 
@@ -1080,6 +1082,10 @@ mod tests {
             )
         }
 
+        fn scope(conn_id: &ConnectionId, database: Option<&str>) -> QueryHistoryScope {
+            QueryHistoryScope::new(conn_id.clone(), database.map(str::to_owned))
+        }
+
         fn connected_state() -> AppState {
             let mut state = create_test_state();
             state.session.activate_connection_with_dsn(
@@ -1088,6 +1094,20 @@ mod tests {
                 DatabaseType::PostgreSQL,
                 "postgres://localhost/test",
             );
+            state.runtime.project_name = "test-project".to_string();
+            state
+        }
+
+        fn mysql_connected_state(database: &str) -> AppState {
+            let mut state = create_test_state();
+            state.session.activate_connection_with_target(
+                &ConnectionId::from_string("mysql-conn"),
+                "mysql",
+                DatabaseType::MySQL,
+                &format!("mysql://localhost/{database}"),
+                Some(database),
+            );
+            state.session.mark_probe_connected(true);
             state.runtime.project_name = "test-project".to_string();
             state
         }
@@ -1171,6 +1191,24 @@ mod tests {
             }
 
             #[test]
+            fn open_for_mysql_captures_selected_database_in_scope() {
+                let mut state = mysql_connected_state("analytics");
+
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::OpenModal(ModalKind::QueryHistoryPicker),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(matches!(
+                    &effects[0],
+                    Effect::LoadQueryHistory { scope, .. }
+                        if scope.database.as_deref() == Some("analytics")
+                ));
+            }
+
+            #[test]
             fn close_restores_origin_mode() {
                 let mut state = connected_state();
                 state.modal.set_mode(InputMode::SqlModal);
@@ -1200,7 +1238,7 @@ mod tests {
 
                 let effects = super::dispatch_modal(
                     &mut state,
-                    &Action::QueryHistoryLoaded(conn_id, entries),
+                    &Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
                 )
                 .unwrap();
@@ -1218,7 +1256,32 @@ mod tests {
 
                 super::dispatch_modal(
                     &mut state,
-                    &Action::QueryHistoryLoaded(stale_conn, entries),
+                    &Action::QueryHistoryLoaded(scope(&stale_conn, None), entries),
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert!(state.query_history_picker.entries().is_empty());
+            }
+
+            #[test]
+            fn loaded_ignores_stale_mysql_database_scope() {
+                let mut state = mysql_connected_state("analytics");
+                state.modal.set_mode(InputMode::QueryHistoryPicker);
+                let conn_id = ConnectionId::from_string("mysql-conn");
+                let stale_scope = scope(&conn_id, Some("app"));
+                let entries = vec![QueryHistoryEntry::new_with_database(
+                    "SELECT 1".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    conn_id,
+                    Some("app".to_string()),
+                    QueryResultStatus::Success,
+                    None,
+                )];
+
+                super::dispatch_modal(
+                    &mut state,
+                    &Action::QueryHistoryLoaded(stale_scope, entries),
                     Instant::now(),
                 )
                 .unwrap();
@@ -1234,7 +1297,7 @@ mod tests {
 
                 super::dispatch_modal(
                     &mut state,
-                    &Action::QueryHistoryLoaded(conn_id, entries),
+                    &Action::QueryHistoryLoaded(scope(&conn_id, None), entries),
                     Instant::now(),
                 )
                 .unwrap();
@@ -1251,7 +1314,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        ConnectionId::from_string("test-conn"),
+                        scope(&ConnectionId::from_string("test-conn"), None),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("disk error"))),
                     ),
                     now,
@@ -1273,7 +1336,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        ConnectionId::from_string("test-conn"),
+                        scope(&ConnectionId::from_string("test-conn"), None),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
                     ),
                     now,
@@ -1292,7 +1355,7 @@ mod tests {
                 super::dispatch_modal(
                     &mut state,
                     &Action::QueryHistoryLoadFailed(
-                        ConnectionId::from_string("old-conn"),
+                        scope(&ConnectionId::from_string("old-conn"), None),
                         QueryHistoryError::Io(Arc::new(std::io::Error::other("stale error"))),
                     ),
                     now,

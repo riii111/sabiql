@@ -6,10 +6,9 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::query_task::QueryTaskRegistry;
-use crate::domain::ConnectionId;
 use crate::domain::QuerySource;
 use crate::domain::command_tag::CommandTag;
-use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
 use crate::domain::sqlite_explain_query_plan_text_from_result;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
@@ -48,24 +47,25 @@ fn save_query_history(
     query_history_store: &Arc<dyn QueryHistoryStore>,
     action_tx: &mpsc::Sender<Action>,
     project_name: &str,
-    connection_id: &ConnectionId,
+    scope: &QueryHistoryScope,
     query: &str,
     result_status: QueryResultStatus,
     affected_rows: Option<u64>,
 ) {
     let store = Arc::clone(query_history_store);
     let tx = action_tx.clone();
-    let entry = QueryHistoryEntry::new(
+    let entry = QueryHistoryEntry::new_with_database(
         query.to_string(),
         utc_now_iso8601(),
-        connection_id.clone(),
+        scope.connection_id.clone(),
+        scope.database.clone(),
         result_status,
         affected_rows,
     );
     let project = project_name.to_string();
-    let conn_id = connection_id.clone();
+    let scope = scope.clone();
     tokio::spawn(async move {
-        if let Err(e) = store.append(&project, &conn_id, &entry).await {
+        if let Err(e) = store.append(&project, &scope, &entry).await {
             let _ = tx.send(Action::QueryHistoryAppendFailed(e)).await;
         }
     });
@@ -187,13 +187,13 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
             let project = state.runtime.project_name().to_string();
-            let conn_id = state.session.active_connection_id().cloned();
+            let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
 
             query_tasks.spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, access_mode).await {
                     Ok(result) => {
-                        if let Some(cid) = &conn_id {
+                        if let Some(scope) = &history_scope {
                             let rows = result
                                 .command_tag
                                 .as_ref()
@@ -202,7 +202,7 @@ pub async fn run(
                                 &history_store,
                                 &history_tx,
                                 &project,
-                                cid,
+                                scope,
                                 &query_for_history,
                                 QueryResultStatus::Success,
                                 rows,
@@ -219,12 +219,12 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        if let Some(cid) = &conn_id {
+                        if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
                                 &history_tx,
                                 &project,
-                                cid,
+                                scope,
                                 &query_for_history,
                                 QueryResultStatus::Failed,
                                 None,
@@ -256,18 +256,18 @@ pub async fn run(
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
             let project = state.runtime.project_name().to_string();
-            let conn_id = state.session.active_connection_id().cloned();
+            let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
 
             query_tasks.spawn(async move {
                 match executor.execute_write(&dsn, &query, access_mode).await {
                     Ok(result) => {
-                        if let Some(cid) = &conn_id {
+                        if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
                                 &history_tx,
                                 &project,
-                                cid,
+                                scope,
                                 &query_for_history,
                                 QueryResultStatus::Success,
                                 Some(result.affected_rows as u64),
@@ -282,12 +282,12 @@ pub async fn run(
                         .ok();
                     }
                     Err(e) => {
-                        if let Some(cid) = &conn_id {
+                        if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
                                 &history_tx,
                                 &project,
-                                cid,
+                                scope,
                                 &query_for_history,
                                 QueryResultStatus::Failed,
                                 None,
