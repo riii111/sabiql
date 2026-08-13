@@ -1070,6 +1070,9 @@ fn contains_mysql_client_command(sql: &str) -> bool {
             }
             continue;
         }
+        if bytes[index] == b'\\' {
+            return true;
+        }
         if line_start {
             if matches!(bytes[index], b' ' | b'\t' | b'\r') {
                 index += 1;
@@ -1210,6 +1213,26 @@ mod tests {
         assert!(!statement_contains_unsupported_mysql_control(
             "SELECT 'source ./script.sql\\n'"
         ));
+    }
+
+    #[test]
+    fn rejects_mysql_client_commands_outside_literals_and_comments() {
+        for sql in [
+            r"SELECT 1 \G",
+            r"SELECT 1\!",
+            r"SELECT 1 \.",
+            r"SELECT 1 \C utf8mb4",
+        ] {
+            assert!(statement_contains_unsupported_mysql_control(sql), "{sql}");
+        }
+        for sql in [
+            r"SELECT '\G'",
+            r"SELECT `\!`",
+            r"SELECT 1 /* \.; \C */",
+            "SELECT 1 -- \\!\n",
+        ] {
+            assert!(!statement_contains_unsupported_mysql_control(sql), "{sql}");
+        }
     }
 
     #[test]

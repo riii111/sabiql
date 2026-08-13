@@ -4,6 +4,7 @@ use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder}
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 use sabiql_infra::adapters::mysql::MySqlAdapter;
 use tempfile::NamedTempFile;
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 pub const MYSQL_FIXTURE_TABLE: &str = "mysql_cli_fixture";
@@ -87,6 +88,46 @@ impl MySqlTestDb {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
         String::from_utf8(output.stdout).map_err(|error| error.to_string())
+    }
+
+    pub async fn run_batch_script(&self, script: &str) -> Result<std::process::Output, String> {
+        let option_file = NamedTempFile::new().map_err(|error| error.to_string())?;
+        std::fs::write(option_file.path(), serialize_option_file(&self.config))
+            .map_err(|error| error.to_string())?;
+        let mut child = Command::new("mysql")
+            .args([
+                format!("--defaults-file={}", option_file.path().display()),
+                "--no-login-paths".to_string(),
+                "--protocol=TCP".to_string(),
+                "--connect-timeout=10".to_string(),
+                "--xml".to_string(),
+                "--binary-as-hex".to_string(),
+                "--binary-mode".to_string(),
+                "--unbuffered".to_string(),
+                "--skip-reconnect".to_string(),
+                "--default-character-set=utf8mb4".to_string(),
+                "--batch".to_string(),
+                "--silent".to_string(),
+                "--prompt=".to_string(),
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "mysql stdin was not piped".to_string())?;
+        stdin
+            .write_all(script.as_bytes())
+            .await
+            .map_err(|error| error.to_string())?;
+        drop(stdin);
+        child
+            .wait_with_output()
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 

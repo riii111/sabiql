@@ -63,6 +63,29 @@ async fn connects_to_oracle_mysql_84_fixture() {
 }
 
 #[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn batch_mysql_cli_does_not_execute_shell_commands() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let output = db
+                .run_batch_script("SELECT 1;\n\\! printf SAB403_SHELL\n")
+                .await
+                .map_err(|error| format!("failed to run MySQL CLI: {error}"))?;
+            let output = format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            if output.contains("SAB403_SHELL") {
+                return Err(format!("MySQL CLI executed a shell command: {output}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
 async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
     let config = mysql_tls_config();
