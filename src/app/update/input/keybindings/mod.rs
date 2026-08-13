@@ -638,7 +638,7 @@ mod tests {
         );
         assert_eq!(
             JSONB_DETAIL_ROWS[0].feature_requirement(),
-            FeatureRequirement::JsonbDetail
+            FeatureRequirement::JsonDocumentDetail
         );
     }
 }

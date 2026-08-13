@@ -346,7 +346,7 @@ impl Footer {
             InputMode::JsonbDetail => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
-                if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
                     vec![jsonb_detail::CLOSE.as_hint()]
                 } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
@@ -355,20 +355,23 @@ impl Footer {
                         jsonb_search::CANCEL.as_hint(),
                     ]
                 } else {
-                    vec![
-                        jsonb_detail::YANK.as_hint(),
-                        jsonb_detail::INSERT.as_hint(),
+                    let mut hints = vec![jsonb_detail::YANK.as_hint()];
+                    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
+                        hints.push(jsonb_detail::INSERT.as_hint());
+                    }
+                    hints.extend([
                         jsonb_detail::SEARCH.as_hint(),
                         jsonb_detail::NEXT_PREV.as_hint(),
                         jsonb_detail::MOVE.as_hint(),
                         jsonb_detail::CLOSE.as_hint(),
-                    ]
+                    ]);
+                    hints
                 }
             }
             InputMode::JsonbEdit => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
-                if feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
                     vec![
                         jsonb_edit::ESC_NORMAL.as_hint(),
                         jsonb_edit::MOVE.as_hint(),
@@ -547,6 +550,24 @@ mod tests {
             Footer::get_context_hints(&state),
             vec![jsonb_edit::ESC_NORMAL.as_hint()]
         );
+    }
+
+    #[test]
+    fn mysql_json_detail_hides_edit_hint() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::MySQL,
+            "mysql://test",
+        );
+        state.modal.set_mode(InputMode::JsonbDetail);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(!hints.contains(&jsonb_detail::INSERT.as_hint()));
+        assert!(hints.contains(&jsonb_detail::YANK.as_hint()));
+        assert!(hints.contains(&jsonb_detail::SEARCH.as_hint()));
     }
 
     #[test]
