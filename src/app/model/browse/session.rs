@@ -424,6 +424,23 @@ impl BrowseSession {
         self.metadata_run.is_current(run_id)
     }
 
+    pub fn metadata_generation(&self) -> u64 {
+        self.metadata_run.last_id()
+    }
+
+    pub fn is_current_completion_scope(
+        &self,
+        dsn: Option<&str>,
+        connection_generation: u64,
+        database_generation: u64,
+        metadata_generation: u64,
+    ) -> bool {
+        self.dsn() == dsn
+            && self.connection_generation == connection_generation
+            && self.database_generation == database_generation
+            && self.metadata_generation() == metadata_generation
+    }
+
     #[must_use]
     pub fn begin_effective_user_fetch(&mut self) -> u64 {
         self.effective_user_run.begin()

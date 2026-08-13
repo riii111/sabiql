@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompletionKind {
     Keyword,
+    Database,
     Table,
     Column,
 }

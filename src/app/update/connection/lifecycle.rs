@@ -1651,6 +1651,10 @@ mod tests {
             );
             assert!(state.session.metadata().is_none());
             assert!(state.session.is_read_only());
+            assert_eq!(
+                state.session.available_databases(),
+                ["analytics".to_string()]
+            );
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query_history_picker.entries().is_empty());
             assert!(
@@ -1674,6 +1678,7 @@ mod tests {
             );
             state.session.mark_probe_connected(true);
             state.modal.set_mode(InputMode::QueryHistoryPicker);
+            state.sql_modal.completion_mut_for_test().visible = true;
             state
                 .query_history_picker
                 .replace_entries(&[QueryHistoryEntry::new_with_database(
@@ -1697,6 +1702,7 @@ mod tests {
             assert_eq!(state.session.active_database(), Some("analytics"));
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.query_history_picker.entries().is_empty());
+            assert!(!state.sql_modal.completion().visible);
             assert!(
                 effects
                     .iter()
