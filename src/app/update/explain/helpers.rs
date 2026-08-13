@@ -33,7 +33,9 @@ pub(super) fn explain_unsupported_analyze_message(database_type: DatabaseType) -
     match database_type {
         DatabaseType::SQLite => "EXPLAIN ANALYZE is not supported for SQLite",
         DatabaseType::PostgreSQL => "EXPLAIN ANALYZE is unavailable for this statement",
-        DatabaseType::MySQL => "EXPLAIN ANALYZE is unavailable for this connection",
+        DatabaseType::MySQL => {
+            "MySQL EXPLAIN ANALYZE only supports side-effect-free SELECT or TABLE statements"
+        }
     }
 }
 
