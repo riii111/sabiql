@@ -173,6 +173,9 @@ fn is_comment_only(sql: &str) -> bool {
         } else if is_line_comment_start(bytes, index) {
             index = skip_line_comment(bytes, index);
         } else if bytes.get(index..index + 2) == Some(b"/*") {
+            if bytes.get(index + 2) == Some(&b'!') {
+                return false;
+            }
             index = match skip_block_comment(bytes, index) {
                 Ok(next) => next,
                 Err(_) => return false,
@@ -220,16 +223,9 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
                 let executable_statement = inner.first().is_some_and(|token| {
                     matches!(&token.kind, TokenKind::Word(word) if is_mysql_statement_keyword(word))
                 });
-                if tokens.is_empty() {
-                    if executable_statement {
-                        tokens.extend(inner);
-                    } else if !inner.is_empty() {
-                        tokens.push(Token {
-                            kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
-                            depth,
-                        });
-                    }
-                } else if executable_statement {
+                if tokens.is_empty() && executable_statement {
+                    tokens.extend(inner);
+                } else if !inner.is_empty() {
                     tokens.push(Token {
                         kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
                         depth,
@@ -249,7 +245,7 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             } else if byte == b'\'' {
                 TokenKind::StringLiteral
             } else {
-                TokenKind::Identifier(text.replace("\"\"", "\""))
+                TokenKind::StringLiteral
             };
             tokens.push(Token { kind, depth });
             index = end;
@@ -425,11 +421,18 @@ fn cte_body_start(tokens: &[Token]) -> Option<usize> {
         index += 1;
     }
     loop {
-        while index < tokens.len() && tokens[index].depth == 0 {
-            index += 1;
-            if word(tokens, index) == Some("AS") {
-                break;
-            }
+        if !matches!(
+            tokens.get(index).map(|token| &token.kind),
+            Some(TokenKind::Word(_) | TokenKind::Identifier(_))
+        ) {
+            return None;
+        }
+        index += 1;
+        if matches!(
+            tokens.get(index).map(|token| &token.kind),
+            Some(TokenKind::Symbol('('))
+        ) {
+            index = skip_parenthesized_tokens(tokens, index)?;
         }
         if word(tokens, index) != Some("AS") {
             return None;
@@ -441,11 +444,7 @@ fn cte_body_start(tokens: &[Token]) -> Option<usize> {
         ) {
             return None;
         }
-        let body_depth = tokens[index].depth + 1;
-        index += 1;
-        while index < tokens.len() && tokens[index].depth >= body_depth {
-            index += 1;
-        }
+        index = skip_parenthesized_tokens(tokens, index)?;
         if matches!(
             tokens.get(index).map(|token| &token.kind),
             Some(TokenKind::Symbol(','))
@@ -455,6 +454,46 @@ fn cte_body_start(tokens: &[Token]) -> Option<usize> {
         }
         return Some(index);
     }
+}
+
+fn skip_parenthesized_tokens(tokens: &[Token], index: usize) -> Option<usize> {
+    if !matches!(
+        tokens.get(index).map(|token| &token.kind),
+        Some(TokenKind::Symbol('('))
+    ) {
+        return None;
+    }
+    let mut depth = 0usize;
+    for cursor in index..tokens.len() {
+        match tokens[cursor].kind {
+            TokenKind::Symbol('(') => depth += 1,
+            TokenKind::Symbol(')') => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(cursor + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn drop_target_after(
+    tokens: &[Token],
+    index: usize,
+) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+    let (target, database, next) = identifier_at(tokens, index)
+        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
+    if tokens[next..]
+        .iter()
+        .any(|token| token.depth == 0 && matches!(token.kind, TokenKind::Symbol(',')))
+    {
+        return Err(MysqlLexError(
+            "MySQL DROP statements must have one target".to_string(),
+        ));
+    }
+    Ok((Some(target), database))
 }
 
 fn effective_start(tokens: &[Token]) -> usize {
@@ -582,7 +621,7 @@ fn kind_and_target(
                     } else {
                         index + 1
                     };
-                    let (target, database) = target_after(target_index)?;
+                    let (target, database) = drop_target_after(tokens, target_index)?;
                     (
                         MysqlStatementKind::DropTable { temporary },
                         target,
@@ -595,7 +634,7 @@ fn kind_and_target(
                     } else {
                         index + 1
                     };
-                    let (target, database) = target_after(target_index)?;
+                    let (target, database) = drop_target_after(tokens, target_index)?;
                     (MysqlStatementKind::DropView, target, database)
                 }
                 Some("INDEX" | "KEY") => {
@@ -666,16 +705,29 @@ fn kind_and_target(
                         "ROLLBACK modifiers are not supported".to_string(),
                     ));
                 }
-                (MysqlStatementKind::RollbackToSavepoint, None, None)
+                let (name, database, _) = identifier_at(tokens, name_index).ok_or_else(|| {
+                    MysqlLexError("ROLLBACK SAVEPOINT name is ambiguous".to_string())
+                })?;
+                (
+                    MysqlStatementKind::RollbackToSavepoint,
+                    Some(name),
+                    database,
+                )
             } else {
                 return Err(MysqlLexError(
                     "ROLLBACK modifiers are not supported".to_string(),
                 ));
             }
         }
-        "SAVEPOINT" if tokens.len() == start + 2 => (MysqlStatementKind::Savepoint, None, None),
+        "SAVEPOINT" if tokens.len() == start + 2 => {
+            let (name, database, _) = identifier_at(tokens, start + 1)
+                .ok_or_else(|| MysqlLexError("SAVEPOINT name is ambiguous".to_string()))?;
+            (MysqlStatementKind::Savepoint, Some(name), database)
+        }
         "RELEASE" if word(tokens, start + 1) == Some("SAVEPOINT") && tokens.len() == start + 3 => {
-            (MysqlStatementKind::ReleaseSavepoint, None, None)
+            let (name, database, _) = identifier_at(tokens, start + 2)
+                .ok_or_else(|| MysqlLexError("RELEASE SAVEPOINT name is ambiguous".to_string()))?;
+            (MysqlStatementKind::ReleaseSavepoint, Some(name), database)
         }
         _ => {
             return Err(MysqlLexError(format!(
@@ -760,7 +812,7 @@ mod tests {
     #[test]
     fn classifies_with_and_version_comment() {
         let statement = classify_mysql_statement(
-            "WITH rows AS (SELECT /*!80000 + 1 */ 1) UPDATE `app`.`items` SET value = 1",
+            "WITH rows(id) AS (SELECT 1) UPDATE `app`.`items` SET value = 1",
         )
         .unwrap();
         assert!(matches!(statement.kind, MysqlStatementKind::Update { .. }));
@@ -770,6 +822,29 @@ mod tests {
     #[test]
     fn rejects_unverifiable_version_comment() {
         assert!(classify_mysql_statement("/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1").is_err());
+    }
+
+    #[test]
+    fn classifies_leading_version_comment_statement() {
+        assert!(matches!(
+            classify_mysql_statement("/*!80000 SELECT 1 */"),
+            Ok(MysqlStatement {
+                kind: MysqlStatementKind::Select,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_executable_version_comment_clause() {
+        assert!(classify_mysql_statement("SELECT 1 /*!80000 INTO OUTFILE '/tmp/x' */").is_err());
+    }
+
+    #[test]
+    fn rejects_multiple_drop_targets_and_ambiguous_ddl_quotes() {
+        assert!(classify_mysql_statement("DROP TABLE app.keep, other.drop_me").is_err());
+        assert!(classify_mysql_statement("DROP VIEW app.keep, other.drop_me").is_err());
+        assert!(classify_mysql_statement("CREATE TABLE \"items\" (id INT)").is_err());
     }
 
     #[test]

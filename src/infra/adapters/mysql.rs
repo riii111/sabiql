@@ -631,6 +631,12 @@ struct MysqlExecutionResult {
     refresh_scope: RefreshScope,
 }
 
+struct MysqlCommandEvent {
+    kind: MysqlStatementKind,
+    target: Option<String>,
+    tag: CommandTag,
+}
+
 fn validate_mysql_multi_query(
     query: &str,
     selected_database: Option<&str>,
@@ -992,7 +998,11 @@ async fn run_mysql_adhoc_process(
             last_result_set = Some(result);
         }
         let tag = mysql_command_tag(&statement.kind, affected_rows, last_result_set.as_ref());
-        command_tags.push(tag);
+        command_tags.push(MysqlCommandEvent {
+            kind: statement.kind.clone(),
+            target: statement.target.clone(),
+            tag,
+        });
     }
 
     #[cfg(not(unix))]
@@ -1129,20 +1139,105 @@ fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
     }
 }
 
-fn aggregate_mysql_command_tag(tags: &[CommandTag]) -> Option<CommandTag> {
-    tags.iter()
-        .rev()
-        .find(|tag| tag.is_schema_modifying() || matches!(tag, CommandTag::Truncate))
-        .or_else(|| {
-            tags.iter().rev().find(|tag| {
-                matches!(
-                    tag,
-                    CommandTag::Insert(_) | CommandTag::Update(_) | CommandTag::Delete(_)
-                )
-            })
-        })
-        .or_else(|| tags.last())
-        .cloned()
+fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
+    mysql_statement_is_schema_modifying(kind)
+        && !matches!(
+            kind,
+            MysqlStatementKind::CreateTable { temporary: true }
+                | MysqlStatementKind::DropTable { temporary: true }
+        )
+}
+
+#[derive(Default)]
+struct MysqlPendingTransactionTags {
+    data: Vec<CommandTag>,
+    savepoints: Vec<(String, usize)>,
+}
+
+fn apply_pending_mysql_data(
+    pending: MysqlPendingTransactionTags,
+    committed_data: &mut Option<CommandTag>,
+) {
+    if let Some(tag) = pending.data.last() {
+        *committed_data = Some(tag.clone());
+    }
+}
+
+fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Option<CommandTag> {
+    let mut committed_schema = None;
+    let mut committed_data = None;
+    let mut pending = None;
+    let mut last_tag = None;
+
+    for event in events {
+        last_tag = Some(event.tag.clone());
+        match &event.kind {
+            MysqlStatementKind::Begin | MysqlStatementKind::StartTransaction => {
+                pending = Some(MysqlPendingTransactionTags::default());
+            }
+            MysqlStatementKind::Commit => {
+                if let Some(transaction) = pending.take() {
+                    apply_pending_mysql_data(transaction, &mut committed_data);
+                }
+            }
+            MysqlStatementKind::Rollback => {
+                pending = None;
+            }
+            MysqlStatementKind::Savepoint => {
+                if let Some(transaction) = pending.as_mut()
+                    && let Some(name) = event.target.as_deref()
+                {
+                    transaction
+                        .savepoints
+                        .retain(|(current, _)| !current.eq_ignore_ascii_case(name));
+                    transaction
+                        .savepoints
+                        .push((name.to_string(), transaction.data.len()));
+                }
+            }
+            MysqlStatementKind::RollbackToSavepoint => {
+                if let Some(transaction) = pending.as_mut()
+                    && let Some(name) = event.target.as_deref()
+                    && let Some(index) = transaction
+                        .savepoints
+                        .iter()
+                        .position(|(current, _)| current.eq_ignore_ascii_case(name))
+                {
+                    transaction.data.truncate(transaction.savepoints[index].1);
+                    transaction.savepoints.truncate(index + 1);
+                }
+            }
+            MysqlStatementKind::ReleaseSavepoint => {
+                if let Some(transaction) = pending.as_mut()
+                    && let Some(name) = event.target.as_deref()
+                    && let Some(index) = transaction
+                        .savepoints
+                        .iter()
+                        .position(|(current, _)| current.eq_ignore_ascii_case(name))
+                {
+                    transaction.savepoints.remove(index);
+                }
+            }
+            MysqlStatementKind::CreateTable { temporary: true }
+            | MysqlStatementKind::DropTable { temporary: true } => {}
+            kind if mysql_statement_is_persistent_schema_change(kind) => {
+                if let Some(transaction) = pending.take() {
+                    apply_pending_mysql_data(transaction, &mut committed_data);
+                }
+                committed_schema = Some(event.tag.clone());
+            }
+            kind if mysql_statement_is_data_modifying(kind) => {
+                if let Some(transaction) = pending.as_mut() {
+                    transaction.data.push(event.tag.clone());
+                } else {
+                    committed_data = Some(event.tag.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    committed_schema.or(committed_data).or(last_tag)
 }
 
 async fn write_mysql_statement(
@@ -1285,6 +1380,7 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
         &mut process.stderr,
         &mut process.pending,
     )
+    .await
 }
 
 #[cfg(unix)]
@@ -2730,5 +2826,67 @@ done
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn transaction_rollback_removes_pending_data_tag() {
+        let events = vec![
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Begin,
+                target: None,
+                tag: CommandTag::Begin,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Update { has_where: true },
+                target: Some("items".to_string()),
+                tag: CommandTag::Update(1),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Rollback,
+                target: None,
+                tag: CommandTag::Rollback,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Select,
+                target: None,
+                tag: CommandTag::Select(1),
+            },
+        ];
+
+        assert_eq!(
+            aggregate_mysql_command_tag(&events),
+            Some(CommandTag::Select(1))
+        );
+    }
+
+    #[test]
+    fn ddl_implicit_commit_keeps_prior_data_change() {
+        let events = vec![
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Begin,
+                target: None,
+                tag: CommandTag::Begin,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Insert,
+                target: Some("items".to_string()),
+                tag: CommandTag::Insert(1),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::CreateTable { temporary: false },
+                target: Some("created".to_string()),
+                tag: CommandTag::Create("TABLE".to_string()),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Rollback,
+                target: None,
+                tag: CommandTag::Rollback,
+            },
+        ];
+
+        assert_eq!(
+            aggregate_mysql_command_tag(&events),
+            Some(CommandTag::Create("TABLE".to_string()))
+        );
     }
 }

@@ -40,7 +40,7 @@ mod mysql_tests {
     }
 
     #[test]
-    fn mysql_max_risk_uses_destructive_confirmation() {
+    fn max_risk_uses_destructive_confirmation() {
         let decision = mysql("SELECT 'a;#'; UPDATE items SET value = 1");
         match decision {
             MultiStatementDecision::Allow { risk, statements } => {
@@ -59,19 +59,19 @@ mod mysql_tests {
     }
 
     #[test]
-    fn mysql_accepts_comments_hints_and_version_comments() {
+    fn accepts_comments_hints_and_version_comments() {
         assert!(matches!(
             mysql("SELECT /*+ MAX_EXECUTION_TIME(1000) */ 1 # trailing\n"),
             MultiStatementDecision::Allow { .. }
         ));
         assert!(matches!(
-            mysql("SELECT 1 /*!80000 + 1 */"),
+            mysql("/*!80000 SELECT 1 */"),
             MultiStatementDecision::Allow { .. }
         ));
     }
 
     #[test]
-    fn mysql_rejects_unsupported_controls_and_statements_before_execution() {
+    fn rejects_unsupported_controls_and_statements_before_execution() {
         for sql in [
             "USE app",
             "SET sql_mode = 'ANSI_QUOTES'",
@@ -90,7 +90,7 @@ mod mysql_tests {
     }
 
     #[test]
-    fn mysql_ddl_rejects_a_different_database() {
+    fn ddl_rejects_a_different_database() {
         assert!(matches!(
             evaluate_multi_statement_for_database_with_context(
                 DatabaseType::MySQL,
@@ -115,16 +115,24 @@ mod mysql_tests {
             ),
             MultiStatementDecision::Block { .. }
         ));
+        assert!(matches!(
+            mysql("DROP TABLE app.keep, other.drop_me"),
+            MultiStatementDecision::Block { .. }
+        ));
     }
 
     #[test]
-    fn mysql_transaction_modifiers_are_rejected() {
+    fn transaction_modifiers_are_rejected() {
         for sql in [
             "START TRANSACTION READ ONLY",
             "COMMIT AND CHAIN",
             "ROLLBACK AND NO CHAIN",
             "ROLLBACK TO SAVEPOINT named extra",
             "RELEASE SAVEPOINT named extra",
+            "BEGIN",
+            "BEGIN; UPDATE items SET value = 1",
+            "SAVEPOINT named",
+            "CREATE TEMPORARY TABLE temp_items (id INT)",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Block { .. }),
@@ -132,14 +140,11 @@ mod mysql_tests {
             );
         }
         for sql in [
-            "BEGIN",
-            "START TRANSACTION",
             "COMMIT",
             "ROLLBACK",
-            "SAVEPOINT named",
-            "ROLLBACK TO named",
-            "ROLLBACK TO SAVEPOINT named",
-            "RELEASE SAVEPOINT named",
+            "BEGIN; COMMIT",
+            "START TRANSACTION; ROLLBACK",
+            "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
@@ -295,6 +300,129 @@ pub fn mysql_statement_is_data_modifying(kind: &MysqlStatementKind) -> bool {
     )
 }
 
+fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
+    mysql_statement_is_schema_modifying(kind)
+        && !matches!(
+            kind,
+            MysqlStatementKind::CreateTable { temporary: true }
+                | MysqlStatementKind::DropTable { temporary: true }
+        )
+}
+
+fn mysql_target_key(statement: &MysqlStatement) -> Option<String> {
+    Some(format!(
+        "{}:{}",
+        statement.target_database.as_deref().unwrap_or_default(),
+        statement.target.as_deref()?.to_ascii_uppercase()
+    ))
+}
+
+fn mysql_validate_submission_state(
+    planned: &[(MysqlStatement, SqlRiskDecision)],
+) -> Result<(), String> {
+    let mut transaction_open = false;
+    let mut savepoints = Vec::<String>::new();
+    let mut temporary_tables = Vec::<String>::new();
+
+    for (statement, _) in planned {
+        match &statement.kind {
+            MysqlStatementKind::Begin | MysqlStatementKind::StartTransaction => {
+                if transaction_open {
+                    return Err("nested MySQL transactions are not supported".to_string());
+                }
+                transaction_open = true;
+                savepoints.clear();
+            }
+            MysqlStatementKind::Commit | MysqlStatementKind::Rollback => {
+                transaction_open = false;
+                savepoints.clear();
+            }
+            MysqlStatementKind::Savepoint => {
+                if !transaction_open {
+                    return Err("MySQL SAVEPOINT requires an explicit transaction".to_string());
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
+                savepoints.push(name.to_string());
+            }
+            MysqlStatementKind::RollbackToSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL ROLLBACK TO SAVEPOINT requires an explicit transaction".to_string(),
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.truncate(index + 1);
+            }
+            MysqlStatementKind::ReleaseSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL RELEASE SAVEPOINT requires an explicit transaction".to_string()
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.remove(index);
+            }
+            MysqlStatementKind::CreateTable { temporary: true } => {
+                let key = mysql_target_key(statement)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                if temporary_tables.iter().any(|current| current == &key) {
+                    return Err("MySQL temporary table is created more than once".to_string());
+                }
+                temporary_tables.push(key);
+            }
+            MysqlStatementKind::DropTable { temporary: true } => {
+                let key = mysql_target_key(statement)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                let Some(index) = temporary_tables.iter().position(|current| current == &key)
+                else {
+                    return Err(
+                        "MySQL temporary tables must be created and dropped in one submission"
+                            .to_string(),
+                    );
+                };
+                temporary_tables.remove(index);
+            }
+            kind if mysql_statement_is_persistent_schema_change(kind) => {
+                transaction_open = false;
+                savepoints.clear();
+            }
+            _ => {}
+        }
+    }
+
+    if transaction_open {
+        return Err("MySQL explicit transaction must finish in one submission".to_string());
+    }
+    if !temporary_tables.is_empty() {
+        return Err(
+            "MySQL temporary tables must be created and dropped in one submission".to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
@@ -346,6 +474,10 @@ pub fn evaluate_mysql_multi_statement(
         }
         let decision = mysql_statement_risk(&statement);
         planned.push((statement, decision));
+    }
+
+    if let Err(reason) = mysql_validate_submission_state(&planned) {
+        return MultiStatementDecision::Block { reason };
     }
 
     let max_risk = planned
