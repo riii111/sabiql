@@ -26,6 +26,9 @@ uuid.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard.workspace = true
 
