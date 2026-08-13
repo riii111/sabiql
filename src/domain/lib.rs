@@ -27,7 +27,7 @@ pub use explain_plan::sqlite_explain_query_plan_text_from_result;
 pub use foreign_key::{FkAction, ForeignKey, UNRESOLVED_FK_COLUMN};
 pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
-pub use query_result::{QueryResult, QuerySource, QueryValue};
+pub use query_result::{QueryResult, QuerySource, QueryValue, RefreshScope};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use sqlite_diagnostics::{DiagnosticField, SqliteDiagnosticsSnapshot};
