@@ -57,12 +57,12 @@ name = "sabiql"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases"
+description = "A fast, driver-less TUI for browsing and editing PostgreSQL, MySQL, and SQLite databases"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
-keywords = ["postgresql", "sqlite", "tui", "database", "sql"]
+keywords = ["postgresql", "mysql", "sqlite", "tui", "database"]
 categories = ["command-line-utilities", "database"]
 
 [dependencies]
