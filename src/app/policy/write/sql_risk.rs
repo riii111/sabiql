@@ -51,13 +51,26 @@ mod mysql_tests {
                 assert_eq!(
                     risk.confirmation,
                     ConfirmationType::TableNameInput {
-                        target: "ITEMS".to_string()
+                        target: "items".to_string()
                     }
                 );
                 assert!(!risk.read_only_allowed);
             }
             MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
         }
+    }
+
+    #[test]
+    fn confirmation_target_preserves_input_case() {
+        let MultiStatementDecision::Allow { risk, .. } =
+            mysql("UPDATE CustomerOrders SET value = 1")
+        else {
+            panic!("unexpected block");
+        };
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target } if target == "CustomerOrders"
+        ));
     }
 
     #[test]

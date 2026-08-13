@@ -511,32 +511,33 @@ async fn previews_empty_mysql_table_with_metadata_columns() {
 async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
-            let invisible = db
+            let result = async {
+                let invisible = db
                 .adapter()
                 .execute_preview(db.dsn(), "sabiql_test", MYSQL_INVISIBLE_PK_TABLE, 10, 0)
                 .await
                 .map_err(|error| format!("failed to preview invisible primary key: {error:?}"))?;
-            if invisible.columns != ["payload"]
-                || invisible.query.contains("__sabiql_row_identity_")
-                || invisible.values()
-                    != [[QueryValue::Text("invisible single primary key".to_string())]]
-            {
-                return Err(format!(
-                    "unexpected invisible primary key preview: {invisible:?}"
-                ));
-            }
-            let identity = invisible
-                .explicit_row_identity()
-                .ok_or_else(|| "invisible primary key identity was not returned".to_string())?;
-            if identity.columns() != ["id"]
-                || identity.values() != [[QueryValue::SqlLiteral("1".to_string())]]
-            {
-                return Err(format!(
-                    "unexpected invisible primary key identity: {identity:?}"
-                ));
-            }
+                if invisible.columns != ["payload"]
+                    || invisible.query.contains("__sabiql_row_identity_")
+                    || invisible.values()
+                        != [[QueryValue::Text("invisible single primary key".to_string())]]
+                {
+                    return Err(format!(
+                        "unexpected invisible primary key preview: {invisible:?}"
+                    ));
+                }
+                let identity = invisible
+                    .explicit_row_identity()
+                    .ok_or_else(|| "invisible primary key identity was not returned".to_string())?;
+                if identity.columns() != ["id"]
+                    || identity.values() != [[QueryValue::SqlLiteral("1".to_string())]]
+                {
+                    return Err(format!(
+                        "unexpected invisible primary key identity: {identity:?}"
+                    ));
+                }
 
-            let composite = db
+                let composite = db
                 .adapter()
                 .execute_preview(
                     db.dsn(),
@@ -550,7 +551,7 @@ async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
             let composite_identity = composite
                 .explicit_row_identity()
                 .ok_or_else(|| "invisible composite identity was not returned".to_string())?;
-            if composite.columns != ["payload"]
+                if composite.columns != ["payload"]
                 || composite.query.contains("__sabiql_row_identity_")
                 || composite_identity.columns() != ["second_key", "first_key"]
                 || composite_identity.values()
@@ -558,38 +559,38 @@ async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
                         QueryValue::SqlLiteral("20".to_string()),
                         QueryValue::SqlLiteral("1".to_string()),
                     ]]
-            {
-                return Err(format!(
-                    "unexpected invisible composite preview: {composite:?}"
-                ));
-            }
+                {
+                    return Err(format!(
+                        "unexpected invisible composite preview: {composite:?}"
+                    ));
+                }
 
-            let gipk_detail = db
+                let gipk_detail = db
                 .adapter()
                 .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE)
                 .await
                 .map_err(|error| format!("failed to fetch GIPK metadata: {error:?}"))?;
-            if gipk_detail.primary_key != Some(vec!["my_row_id".to_string()]) {
-                return Err(format!(
-                    "GIPK was not exposed by INFORMATION_SCHEMA: {:?}",
-                    gipk_detail.primary_key
-                ));
-            }
-            let gipk = db
+                if gipk_detail.primary_key != Some(vec!["my_row_id".to_string()]) {
+                    return Err(format!(
+                        "GIPK was not exposed by INFORMATION_SCHEMA: {:?}",
+                        gipk_detail.primary_key
+                    ));
+                }
+                let gipk = db
                 .adapter()
                 .execute_preview(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE, 10, 0)
                 .await
                 .map_err(|error| format!("failed to preview GIPK: {error:?}"))?;
-            if gipk.columns != ["payload"]
+                if gipk.columns != ["payload"]
                 || gipk.query.contains("__sabiql_row_identity_")
                 || gipk
                     .explicit_row_identity()
                     .is_none_or(|identity| identity.columns() != ["my_row_id"])
-            {
-                return Err(format!("unexpected GIPK preview: {gipk:?}"));
-            }
+                {
+                    return Err(format!("unexpected GIPK preview: {gipk:?}"));
+                }
 
-            let update_sql = db.adapter().build_update_sql(
+                let update_sql = db.adapter().build_update_sql(
                 DatabaseType::MySQL,
                 "sabiql_test",
                 MYSQL_GIPK_TABLE,
@@ -600,16 +601,16 @@ async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
                     QueryValue::SqlLiteral("1".to_string()),
                 )],
             );
-            let update = db
+                let update = db
                 .adapter()
                 .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
                 .await
                 .map_err(|error| format!("failed to update through GIPK: {error:?}"))?;
-            if update.affected_rows != 1 {
-                return Err(format!("unexpected GIPK update result: {update:?}"));
-            }
+                if update.affected_rows != 1 {
+                    return Err(format!("unexpected GIPK update result: {update:?}"));
+                }
 
-            let delete_sql = db.adapter().build_bulk_delete_sql(
+                let delete_sql = db.adapter().build_bulk_delete_sql(
                 DatabaseType::MySQL,
                 "sabiql_test",
                 MYSQL_INVISIBLE_PK_TABLE,
@@ -618,19 +619,47 @@ async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
                     QueryValue::SqlLiteral("1".to_string()),
                 )]],
             );
-            let delete = db
+                let delete = db
                 .adapter()
                 .execute_write(db.dsn(), &delete_sql, AccessMode::ReadWrite)
                 .await
                 .map_err(|error| {
                     format!("failed to delete through invisible primary key: {error:?}")
                 })?;
-            if delete.affected_rows != 1 {
-                return Err(format!(
-                    "unexpected invisible primary key delete result: {delete:?}"
-                ));
+                if delete.affected_rows != 1 {
+                    return Err(format!(
+                        "unexpected invisible primary key delete result: {delete:?}"
+                    ));
+                }
+                Ok::<(), String>(())
             }
-            Ok(())
+            .await;
+
+            let restore_gipk = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "UPDATE mysql_edit_gipk SET payload = 'generated invisible primary key' WHERE my_row_id = 1",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore GIPK fixture: {error:?}"));
+            let restore_invisible = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "INSERT INTO mysql_edit_invisible_pk (id, payload) VALUES (1, 'invisible single primary key')",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore invisible primary key fixture: {error:?}"));
+
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => restore_gipk
+                    .map(|_| ())
+                    .and_then(|()| restore_invisible.map(|_| ())),
+            }
         })
     })
     .await;
@@ -649,12 +678,11 @@ async fn updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys
             let create = format!(
                 "CREATE TABLE {table} (first_key BIGINT UNSIGNED NOT NULL, second_key INT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (first_key, second_key))"
             );
-            db.adapter()
-                .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
-                .await
-                .map_err(|error| format!("failed to create write fixture: {error:?}"))?;
-
             let result = async {
+                db.adapter()
+                    .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to create write fixture: {error:?}"))?;
                 let insert = format!(
                     "INSERT INTO {table} (first_key, second_key, payload) VALUES (18446744073709551615, 7, 'before'), (42, 8, 'second')"
                 );
@@ -743,12 +771,16 @@ async fn updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys
             }
             .await;
 
-            let drop = format!("DROP TABLE {table}");
-            let _ = db
+            let drop = format!("DROP TABLE IF EXISTS {table}");
+            let cleanup = db
                 .adapter()
                 .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
-                .await;
-            result
+                .await
+                .map_err(|error| format!("failed to clean up write fixture: {error:?}"));
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => cleanup.map(|_| ()),
+            }
         })
     })
     .await;
@@ -767,12 +799,11 @@ async fn updates_mysql_json_documents_as_whole_values() {
             let create = format!(
                 "CREATE TABLE {table} (id INT NOT NULL PRIMARY KEY, payload JSON NOT NULL)"
             );
-            db.adapter()
-                .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
-                .await
-                .map_err(|error| format!("failed to create JSON fixture: {error:?}"))?;
-
             let result = async {
+                db.adapter()
+                    .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to create JSON fixture: {error:?}"))?;
                 db.adapter()
                     .execute_adhoc(
                         db.dsn(),
@@ -843,12 +874,16 @@ async fn updates_mysql_json_documents_as_whole_values() {
             }
             .await;
 
-            let drop = format!("DROP TABLE {table}");
-            let _ = db
+            let drop = format!("DROP TABLE IF EXISTS {table}");
+            let cleanup = db
                 .adapter()
                 .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
-                .await;
-            result
+                .await
+                .map_err(|error| format!("failed to clean up JSON fixture: {error:?}"));
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => cleanup.map(|_| ()),
+            }
         })
     })
     .await;
@@ -858,33 +893,41 @@ async fn updates_mysql_json_documents_as_whole_values() {
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn executes_multiple_statements_and_returns_only_the_last_result() {
     with_mysql_test_db(|db| Box::pin(async move {
-        let result = db
-            .adapter()
-            .execute_adhoc(
-                db.dsn(),
-                &format!(
-                    "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'multi statement' WHERE id = 1; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
-                ),
-                AccessMode::ReadWrite,
-            )
-            .await
-            .map_err(|error| format!("{error:?}"))?;
-        if result.columns != ["empty_text"]
-            || result.values() != [[QueryValue::Text("multi statement".to_string())]]
-            || result.command_tag != Some(CommandTag::Update(1))
-            || result.refresh_scope != RefreshScope::Data
-        {
-            return Err(format!("unexpected multi-statement result: {result:?}"));
+        let result = async {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'multi statement' WHERE id = 1; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            if result.columns != ["empty_text"]
+                || result.values() != [[QueryValue::Text("multi statement".to_string())]]
+                || result.command_tag != Some(CommandTag::Update(1))
+                || result.refresh_scope != RefreshScope::Data
+            {
+                return Err(format!("unexpected multi-statement result: {result:?}"));
+            }
+            Ok::<(), String>(())
         }
-        db.adapter()
+        .await;
+        let cleanup = db
+            .adapter()
             .execute_adhoc(
                 db.dsn(),
                 &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                 AccessMode::ReadWrite,
             )
             .await
-            .map_err(|error| format!("failed to restore fixture: {error:?}"))?;
-        Ok(())
+            .map_err(|error| format!("failed to restore fixture: {error:?}"));
+        match result {
+            Err(error) => Err(error),
+            Ok(()) => cleanup.map(|_| ()),
+        }
     }))
     .await;
 }
@@ -893,34 +936,42 @@ async fn executes_multiple_statements_and_returns_only_the_last_result() {
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn keeps_refresh_scope_and_discards_partial_result_after_a_later_failure() {
     with_mysql_test_db(|db| Box::pin(async move {
-        let result = db
-            .adapter()
-            .execute_adhoc(
-                db.dsn(),
-                &format!(
-                    "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'changed before failure' WHERE id = 1; SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"
-                ),
-                AccessMode::ReadWrite,
-            )
-            .await;
-        if !matches!(
-            result,
-            Err(DbOperationError::QueryFailedAfterChange {
-                refresh_scope: RefreshScope::Data,
-                ..
-            })
-        ) {
-            return Err(format!("expected partial-change failure: {result:?}"));
+        let result = async {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'changed before failure' WHERE id = 1; SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await;
+            if !matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                })
+            ) {
+                return Err(format!("expected partial-change failure: {result:?}"));
+            }
+            Ok::<(), String>(())
         }
-        db.adapter()
+        .await;
+        let cleanup = db
+            .adapter()
             .execute_adhoc(
                 db.dsn(),
                 &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
                 AccessMode::ReadWrite,
             )
             .await
-            .map_err(|error| format!("failed to restore fixture: {error:?}"))?;
-        Ok(())
+            .map_err(|error| format!("failed to restore fixture: {error:?}"));
+        match result {
+            Err(error) => Err(error),
+            Ok(()) => cleanup.map(|_| ()),
+        }
     }))
     .await;
 }
@@ -1002,24 +1053,30 @@ async fn reports_metadata_scope_when_a_later_ddl_statement_fails() {
                     AccessMode::ReadWrite,
                 )
                 .await;
-            if !matches!(
-                result,
+            let result = if matches!(
+                result.as_ref(),
                 Err(DbOperationError::QueryFailedAfterChange {
                     refresh_scope: RefreshScope::Metadata,
                     ..
                 })
             ) {
-                return Err(format!("expected metadata-scope failure: {result:?}"));
-            }
-            db.adapter()
+                Ok(())
+            } else {
+                Err(format!("expected metadata-scope failure: {result:?}"))
+            };
+            let cleanup = db
+                .adapter()
                 .execute_adhoc(
                     db.dsn(),
                     &format!("DROP TABLE IF EXISTS {table}"),
                     AccessMode::ReadWrite,
                 )
                 .await
-                .map_err(|error| format!("failed to clean up DDL fixture: {error:?}"))?;
-            Ok(())
+                .map_err(|error| format!("failed to clean up DDL fixture: {error:?}"));
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => cleanup.map(|_| ()),
+            }
         })
     })
     .await;

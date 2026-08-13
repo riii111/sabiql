@@ -74,6 +74,13 @@ struct MysqlTableMetadata {
 }
 
 #[derive(Debug, Clone)]
+struct MysqlMetadataSnapshot {
+    database: String,
+    tables: Vec<MysqlTableMetadata>,
+    table_summaries: Vec<TableSummary>,
+}
+
+#[derive(Debug, Clone)]
 struct MysqlTriggerMetadata {
     name: String,
     timing: TriggerTiming,
@@ -85,15 +92,10 @@ struct MysqlTriggerMetadata {
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let database = selected_database(dsn)?;
-        let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
-        let tables = parse_table_metadata(&result)?;
-        let mut metadata = DatabaseMetadata::new(database.clone());
-        metadata.schemas = vec![Schema::new(database.clone())];
-        metadata.table_summaries = tables
-            .into_iter()
-            .map(|table| table_summary(&database, table))
-            .collect();
+        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        let mut metadata = DatabaseMetadata::new(snapshot.database.clone());
+        metadata.schemas = vec![Schema::new(snapshot.database)];
+        metadata.table_summaries = snapshot.table_summaries;
         Ok(metadata)
     }
 
@@ -103,8 +105,16 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        let metadata = self.fetch_metadata(dsn).await?;
-        fetch_table(dsn, schema, table, &metadata.table_summaries).await
+        validate_selected_schema(dsn, schema)?;
+        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        fetch_table(
+            dsn,
+            schema,
+            table,
+            &snapshot.tables,
+            &snapshot.table_summaries,
+        )
+        .await
     }
 
     async fn fetch_table_columns_and_fks(
@@ -113,24 +123,31 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        let metadata = self.fetch_metadata(dsn).await?;
-        fetch_table_columns_and_fks_with_summaries(dsn, schema, table, &metadata.table_summaries)
-            .await
+        validate_selected_schema(dsn, schema)?;
+        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        fetch_table_columns_and_fks_with_summaries(
+            dsn,
+            schema,
+            table,
+            &snapshot.tables,
+            &snapshot.table_summaries,
+        )
+        .await
     }
 
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
-        let metadata = self.fetch_metadata(dsn).await?;
-        let mut signatures = Vec::with_capacity(metadata.table_summaries.len());
-        let summaries = metadata.table_summaries;
-        for summary in &summaries {
+        let snapshot = fetch_metadata_snapshot(dsn).await?;
+        let mut signatures = Vec::with_capacity(snapshot.table_summaries.len());
+        for summary in &snapshot.table_summaries {
             let detail = fetch_table_columns_and_fks_with_summaries(
                 dsn,
                 &summary.schema,
                 &summary.name,
-                &summaries,
+                &snapshot.tables,
+                &snapshot.table_summaries,
             )
             .await?;
             signatures.push(TableSignature {
@@ -148,7 +165,9 @@ pub(super) async fn fetch_preview_metadata(
     schema: &str,
     table: &str,
 ) -> Result<PreviewMetadata, DbOperationError> {
-    find_table(dsn, schema, table).await?;
+    validate_selected_schema(dsn, schema)?;
+    let snapshot = fetch_metadata_snapshot(dsn).await?;
+    find_table(schema, table, &snapshot.tables)?;
     let column_metadata = fetch_columns(dsn, schema, table).await?;
     let columns = column_metadata
         .iter()
@@ -320,9 +339,10 @@ async fn fetch_table(
     dsn: &str,
     schema: &str,
     table: &str,
+    tables: &[MysqlTableMetadata],
     summaries: &[TableSummary],
 ) -> Result<Table, DbOperationError> {
-    let table_metadata = find_table(dsn, schema, table).await?;
+    let table_metadata = find_table(schema, table, tables)?;
     let columns = fetch_columns(dsn, schema, table).await?;
     let indexes = fetch_indexes(dsn, schema, table).await?;
     let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
@@ -354,9 +374,10 @@ async fn fetch_table_columns_and_fks_with_summaries(
     dsn: &str,
     schema: &str,
     table: &str,
+    tables: &[MysqlTableMetadata],
     summaries: &[TableSummary],
 ) -> Result<Table, DbOperationError> {
-    let table_metadata = find_table(dsn, schema, table).await?;
+    let table_metadata = find_table(schema, table, tables)?;
     let columns = fetch_columns(dsn, schema, table).await?;
     let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
     let primary_key = primary_key_names(&columns);
@@ -380,21 +401,15 @@ async fn fetch_table_columns_and_fks_with_summaries(
     })
 }
 
-async fn find_table(
-    dsn: &str,
+fn find_table(
     schema: &str,
     table: &str,
+    tables: &[MysqlTableMetadata],
 ) -> Result<MysqlTableMetadata, DbOperationError> {
-    let database = selected_database(dsn)?;
-    if schema != database {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL metadata is limited to the selected database".to_string(),
-        ));
-    }
-    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
-    parse_table_metadata(&result)?
-        .into_iter()
+    tables
+        .iter()
         .find(|candidate| candidate.name == table)
+        .cloned()
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
         })
@@ -405,17 +420,12 @@ async fn fetch_columns(
     schema: &str,
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+    validate_selected_schema(dsn, schema)?;
     let query = format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
         quote_string(table)
     );
     let result = execute_metadata_query(dsn, &query).await?;
-    let database = selected_database(dsn)?;
-    if schema != database {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL metadata is limited to the selected database".to_string(),
-        ));
-    }
     let columns = parse_column_metadata(&result)?;
     if columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
@@ -453,6 +463,31 @@ fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
         )
+    })
+}
+
+fn validate_selected_schema(dsn: &str, schema: &str) -> Result<(), DbOperationError> {
+    if schema != selected_database(dsn)? {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+async fn fetch_metadata_snapshot(dsn: &str) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    let database = selected_database(dsn)?;
+    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    let tables = parse_table_metadata(&result)?;
+    let table_summaries = tables
+        .iter()
+        .cloned()
+        .map(|table| table_summary(&database, table))
+        .collect();
+    Ok(MysqlMetadataSnapshot {
+        database,
+        tables,
+        table_summaries,
     })
 }
 
@@ -511,6 +546,7 @@ async fn fetch_indexes(
     schema: &str,
     table: &str,
 ) -> Result<Vec<Index>, DbOperationError> {
+    validate_selected_schema(dsn, schema)?;
     let query = format!(
         "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(table),
@@ -518,11 +554,6 @@ async fn fetch_indexes(
     );
     let result = execute_metadata_query(dsn, &query).await?;
     let raw = parse_index_metadata(&result)?;
-    if schema != selected_database(dsn)? {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL metadata is limited to the selected database".to_string(),
-        ));
-    }
     Ok(indexes_from_metadata(raw))
 }
 
@@ -532,6 +563,7 @@ async fn fetch_foreign_keys(
     table: &str,
     summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
+    validate_selected_schema(dsn, schema)?;
     let query = format!(
         "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
         quote_string(table),
@@ -539,11 +571,6 @@ async fn fetch_foreign_keys(
     );
     let result = execute_metadata_query(dsn, &query).await?;
     let raw = parse_foreign_key_metadata(&result)?;
-    if schema != selected_database(dsn)? {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL metadata is limited to the selected database".to_string(),
-        ));
-    }
     foreign_keys_from_metadata(raw, summaries)
 }
 
@@ -552,11 +579,7 @@ async fn fetch_triggers(
     schema: &str,
     table: &str,
 ) -> Result<Vec<Trigger>, DbOperationError> {
-    if schema != selected_database(dsn)? {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL metadata is limited to the selected database".to_string(),
-        ));
-    }
+    validate_selected_schema(dsn, schema)?;
     let result = execute_metadata_query(dsn, &triggers_query(table)).await?;
     triggers_from_metadata(parse_trigger_metadata(&result)?)
 }

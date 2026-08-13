@@ -160,7 +160,7 @@ mod tests {
             spawn_er_diagram_task(
                 exporter,
                 vec![],
-                1,
+                7,
                 5,
                 temp_dir.path().to_path_buf(),
                 tx,
@@ -172,6 +172,7 @@ mod tests {
             match action {
                 Action::ErDiagramFailed(e) => {
                     assert!(e.to_string().contains("export failed"));
+                    assert_eq!(e.run_id, 7);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }
@@ -186,7 +187,7 @@ mod tests {
             spawn_er_diagram_task(
                 exporter,
                 vec![],
-                1,
+                11,
                 5,
                 temp_dir.path().to_path_buf(),
                 tx,
@@ -198,6 +199,7 @@ mod tests {
             match action {
                 Action::ErDiagramFailed(e) => {
                     assert!(e.to_string().contains("Task panicked"));
+                    assert_eq!(e.run_id, 11);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }

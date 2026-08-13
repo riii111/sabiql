@@ -425,6 +425,13 @@ mod text_search_tests {
 
 pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) {
     state.clear_validation_error(field);
+    if let Some(other_field) = match field {
+        ConnectionField::SslCert => Some(ConnectionField::SslKey),
+        ConnectionField::SslKey => Some(ConnectionField::SslCert),
+        _ => None,
+    } {
+        state.clear_validation_error(other_field);
+    }
 
     if let Some(max_chars) = field.max_chars() {
         let length = state.field_value(field).chars().count();
@@ -818,6 +825,47 @@ mod tests {
             state.validation_error(ConnectionField::SslKey),
             Some("Both client paths are required")
         );
+    }
+
+    #[test]
+    fn validating_filled_client_key_clears_stale_pair_error() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+        validate_field(&mut state, ConnectionField::SslCert);
+
+        state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("client-key.pem".to_string());
+        validate_field(&mut state, ConnectionField::SslKey);
+
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+    }
+
+    #[test]
+    fn empty_or_complete_client_certificate_pair_is_accepted() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        validate_all(&mut state);
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
+
+        state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("client.pem".to_string());
+        state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("client-key.pem".to_string());
+        validate_all(&mut state);
+        assert_eq!(state.validation_error(ConnectionField::SslCert), None);
+        assert_eq!(state.validation_error(ConnectionField::SslKey), None);
     }
 
     mod delete_refresh_target_bulk {

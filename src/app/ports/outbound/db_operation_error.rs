@@ -306,6 +306,24 @@ mod tests {
         }
 
         #[test]
+        fn mysql_cli_not_found_has_oracle_mysql_guidance() {
+            let error = DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details: "mysql: command not found".to_string(),
+            };
+
+            assert_eq!(error.summary(), "mysql not found");
+            assert_eq!(
+                error.hint(),
+                "Install the Oracle MySQL 8.4 client and add it to PATH"
+            );
+            assert_eq!(
+                error.user_message(),
+                "mysql not found: mysql: command not found. Install the Oracle MySQL 8.4 client and add it to PATH."
+            );
+        }
+
+        #[test]
         fn actionable_message_uses_summary_and_hint() {
             let error = DbOperationError::PermissionDenied("permission denied".to_string());
 

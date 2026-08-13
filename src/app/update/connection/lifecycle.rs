@@ -156,6 +156,7 @@ pub fn reduce_connection_lifecycle(
             state.session.clear_connection_probe();
             let mut effects = vec![Effect::ClearCompletionEngineCache];
             if database.is_none() {
+                state.ui.table_picker_mut().clear_filter_and_reset();
                 state.ui.set_database_picker(true);
                 state.modal.set_mode(InputMode::TablePicker);
                 if let (Some(connection_id), Some(server_dsn)) = (
@@ -1579,6 +1580,9 @@ mod tests {
         #[test]
         fn connection_without_database_opens_picker_and_fetches_server_databases() {
             let mut state = AppState::new("test".to_string());
+            state.ui.table_picker_mut().set_pane_height(5);
+            state.ui.table_picker_mut().insert_filter_str("old table");
+            state.ui.table_picker_mut().set_selection(8);
             let id = ConnectionId::from_string("mysql");
             let target = mysql_target(&id, None);
             let probe_run_id = state.session.begin_connection_probe(
@@ -1602,6 +1606,9 @@ mod tests {
             assert_eq!(state.session.active_database(), None);
             assert!(state.ui.database_picker());
             assert_eq!(state.input_mode(), InputMode::TablePicker);
+            assert_eq!(state.ui.table_picker().filter_input().content(), "");
+            assert_eq!(state.ui.table_picker().selected(), 0);
+            assert_eq!(state.ui.table_picker().scroll_offset(), 0);
             assert!(effects.iter().any(|effect| matches!(
                 effect,
                 Effect::FetchMySqlDatabases { connection_id, .. } if connection_id == &id

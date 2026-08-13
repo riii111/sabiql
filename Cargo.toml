@@ -34,7 +34,7 @@ lru = "0.18"
 libc = "0.2"
 mockall = "0.13"
 nucleo-matcher = "0.3"
-quick-xml = { version = "0.37", features = ["async-tokio"] }
+quick-xml = { version = "0.38", features = ["async-tokio"] }
 ratatui = "0.30"
 rstest = "0.19"
 serde = { version = "1", features = ["derive"] }

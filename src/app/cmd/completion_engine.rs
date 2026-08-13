@@ -694,9 +694,11 @@ impl CompletionEngine {
 
     fn identifier_before_dot(prefix: &str) -> Option<String> {
         let name = prefix.strip_suffix('.')?.trim_end();
-        if let Some(unquoted) = name.strip_suffix('`') {
-            let start = unquoted.rfind('`')?;
-            return Some(unquoted[start + 1..].replace("``", "`"));
+        if let Some(quoted) = name
+            .strip_prefix('`')
+            .and_then(|value| value.strip_suffix('`'))
+        {
+            return Some(quoted.replace("``", "`"));
         }
 
         let start = name
@@ -1708,6 +1710,34 @@ mod tests {
         }
 
         #[test]
+        fn mysql_escaped_backtick_alias_returns_cached_columns() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.users".to_string(),
+                create_table("app", "users", &["id", "name"]),
+            );
+            let metadata = metadata();
+            let sql = "SELECT `x``y`.na FROM `app`.`users` AS `x``y`";
+            let cursor = "SELECT `x``y`.na".chars().count();
+            let candidates = e.get_candidates_for_database(
+                sql,
+                cursor,
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "name" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
         fn mysql_backtick_database_prefix_returns_selected_tables() {
             let e = engine();
             let metadata = metadata();
@@ -1721,6 +1751,33 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| candidate.text == "users"));
+        }
+
+        #[test]
+        fn mysql_escaped_backtick_database_prefix_returns_selected_tables() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("app`db".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "app`db".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+            let sql = "SELECT * FROM `app``db`.";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app`db"),
                     available_databases: &[],
                 },
             );

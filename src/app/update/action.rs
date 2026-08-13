@@ -26,7 +26,7 @@ use url::Url;
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table};
 
-#[derive(Debug, Clone, thiserror::Error)]
+#[derive(Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
     #[error("{0}")]
     Validation(#[from] ConnectionProfileError),
@@ -39,6 +39,21 @@ pub enum ConnectionSaveError {
         error: DbOperationError,
         dsn: String,
     },
+}
+
+impl fmt::Debug for ConnectionSaveError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Validation(error) => formatter.debug_tuple("Validation").field(error).finish(),
+            Self::Store(error) => formatter.debug_tuple("Store").field(error).finish(),
+            Self::Metadata(error) => formatter.debug_tuple("Metadata").field(error).finish(),
+            Self::Probe { error, dsn } => formatter
+                .debug_struct("Probe")
+                .field("error", error)
+                .field("dsn", &mask_password(dsn))
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -929,6 +944,19 @@ mod tests {
         };
 
         let debug = format!("{target:?}");
+
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("mysql://user:****@localhost"));
+    }
+
+    #[test]
+    fn connection_save_probe_debug_masks_mysql_password() {
+        let error = ConnectionSaveError::Probe {
+            error: DbOperationError::ConnectionFailed("probe failed".to_string()),
+            dsn: "mysql://user:secret@localhost:3306/app".to_string(),
+        };
+
+        let debug = format!("{error:?}");
 
         assert!(!debug.contains("secret"));
         assert!(debug.contains("mysql://user:****@localhost"));
