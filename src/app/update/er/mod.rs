@@ -24,7 +24,9 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
-    use crate::update::action::{ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
+    use crate::update::action::{
+        ErDiagramError, ErDiagramFailure, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult,
+    };
     use std::sync::Arc;
 
     fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -610,6 +612,28 @@ mod tests {
             .unwrap();
 
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn failure_after_er_state_reset_does_not_update_message_or_status() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.reset();
+            let before_status = state.er_preparation.status();
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::ErDiagramFailed(ErDiagramFailure {
+                    run_id,
+                    error: ErDiagramError::ExportFailed("stale failure".to_string()),
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), before_status);
+            assert!(state.messages.last_error.is_none());
         }
 
         #[test]

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly script_dir="$(cd "$(dirname "$0")" && pwd)"
-readonly repo_root="$(cd "$script_dir/.." && pwd)"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+readonly script_dir
+repo_root="$(cd "$script_dir/.." && pwd)"
+readonly repo_root
 readonly compose_file="$repo_root/compose.yml"
 readonly tls_compose_file="$repo_root/compose.mysql-tls.yml"
 readonly temp_dir="$repo_root/.tmp/mysql"

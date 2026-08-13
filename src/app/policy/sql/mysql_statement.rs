@@ -57,6 +57,7 @@ enum TokenKind {
 struct Token {
     kind: TokenKind,
     depth: usize,
+    text: String,
 }
 
 pub fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MysqlLexError> {
@@ -235,6 +236,7 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
                     tokens.push(Token {
                         kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
                         depth,
+                        text: "UNSUPPORTED_VERSION_COMMENT".to_string(),
                     });
                 }
             }
@@ -246,6 +248,7 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             tokens.push(Token {
                 kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
                 depth,
+                text: "UNSUPPORTED_VERSION_COMMENT".to_string(),
             });
             leading_executable_version_comment = false;
         }
@@ -259,7 +262,11 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             } else {
                 TokenKind::StringLiteral
             };
-            tokens.push(Token { kind, depth });
+            tokens.push(Token {
+                kind,
+                depth,
+                text: text.to_string(),
+            });
             index = end;
             continue;
         }
@@ -271,14 +278,16 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             {
                 index += 1;
             }
-            let word = sql[start..index].to_ascii_uppercase();
+            let text = sql[start..index].to_string();
             tokens.push(Token {
-                kind: TokenKind::Word(word),
+                kind: TokenKind::Word(text.to_ascii_uppercase()),
                 depth,
+                text,
             });
             continue;
         }
         if byte.is_ascii_digit() {
+            let start = index;
             index += 1;
             while index < bytes.len()
                 && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'.' | b'_'))
@@ -288,11 +297,16 @@ fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
             tokens.push(Token {
                 kind: TokenKind::Number,
                 depth,
+                text: sql[start..index].to_string(),
             });
             continue;
         }
         let kind = TokenKind::Symbol(byte as char);
-        tokens.push(Token { kind, depth });
+        tokens.push(Token {
+            kind,
+            depth,
+            text: (byte as char).to_string(),
+        });
         match byte {
             b'(' => depth += 1,
             b')' => {
@@ -387,8 +401,9 @@ fn identifier_at(tokens: &[Token], mut index: usize) -> Option<(String, Option<S
     ) {
         index += 1;
     }
-    let first = match &tokens.get(index)?.kind {
-        TokenKind::Word(word) => word.clone(),
+    let first_token = tokens.get(index)?;
+    let first = match &first_token.kind {
+        TokenKind::Word(_) => first_token.text.clone(),
         TokenKind::Identifier(identifier) => identifier.clone(),
         _ => return None,
     };
@@ -396,8 +411,9 @@ fn identifier_at(tokens: &[Token], mut index: usize) -> Option<(String, Option<S
         tokens.get(index + 1).map(|token| &token.kind),
         Some(TokenKind::Symbol('.'))
     ) {
-        let second = match &tokens.get(index + 2)?.kind {
-            TokenKind::Word(word) => word.clone(),
+        let second_token = tokens.get(index + 2)?;
+        let second = match &second_token.kind {
+            TokenKind::Word(_) => second_token.text.clone(),
             TokenKind::Identifier(identifier) => identifier.clone(),
             _ => return None,
         };
@@ -1158,10 +1174,23 @@ mod tests {
     #[test]
     fn keeps_index_confirmation_name_separate_from_ddl_database_target() {
         let statement = classify_mysql_statement("DROP INDEX ix ON app.items").unwrap();
-        assert_eq!(statement.target, Some("IX".to_string()));
-        assert_eq!(statement.target_database, Some("APP".to_string()));
+        assert_eq!(statement.target, Some("ix".to_string()));
+        assert_eq!(statement.target_database, Some("app".to_string()));
         let statement = classify_mysql_statement("DROP INDEX IF EXISTS ix ON app.items").unwrap();
-        assert_eq!(statement.target, Some("IX".to_string()));
+        assert_eq!(statement.target, Some("ix".to_string()));
+    }
+
+    #[test]
+    fn preserves_confirmation_target_case_for_unquoted_and_quoted_names() {
+        let statement = classify_mysql_statement("DROP TABLE SalesOrder").unwrap();
+        assert_eq!(statement.target, Some("SalesOrder".to_string()));
+
+        let statement = classify_mysql_statement("DROP TABLE SalesDb.SalesOrder").unwrap();
+        assert_eq!(statement.target, Some("SalesOrder".to_string()));
+        assert_eq!(statement.target_database, Some("SalesDb".to_string()));
+
+        let statement = classify_mysql_statement("DROP TABLE `SalesOrder`").unwrap();
+        assert_eq!(statement.target, Some("SalesOrder".to_string()));
     }
 
     #[test]

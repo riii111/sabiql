@@ -14,7 +14,8 @@ use std::os::fd::{AsRawFd, FromRawFd};
 
 use async_trait::async_trait;
 use quick_xml::Reader;
-use quick_xml::events::Event;
+use quick_xml::escape::unescape;
+use quick_xml::events::{BytesRef, Event};
 use serde::Deserialize;
 #[cfg(unix)]
 use tokio::fs::File as TokioFile;
@@ -1558,9 +1559,22 @@ where
                 row.push(parse_mysql_field(&element)?.finish_raw());
             }
             Event::Text(text) => {
-                let text = text.unescape().map_err(|error| {
+                let decoded = text.decode().map_err(|error| {
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
+                let text = unescape(&decoded).map_err(|error| {
+                    DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                })?;
+                if let Some(field) = current_field.as_mut() {
+                    field.value.push_str(&text);
+                } else if !text.chars().all(char::is_whitespace) {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected text in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::GeneralRef(reference) => {
+                let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {
@@ -3133,6 +3147,15 @@ fn unsupported_client_command(command: &str) -> DbOperationError {
     DbOperationError::UnsupportedOperation(format!("unsupported MySQL {command}"))
 }
 
+fn decode_mysql_xml_reference(reference: &BytesRef<'_>) -> Result<String, DbOperationError> {
+    let reference = reference.decode().map_err(|error| {
+        DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+    })?;
+    unescape(&format!("&{reference};"))
+        .map(std::borrow::Cow::into_owned)
+        .map_err(|error| DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}")))
+}
+
 fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
     let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(false);
@@ -3184,9 +3207,22 @@ fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
                 row.push(field.finish());
             }
             Event::Text(text) => {
-                let text = text.unescape().map_err(|error| {
+                let decoded = text.decode().map_err(|error| {
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
+                let text = unescape(&decoded).map_err(|error| {
+                    DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                })?;
+                if let Some(field) = current_field.as_mut() {
+                    field.value.push_str(&text);
+                } else if !text.chars().all(char::is_whitespace) {
+                    return Err(DbOperationError::QueryFailed(
+                        "unexpected text in MySQL XML result".to_string(),
+                    ));
+                }
+            }
+            Event::GeneralRef(reference) => {
+                let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {

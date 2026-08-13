@@ -195,13 +195,16 @@ const MYSQL_KEYWORDS: &[&str] = &[
     "EXCEPT",
     "ALL",
     "INSERT",
+    "REPLACE",
     "INTO",
     "VALUES",
+    "CALL",
     "UPDATE",
     "SET",
     "DELETE",
     "CREATE",
     "DROP",
+    "TRUNCATE",
     "ALTER",
     "TABLE",
     "INDEX",
@@ -248,6 +251,9 @@ const MYSQL_KEYWORDS: &[&str] = &[
     "CHARSET",
     "COLLATE",
     "AUTO_INCREMENT",
+    "SAVEPOINT",
+    "RELEASE",
+    "USE",
     "FOR",
     "LOCK",
     "SHARE",
@@ -668,7 +674,19 @@ impl SqlLexer {
     }
 
     fn is_unterminated_backtick(text: &str) -> bool {
-        text.starts_with('`') && text.chars().skip(1).filter(|&c| c == '`').count() % 2 == 0
+        if !text.starts_with('`') {
+            return false;
+        }
+        let mut chars = text.chars().skip(1).peekable();
+        while let Some(ch) = chars.next() {
+            if ch != '`' {
+                continue;
+            }
+            if chars.next_if_eq(&'`').is_none() {
+                return false;
+            }
+        }
+        true
     }
 
     fn is_operator_char(c: char) -> bool {
@@ -1492,6 +1510,18 @@ mod tests {
                 postgres.tokenize("DESCRIBE users", 14)[0].kind,
                 TokenKind::Identifier(_)
             ));
+        }
+
+        #[test]
+        fn mysql_statement_keywords_are_displayed_as_keywords() {
+            let l = mysql_lexer();
+
+            for word in ["TRUNCATE", "REPLACE", "CALL", "SAVEPOINT", "RELEASE", "USE"] {
+                assert!(matches!(
+                    l.tokenize(word, word.len())[0].kind,
+                    TokenKind::Keyword(_)
+                ));
+            }
         }
 
         #[test]

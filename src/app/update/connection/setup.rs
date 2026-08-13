@@ -253,6 +253,7 @@ pub fn reduce_connection_setup(
                 state.session.mark_probe_connected(database.is_some());
                 let mut effects = vec![Effect::ClearCompletionEngineCache];
                 if database.is_none() {
+                    state.ui.table_picker_mut().clear_filter_and_reset();
                     state.ui.set_database_picker(true);
                     state.modal.set_mode(InputMode::TablePicker);
                     if let (Some(connection_id), Some(server_dsn)) = (
@@ -1049,6 +1050,29 @@ mod tests {
             assert!(!state.ui.pending_er_picker());
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
             assert!(state.er_preparation.pending_tables().is_empty());
+        }
+
+        #[test]
+        fn mysql_save_completed_resets_database_picker_state() {
+            let mut state = AppState::new("test".to_string());
+            state.ui.table_picker_mut().set_pane_height(5);
+            state.ui.table_picker_mut().insert_filter_str("old table");
+            state.ui.table_picker_mut().set_selection(8);
+
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://user@localhost:3306".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: None,
+            });
+            reduce(&mut state, &action, Instant::now());
+
+            assert_eq!(state.ui.table_picker().filter_input().content(), "");
+            assert_eq!(state.ui.table_picker().selected(), 0);
+            assert_eq!(state.ui.table_picker().scroll_offset(), 0);
+            assert!(state.ui.database_picker());
+            assert_eq!(state.input_mode(), InputMode::TablePicker);
         }
 
         #[test]

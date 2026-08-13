@@ -107,7 +107,10 @@ pub(crate) async fn run(
                 let probe = Arc::clone(&connection.connection_probe);
                 tokio::spawn(async move {
                     match probe.probe(&target.dsn).await {
-                        Ok(()) => match store.save(&profile) {
+                        Ok(()) => match tokio::task::spawn_blocking(move || store.save(&profile))
+                            .await
+                            .expect("connection store save task panicked")
+                        {
                             Ok(()) => {
                                 tx.send(Action::ConnectionSaveCompleted(target)).await.ok();
                             }
@@ -134,7 +137,10 @@ pub(crate) async fn run(
                 match provider.fetch_metadata(&dsn).await {
                     Ok(metadata) => {
                         cache.set(dsn.clone(), Arc::new(metadata)).await;
-                        match store.save(&profile) {
+                        match tokio::task::spawn_blocking(move || store.save(&profile))
+                            .await
+                            .expect("connection store save task panicked")
+                        {
                             Ok(()) => {
                                 tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
                                     id,
