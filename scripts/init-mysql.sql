@@ -14,7 +14,7 @@ CREATE TABLE mysql_cli_fixture (
     unsigned_value BIGINT UNSIGNED NOT NULL,
     precise_decimal DECIMAL(65, 30) NOT NULL,
     scientific_value DOUBLE NOT NULL
-) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci COMMENT = 'MySQL fixture table';
 
 INSERT INTO mysql_cli_fixture (
     id,
@@ -42,11 +42,40 @@ CREATE TABLE mysql_preview_composite (
     first_key INT NOT NULL,
     second_key INT NOT NULL,
     payload TEXT NOT NULL,
-    PRIMARY KEY (second_key, first_key)
+    PRIMARY KEY (second_key, first_key),
+    UNIQUE KEY uq_mysql_preview_composite_payload (payload(32)),
+    FULLTEXT KEY ft_mysql_preview_composite_payload (payload)
 ) CHARACTER SET utf8mb4;
 
 INSERT INTO mysql_preview_composite (first_key, second_key, payload)
 VALUES (1, 20, 'first'), (2, 10, 'second');
+
+CREATE TABLE mysql_metadata_parent (
+    first_key INT NOT NULL,
+    second_key INT NOT NULL,
+    unique_code VARCHAR(32) NOT NULL,
+    label TEXT NOT NULL,
+    PRIMARY KEY (first_key, second_key),
+    UNIQUE KEY uq_mysql_metadata_parent_code (unique_code),
+    FULLTEXT KEY ft_mysql_metadata_parent_label (label)
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_parent (first_key, second_key, unique_code, label)
+VALUES (1, 2, 'parent-1-2', 'parent row');
+
+CREATE TABLE mysql_metadata_child (
+    parent_first INT NULL,
+    parent_second INT NULL,
+    payload TEXT NOT NULL,
+    CONSTRAINT fk_mysql_metadata_child_parent
+        FOREIGN KEY (parent_first, parent_second)
+        REFERENCES mysql_metadata_parent (first_key, second_key)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_child (parent_first, parent_second, payload)
+VALUES (1, 2, 'child row');
 
 CREATE TABLE mysql_preview_no_pk (
     duplicate_value VARCHAR(20) NOT NULL,

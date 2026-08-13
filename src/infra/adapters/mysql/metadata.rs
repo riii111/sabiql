@@ -2,8 +2,8 @@ use async_trait::async_trait;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{
-    Column, ColumnAttributes, DatabaseMetadata, QueryValue, Schema, Table, TableKind,
-    TableKindInfo, TableSignature, TableSummary,
+    Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
+    IndexType, QueryValue, Schema, Table, TableKind, TableKindInfo, TableSignature, TableSummary,
 };
 
 use super::{
@@ -11,7 +11,7 @@ use super::{
     validate_mysql_values,
 };
 
-const TABLES_QUERY: &str = "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_NAME";
+const TABLES_QUERY: &str = "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_NAME";
 
 #[derive(Debug, Clone)]
 struct MysqlColumnMetadata {
@@ -27,6 +27,30 @@ struct MysqlColumnMetadata {
 }
 
 #[derive(Debug, Clone)]
+struct MysqlIndexMetadata {
+    name: String,
+    non_unique: bool,
+    index_type: String,
+    ordinal_position: i32,
+    column_name: String,
+    primary: bool,
+}
+
+#[derive(Debug, Clone)]
+struct MysqlForeignKeyMetadata {
+    name: String,
+    from_schema: String,
+    from_table: String,
+    from_column: String,
+    to_schema: String,
+    to_table: String,
+    to_column: String,
+    ordinal_position: i32,
+    on_update: FkAction,
+    on_delete: FkAction,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct PreviewMetadata {
     pub visible_columns: Vec<Column>,
     pub order_columns: Vec<String>,
@@ -37,6 +61,7 @@ struct MysqlTableMetadata {
     name: String,
     kind: TableKind,
     row_count_estimate: Option<i64>,
+    comment: Option<String>,
 }
 
 #[async_trait]
@@ -69,7 +94,28 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        fetch_table(dsn, schema, table).await
+        let table_metadata = find_table(dsn, schema, table).await?;
+        let columns = fetch_columns(dsn, schema, table).await?;
+        let foreign_keys = fetch_foreign_keys(dsn, schema, table).await?;
+        let primary_key = primary_key_names(&columns);
+        Ok(Table {
+            schema: schema.to_string(),
+            name: table_metadata.name,
+            owner: None,
+            columns: columns.iter().map(column_from_metadata).collect(),
+            primary_key: (!primary_key.is_empty()).then_some(primary_key),
+            foreign_keys,
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: table_metadata.row_count_estimate,
+            comment: table_metadata.comment,
+            source_ddl: None,
+            kind_info: TableKindInfo {
+                kind: table_metadata.kind,
+                ..TableKindInfo::default()
+            },
+        })
     }
 
     async fn fetch_table_signatures(
@@ -77,15 +123,18 @@ impl MetadataProvider for MySqlAdapter {
         dsn: &str,
     ) -> Result<Vec<TableSignature>, DbOperationError> {
         let metadata = self.fetch_metadata(dsn).await?;
-        Ok(metadata
-            .table_summaries
-            .into_iter()
-            .map(|summary| TableSignature {
+        let mut signatures = Vec::with_capacity(metadata.table_summaries.len());
+        for summary in metadata.table_summaries {
+            let detail = self
+                .fetch_table_columns_and_fks(dsn, &summary.schema, &summary.name)
+                .await?;
+            signatures.push(TableSignature {
                 schema: summary.schema,
                 name: summary.name,
-                signature: format!("{:?}", summary.kind_info.kind),
-            })
-            .collect())
+                signature: table_signature(&detail),
+            });
+        }
+        Ok(signatures)
     }
 }
 
@@ -202,6 +251,8 @@ fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
 async fn fetch_table(dsn: &str, schema: &str, table: &str) -> Result<Table, DbOperationError> {
     let table_metadata = find_table(dsn, schema, table).await?;
     let columns = fetch_columns(dsn, schema, table).await?;
+    let indexes = fetch_indexes(dsn, schema, table).await?;
+    let foreign_keys = fetch_foreign_keys(dsn, schema, table).await?;
     let primary_key = primary_key_names(&columns);
     let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
@@ -210,12 +261,12 @@ async fn fetch_table(dsn: &str, schema: &str, table: &str) -> Result<Table, DbOp
         owner: None,
         columns,
         primary_key: (!primary_key.is_empty()).then_some(primary_key),
-        foreign_keys: Vec::new(),
-        indexes: Vec::new(),
+        foreign_keys,
+        indexes,
         rls: None,
         triggers: Vec::new(),
         row_count_estimate: table_metadata.row_count_estimate,
-        comment: None,
+        comment: table_metadata.comment,
         source_ddl: None,
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
@@ -250,7 +301,7 @@ async fn fetch_columns(
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     let query = format!(
-        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = DATABASE() AND kcu.TABLE_SCHEMA = c.TABLE_SCHEMA AND kcu.TABLE_NAME = c.TABLE_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME AND kcu.CONSTRAINT_NAME = 'PRIMARY' WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
+        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
         quote_string(table)
     );
     let result = execute_metadata_query(dsn, &query).await?;
@@ -292,12 +343,15 @@ fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
 fn parse_table_metadata(
     result: &MysqlResultSet,
 ) -> Result<Vec<MysqlTableMetadata>, DbOperationError> {
-    expect_columns(result, &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS"])?;
+    expect_columns(
+        result,
+        &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
+    )?;
     let tables = result
         .values
         .iter()
         .map(|row| {
-            if row.len() != 3 {
+            if row.len() != 4 {
                 return Err(metadata_shape_error("TABLES row"));
             }
             if row.iter().all(|value| matches!(value, QueryValue::Null)) {
@@ -322,14 +376,58 @@ fn parse_table_metadata(
                     })
                 })
                 .transpose()?;
+            let comment = optional_text(&row[3], "TABLE_COMMENT")?
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             Ok(Some(MysqlTableMetadata {
                 name,
                 kind,
                 row_count_estimate,
+                comment,
             }))
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(tables.into_iter().flatten().collect())
+}
+
+async fn fetch_indexes(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<Index>, DbOperationError> {
+    let query = format!(
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        quote_string(table),
+        quote_string(table),
+    );
+    let result = execute_metadata_query(dsn, &query).await?;
+    let raw = parse_index_metadata(&result)?;
+    if schema != selected_database(dsn)? {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    Ok(indexes_from_metadata(raw))
+}
+
+async fn fetch_foreign_keys(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ForeignKey>, DbOperationError> {
+    let query = format!(
+        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        quote_string(table),
+        quote_string(table),
+    );
+    let result = execute_metadata_query(dsn, &query).await?;
+    let raw = parse_foreign_key_metadata(&result)?;
+    if schema != selected_database(dsn)? {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    foreign_keys_from_metadata(raw)
 }
 
 fn parse_column_metadata(
@@ -379,6 +477,161 @@ fn parse_column_metadata(
         .collect()
 }
 
+fn parse_index_metadata(
+    result: &MysqlResultSet,
+) -> Result<Vec<MysqlIndexMetadata>, DbOperationError> {
+    expect_columns(
+        result,
+        &[
+            "INDEX_NAME",
+            "NON_UNIQUE",
+            "INDEX_TYPE",
+            "SEQ_IN_INDEX",
+            "COLUMN_NAME",
+            "IS_PRIMARY",
+        ],
+    )?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
+                return Ok(None);
+            }
+            if row.len() != 6 {
+                return Err(metadata_shape_error("STATISTICS row"));
+            }
+            Ok(Some(MysqlIndexMetadata {
+                name: required_text(&row[0], "INDEX_NAME")?.to_string(),
+                non_unique: parse_boolean_flag(&row[1], "NON_UNIQUE")?,
+                index_type: required_text(&row[2], "INDEX_TYPE")?.to_string(),
+                ordinal_position: parse_positive_i32(&row[3], "SEQ_IN_INDEX")?,
+                column_name: required_text(&row[4], "COLUMN_NAME")?.to_string(),
+                primary: parse_boolean_flag(&row[5], "IS_PRIMARY")?,
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|rows| rows.into_iter().flatten().collect())
+}
+
+fn parse_foreign_key_metadata(
+    result: &MysqlResultSet,
+) -> Result<Vec<MysqlForeignKeyMetadata>, DbOperationError> {
+    expect_columns(
+        result,
+        &[
+            "CONSTRAINT_NAME",
+            "TABLE_SCHEMA",
+            "TABLE_NAME",
+            "COLUMN_NAME",
+            "REFERENCED_TABLE_SCHEMA",
+            "REFERENCED_TABLE_NAME",
+            "REFERENCED_COLUMN_NAME",
+            "ORDINAL_POSITION",
+            "UPDATE_RULE",
+            "DELETE_RULE",
+        ],
+    )?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
+                return Ok(None);
+            }
+            if row.len() != 10 {
+                return Err(metadata_shape_error("foreign key row"));
+            }
+            Ok(Some(MysqlForeignKeyMetadata {
+                name: required_text(&row[0], "CONSTRAINT_NAME")?.to_string(),
+                from_schema: required_text(&row[1], "TABLE_SCHEMA")?.to_string(),
+                from_table: required_text(&row[2], "TABLE_NAME")?.to_string(),
+                from_column: required_text(&row[3], "COLUMN_NAME")?.to_string(),
+                to_schema: required_text(&row[4], "REFERENCED_TABLE_SCHEMA")?.to_string(),
+                to_table: required_text(&row[5], "REFERENCED_TABLE_NAME")?.to_string(),
+                to_column: required_text(&row[6], "REFERENCED_COLUMN_NAME")?.to_string(),
+                ordinal_position: parse_positive_i32(&row[7], "ORDINAL_POSITION")?,
+                on_update: parse_fk_action(&row[8], "UPDATE_RULE")?,
+                on_delete: parse_fk_action(&row[9], "DELETE_RULE")?,
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|rows| rows.into_iter().flatten().collect())
+}
+
+fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
+    raw.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.ordinal_position.cmp(&right.ordinal_position))
+    });
+    let mut indexes = Vec::new();
+    for column in raw {
+        if let Some(index) = indexes
+            .iter_mut()
+            .find(|index: &&mut Index| index.name == column.name)
+        {
+            index.columns.push(column.column_name);
+            continue;
+        }
+        indexes.push(Index {
+            name: column.name,
+            columns: vec![column.column_name],
+            attributes: IndexAttributes::from_parts(!column.non_unique, column.primary),
+            index_type: column
+                .index_type
+                .to_ascii_lowercase()
+                .parse::<IndexType>()
+                .unwrap_or_else(|never| match never {}),
+            definition: None,
+        });
+    }
+    indexes
+}
+
+fn foreign_keys_from_metadata(
+    mut raw: Vec<MysqlForeignKeyMetadata>,
+) -> Result<Vec<ForeignKey>, DbOperationError> {
+    raw.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.ordinal_position.cmp(&right.ordinal_position))
+    });
+    let mut foreign_keys = Vec::new();
+    for column in raw {
+        if let Some(foreign_key) = foreign_keys
+            .iter_mut()
+            .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
+        {
+            if foreign_key.from_schema != column.from_schema
+                || foreign_key.from_table != column.from_table
+                || foreign_key.to_schema != column.to_schema
+                || foreign_key.to_table != column.to_table
+                || foreign_key.on_update != column.on_update
+                || foreign_key.on_delete != column.on_delete
+            {
+                return Err(metadata_shape_error("foreign key constraint columns"));
+            }
+            foreign_key.from_columns.push(column.from_column);
+            foreign_key.to_columns.push(column.to_column);
+            continue;
+        }
+        foreign_keys.push(ForeignKey {
+            name: column.name,
+            from_schema: column.from_schema,
+            from_table: column.from_table,
+            from_columns: vec![column.from_column],
+            to_schema: column.to_schema,
+            to_table: column.to_table,
+            to_columns: vec![column.to_column],
+            on_delete: column.on_delete,
+            on_update: column.on_update,
+            reference_resolved: true,
+        });
+    }
+    Ok(foreign_keys)
+}
+
 fn column_from_metadata(metadata: &MysqlColumnMetadata) -> Column {
     let primary_key = metadata.primary_key_position.is_some();
     let attributes = ColumnAttributes::from_parts(metadata.nullable, primary_key, false)
@@ -413,6 +666,29 @@ fn primary_key_names(columns: &[MysqlColumnMetadata]) -> Vec<String> {
         .collect::<Vec<_>>();
     columns.sort_by_key(|(position, _)| *position);
     columns.into_iter().map(|(_, name)| name).collect()
+}
+
+fn parse_boolean_flag(value: &QueryValue, field: &str) -> Result<bool, DbOperationError> {
+    match required_text(value, field)? {
+        "0" | "NO" => Ok(false),
+        "1" | "YES" => Ok(true),
+        _ => Err(DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL metadata boolean: {field}"
+        ))),
+    }
+}
+
+fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperationError> {
+    required_text(value, field)?.parse().map_err(|error| {
+        DbOperationError::MetadataParseFailed(format!("invalid MySQL foreign key action: {error}"))
+    })
+}
+
+fn table_signature(table: &Table) -> String {
+    format!(
+        "{:?}|{:?}|{:?}",
+        table.kind_info.kind, table.columns, table.foreign_keys
+    )
 }
 
 fn table_summary(database: &str, table: MysqlTableMetadata) -> TableSummary {
@@ -718,8 +994,13 @@ mod tests {
     #[test]
     fn empty_table_list_sentinel_parses_as_no_tables() {
         let result = result(
-            &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS"],
-            vec![vec![QueryValue::Null, QueryValue::Null, QueryValue::Null]],
+            &["TABLE_NAME", "TABLE_TYPE", "TABLE_ROWS", "TABLE_COMMENT"],
+            vec![vec![
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
         );
 
         assert!(
@@ -727,5 +1008,112 @@ mod tests {
                 .expect("empty table metadata parses")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn groups_indexes_by_name_and_orders_columns_by_sequence() {
+        let result = result(
+            &[
+                "INDEX_NAME",
+                "NON_UNIQUE",
+                "INDEX_TYPE",
+                "SEQ_IN_INDEX",
+                "COLUMN_NAME",
+                "IS_PRIMARY",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("PRIMARY".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("second_key".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("PRIMARY".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("first_key".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("search_index".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("FULLTEXT".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("body".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+            ],
+        );
+
+        let indexes = indexes_from_metadata(parse_index_metadata(&result).unwrap());
+
+        assert_eq!(indexes[0].name, "PRIMARY");
+        assert_eq!(indexes[0].columns, ["first_key", "second_key"]);
+        assert!(indexes[0].is_primary());
+        assert_eq!(
+            indexes[1].index_type,
+            IndexType::Other("fulltext".to_string())
+        );
+        assert!(!indexes[1].is_unique());
+    }
+
+    #[test]
+    fn groups_foreign_keys_by_name_and_orders_columns_by_sequence() {
+        let result = result(
+            &[
+                "CONSTRAINT_NAME",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "REFERENCED_TABLE_SCHEMA",
+                "REFERENCED_TABLE_NAME",
+                "REFERENCED_COLUMN_NAME",
+                "ORDINAL_POSITION",
+                "UPDATE_RULE",
+                "DELETE_RULE",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("fk_child_parent".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("parent_second".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("parent".to_string()),
+                    QueryValue::Text("second_key".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("CASCADE".to_string()),
+                    QueryValue::Text("SET NULL".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("fk_child_parent".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("parent_first".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("parent".to_string()),
+                    QueryValue::Text("first_key".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("CASCADE".to_string()),
+                    QueryValue::Text("SET NULL".to_string()),
+                ],
+            ],
+        );
+
+        let foreign_keys =
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap()).unwrap();
+
+        assert_eq!(foreign_keys.len(), 1);
+        assert_eq!(
+            foreign_keys[0].from_columns,
+            ["parent_first", "parent_second"]
+        );
+        assert_eq!(foreign_keys[0].to_columns, ["first_key", "second_key"]);
+        assert_eq!(foreign_keys[0].on_update, FkAction::Cascade);
+        assert_eq!(foreign_keys[0].on_delete, FkAction::SetNull);
     }
 }
