@@ -131,6 +131,7 @@ const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnos
 const MYSQL_FEATURES: &[ConnectionFeature] = &[
     ConnectionFeature::ErDiagram,
     ConnectionFeature::JsonDocumentDetail,
+    ConnectionFeature::JsonDocumentEdit,
 ];
 
 impl EngineFeatureProfile {
@@ -467,7 +468,7 @@ mod tests {
         assert!(profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
         assert!(profile.supports_json_document_detail());
-        assert!(!profile.supports_json_document_edit());
+        assert!(profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert_eq!(
             profile.supported_inspector_tabs(),

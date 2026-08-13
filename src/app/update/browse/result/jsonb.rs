@@ -376,23 +376,22 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 
     let content = state.jsonb_detail.editor().content().to_string();
 
-    if let Ok(compact) = serde_json::from_str::<serde_json::Value>(&content) {
-        let compact_str = serde_json::to_string(&compact).unwrap_or_else(|_| content.clone());
-        let row = state.jsonb_detail.row();
-        let col = state.jsonb_detail.col();
-        let original_cell = state
-            .query
-            .visible_result()
-            .and_then(|result| result.display_value_at(row, col))
-            .unwrap_or_default();
-        state
-            .result_interaction
-            .begin_cell_edit(row, col, original_cell);
-        state.result_interaction.clear_write_preview();
-        state
-            .result_interaction
-            .replace_cell_edit_draft(compact_str);
-    }
+    let compact = serde_json::from_str::<serde_json::Value>(&content)
+        .ok()
+        .and_then(|value| serde_json::to_string(&value).ok())
+        .unwrap_or(content);
+    let row = state.jsonb_detail.row();
+    let col = state.jsonb_detail.col();
+    let original_cell = state
+        .query
+        .visible_result()
+        .and_then(|result| result.display_value_at(row, col))
+        .unwrap_or_default();
+    state
+        .result_interaction
+        .begin_cell_edit(row, col, original_cell);
+    state.result_interaction.clear_write_preview();
+    state.result_interaction.replace_cell_edit_draft(compact);
 }
 
 #[cfg(test)]
@@ -402,7 +401,8 @@ mod tests {
 
     use super::*;
     pub use crate::domain::Column;
-    use crate::domain::{QueryResult, QuerySource, Table};
+    use crate::domain::connection::ConnectionId;
+    use crate::domain::{DatabaseType, QueryResult, QuerySource, Table};
     use crate::services::AppServices;
     use crate::update::action::TextKillDirection;
     use std::sync::Arc;
@@ -515,8 +515,6 @@ mod tests {
 
     mod entry_guards {
         use super::*;
-        use crate::domain::DatabaseType;
-        use crate::domain::connection::ConnectionId;
         use rstest::rstest;
 
         #[test]
@@ -736,7 +734,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_json_detail_does_not_start_edit_mode() {
+        fn mysql_json_detail_starts_edit_mode() {
             let mut state = state_with_mysql_json_value(r#"{"key":"value"}"#);
             let services = AppServices::stub();
             let now = Instant::now();
@@ -749,8 +747,8 @@ mod tests {
             );
             reduce(&mut state, Action::JsonbEnterEdit, now, &services);
 
-            assert_eq!(state.input_mode(), InputMode::JsonbDetail);
-            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+            assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+            assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
         }
 
         #[test]
@@ -1449,6 +1447,235 @@ mod tests {
                 state.confirm_dialog.intent(),
                 Some(ConfirmIntent::ExecuteWrite { blocked: false, .. })
             ));
+        }
+
+        #[test]
+        fn mysql_json_edit_close_can_continue_to_write_preview() {
+            let mut state = state_with_mysql_json_value(r#"{"theme":"dark"}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content(r#"{"theme":"light"}"#.to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+            let preview = match effects.first() {
+                Some(Effect::DispatchActions(actions)) => match actions.first() {
+                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+
+            assert_eq!(
+                preview.sql,
+                "UPDATE `public`.`users` SET `settings` = '{\"theme\":\"light\"}' WHERE `id` = '1'"
+            );
+        }
+
+        #[test]
+        fn mysql_json_edit_uses_explicit_hidden_row_identity() {
+            let mut state = state_with_hidden_primary_key_jsonb_value();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("mysql-test"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            let mut detail = state.session.table_detail().cloned().expect("table detail");
+            detail.columns[1].data_type = "json".to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content(r#"{"theme":"light"}"#.to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+            let preview = match effects.first() {
+                Some(Effect::DispatchActions(actions)) => match actions.first() {
+                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+
+            assert!(preview.sql.contains("WHERE `id` = '1'"));
+        }
+
+        #[test]
+        fn invalid_mysql_json_is_rejected_before_write_preview() {
+            let mut state = state_with_mysql_json_value(r#"{"theme":"dark"}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content("{invalid}".to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+
+            assert!(effects.is_empty());
+            assert!(
+                state
+                    .messages
+                    .last_error()
+                    .is_some_and(|error| error.starts_with("Invalid JSON:"))
+            );
+        }
+
+        #[test]
+        fn empty_mysql_json_editor_is_rejected_before_write_preview() {
+            let mut state = state_with_mysql_json_value(r#"{"theme":"dark"}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state.jsonb_detail.editor_mut().set_content(String::new());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+
+            assert!(effects.is_empty());
+            assert!(
+                state
+                    .messages
+                    .last_error()
+                    .is_some_and(|error| error.starts_with("Invalid JSON:"))
+            );
+        }
+
+        #[test]
+        fn semantically_unchanged_mysql_json_is_not_written() {
+            let mut state = state_with_mysql_json_value(r#"{"a":1,"b":2}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content("{ \"b\": 2, \"a\": 1 }".to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error(),
+                Some("No semantic changes to write")
+            );
+        }
+
+        #[test]
+        fn mysql_json_null_and_string_null_use_distinct_literals() {
+            let mut state = state_with_mysql_json_value("null");
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state
+                .jsonb_detail
+                .editor_mut()
+                .set_content(r#""null""#.to_string());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+            let preview = match effects.first() {
+                Some(Effect::DispatchActions(actions)) => match actions.first() {
+                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+
+            assert_eq!(
+                preview.sql,
+                "UPDATE `public`.`users` SET `settings` = '\"null\"' WHERE `id` = '1'"
+            );
         }
     }
 }

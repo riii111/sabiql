@@ -489,6 +489,31 @@ mod write_sql_tests {
     }
 
     #[test]
+    fn json_document_update_keeps_json_null_distinct_from_string_null() {
+        let adapter = MySqlAdapter::new();
+        let json_null = adapter.build_update_sql(
+            DatabaseType::MySQL,
+            "sabiql_test",
+            "documents",
+            "payload",
+            &QueryValue::text("null"),
+            &[("id".to_string(), QueryValue::SqlLiteral("1".into()))],
+        );
+        let string_null = adapter.build_update_sql(
+            DatabaseType::MySQL,
+            "sabiql_test",
+            "documents",
+            "payload",
+            &QueryValue::text(r#""null""#),
+            &[("id".to_string(), QueryValue::SqlLiteral("1".into()))],
+        );
+
+        assert!(json_null.contains("SET `payload` = 'null'"));
+        assert!(string_null.contains("SET `payload` = '\"null\"'"));
+        assert_ne!(json_null, string_null);
+    }
+
+    #[test]
     fn bulk_delete_targets_each_composite_primary_key_row() {
         let adapter = MySqlAdapter::new();
         let sql = adapter.build_bulk_delete_sql(

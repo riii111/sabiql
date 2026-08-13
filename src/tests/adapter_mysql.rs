@@ -755,6 +755,106 @@ async fn updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys
 }
 
 #[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn updates_mysql_json_documents_as_whole_values() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("system clock error: {error}"))?
+                .as_nanos();
+            let table = format!("mysql_sab396_{suffix}");
+            let create = format!(
+                "CREATE TABLE {table} (id INT NOT NULL PRIMARY KEY, payload JSON NOT NULL)"
+            );
+            db.adapter()
+                .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                .await
+                .map_err(|error| format!("failed to create JSON fixture: {error:?}"))?;
+
+            let result = async {
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("INSERT INTO {table} VALUES (1, '{{\"a\":1}}')"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to seed JSON fixture: {error:?}"))?;
+
+                let update_json = db.adapter().build_update_sql(
+                    DatabaseType::MySQL,
+                    "sabiql_test",
+                    &table,
+                    "payload",
+                    &QueryValue::text(r#"{"b":2,"a":1}"#),
+                    &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
+                );
+                if update_json.contains("JSON_SET") {
+                    return Err("JSON update unexpectedly used JSON_SET".to_string());
+                }
+                db.adapter()
+                    .execute_write(db.dsn(), &update_json, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to update JSON document: {error:?}"))?;
+
+                let reordered = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("SELECT JSON_EXTRACT(payload, '$.b'), JSON_EXTRACT(payload, '$.a') FROM {table} WHERE id = 1"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to read JSON document: {error:?}"))?;
+                if reordered.values()
+                    != [[QueryValue::Text("2".to_string()), QueryValue::Text("1".to_string())]]
+                {
+                    return Err(format!("unexpected updated JSON document: {reordered:?}"));
+                }
+
+                for (json, expected_type) in [("null", "NULL"), (r#""null""#, "STRING")] {
+                    let update = db.adapter().build_update_sql(
+                        DatabaseType::MySQL,
+                        "sabiql_test",
+                        &table,
+                        "payload",
+                        &QueryValue::text(json),
+                        &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
+                    );
+                    db.adapter()
+                        .execute_write(db.dsn(), &update, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("failed to update JSON null value: {error:?}"))?;
+                    let value = db
+                        .adapter()
+                        .execute_adhoc(
+                            db.dsn(),
+                            &format!("SELECT JSON_TYPE(payload) FROM {table} WHERE id = 1"),
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .map_err(|error| format!("failed to read JSON type: {error:?}"))?;
+                    if value.values() != [[QueryValue::Text(expected_type.to_string())]] {
+                        return Err(format!("unexpected JSON type: {value:?}"));
+                    }
+                }
+                Ok(())
+            }
+            .await;
+
+            let drop = format!("DROP TABLE {table}");
+            let _ = db
+                .adapter()
+                .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
+                .await;
+            result
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn executes_multiple_statements_and_returns_only_the_last_result() {
     with_mysql_test_db(|db| Box::pin(async move {

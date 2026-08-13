@@ -9,7 +9,8 @@ use crate::model::shared::confirm_dialog::ConfirmIntent;
 use crate::model::shared::input_mode::InputMode;
 use crate::policy::json::json_diff::compute_json_diff;
 use crate::policy::preview_cell_text::{
-    CellPresentationPolicy, normalize_for_write_diff, uses_structured_json_diff,
+    CellPresentationPolicy, normalize_for_write_diff, normalize_structured_json_for_write,
+    uses_structured_json_diff,
 };
 use crate::policy::write::inline_cell_edit::build_inline_edited_value;
 use crate::policy::write::write_guardrails::{
@@ -66,6 +67,24 @@ fn build_update_preview(
         state.result_interaction.cell_edit().draft_value(),
     )?;
 
+    let database_type = state.session.active_database_type_or_default();
+    let column_data_type = state
+        .visible_preview_column(col_idx)
+        .map_or("", |c| c.data_type.as_str());
+    let handling = CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
+    if uses_structured_json_diff(handling) {
+        let before = normalize_structured_json_for_write(
+            state.result_interaction.cell_edit().original_value(),
+        )
+        .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
+        let after =
+            normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
+                .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
+        if before == after {
+            return Err(EditGuardrailError::NoSemanticChanges);
+        }
+    }
+
     let identity_pairs = identity.identity_pairs_for_row(result, row_idx);
     if let Some(pairs) = identity_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
@@ -101,12 +120,6 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
-            let database_type = state.session.active_database_type_or_default();
-            let column_data_type = state
-                .visible_preview_column(col_idx)
-                .map_or("", |c| c.data_type.as_str());
-            let handling =
-                CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
             let before = normalize_for_write_diff(
                 state.result_interaction.cell_edit().original_value(),
                 handling,

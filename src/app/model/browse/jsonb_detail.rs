@@ -145,9 +145,6 @@ impl JsonbDetailState {
 
     pub fn has_pending_changes(&self) -> bool {
         let content = self.editor.content();
-        if content.is_empty() {
-            return false;
-        }
         let trimmed = content.trim();
         trimmed != self.original_json().trim() && trimmed != self.pretty_original().trim()
     }
