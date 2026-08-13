@@ -10,6 +10,7 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_label_width};
+use crate::domain::DatabaseType;
 use crate::domain::MetadataState;
 use crate::theme::ThemePalette;
 
@@ -60,6 +61,15 @@ impl Explorer {
                     ListItem::new(displayed)
                 })
                 .collect()
+        } else if state.session.connection_state().is_awaiting_database() {
+            vec![
+                ListItem::new(" Select a database in connection settings"),
+                ListItem::new(" (c: connections)"),
+            ]
+        } else if state.session.active_database_type() == Some(DatabaseType::MySQL)
+            && state.session.connection_state().is_connected()
+        {
+            vec![ListItem::new(" MySQL metadata is not available yet")]
         } else {
             match &state.session.metadata_state() {
                 MetadataState::Loading => {

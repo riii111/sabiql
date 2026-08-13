@@ -1,8 +1,10 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::domain::connection::ConnectionProfileError;
 use crate::model::app_state::AppState;
+use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::connection::setup::{
     CONNECTION_INPUT_VISIBLE_WIDTH, ConnectionField, ConnectionSetupState,
 };
@@ -193,12 +195,15 @@ pub fn reduce_connection_setup(
                 }
             };
             if state.session.connection_state() == ConnectionState::Connected
+                && state.session.active_database_type() != Some(DatabaseType::MySQL)
                 && let Some(current_id) = state.session.active_connection_id().cloned()
             {
                 let cache = save_current_cache(state);
                 state.connection_caches.save(&current_id, cache);
             }
             state.query.reset_for_context_change();
+            state.session.clear_connection_probe();
+            state.session.invalidate_connection_generation();
             state.session.mark_connecting();
             DispatchResult::handled_with(termination_effects(
                 &state.query,
@@ -236,12 +241,34 @@ pub fn reduce_connection_setup(
             dsn,
             name,
             database_type,
+            database,
         }) => {
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
+            state.ui.set_database_picker(false);
             state.connection_caches.remove(id);
 
-            reset_for_new_connection(state, id, dsn, name, *database_type);
+            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            if *database_type == DatabaseType::MySQL {
+                state.session.mark_probe_connected(database.is_some());
+                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                if database.is_none() {
+                    state.ui.set_database_picker(true);
+                    state.modal.set_mode(InputMode::TablePicker);
+                    if let (Some(connection_id), Some(server_dsn)) = (
+                        state.session.active_connection_id().cloned(),
+                        state.session.server_dsn(),
+                    ) {
+                        effects.push(Effect::FetchMySqlDatabases {
+                            connection_id,
+                            dsn: server_dsn,
+                            connection_generation: state.session.connection_generation(),
+                            database_generation: state.session.database_generation(),
+                        });
+                    }
+                }
+                return DispatchResult::handled_with(termination_effects(&state.query, effects));
+            }
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::handled_with(connection_save_fetch_effects(
                 state,
@@ -258,6 +285,15 @@ pub fn reduce_connection_setup(
             }
             if !state.session.connection_state().is_connected() {
                 state.session.mark_disconnected();
+            }
+            if let ConnectionSaveError::Metadata(error) = e
+                && state.connection_setup.database_type() == DatabaseType::MySQL
+            {
+                state
+                    .connection_error
+                    .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+                state.modal.replace_mode(InputMode::ConnectionError);
+                return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);
             DispatchResult::handled()
@@ -314,7 +350,9 @@ mod tests {
     use crate::domain::connection::{ConnectionConfig, ConnectionProfile, SslMode};
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::er_state::ErStatus;
+    use crate::services::AppServices;
     use crate::update::action::TextKillDirection;
+    use crate::update::connection::lifecycle::reduce_connection_lifecycle;
     use crate::update::test_fixtures;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
         reduce_connection_setup(state, action, now).into_effects()
@@ -622,6 +660,50 @@ mod tests {
         }
 
         #[test]
+        fn save_invalidates_in_flight_mysql_probe() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("postgres-a");
+            state.session.activate_connection_with_dsn(
+                &current_id,
+                "postgres-a",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/a",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let target = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let probe_run_id = state.session.begin_connection_probe(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                target.database.as_deref(),
+            );
+
+            fill_valid_form(&mut state);
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            reduce_connection_lifecycle(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_connection_id(), Some(&current_id));
+            assert!(state.session.pending_connection_probe().is_none());
+        }
+
+        #[test]
         fn save_terminates_active_query_run() {
             let mut state = AppState::new("test".to_string());
             fill_valid_form(&mut state);
@@ -762,6 +844,7 @@ mod tests {
                 dsn: "postgres://localhost/new_db".to_string(),
                 name: "new_db".to_string(),
                 database_type: DatabaseType::PostgreSQL,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 
@@ -801,6 +884,7 @@ mod tests {
                 dsn: "sqlite:///tmp/new.db".to_string(),
                 name: "new.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -869,6 +953,7 @@ mod tests {
                 dsn: "sqlite:///tmp/new.db".to_string(),
                 name: "new.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 
@@ -884,6 +969,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -914,6 +1000,7 @@ mod tests {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 name: "app.db".to_string(),
                 database_type: DatabaseType::SQLite,
+                database: None,
             });
             reduce(&mut state, &action, Instant::now());
 

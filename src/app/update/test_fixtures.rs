@@ -43,5 +43,9 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
             assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
             assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
         }
+        DatabaseType::MySQL => {
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::ClearCompletionEngineCache));
+        }
     }
 }

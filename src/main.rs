@@ -121,6 +121,7 @@ async fn main() -> Result<()> {
         Arc::clone(&adapter_registry) as _,
         ConnectionDeps {
             dsn_builder: Arc::clone(&adapter_registry) as _,
+            connection_probe: Arc::clone(&adapter_registry) as _,
             connection_store: Arc::clone(&connection_store) as _,
             pg_service_entry_reader: Some(Arc::clone(&pg_service_entry_reader)),
             sqlite_path_validator: Arc::new(FsSqlitePathValidator),

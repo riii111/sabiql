@@ -79,6 +79,7 @@ mod tests {
     mod freshness_guards {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::model::connection::state::ConnectionState;
 
         fn metadata_with_users() -> Arc<DatabaseMetadata> {
             Arc::new({
@@ -154,6 +155,33 @@ mod tests {
             assert!(state.sql_modal.has_pending_prefetch());
             assert!(state.sql_modal.is_prefetch_queued("public.users"));
             assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
+        }
+
+        #[test]
+        fn mysql_metadata_actions_are_suppressed() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+
+            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
+                let effects = dispatch_metadata(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .unwrap();
+
+                assert!(effects.is_empty());
+            }
+            assert_eq!(
+                state.messages.last_error(),
+                Some("MySQL metadata is not available yet")
+            );
         }
     }
 

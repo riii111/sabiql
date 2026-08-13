@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
@@ -14,10 +16,34 @@ pub(super) fn reduce_base_lifecycle(
     match action {
         Action::OpenModal(ModalKind::TablePicker) => {
             state.modal.set_mode(InputMode::TablePicker);
+            state.ui.set_database_picker(false);
             state.ui.table_picker_mut().clear_filter_and_reset();
             DispatchResult::handled()
         }
-        Action::CloseModal(ModalKind::TablePicker | ModalKind::CommandPalette) => {
+        Action::OpenModal(ModalKind::DatabasePicker) => {
+            let Some(connection_id) = state.session.active_connection_id().cloned() else {
+                return DispatchResult::handled();
+            };
+            if state.session.active_database_type() != Some(DatabaseType::MySQL) {
+                return DispatchResult::handled();
+            }
+            let Some(dsn) = state.session.server_dsn() else {
+                return DispatchResult::handled();
+            };
+            state.ui.set_database_picker(true);
+            state.ui.table_picker_mut().clear_filter_and_reset();
+            state.modal.set_mode(InputMode::TablePicker);
+            DispatchResult::handled_with(vec![Effect::FetchMySqlDatabases {
+                connection_id,
+                dsn,
+                connection_generation: state.session.connection_generation(),
+                database_generation: state.session.database_generation(),
+            }])
+        }
+        Action::CloseModal(
+            ModalKind::TablePicker | ModalKind::DatabasePicker | ModalKind::CommandPalette,
+        ) => {
+            state.ui.set_database_picker(false);
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
