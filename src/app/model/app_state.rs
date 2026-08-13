@@ -3,7 +3,7 @@ use std::time::Instant;
 use super::explain_context::ExplainContext;
 use super::runtime_state::RuntimeState;
 use crate::domain::connection::{ConnectionProfile, ServiceEntry};
-use crate::domain::{DatabaseType, TableSummary};
+use crate::domain::{Column, DatabaseType, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::jsonb_detail::JsonbDetailState;
@@ -400,6 +400,16 @@ impl AppState {
             && self.visible_preview_target_read_only_reason().is_none()
     }
 
+    pub fn visible_preview_column(&self, col_idx: usize) -> Option<&Column> {
+        let result = self.query.visible_result()?;
+        let column_name = result.columns.get(col_idx)?;
+        let table_detail = self.session.table_detail()?;
+        table_detail
+            .columns
+            .iter()
+            .find(|column| column.name == *column_name)
+    }
+
     pub fn can_edit_selected_cell(&self) -> bool {
         let Some(row_idx) = self.result_interaction.selection().row() else {
             return false;
@@ -421,28 +431,26 @@ impl AppState {
             return false;
         };
 
-        if let Some(table_detail) = self.session.table_detail()
-            && let Some(column) = table_detail.columns.get(col_idx)
-        {
-            if table_detail
-                .primary_key
-                .as_ref()
-                .is_some_and(|pk| pk.iter().any(|name| name == &column.name))
-            {
-                return false;
-            }
-            if column.is_read_only() {
-                return false;
-            }
+        let Some(column) = self.visible_preview_column(col_idx) else {
+            return false;
+        };
+        let is_primary_key = column.is_primary_key()
+            || self
+                .session
+                .table_detail()
+                .and_then(|table| table.primary_key.as_ref())
+                .is_some_and(|primary_key| primary_key.iter().any(|name| name == &column.name));
+        if is_primary_key || column.is_read_only() {
+            return false;
+        }
 
-            let policy = CellPresentationPolicy::new(
-                self.session.active_database_type_or_default(),
-                column.data_type.as_str(),
-                value.as_str().unwrap_or_default(),
-            );
-            if policy.uses_jsonb_detail_modal() {
-                return true;
-            }
+        let policy = CellPresentationPolicy::new(
+            self.session.active_database_type_or_default(),
+            column.data_type.as_str(),
+            value.as_str().unwrap_or_default(),
+        );
+        if policy.uses_jsonb_detail_modal() {
+            return true;
         }
 
         supports_inline_edit(self.session.active_database_type_or_default(), value)
@@ -469,8 +477,8 @@ mod tests {
 
     use super::*;
     use crate::domain::{
-        Column, ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult,
-        QuerySource, QueryValue, Table, TableKind, TableKindInfo,
+        ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource,
+        QueryValue, Table, TableKind, TableKindInfo,
     };
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
@@ -611,6 +619,129 @@ mod tests {
         state.result_interaction.activate_cell(0, 1);
 
         assert!(!state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
+        let mut state = make_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.query.set_current_result(Arc::new(
+            QueryResult::success_with_values(
+                "SELECT `payload` FROM `sabiql_test`.`users`".to_string(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::text("before")]],
+                10,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+            ),
+        ));
+        state
+            .query
+            .pagination
+            .reset_for_table("sabiql_test", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "sabiql_test".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY
+                        | ColumnAttributes::HIDDEN
+                        | ColumnAttributes::READ_ONLY,
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "payload".to_string(),
+                    data_type: "TEXT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 2,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 0);
+
+        assert!(state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
+     {
+        let mut state = make_state();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.query.set_current_result(Arc::new(
+            QueryResult::success_with_values(
+                "SELECT `name`, `payload` FROM `sabiql_test`.`users`".to_string(),
+                vec!["name".to_string(), "payload".to_string()],
+                vec![vec![QueryValue::text("Alice"), QueryValue::text("before")]],
+                10,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+            ),
+        ));
+        state
+            .query
+            .pagination
+            .reset_for_table("sabiql_test", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "sabiql_test".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    name: "name".to_string(),
+                    data_type: "VARCHAR".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 1,
+                },
+                Column {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::PRIMARY_KEY
+                        | ColumnAttributes::HIDDEN
+                        | ColumnAttributes::READ_ONLY,
+                    comment: None,
+                    ordinal_position: 2,
+                },
+                Column {
+                    name: "payload".to_string(),
+                    data_type: "TEXT".to_string(),
+                    default: None,
+                    attributes: ColumnAttributes::empty(),
+                    comment: None,
+                    ordinal_position: 3,
+                },
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 1);
+
+        assert!(state.can_edit_selected_cell());
     }
 
     mod pane_geometry {
