@@ -1,0 +1,9 @@
+services:
+  mysql:
+    volumes:
+      - ./.tmp/mysql/tls:/etc/mysql/tls:ro
+    command:
+      - mysqld
+      - --ssl-ca=/etc/mysql/tls/ca.pem
+      - --ssl-cert=/etc/mysql/tls/server-cert.pem
+      - --ssl-key=/etc/mysql/tls/server-key.pem

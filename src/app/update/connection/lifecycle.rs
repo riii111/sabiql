@@ -278,9 +278,9 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state.session.mark_connection_failed(error.user_message());
             }
-            state
-                .connection_error
-                .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+            state.connection_error.set_error(
+                ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
+            );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled()
         }

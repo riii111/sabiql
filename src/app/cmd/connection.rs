@@ -19,7 +19,9 @@ use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     ConnectionStoreError, MetadataProvider, ServiceFileError, SqlitePathValidator,
 };
-use crate::update::action::{Action, ConnectionTarget, ConnectionsLoadedPayload};
+use crate::update::action::{
+    Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
+};
 
 pub(crate) async fn run(
     effect: Effect,
@@ -114,7 +116,12 @@ pub(crate) async fn run(
                             }
                         },
                         Err(e) => {
-                            tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
+                            tx.send(Action::ConnectionSaveFailed(ConnectionSaveError::Probe {
+                                error: e,
+                                dsn: target.dsn.clone(),
+                            }))
+                            .await
+                            .ok();
                         }
                     }
                 });
@@ -544,7 +551,8 @@ mod tests {
                 .unwrap();
             assert!(matches!(
                 action,
-                Action::ConnectionSaveFailed(ConnectionSaveError::Metadata(_))
+                Action::ConnectionSaveFailed(ConnectionSaveError::Probe { dsn, .. })
+                    if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
             ));
         }
 
