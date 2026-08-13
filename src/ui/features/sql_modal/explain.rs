@@ -15,6 +15,7 @@ use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
 use crate::domain::DatabaseType;
+use crate::domain::explain_plan::ExplainPlan;
 use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
 use crate::theme::ThemePalette;
 
@@ -107,7 +108,16 @@ pub fn render(
         ]);
 
         let scroll = state.explain.scroll_offset();
-        let mut lines = vec![header, query_line, Line::raw("")];
+        let mut lines = vec![header, query_line];
+        if state.explain.is_analyze()
+            && state.session.active_database_type_or_default() == DatabaseType::MySQL
+        {
+            lines.push(Line::from(Span::styled(
+                format_actual_metrics(state.explain.current_plan()),
+                Style::default().fg(theme.semantic.text.muted),
+            )));
+        }
+        lines.push(Line::raw(""));
         lines.extend(
             plan_text
                 .lines()
@@ -116,7 +126,11 @@ pub fn render(
         );
 
         let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
-        let content_start = 3; // skip header, query snippet, empty line
+        let content_start = lines
+            .iter()
+            .position(|line| line == &Line::raw(""))
+            .unwrap_or(0)
+            + 1;
         apply_yank_flash(&mut lines[content_start..], flash_active, theme);
 
         frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
@@ -130,6 +144,22 @@ pub fn render(
         frame.render_widget(Paragraph::new(vec![placeholder]), area);
         area.height
     }
+}
+
+fn format_actual_metrics(plan: Option<&ExplainPlan>) -> String {
+    let Some(plan) = plan else {
+        return "  Actual: unavailable".to_string();
+    };
+    let (Some(start), Some(end), Some(rows), Some(loops)) = (
+        plan.actual_start_ms,
+        plan.actual_end_ms,
+        plan.actual_rows,
+        plan.loops,
+    ) else {
+        return "  Actual: unavailable".to_string();
+    };
+
+    format!("  Actual: time={start:.3}..{end:.3} ms rows={rows} loops={loops}")
 }
 
 fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offset: usize) {

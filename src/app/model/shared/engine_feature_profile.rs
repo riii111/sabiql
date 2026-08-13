@@ -170,7 +170,9 @@ impl EngineFeatureProfile {
     pub fn mysql_like() -> Self {
         Self::new(
             DISCONNECTED_INSPECTOR,
-            ExplainProfile::QueryPlanOnly,
+            ExplainProfile::QueryPlanAndAnalyze {
+                comparison: ComparisonSupport::Unsupported,
+            },
             NO_CONNECTION_FEATURES,
         )
     }
@@ -426,11 +428,11 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_only_the_plan_tab() {
+    fn mysql_profile_exposes_plan_and_analyze_without_compare() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
-        assert!(!profile.supports_explain_analyze());
+        assert!(profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
         assert!(!profile.supports_jsonb_detail());

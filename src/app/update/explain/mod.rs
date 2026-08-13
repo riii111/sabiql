@@ -180,7 +180,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_select_emits_tree_explain_effect_and_keeps_plan_only_surface() {
+        fn mysql_select_emits_tree_explain_effect_and_keeps_compare_disabled() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
@@ -205,7 +205,7 @@ mod tests {
             ));
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
             assert!(
-                !state
+                state
                     .session
                     .active_engine_feature_profile()
                     .supports_explain_analyze()
@@ -551,6 +551,91 @@ mod tests {
         }
 
         #[test]
+        fn mysql_select_emits_tree_analyze_effect() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: true,
+                    access_mode: AccessMode::ReadWrite,
+                    ..
+                } if query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
+            ));
+        }
+
+        #[test]
+        fn mysql_table_emits_tree_analyze_effect() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("TABLE items".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: true,
+                    ..
+                } if query == "EXPLAIN ANALYZE FORMAT=TREE TABLE items"
+            ));
+        }
+
+        #[test]
+        fn mysql_write_analyze_is_rejected_before_confirmation() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE items SET value = 1".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some(
+                    "MySQL EXPLAIN ANALYZE only supports side-effect-free SELECT or TABLE statements"
+                )
+            );
+            assert!(!matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeHigh { .. }
+                    | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
+            ));
+        }
+
+        #[test]
         fn insert_executes_immediately() {
             let mut state = sql_modal_state();
             state
@@ -748,6 +833,32 @@ mod tests {
                     is_analyze: true,
                     ..
                 }
+            ));
+        }
+
+        #[test]
+        fn mysql_read_only_allows_select_analyze_with_read_only_access_mode() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+            state.session.enable_read_only();
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    is_analyze: true,
+                    access_mode: AccessMode::ReadOnly,
+                    ..
+                } if query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
             ));
         }
 
