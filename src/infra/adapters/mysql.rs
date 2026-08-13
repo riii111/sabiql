@@ -76,7 +76,7 @@ impl Default for MySqlAdapter {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "test-support"))]
 #[doc(hidden)]
 pub async fn run_mysql_cli_script_for_test(
     dsn: &str,

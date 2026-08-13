@@ -7,6 +7,9 @@ description = "Infrastructure layer for sabiql"
 license.workspace = true
 repository.workspace = true
 
+[features]
+test-support = []
+
 [lib]
 path = "lib.rs"
 

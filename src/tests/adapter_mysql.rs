@@ -78,6 +78,15 @@ async fn batch_mysql_cli_does_not_execute_shell_commands() {
                 .run_pty_script(&format!("SELECT 1;\n\\! touch '{}'\n", marker.display()))
                 .await
                 .map_err(|error| format!("failed to run MySQL CLI: {error}"))?;
+            if !output
+                .windows(b"<resultset statement=\"SELECT 1\"".len())
+                .any(|window| window == b"<resultset statement=\"SELECT 1\"")
+            {
+                return Err(format!(
+                    "MySQL CLI did not execute SELECT 1 through the PTY: {}",
+                    String::from_utf8_lossy(&output)
+                ));
+            }
             if marker.exists() {
                 return Err(format!(
                     "MySQL CLI executed a shell command: {}",
