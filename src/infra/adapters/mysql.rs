@@ -618,6 +618,7 @@ struct MysqlProcess {
 struct MysqlPty {
     input: TokioFile,
     output: TokioFile,
+    pending: Vec<u8>,
 }
 
 impl MysqlProcess {
@@ -708,7 +709,11 @@ impl MysqlProcess {
         let input = TokioFile::from_std(master);
         Ok(Self {
             child,
-            pty: MysqlPty { input, output },
+            pty: MysqlPty {
+                input,
+                output,
+                pending: Vec::new(),
+            },
         })
     }
 }
@@ -735,7 +740,8 @@ fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
     let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
     if unsafe { libc::tcgetattr(slave_file.as_raw_fd(), termios.as_mut_ptr()) } == 0 {
         let mut termios = unsafe { termios.assume_init() };
-        termios.c_lflag &= !libc::ECHO;
+        termios.c_lflag &= !(libc::ECHO | libc::ECHONL);
+        termios.c_oflag &= !libc::OPOST;
         let _ =
             unsafe { libc::tcsetattr(slave_file.as_raw_fd(), libc::TCSANOW, &raw const termios) };
     }
@@ -802,7 +808,7 @@ async fn run_mysql_adhoc_process(
     let stdout = {
         let stdout = read_one_mysql_resultset(process).await?;
         write_mysql_input(process, b"\\q\n").await?;
-        let tail = read_pty_all(&mut process.pty.output)
+        let tail = read_pty_all(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         let mut output = stdout;
@@ -839,8 +845,13 @@ async fn write_mysql_statement(
     process: &mut MysqlProcess,
     query: &str,
 ) -> Result<(), DbOperationError> {
+    let query = query.trim_end();
     write_mysql_input(process, query.as_bytes()).await?;
-    write_mysql_input(process, b"\n;\n").await
+    if query.ends_with(';') {
+        write_mysql_input(process, b"\n").await
+    } else {
+        write_mysql_input(process, b";\n").await
+    }
 }
 
 async fn write_mysql_input(
@@ -879,7 +890,7 @@ async fn write_mysql_input(
 async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     let _ = process.child.kill().await;
     #[cfg(unix)]
-    let _ = read_pty_all(&mut process.pty.output).await;
+    let _ = read_pty_all(&mut process.pty).await;
     #[cfg(not(unix))]
     let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
     let _ = process.child.wait().await;
@@ -888,19 +899,25 @@ async fn cleanup_mysql_process(process: &mut MysqlProcess) {
 async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>, DbOperationError> {
     #[cfg(unix)]
     {
-        return read_one_pty_resultset(&mut process.pty.output).await;
+        return read_one_pty_resultset(&mut process.pty).await;
     }
     #[cfg(not(unix))]
     read_one_mysql_resultset_from_pipes(&mut process.stdout, &mut process.stderr).await
 }
 
 #[cfg(unix)]
-async fn read_one_pty_resultset(reader: &mut TokioFile) -> Result<Vec<u8>, DbOperationError> {
-    const RESULTSET_END: &[u8] = b"</resultset>";
-    let mut output = Vec::new();
+async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        let count = match reader.read(&mut chunk).await {
+        if let Some(frame) = take_mysql_resultset_frame(&mut pty.pending) {
+            trace_mysql_frame("receive resultset", frame.len());
+            return Ok(frame);
+        }
+        if has_mysql_cli_error(&pty.pending) {
+            trace_mysql_error(&pty.pending);
+            return Err(classify_mysql_query_failure(&pty.pending));
+        }
+        let count = match pty.output.read(&mut chunk).await {
             Ok(count) => count,
             Err(error) if error.raw_os_error() == Some(libc::EIO) => 0,
             Err(error) => return Err(DbOperationError::ConnectionLost(error.to_string())),
@@ -910,25 +927,16 @@ async fn read_one_pty_resultset(reader: &mut TokioFile) -> Result<Vec<u8>, DbOpe
                 "mysql query returned no resultset".to_string(),
             ));
         }
-        output.extend_from_slice(&chunk[..count]);
-        if output
-            .windows(RESULTSET_END.len())
-            .any(|window| window == RESULTSET_END)
-        {
-            return Ok(output);
-        }
-        if has_mysql_cli_error(&output) {
-            return Err(classify_mysql_query_failure(&output));
-        }
+        pty.pending.extend_from_slice(&chunk[..count]);
     }
 }
 
 #[cfg(unix)]
-async fn read_pty_all(reader: &mut TokioFile) -> io::Result<Vec<u8>> {
-    let mut output = Vec::new();
+async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+    let mut output = std::mem::take(&mut pty.pending);
     let mut chunk = [0; 4096];
     loop {
-        match reader.read(&mut chunk).await {
+        match pty.output.read(&mut chunk).await {
             Ok(0) => return Ok(output),
             Ok(count) => output.extend_from_slice(&chunk[..count]),
             Err(error) if error.raw_os_error() == Some(libc::EIO) => return Ok(output),
@@ -941,7 +949,51 @@ async fn read_pty_all(reader: &mut TokioFile) -> io::Result<Vec<u8>> {
 fn has_mysql_cli_error(output: &[u8]) -> bool {
     output
         .split(|byte| *byte == b'\n' || *byte == b'\r')
-        .any(|line| line.starts_with(b"ERROR ") || line == b"ERROR")
+        .any(|line| {
+            let mut line = line;
+            while line
+                .first()
+                .is_some_and(|byte| byte.is_ascii_whitespace() || byte.is_ascii_control())
+            {
+                line = &line[1..];
+            }
+            line.starts_with(b"ERROR ") || line == b"ERROR"
+        })
+}
+
+#[cfg(unix)]
+fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
+    let start = [&b"<?xml"[..], &b"<resultset"[..]]
+        .iter()
+        .filter_map(|prefix| find_bytes(buffer, prefix))
+        .min()?;
+    let end = buffer[start..]
+        .windows(b"</resultset>".len())
+        .position(|window| window == b"</resultset>")?
+        + start
+        + b"</resultset>".len();
+    let frame = buffer[start..end].to_vec();
+    buffer.drain(..end);
+    Some(frame)
+}
+
+#[cfg(unix)]
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn trace_mysql_frame(kind: &str, bytes: usize) {
+    if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() {
+        eprintln!("sabiql mysql frame: {kind}, bytes={bytes}");
+    }
+}
+
+fn trace_mysql_error(output: &[u8]) {
+    if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() && has_mysql_cli_error(output) {
+        eprintln!("sabiql mysql frame: ERROR line observed");
+    }
 }
 
 #[cfg(not(unix))]
@@ -2099,6 +2151,23 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert!(log.contains("__sabiql_probe"));
         assert!(log.contains("SELECT 123"));
+    }
+
+    #[test]
+    fn frames_one_xml_resultset_and_preserves_following_output() {
+        let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
+            .to_vec();
+
+        assert_eq!(
+            take_mysql_resultset_frame(&mut buffer),
+            Some(b"<?xml version=\"1.0\"?>\n<resultset></resultset>".to_vec())
+        );
+        assert_eq!(
+            take_mysql_resultset_frame(&mut buffer),
+            None,
+            "an incomplete following frame must remain buffered"
+        );
+        assert!(buffer.starts_with(b"\r\n    -> <?xml"));
     }
 
     #[tokio::test]

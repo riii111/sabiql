@@ -92,9 +92,11 @@ run_tests() {
     export SABIQL_MYSQL_TEST_DATABASE="$mysql_database"
     export SABIQL_MYSQL_TEST_USER="$mysql_user"
     export SABIQL_MYSQL_TEST_PASSWORD="$mysql_password"
+    export SABIQL_MYSQL_TRANSCRIPT=1
     cargo nextest run -p sabiql --run-ignored ignored-only \
         -E 'test(tests::adapter_mysql)' \
         --test-threads 1 \
+        --no-fail-fast \
         --show-progress=none
 }
 
