@@ -164,8 +164,6 @@ pub(super) async fn fetch_preview_metadata(
     schema: &str,
     table: &str,
 ) -> Result<PreviewMetadata, DbOperationError> {
-    let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
-    find_table(schema, table, &snapshot.tables)?;
     let column_metadata = fetch_columns(dsn, schema, table).await?;
     let columns = column_metadata
         .iter()
