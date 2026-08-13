@@ -1412,13 +1412,13 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
 async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        if let Some(frame) = take_mysql_resultset_frame(&mut pty.pending) {
-            trace_mysql_frame("receive resultset", frame.len());
-            return Ok(frame);
-        }
         if has_mysql_cli_error(&pty.pending) {
             trace_mysql_error(&pty.pending);
             return Err(classify_mysql_query_failure(&pty.pending));
+        }
+        if let Some(frame) = take_mysql_resultset_frame(&mut pty.pending) {
+            trace_mysql_frame("receive resultset", frame.len());
+            return Ok(frame);
         }
         let count = match pty.output.read(&mut chunk).await {
             Ok(count) => count,
@@ -1526,13 +1526,13 @@ where
     let mut stderr_chunk = [0; 4096];
     let mut stderr_closed = false;
     loop {
-        if let Some(frame) = take_mysql_resultset_frame(pending) {
-            trace_mysql_frame("receive resultset", frame.len());
-            return Ok(frame);
-        }
         if has_mysql_cli_error(pending) {
             trace_mysql_error(pending);
             return Err(classify_mysql_query_failure(pending));
+        }
+        if let Some(frame) = take_mysql_resultset_frame(pending) {
+            trace_mysql_frame("receive resultset", frame.len());
+            return Ok(frame);
         }
         if stderr_closed {
             let count = reader
@@ -2686,7 +2686,6 @@ while IFS= read -r line; do
       ;;
     *missing_column*)
       printf '%s\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
-      exit 1
       ;;
     *SELECT*)
       value=one
