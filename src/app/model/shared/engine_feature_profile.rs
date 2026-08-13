@@ -108,6 +108,8 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorTab::Columns,
         InspectorTab::Indexes,
         InspectorTab::ForeignKeys,
+        InspectorTab::Triggers,
+        InspectorTab::Ddl,
     ],
     &[
         InspectorInfoField::Comment,
@@ -442,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_browse_metadata_and_plan_only() {
+    fn mysql_profile_exposes_browse_metadata_ddl_and_plan() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
@@ -458,6 +460,8 @@ mod tests {
                 InspectorTab::Columns,
                 InspectorTab::Indexes,
                 InspectorTab::ForeignKeys,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
             ]
         );
         assert_eq!(

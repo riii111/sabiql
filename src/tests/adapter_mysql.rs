@@ -5,10 +5,13 @@
 
 use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
-    AccessMode, ConnectionProbe, DbOperationError, DsnBuilder, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
-    MetadataProvider, QueryExecutor,
+    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder,
+    MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider, QueryExecutor,
 };
-use sabiql_domain::{CommandTag, FkAction, IndexType, QueryValue, RefreshScope, TableKind};
+use sabiql_domain::{
+    CommandTag, FkAction, IndexType, QueryValue, RefreshScope, TableKind, TriggerEvent,
+    TriggerTiming,
+};
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
 use sabiql_domain::connection::{
@@ -228,6 +231,49 @@ async fn loads_mysql_tables_views_and_column_attributes() {
                 return Err(format!(
                     "unexpected MySQL table info: comment={:?}, rows={:?}",
                     detail.comment, detail.row_count_estimate
+                ));
+            }
+            if detail.source_ddl().is_none()
+                || db
+                    .adapter()
+                    .generate_ddl(sabiql_domain::DatabaseType::MySQL, &detail)
+                    != detail.source_ddl().unwrap()
+            {
+                return Err(format!(
+                    "unexpected MySQL table DDL: {:?}",
+                    detail.source_ddl()
+                ));
+            }
+            if detail.triggers.len() != 1 {
+                return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
+            }
+            let trigger = &detail.triggers[0];
+            if trigger.name != "mysql_cli_fixture_audit"
+                || trigger.timing != TriggerTiming::Before
+                || trigger.events != [TriggerEvent::Update]
+                || trigger.definition != "SET NEW.empty_text = NEW.empty_text"
+                || trigger.security_context.as_deref() != Some("sabiql@%")
+            {
+                return Err(format!("unexpected MySQL trigger: {trigger:?}"));
+            }
+
+            let view_detail = db
+                .adapter()
+                .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
+                .await
+                .map_err(|error| format!("{error:?}"))?;
+            if view_detail.source_ddl().is_none()
+                || !view_detail
+                    .source_ddl()
+                    .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
+                || db
+                    .adapter()
+                    .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
+                    != view_detail.source_ddl().unwrap()
+            {
+                return Err(format!(
+                    "unexpected MySQL view DDL: {:?}",
+                    view_detail.source_ddl()
                 ));
             }
 

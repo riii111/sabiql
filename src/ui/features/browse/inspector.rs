@@ -20,6 +20,7 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::services::AppServices;
+use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -188,6 +189,7 @@ impl Inspector {
                     frame,
                     inner,
                     rows,
+                    state.session.active_database_type_or_default(),
                     state.ui.inspector_scroll_offset(),
                     theme,
                 );
@@ -595,24 +597,62 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         rows: &[InspectorTriggerRow],
+        database_type: DatabaseType,
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers = ["Name", "Timing", "Event", "Function", "SecDef"];
-        let widths = [
-            Constraint::Percentage(25),
-            Constraint::Percentage(15),
-            Constraint::Percentage(20),
-            Constraint::Percentage(25),
-            Constraint::Percentage(15),
-        ];
+        let (headers, widths): (&[&str], &[Constraint]) = match database_type {
+            DatabaseType::MySQL => (
+                &["Name", "Timing", "Event", "Action", "Definer"],
+                &[
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                ],
+            ),
+            DatabaseType::PostgreSQL => (
+                &["Name", "Timing", "Event", "Function", "Security"],
+                &[
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                ],
+            ),
+            DatabaseType::SQLite => (
+                &["Name", "Timing", "Event", "Definition"],
+                &[
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(15),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(40),
+                ],
+            ),
+        };
+        let data_rows: Vec<Vec<String>> = rows
+            .iter()
+            .take(50)
+            .map(|row| trigger_row_cells(row, database_type))
+            .collect();
+        let col_widths = calculate_column_widths(headers, &data_rows);
+        let widths: Vec<Constraint> = widths
+            .iter()
+            .zip(col_widths)
+            .map(|(configured, calculated)| match configured {
+                Constraint::Percentage(_) => *configured,
+                _ => Constraint::Length(calculated),
+            })
+            .collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
             frame,
             area,
             &StripedTableConfig {
-                headers: &headers,
+                headers,
                 widths: &widths,
                 total_items: rows.len(),
                 empty_message: "No triggers",
@@ -620,7 +660,7 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                trigger_row_cells(&rows[idx])
+                trigger_row_cells(&rows[idx], database_type)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
@@ -711,14 +751,17 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
     ]
 }
 
-fn trigger_row_cells(row: &InspectorTriggerRow) -> Vec<String> {
-    vec![
+fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
+    let mut cells = vec![
         row.name.clone(),
         row.timing.clone(),
         row.events.clone(),
-        row.function_name.clone(),
-        checkmark(row.security_definer),
-    ]
+        row.definition.clone(),
+    ];
+    if !matches!(database_type, DatabaseType::SQLite) {
+        cells.push(row.security_context.clone().unwrap_or_default());
+    }
+    cells
 }
 
 fn checkmark(value: bool) -> String {
