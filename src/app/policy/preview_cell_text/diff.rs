@@ -1,9 +1,13 @@
 use super::handling::PreviewCellTextDiffHandling;
 
 fn normalize_jsonb_for_diff(value: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(value)
-        .and_then(|v| serde_json::to_string(&v))
-        .unwrap_or_else(|_| value.to_string())
+    normalize_structured_json_for_write(value)
+        .ok()
+        .unwrap_or_else(|| value.to_string())
+}
+
+pub fn normalize_structured_json_for_write(value: &str) -> Result<String, serde_json::Error> {
+    serde_json::from_str::<serde_json::Value>(value).and_then(|value| serde_json::to_string(&value))
 }
 
 pub fn normalize_for_write_diff(value: &str, handling: PreviewCellTextDiffHandling) -> String {

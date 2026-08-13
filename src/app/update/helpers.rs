@@ -81,6 +81,10 @@ pub enum EditGuardrailError {
     NoActiveCell,
     #[error("Cell index out of bounds")]
     CellIndexOutOfBounds,
+    #[error("Invalid JSON: {0}")]
+    InvalidJson(String),
+    #[error("No semantic changes to write")]
+    NoSemanticChanges,
     #[error(transparent)]
     InlineCellEdit(#[from] InlineCellEditError),
     #[error("SQLite writes require non-NULL primary key values")]

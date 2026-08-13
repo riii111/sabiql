@@ -553,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn mysql_json_detail_hides_edit_hint() {
+    fn mysql_json_detail_shows_edit_hint() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -565,7 +565,7 @@ mod tests {
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(!hints.contains(&jsonb_detail::INSERT.as_hint()));
+        assert!(hints.contains(&jsonb_detail::INSERT.as_hint()));
         assert!(hints.contains(&jsonb_detail::YANK.as_hint()));
         assert!(hints.contains(&jsonb_detail::SEARCH.as_hint()));
     }

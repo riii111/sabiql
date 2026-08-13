@@ -387,7 +387,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_json_detail_keeps_view_actions_and_hides_edit() {
+        fn mysql_json_detail_keeps_view_actions_and_enables_edit() {
             let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::mysql_like());
 
             assert!(matches!(
@@ -415,7 +415,7 @@ mod tests {
                     None,
                     &feature_policy,
                 ),
-                Action::None
+                Action::JsonbEnterEdit
             ));
         }
 
@@ -563,12 +563,15 @@ mod tests {
         }
 
         #[test]
-        fn mysql_json_edit_mode_rejects_editing_keys() {
+        fn mysql_json_edit_mode_accepts_editing_keys() {
             let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::mysql_like());
 
             assert!(matches!(
                 handle_jsonb_edit_keys_with_policy(combo(Key::Char('a')), &feature_policy),
-                Action::None
+                Action::TextInput {
+                    target: InputTarget::JsonbEdit,
+                    ch: 'a',
+                }
             ));
             assert!(matches!(
                 handle_jsonb_edit_keys_with_policy(combo(Key::Esc), &feature_policy),
