@@ -1,4 +1,5 @@
 use std::ffi::OsStr;
+use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -178,13 +179,43 @@ impl QueryExecutor for MySqlAdapter {
 
     async fn execute_write(
         &self,
-        _dsn: &str,
-        _query: &str,
-        _access_mode: AccessMode,
+        dsn: &str,
+        query: &str,
+        access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        Err(DbOperationError::ConnectionFailed(
-            "MySQL query execution is not implemented".to_string(),
-        ))
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
+        let statements =
+            validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures mysql execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_adhoc(&option_file.path, query, &statements, access_mode).await;
+        drop(option_file);
+        let execution = result?;
+        let affected_rows = execution
+            .command_tag
+            .and_then(|tag| tag.affected_rows())
+            .ok_or_else(|| {
+                DbOperationError::CommandTagParseFailed(
+                    "MySQL write did not return an affected row count".to_string(),
+                )
+            })?;
+        let affected_rows = usize::try_from(affected_rows).map_err(|_| {
+            DbOperationError::CommandTagParseFailed(
+                "MySQL affected row count does not fit in usize".to_string(),
+            )
+        })?;
+
+        Ok(WriteExecutionResult {
+            affected_rows,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        })
     }
 
     async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
@@ -253,23 +284,186 @@ impl SqlDialect for MySqlAdapter {
     fn build_update_sql(
         &self,
         _database_type: DatabaseType,
-        _schema: &str,
-        _table: &str,
-        _column: &str,
-        _new_value: &QueryValue,
-        _pk_pairs: &[(String, QueryValue)],
+        schema: &str,
+        table: &str,
+        column: &str,
+        new_value: &QueryValue,
+        pk_pairs: &[(String, QueryValue)],
     ) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
+        let where_clause = pk_pairs
+            .iter()
+            .map(|(column, value)| mysql_equality_predicate(column, value))
+            .collect::<Vec<_>>()
+            .join(" AND ");
+
+        format!(
+            "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
+            mysql_quote_identifier(schema),
+            mysql_quote_identifier(table),
+            mysql_quote_identifier(column),
+            mysql_sql_literal(new_value),
+            where_clause
+        )
     }
 
     fn build_bulk_delete_sql(
         &self,
         _database_type: DatabaseType,
-        _schema: &str,
-        _table: &str,
-        _pk_pairs_per_row: &[Vec<(String, QueryValue)>],
+        schema: &str,
+        table: &str,
+        pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
+        assert!(
+            !pk_pairs_per_row.is_empty(),
+            "pk_pairs_per_row must not be empty"
+        );
+
+        let predicates = pk_pairs_per_row
+            .iter()
+            .map(|pairs| {
+                pairs
+                    .iter()
+                    .map(|(column, value)| mysql_equality_predicate(column, value))
+                    .collect::<Vec<_>>()
+                    .join(" AND ")
+            })
+            .collect::<Vec<_>>();
+        let where_clause = if predicates.len() == 1 {
+            predicates[0].clone()
+        } else {
+            predicates
+                .into_iter()
+                .map(|predicate| format!("({predicate})"))
+                .collect::<Vec<_>>()
+                .join(" OR ")
+        };
+
+        format!(
+            "DELETE FROM {}.{}\nWHERE {};",
+            mysql_quote_identifier(schema),
+            mysql_quote_identifier(table),
+            where_clause
+        )
+    }
+}
+
+fn mysql_quote_identifier(value: &str) -> String {
+    format!("`{}`", value.replace('`', "``"))
+}
+
+fn mysql_sql_literal(value: &QueryValue) -> String {
+    match value {
+        QueryValue::Null => "NULL".to_string(),
+        QueryValue::Text(value) => mysql_quote_string(value),
+        QueryValue::SqlLiteral(value) => value.clone(),
+        QueryValue::Blob(bytes) => {
+            let mut hex = String::with_capacity(bytes.len() * 2);
+            for byte in bytes {
+                let _ = write!(hex, "{byte:02X}");
+            }
+            format!("X'{hex}'")
+        }
+    }
+}
+
+fn mysql_quote_string(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\0' => escaped.push_str("\\0"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\u{0008}' => escaped.push_str("\\b"),
+            '\u{001a}' => escaped.push_str("\\Z"),
+            '\\' => escaped.push_str("\\\\"),
+            '\'' => escaped.push_str("\\'"),
+            _ => escaped.push(character),
+        }
+    }
+    format!("'{escaped}'")
+}
+
+fn mysql_equality_predicate(column: &str, value: &QueryValue) -> String {
+    let column = mysql_quote_identifier(column);
+    match value {
+        QueryValue::Null => format!("{column} IS NULL"),
+        _ => format!("{column} = {}", mysql_sql_literal(value)),
+    }
+}
+
+#[cfg(test)]
+mod write_sql_tests {
+    use super::*;
+
+    #[test]
+    fn update_quotes_identifiers_and_mysql_string_escapes() {
+        let adapter = MySqlAdapter::new();
+        let sql = adapter.build_update_sql(
+            DatabaseType::MySQL,
+            "db`name",
+            "table`name",
+            "value`name",
+            &QueryValue::text("O'Reilly\\path\n\t\0"),
+            &[
+                (
+                    "id`part".to_string(),
+                    QueryValue::SqlLiteral("18446744073709551615".into()),
+                ),
+                ("tenant".to_string(), QueryValue::Null),
+            ],
+        );
+
+        assert_eq!(
+            sql,
+            "UPDATE \x60db\x60\x60name\x60.\x60table\x60\x60name\x60\nSET \x60value\x60\x60name\x60 = 'O\\'Reilly\\\\path\\n\\t\\0'\nWHERE \x60id\x60\x60part\x60 = 18446744073709551615 AND \x60tenant\x60 IS NULL;"
+        );
+    }
+
+    #[test]
+    fn update_uses_text_datetime_and_blob_literals_without_coercion() {
+        let adapter = MySqlAdapter::new();
+        let sql = adapter.build_update_sql(
+            DatabaseType::MySQL,
+            "sabiql_test",
+            "events",
+            "payload",
+            &QueryValue::Blob(vec![0, 255, 16]),
+            &[(
+                "created_at".to_string(),
+                QueryValue::text("2026-08-13 12:34:56"),
+            )],
+        );
+
+        assert_eq!(
+            sql,
+            "UPDATE `sabiql_test`.`events`\nSET `payload` = X'00FF10'\nWHERE `created_at` = '2026-08-13 12:34:56';"
+        );
+    }
+
+    #[test]
+    fn bulk_delete_targets_each_composite_primary_key_row() {
+        let adapter = MySqlAdapter::new();
+        let sql = adapter.build_bulk_delete_sql(
+            DatabaseType::MySQL,
+            "sabiql_test",
+            "items",
+            &[
+                vec![
+                    ("first".to_string(), QueryValue::SqlLiteral("1".into())),
+                    ("second".to_string(), QueryValue::SqlLiteral("20".into())),
+                ],
+                vec![
+                    ("first".to_string(), QueryValue::SqlLiteral("2".into())),
+                    ("second".to_string(), QueryValue::SqlLiteral("10".into())),
+                ],
+            ],
+        );
+
+        assert_eq!(
+            sql,
+            "DELETE FROM `sabiql_test`.`items`\nWHERE (`first` = 1 AND `second` = 20) OR (`first` = 2 AND `second` = 10);"
+        );
     }
 }
 

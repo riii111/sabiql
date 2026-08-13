@@ -18,14 +18,43 @@ impl AppServices {
         use crate::policy::sql::mysql_statement::mysql_explain_rejection_message;
         use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
 
-        fn quote_literal(value: &str) -> String {
-            format!("'{}'", value.replace('\'', "''"))
+        fn quote_identifier(database_type: DatabaseType, value: &str) -> String {
+            match database_type {
+                DatabaseType::MySQL => {
+                    format!("`{}`", value.replace('`', "``"))
+                }
+                DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                    format!("\"{}\"", value.replace('"', "\"\""))
+                }
+            }
+        }
+
+        fn quote_literal(database_type: DatabaseType, value: &str) -> String {
+            if database_type != DatabaseType::MySQL {
+                return format!("'{}'", value.replace('\'', "''"));
+            }
+
+            let mut escaped = String::with_capacity(value.len());
+            for character in value.chars() {
+                match character {
+                    '\0' => escaped.push_str("\\0"),
+                    '\n' => escaped.push_str("\\n"),
+                    '\r' => escaped.push_str("\\r"),
+                    '\t' => escaped.push_str("\\t"),
+                    '\u{0008}' => escaped.push_str("\\b"),
+                    '\u{001a}' => escaped.push_str("\\Z"),
+                    '\\' => escaped.push_str("\\\\"),
+                    '\'' => escaped.push_str("\\'"),
+                    _ => escaped.push(character),
+                }
+            }
+            format!("'{escaped}'")
         }
 
         fn sql_literal(database_type: DatabaseType, value: &QueryValue) -> String {
             match value {
                 QueryValue::Null => "NULL".to_string(),
-                QueryValue::Text(value) => quote_literal(value),
+                QueryValue::Text(value) => quote_literal(database_type, value),
                 QueryValue::SqlLiteral(value) => value.clone(),
                 QueryValue::Blob(bytes) => {
                     let mut hex = String::with_capacity(bytes.len() * 2);
@@ -48,8 +77,14 @@ impl AppServices {
             value: &QueryValue,
         ) -> String {
             match value {
-                QueryValue::Null => format!("\"{key}\" IS NULL"),
-                _ => format!("\"{key}\" = {}", sql_literal(database_type, value)),
+                QueryValue::Null => {
+                    format!("{} IS NULL", quote_identifier(database_type, key))
+                }
+                _ => format!(
+                    "{} = {}",
+                    quote_identifier(database_type, key),
+                    sql_literal(database_type, value)
+                ),
             }
         }
 
@@ -96,21 +131,29 @@ impl AppServices {
                 new_value: &QueryValue,
                 pk_pairs: &[(String, QueryValue)],
             ) -> String {
-                let set_clause =
-                    format!("\"{column}\" = {}", sql_literal(database_type, new_value));
+                let set_clause = format!(
+                    "{} = {}",
+                    quote_identifier(database_type, column),
+                    sql_literal(database_type, new_value)
+                );
                 let where_clause = pk_pairs
                     .iter()
                     .map(|(key, value)| equality_predicate(database_type, key, value))
                     .collect::<Vec<_>>()
                     .join(" AND ");
                 match database_type {
-                    DatabaseType::PostgreSQL => {
+                    DatabaseType::PostgreSQL | DatabaseType::MySQL => {
                         format!(
-                            "UPDATE \"{schema}\".\"{table}\" SET {set_clause} WHERE {where_clause}"
+                            "UPDATE {}.{} SET {set_clause} WHERE {where_clause}",
+                            quote_identifier(database_type, schema),
+                            quote_identifier(database_type, table)
                         )
                     }
-                    DatabaseType::SQLite | DatabaseType::MySQL => {
-                        format!("UPDATE \"{table}\" SET {set_clause} WHERE {where_clause}")
+                    DatabaseType::SQLite => {
+                        format!(
+                            "UPDATE {} SET {set_clause} WHERE {where_clause}",
+                            quote_identifier(database_type, table)
+                        )
                     }
                 }
             }
@@ -133,11 +176,18 @@ impl AppServices {
                     .collect::<Vec<_>>()
                     .join(" OR ");
                 match database_type {
-                    DatabaseType::PostgreSQL => {
-                        format!("DELETE FROM \"{schema}\".\"{table}\" WHERE {where_clause}")
+                    DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+                        format!(
+                            "DELETE FROM {}.{} WHERE {where_clause}",
+                            quote_identifier(database_type, schema),
+                            quote_identifier(database_type, table)
+                        )
                     }
-                    DatabaseType::SQLite | DatabaseType::MySQL => {
-                        format!("DELETE FROM \"{table}\" WHERE {where_clause}")
+                    DatabaseType::SQLite => {
+                        format!(
+                            "DELETE FROM {} WHERE {where_clause}",
+                            quote_identifier(database_type, table)
+                        )
                     }
                 }
             }

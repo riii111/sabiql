@@ -6,9 +6,11 @@
 use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
     AccessMode, ConnectionProbe, DbOperationError, DsnBuilder, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
-    MetadataProvider, QueryExecutor,
+    MetadataProvider, QueryExecutor, SqlDialect,
 };
-use sabiql_domain::{CommandTag, FkAction, IndexType, QueryValue, RefreshScope, TableKind};
+use sabiql_domain::{
+    CommandTag, DatabaseType, FkAction, IndexType, QueryValue, RefreshScope, TableKind,
+};
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
 use sabiql_domain::connection::{
@@ -452,6 +454,124 @@ async fn previews_empty_mysql_table_with_metadata_columns() {
                 return Err(format!("unexpected empty preview: {result:?}"));
             }
             Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("system clock error: {error}"))?
+                .as_nanos();
+            let table = format!("mysql_sab392_{suffix}");
+            let create = format!(
+                "CREATE TABLE {table} (first_key BIGINT UNSIGNED NOT NULL, second_key INT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (first_key, second_key))"
+            );
+            db.adapter()
+                .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                .await
+                .map_err(|error| format!("failed to create write fixture: {error:?}"))?;
+
+            let result = async {
+                let insert = format!(
+                    "INSERT INTO {table} (first_key, second_key, payload) VALUES (18446744073709551615, 7, 'before'), (42, 8, 'second')"
+                );
+                db.adapter()
+                    .execute_adhoc(db.dsn(), &insert, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to seed write fixture: {error:?}"))?;
+
+                let update_sql = db.adapter().build_update_sql(
+                    DatabaseType::MySQL,
+                    "sabiql_test",
+                    &table,
+                    "payload",
+                    &QueryValue::text("O'Reilly\\path"),
+                    &[
+                        (
+                            "first_key".to_string(),
+                            QueryValue::SqlLiteral("18446744073709551615".to_string()),
+                        ),
+                        (
+                            "second_key".to_string(),
+                            QueryValue::SqlLiteral("7".to_string()),
+                        ),
+                    ],
+                );
+                let update = db
+                    .adapter()
+                    .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to update MySQL row: {error:?}"))?;
+                if update.affected_rows != 1 {
+                    return Err(format!("unexpected update result: {update:?}"));
+                }
+
+                let changed = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "SELECT payload FROM {table} WHERE first_key = 18446744073709551615 AND second_key = 7"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to read updated row: {error:?}"))?;
+                if changed.values() != [[QueryValue::Text("O'Reilly\\path".to_string())]] {
+                    return Err(format!("unexpected updated row: {changed:?}"));
+                }
+
+                let delete_sql = db.adapter().build_bulk_delete_sql(
+                    DatabaseType::MySQL,
+                    "sabiql_test",
+                    &table,
+                    &[
+                        vec![
+                            (
+                                "first_key".to_string(),
+                                QueryValue::SqlLiteral("18446744073709551615".to_string()),
+                            ),
+                            (
+                                "second_key".to_string(),
+                                QueryValue::SqlLiteral("7".to_string()),
+                            ),
+                        ],
+                        vec![
+                            (
+                                "first_key".to_string(),
+                                QueryValue::SqlLiteral("42".to_string()),
+                            ),
+                            (
+                                "second_key".to_string(),
+                                QueryValue::SqlLiteral("8".to_string()),
+                            ),
+                        ],
+                    ],
+                );
+                let delete = db
+                    .adapter()
+                    .execute_write(db.dsn(), &delete_sql, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("failed to delete MySQL rows: {error:?}"))?;
+                if delete.affected_rows != 2 {
+                    return Err(format!("unexpected delete result: {delete:?}"));
+                }
+                Ok(())
+            }
+            .await;
+
+            let drop = format!("DROP TABLE {table}");
+            let _ = db
+                .adapter()
+                .execute_adhoc(db.dsn(), &drop, AccessMode::ReadWrite)
+                .await;
+            result
         })
     })
     .await;

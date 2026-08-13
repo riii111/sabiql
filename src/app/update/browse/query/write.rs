@@ -305,8 +305,16 @@ pub fn reduce_write(
                             format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
                             now,
                         );
-                        state.modal.set_mode(InputMode::CellEdit);
-                        return DispatchResult::handled();
+                        state.result_interaction.clear_cell_edit();
+                        state.modal.set_mode(InputMode::Normal);
+
+                        let page = state.query.pagination.current_page();
+                        let generation = state.session.selection_generation();
+                        return match preview_effect_for_current_table(state, now, page, generation)
+                        {
+                            Some(effect) => DispatchResult::handled_with(vec![effect]),
+                            None => DispatchResult::handled(),
+                        };
                     }
 
                     state
@@ -1231,12 +1239,17 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
-            assert!(effects.is_empty());
-            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert_eq!(effects.len(), 1);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.query.status(), QueryStatus::Running);
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
             );
+            assert!(matches!(
+                effects.first(),
+                Some(Effect::ExecutePreview { .. })
+            ));
         }
 
         #[test]
