@@ -57,6 +57,8 @@ pub struct MySqlAdapter;
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
+const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
+const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
 static OPTION_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 impl MySqlAdapter {
@@ -99,9 +101,15 @@ impl QueryExecutor for MySqlAdapter {
         validate_mysql_values(&target)?;
         validate_mysql_tls_files(&target)?;
         let statements =
-            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadOnly)?;
+            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadWrite)?;
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, &query, &statements).await;
+        let result = run_mysql_adhoc(
+            &option_file.path,
+            &query,
+            &statements,
+            AccessMode::ReadWrite,
+        )
+        .await;
         drop(option_file);
         let result_set = result?.result_set.ok_or_else(|| {
             DbOperationError::MetadataParseFailed(
@@ -142,7 +150,7 @@ impl QueryExecutor for MySqlAdapter {
         )]
         let start = Instant::now();
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, query, &statements).await;
+        let result = run_mysql_adhoc(&option_file.path, query, &statements, access_mode).await;
         drop(option_file);
         let execution = result?;
         let elapsed = start.elapsed().as_millis() as u64;
@@ -352,7 +360,13 @@ impl ConnectionProbe for MySqlAdapter {
 
         let option_file = MySqlOptionFile::create(&target)?;
         let statements = validate_mysql_multi_query("SHOW DATABASES", None, AccessMode::ReadWrite)?;
-        let result = run_mysql_adhoc(&option_file.path, "SHOW DATABASES", &statements).await;
+        let result = run_mysql_adhoc(
+            &option_file.path,
+            "SHOW DATABASES",
+            &statements,
+            AccessMode::ReadWrite,
+        )
+        .await;
         drop(option_file);
         result.map(|execution| {
             execution
@@ -1052,12 +1066,14 @@ async fn run_mysql_adhoc(
     option_file: &std::path::Path,
     query: &str,
     statements: &[MysqlStatement],
+    access_mode: AccessMode,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     run_mysql_adhoc_with_program_and_statements(
         OsStr::new("mysql"),
         option_file,
         query,
         statements,
+        access_mode,
         MYSQL_QUERY_TIMEOUT,
     )
     .await
@@ -1560,12 +1576,13 @@ async fn run_mysql_adhoc_with_program(
     program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
+    access_mode: AccessMode,
     execution_timeout: Duration,
 ) -> Result<MysqlResultSet, DbOperationError> {
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_single_statement_process(&mut process, query),
+        run_mysql_single_statement_process(&mut process, query, access_mode),
     )
     .await;
     match result {
@@ -1587,6 +1604,7 @@ async fn run_mysql_adhoc_with_program(
 async fn run_mysql_single_statement_process(
     process: &mut MysqlProcess,
     query: &str,
+    access_mode: AccessMode,
 ) -> Result<MysqlResultSet, DbOperationError> {
     let marker = Uuid::new_v4().simple().to_string();
     let probe_query =
@@ -1595,6 +1613,7 @@ async fn run_mysql_single_statement_process(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &marker)?;
+    configure_mysql_session(process, access_mode).await?;
 
     write_mysql_statement(process, query).await?;
 
@@ -1643,12 +1662,13 @@ async fn run_mysql_adhoc_with_program_and_statements(
     option_file: &std::path::Path,
     query: &str,
     statements: &[MysqlStatement],
+    access_mode: AccessMode,
     execution_timeout: Duration,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, query, statements),
+        run_mysql_adhoc_process(&mut process, query, statements, access_mode),
     )
     .await;
 
@@ -1671,6 +1691,7 @@ async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
     _query: &str,
     statements: &[MysqlStatement],
+    access_mode: AccessMode,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     let probe_marker = Uuid::new_v4().simple().to_string();
     let probe_query = format!(
@@ -1680,6 +1701,7 @@ async fn run_mysql_adhoc_process(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &probe_marker)?;
+    configure_mysql_session(process, access_mode).await?;
 
     let mut last_result_set = None;
     let mut command_tags = Vec::with_capacity(statements.len());
@@ -1779,6 +1801,47 @@ async fn run_mysql_adhoc_process(
         command_tag: aggregate_mysql_command_tag(&command_tags),
         refresh_scope,
     })
+}
+
+async fn configure_mysql_session(
+    process: &mut MysqlProcess,
+    access_mode: AccessMode,
+) -> Result<(), DbOperationError> {
+    if !access_mode.is_read_only() {
+        return Ok(());
+    }
+
+    let marker = Uuid::new_v4().simple().to_string();
+    write_mysql_statement(process, MYSQL_READ_ONLY_STATEMENT).await?;
+    write_mysql_statement(
+        process,
+        &format!("SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"),
+    )
+    .await?;
+    loop {
+        let result = read_one_mysql_resultset(process).await?;
+        let result = parse_mysql_xml(&result)?;
+        if result.columns.is_empty() && result.values.is_empty() {
+            continue;
+        }
+        return validate_mysql_session_marker(&result, &marker);
+    }
+}
+
+fn validate_mysql_session_marker(
+    result: &MysqlResultSet,
+    marker: &str,
+) -> Result<(), DbOperationError> {
+    if result.columns != [MYSQL_SESSION_MARKER_COLUMN]
+        || result.values.len() != 1
+        || result.values[0].len() != 1
+        || result.values[0][0].as_str() != Some(marker)
+    {
+        return Err(DbOperationError::QueryFailed(
+            "mysql read-only session marker did not match".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn query_failed_after_change(
@@ -3584,6 +3647,11 @@ mod executor_tests {
         } else {
             "printf '%s\\n' '<resultset><row><field name=\"value\">ok</field></row></resultset>'"
         };
+        let session_failure = if mode == "read_only_failure" {
+            "printf '%s\\n' 'ERROR 1227 (42000): access denied to set transaction read only' >&2\n      exit 1"
+        } else {
+            ""
+        };
         let script = format!(
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
@@ -3597,8 +3665,19 @@ while IFS= read -r line; do
     {probe_response}
     phase=user
   else
-    {user_response}
-    exit 0
+    case "$line" in
+      "SET SESSION TRANSACTION READ ONLY")
+        {session_failure}
+        ;;
+      *__sabiql_session_marker*)
+        marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+        ;;
+      *)
+        {user_response}
+        exit 0
+        ;;
+    esac
   fi
 done
 "#,
@@ -3627,6 +3706,12 @@ while IFS= read -r line; do
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    "SET SESSION TRANSACTION READ ONLY")
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
       ;;
     *__sabiql_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_marker.*/\\1/")
@@ -3667,6 +3752,7 @@ done
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
+            AccessMode::ReadWrite,
             Duration::from_secs(5),
         )
         .await
@@ -3677,6 +3763,128 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert!(log.contains("__sabiql_probe"));
         assert!(log.contains("SELECT 123"));
+        assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT));
+    }
+
+    #[tokio::test]
+    async fn configures_read_only_session_before_user_sql() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let statements = split_mysql_statements("SELECT 2")
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 2",
+            &statements,
+            AccessMode::ReadOnly,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            let log = fs::read_to_string(&log_file).unwrap_or_default();
+            panic!("read-only execution failed: {error:?}; log: {log}");
+        });
+
+        assert_eq!(
+            result.result_set.unwrap().values[0][0].as_str(),
+            Some("two")
+        );
+        let log = fs::read_to_string(log_file).unwrap();
+        let session_index = log
+            .find(MYSQL_READ_ONLY_STATEMENT)
+            .expect("read-only session statement");
+        let user_index = log.find("SELECT 2").expect("user statement");
+        assert!(session_index < user_index, "{log}");
+        assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+    }
+
+    #[tokio::test]
+    async fn read_only_session_failure_never_writes_user_sql() {
+        let (_directory, program, log_file) = fake_mysql("read_only_failure");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_adhoc_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            AccessMode::ReadOnly,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(result.is_err());
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+        assert!(!log.contains("SELECT 123"), "{log}");
+    }
+
+    #[tokio::test]
+    async fn generated_preview_and_metadata_queries_skip_read_only_session_setup() {
+        for query in [
+            "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
+            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
+        ] {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements(query)
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            run_mysql_adhoc_with_program_and_statements(
+                OsStr::new(&program),
+                &option_file,
+                query,
+                &statements,
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT), "{query}: {log}");
+        }
+    }
+
+    #[test]
+    fn read_only_rejects_temporary_table_dml_before_starting_mysql() {
+        let (_directory, _program, option_file) = fake_mysql_multi();
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let query = "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); DROP TEMPORARY TABLE temp_items";
+
+        let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::PermissionDenied(details))
+                if details.contains("read-only mode blocks MySQL write statements")
+        ));
+        assert!(!log_file.exists());
+    }
+
+    #[test]
+    fn read_only_rejects_read_write_overrides_before_starting_mysql() {
+        for query in [
+            "SET SESSION TRANSACTION READ WRITE",
+            "START TRANSACTION READ WRITE",
+        ] {
+            let (_directory, _program, option_file) = fake_mysql_multi();
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+
+            let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(_))
+            ));
+            assert!(!log_file.exists(), "{query}");
+        }
     }
 
     #[tokio::test]
@@ -3780,6 +3988,7 @@ done
                 OsStr::new(&program),
                 &option_file,
                 "SELECT 123",
+                AccessMode::ReadWrite,
                 Duration::from_secs(5),
             )
             .await;
@@ -3799,6 +4008,7 @@ done
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
+            AccessMode::ReadWrite,
             Duration::from_millis(50),
         )
         .await;
@@ -3817,6 +4027,7 @@ done
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
+            AccessMode::ReadWrite,
             Duration::from_secs(5),
         )
         .await;
@@ -3839,6 +4050,7 @@ done
             &option_file,
             "UPDATE items SET value = 1; SELECT 2",
             &statements,
+            AccessMode::ReadWrite,
             Duration::from_secs(5),
         )
         .await
@@ -3873,6 +4085,7 @@ done
             &option_file,
             "UPDATE items SET value = 1; SELECT missing_column FROM items",
             &statements,
+            AccessMode::ReadWrite,
             Duration::from_secs(5),
         )
         .await;
