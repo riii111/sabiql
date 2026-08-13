@@ -1122,17 +1122,21 @@ async fn stream_mysql_resultset_to_csv(
     {
         let source = MysqlExportPipeSource {
             stdout: &mut process.stdout,
+            stderr: &mut process.stderr,
             pending: &mut process.pending,
             error_output: Vec::new(),
+            stderr_buffer: [0; 4096],
+            stderr_closed: false,
+            stdout_closed: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
         let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
-        let mut buffered = reader.into_inner();
+        let buffered = reader.into_inner();
         let unread = buffered.buffer().to_vec();
         let source = buffered.into_inner();
         source.pending.extend(unread);
-        if !source.error_output.is_empty() {
+        if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
         return result;
@@ -1327,44 +1331,149 @@ impl AsyncRead for MysqlExportPtySource<'_> {
 }
 
 #[cfg(not(unix))]
-struct MysqlExportPipeSource<'a> {
-    stdout: &'a mut ChildStdout,
+struct MysqlExportPipeSource<'a, O, E> {
+    stdout: &'a mut O,
+    stderr: &'a mut E,
     pending: &'a mut Vec<u8>,
     error_output: Vec<u8>,
+    stderr_buffer: [u8; 4096],
+    stderr_closed: bool,
+    stdout_closed: bool,
 }
 
 #[cfg(not(unix))]
-impl MysqlExportPipeSource<'_> {
+impl<O, E> MysqlExportPipeSource<'_, O, E>
+where
+    O: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
     fn capture_error(&mut self, bytes: &[u8]) {
-        if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
+        let remaining = (32usize * 1024).saturating_sub(self.error_output.len());
+        if remaining > 0 {
             self.error_output
-                .extend_from_slice(&bytes[..bytes.len().min(32 * 1024)]);
+                .extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+        }
+    }
+
+    fn poll_stderr(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+        if self.stderr_closed {
+            return Poll::Ready(Ok(0));
+        }
+        let result = {
+            let mut read_buffer = ReadBuf::new(&mut self.stderr_buffer);
+            match Pin::new(&mut *self.stderr).poll_read(cx, &mut read_buffer) {
+                Poll::Ready(Ok(())) => Poll::Ready(Ok(read_buffer.filled().to_vec())),
+                Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+                Poll::Pending => Poll::Pending,
+            }
+        };
+        match result {
+            Poll::Ready(Ok(bytes)) => {
+                if bytes.is_empty() {
+                    self.stderr_closed = true;
+                } else {
+                    self.capture_error(&bytes);
+                }
+                Poll::Ready(Ok(bytes.len()))
+            }
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
 
 #[cfg(not(unix))]
-impl AsyncRead for MysqlExportPipeSource<'_> {
+impl<O, E> AsyncRead for MysqlExportPipeSource<'_, O, E>
+where
+    O: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buffer: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
+        let stderr_count = match this.poll_stderr(cx) {
+            Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+            Poll::Pending => 0,
+            Poll::Ready(Ok(count)) => count,
+        };
         if !this.pending.is_empty() {
             let count = buffer.remaining().min(this.pending.len());
             let bytes = this.pending.drain(..count).collect::<Vec<_>>();
-            this.capture_error(&bytes);
             buffer.put_slice(&bytes);
             return Poll::Ready(Ok(()));
         }
 
+        if this.stdout_closed {
+            if this.stderr_closed {
+                return Poll::Ready(Ok(()));
+            }
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
         let filled_before = buffer.filled().len();
         let result = Pin::new(&mut *this.stdout).poll_read(cx, buffer);
-        if matches!(&result, Poll::Ready(Ok(()))) {
-            this.capture_error(&buffer.filled()[filled_before..]);
+        if let Poll::Ready(Ok(())) = &result {
+            let count = buffer.filled().len() - filled_before;
+            if count == 0 {
+                this.stdout_closed = true;
+                if !this.stderr_closed {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
+            }
+        } else if matches!(&result, Poll::Pending) && stderr_count > 0 {
+            cx.waker().wake_by_ref();
         }
         result
+    }
+}
+
+#[cfg(all(test, not(unix)))]
+mod export_pipe_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn consumes_stderr_while_streaming_stdout() {
+        let (mut stdout_writer, mut stdout_reader) = tokio::io::duplex(64);
+        let (mut stderr_writer, mut stderr_reader) = tokio::io::duplex(64);
+        let stdout = b"<resultset><row><field name=\"value\">ok</field></row></resultset>".to_vec();
+        let stderr = format!(
+            "ERROR 1146 (42S02): Table 'app.missing' doesn't exist\n{}",
+            "warning\n".repeat(16 * 1024)
+        )
+        .into_bytes();
+
+        let stdout_task = tokio::spawn(async move {
+            stdout_writer.write_all(&stdout).await.unwrap();
+        });
+        let stderr_task = tokio::spawn(async move {
+            stderr_writer.write_all(&stderr).await.unwrap();
+        });
+
+        let mut source = MysqlExportPipeSource {
+            stdout: &mut stdout_reader,
+            stderr: &mut stderr_reader,
+            pending: &mut Vec::new(),
+            error_output: Vec::new(),
+            stderr_buffer: [0; 4096],
+            stderr_closed: false,
+            stdout_closed: false,
+        };
+        let mut output = Vec::new();
+        source.read_to_end(&mut output).await.unwrap();
+        stdout_task.await.unwrap();
+        stderr_task.await.unwrap();
+
+        assert!(output.starts_with(b"<resultset>"));
+        assert!(has_mysql_cli_error(&source.error_output));
+        assert!(matches!(
+            classify_mysql_query_failure(&source.error_output),
+            DbOperationError::ObjectMissing(_)
+        ));
     }
 }
 
