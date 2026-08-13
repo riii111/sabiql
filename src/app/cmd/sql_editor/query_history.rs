@@ -14,21 +14,24 @@ pub fn run(
     match effect {
         Effect::LoadQueryHistory {
             project_name,
-            connection_id,
+            scope,
         } => {
             let store = Arc::clone(query_history_store);
             let tx = action_tx.clone();
 
-            let conn_id = connection_id.clone();
+            let scope_for_action = scope.clone();
             tokio::spawn(async move {
-                match store.load(&project_name, &connection_id).await {
+                match store.load(&project_name, &scope).await {
                     Ok(entries) => {
-                        tx.send(Action::QueryHistoryLoaded(conn_id, entries))
-                            .await
-                            .ok();
+                        tx.send(Action::QueryHistoryLoaded(
+                            scope_for_action.clone(),
+                            entries,
+                        ))
+                        .await
+                        .ok();
                     }
                     Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(conn_id, e))
+                        tx.send(Action::QueryHistoryLoadFailed(scope_for_action, e))
                             .await
                             .ok();
                     }

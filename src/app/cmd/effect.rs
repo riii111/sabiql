@@ -1,4 +1,5 @@
 use crate::domain::connection::{ConnectionConfig, ConnectionId};
+use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{QueryValue, Table};
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -158,7 +159,7 @@ pub enum Effect {
 
     LoadQueryHistory {
         project_name: String,
-        connection_id: ConnectionId,
+        scope: QueryHistoryScope,
     },
 
     SaveSettings {

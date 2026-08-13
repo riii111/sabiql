@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
@@ -625,8 +625,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
-    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 

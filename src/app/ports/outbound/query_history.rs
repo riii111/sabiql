@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::domain::connection::ConnectionId;
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum QueryHistoryError {
@@ -40,14 +39,14 @@ pub trait QueryHistoryStore: Send + Sync {
     async fn append(
         &self,
         project_name: &str,
-        connection_id: &ConnectionId,
+        scope: &QueryHistoryScope,
         entry: &QueryHistoryEntry,
     ) -> Result<(), QueryHistoryError>;
 
     async fn load(
         &self,
         project_name: &str,
-        connection_id: &ConnectionId,
+        scope: &QueryHistoryScope,
     ) -> Result<Vec<QueryHistoryEntry>, QueryHistoryError>;
 }
 

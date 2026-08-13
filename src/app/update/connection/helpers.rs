@@ -7,6 +7,7 @@ use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
 
 fn reset_connection_scoped_state(state: &mut AppState) {
+    state.query_history_picker.reset();
     state.sql_modal.reset_prefetch();
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
