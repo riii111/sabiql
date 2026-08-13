@@ -193,6 +193,7 @@ mod tests {
             #[case(global::QUIT, Action::Quit)]
             #[case(global::HELP, Action::ToggleModal(ModalKind::Help))]
             #[case(global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
+            #[case(global::DATABASE_PICKER, Action::OpenModal(ModalKind::DatabasePicker))]
             #[case(global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(global::COMMAND_LINE, Action::EnterCommandLine)]
             #[case(global::COMMAND_PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
@@ -637,7 +638,7 @@ mod tests {
         );
         assert_eq!(
             JSONB_DETAIL_ROWS[0].feature_requirement(),
-            FeatureRequirement::JsonbDetail
+            FeatureRequirement::JsonDocumentDetail
         );
     }
 }

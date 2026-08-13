@@ -174,12 +174,12 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
-    let td = state.session.table_detail()?;
-    if !state.query.pagination.matches_table(td) {
+    let table_detail = state.session.table_detail()?;
+    if !state.query.pagination.matches_table(table_detail) {
         return None;
     }
-    td.columns
-        .get(col_idx)
+    state
+        .visible_preview_column(col_idx)
         .map(|column| column.data_type.as_str())
 }
 

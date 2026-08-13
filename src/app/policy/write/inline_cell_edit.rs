@@ -19,6 +19,8 @@ pub enum InlineCellEditError {
     InvalidReal,
     #[error("REAL value must be finite")]
     NonFiniteReal,
+    #[error("Invalid NUMERIC value")]
+    InvalidNumeric,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +28,7 @@ enum InlineCellEditKind {
     Text,
     SqliteInteger,
     SqliteReal,
+    MysqlNumeric,
 }
 
 pub fn supports_inline_edit(database_type: DatabaseType, value: &QueryValue) -> bool {
@@ -41,9 +44,9 @@ pub fn text_for_inline_edit(
             QueryValue::Text(value) => Ok(value.clone()),
             _ => unreachable!("text edit kind must carry text value"),
         },
-        InlineCellEditKind::SqliteInteger | InlineCellEditKind::SqliteReal => {
-            Ok(value.display_value())
-        }
+        InlineCellEditKind::SqliteInteger
+        | InlineCellEditKind::SqliteReal
+        | InlineCellEditKind::MysqlNumeric => Ok(value.display_value()),
     }
 }
 
@@ -56,6 +59,9 @@ pub fn build_inline_edited_value(
         InlineCellEditKind::Text => Ok(QueryValue::text(edited_text)),
         InlineCellEditKind::SqliteInteger => parse_sqlite_integer_text(edited_text),
         InlineCellEditKind::SqliteReal => parse_sqlite_real_text(edited_text),
+        InlineCellEditKind::MysqlNumeric => matches_mysql_numeric_lexeme(edited_text)
+            .then(|| QueryValue::SqlLiteral(edited_text.to_string()))
+            .ok_or(InlineCellEditError::InvalidNumeric),
     }
 }
 
@@ -65,7 +71,22 @@ fn classify_inline_cell_edit(
 ) -> Result<InlineCellEditKind, InlineCellEditError> {
     match database_type {
         DatabaseType::PostgreSQL => classify_postgres_inline_cell_edit(value),
+        DatabaseType::MySQL => classify_mysql_inline_cell_edit(value),
         DatabaseType::SQLite => classify_sqlite_inline_cell_edit(value),
+    }
+}
+
+fn classify_mysql_inline_cell_edit(
+    value: &QueryValue,
+) -> Result<InlineCellEditKind, InlineCellEditError> {
+    match value {
+        QueryValue::Text(_) => Ok(InlineCellEditKind::Text),
+        QueryValue::Null => Err(InlineCellEditError::NullUnsupported),
+        QueryValue::Blob(_) => Err(InlineCellEditError::BlobUnsupported),
+        QueryValue::SqlLiteral(value) if matches_mysql_numeric_lexeme(value) => {
+            Ok(InlineCellEditKind::MysqlNumeric)
+        }
+        QueryValue::SqlLiteral(_) => Err(InlineCellEditError::UnsupportedCellType),
     }
 }
 
@@ -206,6 +227,51 @@ fn matches_sqlite_numeric_lexeme(value: &str) -> bool {
     index == bytes.len()
 }
 
+fn matches_mysql_numeric_lexeme(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.is_empty() {
+        return false;
+    }
+
+    let mut index = usize::from(matches!(bytes[0], b'+' | b'-'));
+    let integer_start = index;
+    while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+        index += 1;
+    }
+    let has_integer = index > integer_start;
+
+    let has_fraction = if bytes.get(index) == Some(&b'.') {
+        index += 1;
+        let fraction_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        index > fraction_start
+    } else {
+        false
+    };
+
+    if !has_integer && !has_fraction {
+        return false;
+    }
+
+    if matches!(bytes.get(index), Some(b'e' | b'E')) {
+        index += 1;
+        if matches!(bytes.get(index), Some(b'+' | b'-')) {
+            index += 1;
+        }
+        let exponent_start = index;
+        while bytes.get(index).is_some_and(u8::is_ascii_digit) {
+            index += 1;
+        }
+        if exponent_start == index {
+            return false;
+        }
+    }
+
+    index == bytes.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +365,47 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, InlineCellEditError::UnsupportedCellType);
+    }
+
+    #[test]
+    fn mysql_numeric_literal_preserves_large_integer_without_f64_conversion() {
+        let original = QueryValue::SqlLiteral("18446744073709551615".to_string());
+        let value =
+            build_inline_edited_value(DatabaseType::MySQL, &original, "18446744073709551615")
+                .unwrap();
+
+        assert_eq!(value, original);
+    }
+
+    #[test]
+    fn mysql_numeric_literal_preserves_decimal_and_exponent_lexemes() {
+        for draft in [
+            "12345678901234567890123456789012345.12345678901234567890",
+            "1.23e100",
+            ".5",
+            "1.",
+        ] {
+            assert_eq!(
+                build_inline_edited_value(
+                    DatabaseType::MySQL,
+                    &QueryValue::SqlLiteral("1".to_string()),
+                    draft,
+                )
+                .unwrap(),
+                QueryValue::SqlLiteral(draft.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn mysql_numeric_literal_rejects_invalid_lexeme() {
+        let error = build_inline_edited_value(
+            DatabaseType::MySQL,
+            &QueryValue::SqlLiteral("1".to_string()),
+            "1e",
+        )
+        .unwrap_err();
+
+        assert_eq!(error, InlineCellEditError::InvalidNumeric);
     }
 }

@@ -17,7 +17,7 @@ pub fn handle_jsonb_detail_keys_with_policy(
     pending_prefix: Option<Prefix>,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
         return disabled_jsonb_detail_exit_action(combo, interaction);
     }
 
@@ -69,7 +69,11 @@ pub fn handle_jsonb_detail_keys_with_policy(
         &combo,
         VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
     ) {
-        return action;
+        return if feature_policy.is_enabled(action.feature_requirement()) {
+            action
+        } else {
+            Action::None
+        };
     }
 
     if let Some(action) = JSONB_DETAIL.resolve_with_policy(&combo, feature_policy) {
@@ -119,7 +123,7 @@ pub fn handle_jsonb_edit_keys_with_policy(
     combo: KeyCombo,
     feature_policy: &FeaturePolicy,
 ) -> Action {
-    if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+    if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
         return if combo.modifiers.is_empty() && combo.key == Key::Esc {
             Action::JsonbExitEdit
         } else {
@@ -383,6 +387,39 @@ mod tests {
         }
 
         #[test]
+        fn mysql_json_detail_keeps_view_actions_and_enables_edit() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::mysql_like());
+
+            assert!(matches!(
+                handle_jsonb_detail_keys_with_policy(
+                    combo(Key::Char('y')),
+                    InputInteraction::Viewing,
+                    None,
+                    &feature_policy,
+                ),
+                Action::JsonbYankAll
+            ));
+            assert!(matches!(
+                handle_jsonb_detail_keys_with_policy(
+                    combo(Key::Char('/')),
+                    InputInteraction::Viewing,
+                    None,
+                    &feature_policy,
+                ),
+                Action::JsonbEnterSearch
+            ));
+            assert!(matches!(
+                handle_jsonb_detail_keys_with_policy(
+                    combo(Key::Char('i')),
+                    InputInteraction::Viewing,
+                    None,
+                    &feature_policy,
+                ),
+                Action::JsonbEnterEdit
+            ));
+        }
+
+        #[test]
         fn gg_moves_to_first_line() {
             let result = handle_jsonb_detail_keys(
                 combo(Key::Char('g')),
@@ -523,6 +560,23 @@ mod tests {
             let result = handle_jsonb_edit_keys_with_policy(combo(Key::Esc), &feature_policy);
 
             assert!(matches!(result, Action::JsonbExitEdit));
+        }
+
+        #[test]
+        fn mysql_json_edit_mode_accepts_editing_keys() {
+            let feature_policy = FeaturePolicy::new(&EngineFeatureProfile::mysql_like());
+
+            assert!(matches!(
+                handle_jsonb_edit_keys_with_policy(combo(Key::Char('a')), &feature_policy),
+                Action::TextInput {
+                    target: InputTarget::JsonbEdit,
+                    ch: 'a',
+                }
+            ));
+            assert!(matches!(
+                handle_jsonb_edit_keys_with_policy(combo(Key::Esc), &feature_policy),
+                Action::JsonbExitEdit
+            ));
         }
     }
 }

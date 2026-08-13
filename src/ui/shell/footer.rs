@@ -23,6 +23,7 @@ use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
+use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -163,6 +164,9 @@ impl Footer {
                     }
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
+                    }
+                    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                        list.push(global::DATABASE_PICKER.as_hint());
                     }
                     list.push(table_picker_key(keymap_preset).as_hint());
                     list.push(query_history(keymap_preset).as_hint());
@@ -342,7 +346,7 @@ impl Footer {
             InputMode::JsonbDetail => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
-                if !feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
                     vec![jsonb_detail::CLOSE.as_hint()]
                 } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
                     vec![
@@ -351,20 +355,23 @@ impl Footer {
                         jsonb_search::CANCEL.as_hint(),
                     ]
                 } else {
-                    vec![
-                        jsonb_detail::YANK.as_hint(),
-                        jsonb_detail::INSERT.as_hint(),
+                    let mut hints = vec![jsonb_detail::YANK.as_hint()];
+                    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
+                        hints.push(jsonb_detail::INSERT.as_hint());
+                    }
+                    hints.extend([
                         jsonb_detail::SEARCH.as_hint(),
                         jsonb_detail::NEXT_PREV.as_hint(),
                         jsonb_detail::MOVE.as_hint(),
                         jsonb_detail::CLOSE.as_hint(),
-                    ]
+                    ]);
+                    hints
                 }
             }
             InputMode::JsonbEdit => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
-                if feature_policy.is_enabled(FeatureRequirement::JsonbDetail) {
+                if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
                     vec![
                         jsonb_edit::ESC_NORMAL.as_hint(),
                         jsonb_edit::MOVE.as_hint(),
@@ -543,6 +550,24 @@ mod tests {
             Footer::get_context_hints(&state),
             vec![jsonb_edit::ESC_NORMAL.as_hint()]
         );
+    }
+
+    #[test]
+    fn mysql_json_detail_shows_edit_hint() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            DatabaseType::MySQL,
+            "mysql://test",
+        );
+        state.modal.set_mode(InputMode::JsonbDetail);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert!(hints.contains(&jsonb_detail::INSERT.as_hint()));
+        assert!(hints.contains(&jsonb_detail::YANK.as_hint()));
+        assert!(hints.contains(&jsonb_detail::SEARCH.as_hint()));
     }
 
     #[test]
