@@ -1239,7 +1239,9 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if is_mysql_connect_timeout_message(&details)
+    if is_mysql_tls_error(&lower) {
+        DbOperationError::ConnectionFailed(details)
+    } else if is_mysql_connect_timeout_message(&details)
         || lower.contains("connect timeout")
         || lower.contains("connection timed out")
     {
@@ -1268,6 +1270,28 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     } else {
         DbOperationError::QueryFailed(details)
     }
+}
+
+fn is_mysql_tls_error(lowercase_details: &str) -> bool {
+    [
+        "error 2026",
+        "tls/ssl error",
+        "ssl connection error",
+        "ssl handshake",
+        "tls handshake",
+        "handshake failure",
+        "tlsv1 alert",
+        "certificate verify failed",
+        "certificate verification failure",
+        "certificate validation failure",
+        "unable to get local issuer",
+        "self-signed certificate",
+        "unknown ca",
+        "certificate required",
+        "peer did not return a certificate",
+    ]
+    .iter()
+    .any(|marker| lowercase_details.contains(marker))
 }
 
 fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
@@ -1788,6 +1812,8 @@ fn parse_mysql_field(
 
 #[cfg(test)]
 mod probe_tests {
+    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+
     use super::*;
 
     #[test]
@@ -2048,10 +2074,25 @@ mod probe_tests {
             DbOperationError::ConnectionFailed(_)
         ));
     }
+
+    #[test]
+    fn classifies_mysql_tls_probe_hostname_failure_for_connection_error() {
+        let error = classify_mysql_probe_failure(
+            "ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate"
+                .to_string(),
+        );
+
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
+            ConnectionErrorKind::MySqlHostnameVerificationFailed
+        );
+    }
 }
 
 #[cfg(test)]
 mod query_tests {
+    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+
     use super::*;
 
     #[test]
@@ -2297,6 +2338,19 @@ mod query_tests {
         ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
+    }
+
+    #[test]
+    fn classifies_mysql_tls_query_failures_as_connection_errors() {
+        let error = classify_mysql_query_failure(
+            b"ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate",
+        );
+
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
+            ConnectionErrorKind::MySqlHostnameVerificationFailed
+        );
+        assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
     }
 }
 

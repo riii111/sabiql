@@ -202,6 +202,14 @@ fn is_mysql_hostname_verification_error(value: &str) -> bool {
     value.contains("hostname mismatch")
         || value.contains("host name mismatch")
         || value.contains("hostname does not match")
+        || value.contains("host name does not match")
+        || value.contains("hostname verification failed")
+        || value.contains("host name verification failed")
+        || value.contains("certificate name mismatch")
+        || value.contains("certificate does not match")
+        || value.contains("does not match certificate")
+        || value.contains("not valid for the requested host")
+        || value.contains("not valid for hostname")
         || value.contains("subject alternative name")
         || (value.contains("verify identity") && value.contains("certificate"))
 }
@@ -426,6 +434,12 @@ mod tests {
             assert_eq!(
                 ConnectionErrorKind::classify(
                     "ERROR 2026 (HY000): TLS/SSL error: certificate verify failed: hostname mismatch"
+                ),
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate"
                 ),
                 ConnectionErrorKind::MySqlHostnameVerificationFailed
             );
