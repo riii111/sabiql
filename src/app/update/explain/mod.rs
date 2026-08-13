@@ -181,7 +181,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_select_emits_tree_explain_effect_and_keeps_compare_disabled() {
+        fn mysql_select_emits_tree_explain_effect_and_enables_compare() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
@@ -212,7 +212,7 @@ mod tests {
                     .supports_explain_analyze()
             );
             assert!(
-                !state
+                state
                     .session
                     .active_engine_feature_profile()
                     .supports_plan_comparison()
@@ -1038,12 +1038,14 @@ mod tests {
             activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            let database_generation = state.session.database_generation();
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database_generation,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan".to_string(),
@@ -1065,12 +1067,14 @@ mod tests {
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            let database_generation = state.session.database_generation();
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "mysql://test".to_string(),
                     database_type: DatabaseType::MySQL,
+                    database_generation,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
@@ -1095,6 +1099,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            let database_generation = state.session.database_generation();
             state.explain.set_plan(
                 "Original".to_string(),
                 DatabaseType::PostgreSQL,
@@ -1108,6 +1113,7 @@ mod tests {
                 &Action::ExplainCompleted {
                     dsn: "dsn://stale".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database_generation,
                     run_id: 1,
                     query: "SELECT stale".to_string(),
                     plan_text: "Stale".to_string(),
@@ -1124,6 +1130,50 @@ mod tests {
             );
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
         }
+
+        #[test]
+        fn mismatched_database_generation_does_not_replace_plan() {
+            let mut state = sql_modal_state();
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+            let database_generation = state.session.database_generation();
+            let run_id = state.query.begin_running(Instant::now());
+            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            state.explain.set_plan(
+                "original".to_string(),
+                DatabaseType::MySQL,
+                false,
+                10,
+                "SELECT old",
+            );
+
+            let id = state.session.active_connection_id().cloned().unwrap();
+            let name = state.session.active_connection_name().unwrap().to_string();
+            state.session.activate_connection_with_target(
+                &id,
+                &name,
+                DatabaseType::MySQL,
+                "mysql://test",
+                Some("analytics"),
+            );
+
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    dsn: "mysql://test".to_string(),
+                    database_type: DatabaseType::MySQL,
+                    database_generation,
+                    run_id,
+                    query: "SELECT stale".to_string(),
+                    plan_text: "stale".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 42,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.explain.plan_text(), Some("original"));
+            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
+        }
     }
 
     mod explain_failed {
@@ -1136,11 +1186,13 @@ mod tests {
             activate_postgres_connection(&mut state);
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            let database_generation = state.session.database_generation();
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainFailed {
                     dsn: "dsn://test".to_string(),
+                    database_generation,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
                     is_analyze: false,
@@ -1163,6 +1215,7 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+            let database_generation = state.session.database_generation();
             state.explain.set_plan(
                 "Original".to_string(),
                 DatabaseType::PostgreSQL,
@@ -1175,6 +1228,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainFailed {
                     dsn: "dsn://stale".to_string(),
+                    database_generation,
                     run_id: 1,
                     error: DbOperationError::QueryFailed("syntax error".to_string()),
                     is_analyze: false,
@@ -1230,6 +1284,7 @@ mod tests {
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             activate_postgres_connection(&mut state);
             let now = Instant::now();
+            let database_generation = state.session.database_generation();
 
             // Step 1: First EXPLAIN
             reduce_explain(&mut state, &Action::ExplainRequest, now);
@@ -1238,6 +1293,7 @@ mod tests {
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database_generation,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
@@ -1252,11 +1308,13 @@ mod tests {
             // Step 2: Second EXPLAIN — auto-advance moves right→left
             state.sql_modal.editor.set_content("SELECT 2".to_string());
             reduce_explain(&mut state, &Action::ExplainRequest, now);
+            let database_generation = state.session.database_generation();
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database_generation,
                     run_id: 2,
                     query: "SELECT 2".to_string(),
                     plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),

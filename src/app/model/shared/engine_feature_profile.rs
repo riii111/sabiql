@@ -189,7 +189,7 @@ impl EngineFeatureProfile {
         Self::new(
             MYSQL_INSPECTOR,
             ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Unsupported,
+                comparison: ComparisonSupport::Supported,
             },
             MYSQL_FEATURES,
         )
@@ -446,12 +446,12 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_browse_metadata_ddl_and_analyze_without_compare() {
+    fn mysql_profile_exposes_browse_metadata_ddl_analyze_and_compare() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
         assert!(profile.supports_explain_analyze());
-        assert!(!profile.supports_plan_comparison());
+        assert!(profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
         assert!(!profile.supports_jsonb_detail());
         assert!(!profile.supports_sqlite_diagnostics());
@@ -478,7 +478,7 @@ mod tests {
         );
         assert_eq!(
             profile.supported_sql_modal_tabs(),
-            &[SqlModalTab::Sql, SqlModalTab::Plan]
+            &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
         );
     }
 
