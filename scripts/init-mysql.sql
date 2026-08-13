@@ -83,6 +83,8 @@ CREATE TABLE mysql_edit_gipk (
 INSERT INTO mysql_edit_gipk (payload)
 VALUES ('generated invisible primary key');
 
+SET SESSION sql_generate_invisible_primary_key = OFF;
+
 CREATE TABLE mysql_metadata_parent (
     first_key INT NOT NULL,
     second_key INT NOT NULL,
