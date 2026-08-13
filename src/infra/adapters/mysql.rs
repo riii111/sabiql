@@ -76,6 +76,33 @@ impl Default for MySqlAdapter {
     }
 }
 
+#[cfg(all(unix, feature = "test-support"))]
+#[doc(hidden)]
+pub async fn run_mysql_cli_script_for_test(
+    dsn: &str,
+    script: &str,
+) -> Result<Vec<u8>, DbOperationError> {
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    validate_mysql_tls_files(&target)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
+    let result = async {
+        write_mysql_input(&mut process, script.as_bytes()).await?;
+        write_mysql_input(&mut process, b"\x04").await?;
+        read_pty_all(&mut process.pty)
+            .await
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+    }
+    .await;
+    if result.is_err() {
+        cleanup_mysql_process(&mut process).await;
+    } else {
+        let _ = process.child.wait().await;
+    }
+    result
+}
+
 #[async_trait]
 impl QueryExecutor for MySqlAdapter {
     async fn execute_preview(
@@ -1427,7 +1454,7 @@ async fn run_mysql_export_process(
 
     #[cfg(unix)]
     let tail = {
-        write_mysql_input(process, b"\\q\n").await?;
+        write_mysql_input(process, b"\x04").await?;
         read_pty_all(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
@@ -1960,7 +1987,7 @@ async fn run_mysql_single_statement_process(
     #[cfg(unix)]
     let (stdout, tail) = {
         let stdout = read_one_mysql_resultset(process).await?;
-        write_mysql_input(process, b"\\q\n").await?;
+        write_mysql_input(process, b"\x04").await?;
         let tail = read_pty_all(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
@@ -2097,7 +2124,7 @@ async fn run_mysql_adhoc_process(
 
     #[cfg(unix)]
     let tail = {
-        write_mysql_input(process, b"\\q\n").await?;
+        write_mysql_input(process, b"\x04").await?;
         let tail = read_pty_all(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
@@ -2518,11 +2545,7 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
 async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        if has_mysql_cli_error(&pty.pending) {
-            trace_mysql_error(&pty.pending);
-            return Err(classify_mysql_query_failure(&pty.pending));
-        }
-        if let Some(frame) = take_mysql_resultset_frame(&mut pty.pending) {
+        if let Some(frame) = take_mysql_pty_resultset_frame(&mut pty.pending)? {
             trace_mysql_frame("receive resultset", frame.len());
             return Ok(frame);
         }
@@ -2574,6 +2597,18 @@ fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
     let frame = buffer[start..end].to_vec();
     buffer.drain(..end);
     Some(frame)
+}
+
+#[cfg(any(unix, test))]
+fn take_mysql_pty_resultset_frame(
+    buffer: &mut Vec<u8>,
+) -> Result<Option<Vec<u8>>, DbOperationError> {
+    let resultset_start = find_bytes(buffer, b"<resultset").unwrap_or(buffer.len());
+    if has_mysql_cli_error(&buffer[..resultset_start]) {
+        trace_mysql_error(&buffer[..resultset_start]);
+        return Err(classify_mysql_query_failure(&buffer[..resultset_start]));
+    }
+    Ok(take_mysql_resultset_frame(buffer))
 }
 
 fn mysql_resultset_frame_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
@@ -2702,7 +2737,7 @@ where
 }
 
 fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
-    let args = vec![
+    vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
         "--protocol=TCP".to_string(),
@@ -2713,16 +2748,10 @@ fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
         "--unbuffered".to_string(),
         "--skip-reconnect".to_string(),
         "--default-character-set=utf8mb4".to_string(),
+        "--batch".to_string(),
         "--silent".to_string(),
         "--prompt=".to_string(),
-    ];
-    #[cfg(not(unix))]
-    return args
-        .into_iter()
-        .chain(std::iter::once("--batch".to_string()))
-        .collect();
-    #[cfg(unix)]
-    args
+    ]
 }
 
 fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
@@ -3924,13 +3953,6 @@ line2]]></field>
         ] {
             assert!(args.contains(&expected.to_string()), "{expected}");
         }
-        #[cfg(unix)]
-        {
-            assert!(args.contains(&"--silent".to_string()));
-            assert!(args.contains(&"--prompt=".to_string()));
-            assert!(!args.contains(&"--batch".to_string()));
-        }
-        #[cfg(not(unix))]
         assert!(args.contains(&"--batch".to_string()));
         assert!(args.iter().all(|argument| !argument.contains("password")));
     }
@@ -4062,9 +4084,6 @@ pending_error=0
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   case "$line" in
-    *\\q*)
-      exit 0
-      ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
@@ -4558,6 +4577,32 @@ done
 #[cfg(test)]
 mod resultset_frame_tests {
     use super::*;
+
+    #[test]
+    fn resultset_field_error_text_is_not_classified_as_cli_error() {
+        let mut buffer = br#"<resultset><row><field name="message">line 1
+ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
+            .to_vec();
+
+        let frame = take_mysql_pty_resultset_frame(&mut buffer).unwrap();
+
+        assert!(frame.is_some());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn cli_error_before_resultset_frame_is_still_rejected() {
+        let mut buffer =
+            b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
+
+        let result = take_mysql_pty_resultset_frame(&mut buffer);
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert_eq!(
+            buffer,
+            b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>"
+        );
+    }
 
     #[test]
     fn error_before_resultset_frame_is_not_accepted() {

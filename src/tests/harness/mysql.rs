@@ -3,6 +3,8 @@ use std::process::Stdio;
 use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 use sabiql_infra::adapters::mysql::MySqlAdapter;
+#[cfg(unix)]
+use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
 use tempfile::NamedTempFile;
 use tokio::process::Command;
 
@@ -87,6 +89,13 @@ impl MySqlTestDb {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
         String::from_utf8(output.stdout).map_err(|error| error.to_string())
+    }
+
+    #[cfg(unix)]
+    pub async fn run_pty_script(&self, script: &str) -> Result<Vec<u8>, String> {
+        run_mysql_cli_script_for_test(self.dsn(), script)
+            .await
+            .map_err(|error| error.to_string())
     }
 }
 
