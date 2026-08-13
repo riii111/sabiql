@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 USE sabiql_test;
 
 CREATE TABLE mysql_cli_fixture (
