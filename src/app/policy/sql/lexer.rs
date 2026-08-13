@@ -650,38 +650,25 @@ impl SqlLexer {
     }
 
     pub fn is_in_string_or_comment(&self, text: &str, cursor_pos: usize) -> bool {
-        let tokens = self.tokenize(text, cursor_pos);
-
-        if let Some(last) = tokens.last() {
-            // If cursor is at the end of the last token
-            if last.end == cursor_pos {
-                matches!(last.kind, TokenKind::StringLiteral | TokenKind::Comment)
-                    || (matches!(last.kind, TokenKind::BacktickIdentifier(_))
-                        && !last.text.ends_with('`'))
-            } else if last.start <= cursor_pos && cursor_pos < last.end {
-                // Cursor is inside a token
-                matches!(
-                    last.kind,
-                    TokenKind::StringLiteral
-                        | TokenKind::Comment
-                        | TokenKind::BacktickIdentifier(_)
-                )
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        let tokens = self.tokenize(text, text.chars().count());
+        Self::is_in_string_or_comment_from_tokens(&tokens, cursor_pos)
     }
 
     pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
         tokens.iter().any(|t| {
-            t.start < cursor_pos
-                && cursor_pos <= t.end
-                && (matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment)
-                    || (matches!(t.kind, TokenKind::BacktickIdentifier(_))
-                        && !t.text.ends_with('`')))
+            if matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment) {
+                t.start < cursor_pos && cursor_pos <= t.end
+            } else if matches!(t.kind, TokenKind::BacktickIdentifier(_)) {
+                (t.start < cursor_pos && cursor_pos < t.end)
+                    || (cursor_pos == t.end && Self::is_unterminated_backtick(&t.text))
+            } else {
+                false
+            }
         })
+    }
+
+    fn is_unterminated_backtick(text: &str) -> bool {
+        text.starts_with('`') && text.chars().skip(1).filter(|&c| c == '`').count() % 2 == 0
     }
 
     fn is_operator_char(c: char) -> bool {
@@ -1513,6 +1500,8 @@ mod tests {
             let sql = "SELECT `SEL";
 
             assert!(l.is_in_string_or_comment(sql, sql.chars().count()));
+            assert!(l.is_in_string_or_comment("SELECT `a``", 11));
+            assert!(l.is_in_string_or_comment("SELECT `a``b`", 10));
             assert!(!l.is_in_string_or_comment("SELECT `SEL`", 12));
         }
 

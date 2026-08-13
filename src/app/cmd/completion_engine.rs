@@ -1661,7 +1661,7 @@ mod tests {
         #[test]
         fn mysql_comments_strings_and_backticks_return_no_candidates() {
             let e = engine();
-            for sql in ["# SELECT", "SELECT 'FROM", "SELECT `FROM"] {
+            for sql in ["# SELECT", "SELECT 'FROM", "SELECT `FROM", "SELECT `a``"] {
                 let candidates = e.get_candidates_for_database(
                     sql,
                     sql.chars().count(),
