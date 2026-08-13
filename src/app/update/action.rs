@@ -52,6 +52,13 @@ pub enum ErDiagramError {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
+#[error("{error}")]
+pub struct ErDiagramFailure {
+    pub run_id: u64,
+    pub error: ErDiagramError,
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum ErLogError {
     #[error("{0}")]
     Io(String),
@@ -234,6 +241,7 @@ pub struct SmartErRefreshError {
 
 #[derive(Debug, Clone)]
 pub struct ErDiagramInfo {
+    pub run_id: u64,
     pub path: String,
     pub table_count: usize,
     pub total_tables: usize,
@@ -703,7 +711,7 @@ pub enum Action {
     SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
-    ErDiagramFailed(ErDiagramError),
+    ErDiagramFailed(ErDiagramFailure),
     ErLogWriteFailed(ErLogError),
 }
 

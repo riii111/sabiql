@@ -38,6 +38,11 @@ INSERT INTO mysql_cli_fixture (
     1.23e100
 );
 
+CREATE DEFINER='sabiql'@'%' TRIGGER mysql_cli_fixture_audit
+BEFORE UPDATE ON mysql_cli_fixture
+FOR EACH ROW
+SET NEW.empty_text = NEW.empty_text;
+
 CREATE TABLE mysql_preview_composite (
     first_key INT NOT NULL,
     second_key INT NOT NULL,

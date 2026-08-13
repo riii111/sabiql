@@ -13,8 +13,16 @@ use crate::domain::er::{er_output_filename, fk_neighbors_of_seeds, fk_reachable_
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{
-    Action, ErDiagramError, ErLogError, SmartErRefreshError, SmartErRefreshResult,
+    Action, ErDiagramError, ErDiagramFailure, ErLogError, SmartErRefreshError, SmartErRefreshResult,
 };
+
+struct GenerateErDiagramRequest {
+    run_id: u64,
+    total_tables: usize,
+    project_name: String,
+    target_tables: Vec<String>,
+    browser: Option<String>,
+}
 
 pub async fn run(
     effect: Effect,
@@ -28,6 +36,7 @@ pub async fn run(
 ) -> Result<()> {
     match effect {
         Effect::GenerateErDiagramFromCache {
+            run_id,
             total_tables,
             project_name,
             target_tables,
@@ -37,10 +46,13 @@ pub async fn run(
                 er_exporter,
                 config_writer,
                 completion_engine,
-                total_tables,
-                project_name,
-                target_tables,
-                state.settings.saved_er_browser().map(str::to_string),
+                GenerateErDiagramRequest {
+                    run_id,
+                    total_tables,
+                    project_name,
+                    target_tables,
+                    browser: state.settings.saved_er_browser().map(str::to_string),
+                },
             )
             .await
         }
@@ -78,17 +90,22 @@ async fn handle_generate_diagram(
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
     completion_engine: &RefCell<CompletionEngine>,
-    total_tables: usize,
-    project_name: String,
-    target_tables: Vec<String>,
-    browser: Option<String>,
+    request: GenerateErDiagramRequest,
 ) -> Result<()> {
+    let GenerateErDiagramRequest {
+        run_id,
+        total_tables,
+        project_name,
+        target_tables,
+        browser,
+    } = request;
     let all_tables = collect_cached_er_tables(completion_engine);
     if all_tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramError::NoData(
-                "No table data loaded yet".to_string(),
-            )))
+            .send(Action::ErDiagramFailed(ErDiagramFailure {
+                run_id,
+                error: ErDiagramError::NoData("No table data loaded yet".to_string()),
+            }))
             .await
             .ok();
         return Ok(());
@@ -104,9 +121,12 @@ async fn handle_generate_diagram(
 
     if tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramError::NoData(
-                "Selected tables not found in cached data".to_string(),
-            )))
+            .send(Action::ErDiagramFailed(ErDiagramFailure {
+                run_id,
+                error: ErDiagramError::NoData(
+                    "Selected tables not found in cached data".to_string(),
+                ),
+            }))
             .await
             .ok();
         return Ok(());
@@ -116,6 +136,7 @@ async fn handle_generate_diagram(
     spawn_er_diagram_task(
         Arc::clone(er_exporter),
         tables,
+        run_id,
         total_tables,
         cache_dir,
         action_tx.clone(),

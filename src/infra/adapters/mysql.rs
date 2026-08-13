@@ -33,6 +33,7 @@ use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
     MysqlStatement, MysqlStatementKind, classify_mysql_statement, mysql_explain_rejection_message,
+    mysql_tree_explain_query_kind,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
@@ -141,6 +142,26 @@ impl QueryExecutor for MySqlAdapter {
         let target = parse_mysql_dsn(dsn)?;
         validate_mysql_values(&target)?;
         validate_mysql_tls_files(&target)?;
+
+        if mysql_tree_explain_query_kind(query).is_some() {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "infra measures mysql execution time at the I/O boundary"
+            )]
+            let start = Instant::now();
+            let option_file = MySqlOptionFile::create(&target)?;
+            let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
+            drop(option_file);
+            let result_set = result?;
+            return Ok(QueryResult::success_with_values(
+                query.to_string(),
+                result_set.columns,
+                result_set.values,
+                start.elapsed().as_millis() as u64,
+                QuerySource::Adhoc,
+            ));
+        }
+
         let statements =
             validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
 
@@ -229,8 +250,8 @@ impl QueryExecutor for MySqlAdapter {
 }
 
 impl DdlGenerator for MySqlAdapter {
-    fn generate_ddl(&self, _database_type: DatabaseType, _table: &Table) -> String {
-        unimplemented!("MySQL adapter not yet implemented")
+    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+        table.source_ddl().unwrap_or_default().to_string()
     }
 }
 
@@ -245,9 +266,10 @@ impl SqlDialect for MySqlAdapter {
     fn build_explain_analyze_sql(
         &self,
         _database_type: DatabaseType,
-        _query: &str,
+        query: &str,
     ) -> Option<String> {
-        None
+        mysql_tree_explain_query_kind(&format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))?;
+        Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))
     }
 
     fn build_update_sql(
@@ -321,6 +343,34 @@ mod explain_tests {
         ] {
             assert_eq!(
                 adapter.build_explain_sql(DatabaseType::MySQL, query),
+                None,
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn builds_tree_explain_analyze_only_for_side_effect_free_reads() {
+        let adapter = MySqlAdapter::new();
+
+        for query in ["SELECT * FROM users", "TABLE users"] {
+            assert_eq!(
+                adapter.build_explain_analyze_sql(DatabaseType::MySQL, query),
+                Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
+                "{query}"
+            );
+        }
+
+        for query in [
+            "UPDATE users SET name = 'Ada' WHERE id = 1",
+            "DELETE FROM users WHERE id = 1",
+            "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "SELECT * FROM users FOR UPDATE",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert_eq!(
+                adapter.build_explain_analyze_sql(DatabaseType::MySQL, query),
                 None,
                 "{query}"
             );
@@ -1600,7 +1650,32 @@ async fn run_mysql_adhoc_with_program(
     }
 }
 
-#[cfg(test)]
+async fn run_mysql_single_statement(
+    option_file: &std::path::Path,
+    query: &str,
+    access_mode: AccessMode,
+) -> Result<MysqlResultSet, DbOperationError> {
+    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
+    let result = timeout(
+        MYSQL_QUERY_TIMEOUT,
+        run_mysql_single_statement_process(&mut process, query, access_mode),
+    )
+    .await;
+    match result {
+        Ok(Ok(result_set)) => Ok(result_set),
+        Ok(Err(error)) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_process(&mut process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    }
+}
+
 async fn run_mysql_single_statement_process(
     process: &mut MysqlProcess,
     query: &str,

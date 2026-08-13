@@ -327,8 +327,8 @@ impl PostgresAdapter {
             name: String,
             timing: String,
             events: Vec<String>,
-            function_name: String,
-            security_definer: bool,
+            definition: String,
+            security_context: Option<String>,
         }
 
         let raw: Vec<RawTrigger> = serde_json::from_str(trimmed)?;
@@ -352,8 +352,8 @@ impl PostgresAdapter {
                     name: t.name,
                     timing,
                     events,
-                    function_name: t.function_name,
-                    security_definer: t.security_definer,
+                    definition: t.definition,
+                    security_context: t.security_context,
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()
@@ -763,8 +763,8 @@ mod tests {
                 "name": "audit_trigger",
                 "timing": "AFTER",
                 "events": ["INSERT", "UPDATE"],
-                "function_name": "audit_func",
-                "security_definer": true
+                "definition": "audit_func",
+                "security_context": "DEFINER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
@@ -777,8 +777,8 @@ mod tests {
                 trigger.events,
                 vec![TriggerEvent::Insert, TriggerEvent::Update]
             );
-            assert_eq!(trigger.function_name, "audit_func");
-            assert!(trigger.security_definer);
+            assert_eq!(trigger.definition, "audit_func");
+            assert_eq!(trigger.security_context.as_deref(), Some("DEFINER"));
         }
 
         #[rstest]
@@ -792,7 +792,7 @@ mod tests {
             let json = format!(
                 r#"[{{
                     "name": "test", "timing": "{timing}", "events": ["INSERT"],
-                    "function_name": "func", "security_definer": false
+                    "definition": "func", "security_context": "INVOKER"
                 }}]"#
             );
 
@@ -806,8 +806,8 @@ mod tests {
                 "name": "test",
                 "timing": "UNKNOWN",
                 "events": ["INSERT"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json);
@@ -824,8 +824,8 @@ mod tests {
                 "name": "multi_event",
                 "timing": "BEFORE",
                 "events": ["INSERT", "DELETE", "UPDATE", "TRUNCATE"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
@@ -854,17 +854,17 @@ mod tests {
         }
 
         #[test]
-        fn security_definer_false_stays_false() {
+        fn invoker_security_context_stays_invoker() {
             let json = r#"[{
                 "name": "test",
                 "timing": "AFTER",
                 "events": ["INSERT"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json).unwrap();
-            assert!(!result[0].security_definer);
+            assert_eq!(result[0].security_context.as_deref(), Some("INVOKER"));
         }
 
         #[test]
@@ -873,8 +873,8 @@ mod tests {
                 "name": "test",
                 "timing": "AFTER",
                 "events": ["INSERT", "MERGE"],
-                "function_name": "func",
-                "security_definer": false
+                "definition": "func",
+                "security_context": "INVOKER"
             }]"#;
 
             let result = PostgresAdapter::parse_triggers(json);
