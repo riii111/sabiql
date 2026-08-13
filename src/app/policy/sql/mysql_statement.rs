@@ -871,14 +871,7 @@ fn contains_mysql_client_command(sql: &str) -> bool {
                 let word = &sql[start..index];
                 if matches!(
                     word.to_ascii_lowercase().as_str(),
-                    "delimiter"
-                        | "charset"
-                        | "source"
-                        | "system"
-                        | "use"
-                        | "set"
-                        | "lock"
-                        | "unlock"
+                    "delimiter" | "charset" | "source" | "system"
                 ) && (index == bytes.len() || bytes[index].is_ascii_whitespace())
                 {
                     return true;

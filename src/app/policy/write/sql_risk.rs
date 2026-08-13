@@ -83,8 +83,6 @@ mod mysql_tests {
             "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
             "SELECT 1\n\\! echo unsafe",
             "SELECT 1\nsystem echo unsafe",
-            "SELECT 1\nSET sql_mode = 'ANSI_QUOTES'",
-            "SELECT 1\nUSE app",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Block { .. }),
@@ -95,6 +93,7 @@ mod mysql_tests {
             "SELECT 'source ./script.sql\\n'",
             "SELECT /* source ./script.sql */ 1",
             "SELECT `system echo unsafe`",
+            "UPDATE items\nSET value = 1 WHERE id = 1",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
@@ -159,6 +158,7 @@ mod mysql_tests {
             "START TRANSACTION; ROLLBACK",
             "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
             "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); SELECT * FROM temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE app.temp_items",
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
@@ -323,16 +323,22 @@ fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> boo
         )
 }
 
-fn mysql_target_key(statement: &MysqlStatement) -> Option<String> {
+fn mysql_target_key(statement: &MysqlStatement, selected_database: Option<&str>) -> Option<String> {
     Some(format!(
         "{}:{}",
-        statement.target_database.as_deref().unwrap_or_default(),
+        statement
+            .target_database
+            .as_deref()
+            .or(selected_database)
+            .unwrap_or_default()
+            .to_ascii_uppercase(),
         statement.target.as_deref()?.to_ascii_uppercase()
     ))
 }
 
 fn mysql_validate_submission_state(
     planned: &[(MysqlStatement, SqlRiskDecision)],
+    selected_database: Option<&str>,
 ) -> Result<(), String> {
     let mut transaction_open = false;
     let mut savepoints = Vec::<String>::new();
@@ -399,7 +405,7 @@ fn mysql_validate_submission_state(
                 savepoints.remove(index);
             }
             MysqlStatementKind::CreateTable { temporary: true } => {
-                let key = mysql_target_key(statement)
+                let key = mysql_target_key(statement, selected_database)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 if temporary_tables.iter().any(|current| current == &key) {
                     return Err("MySQL temporary table is created more than once".to_string());
@@ -407,7 +413,7 @@ fn mysql_validate_submission_state(
                 temporary_tables.push(key);
             }
             MysqlStatementKind::DropTable { temporary: true } => {
-                let key = mysql_target_key(statement)
+                let key = mysql_target_key(statement, selected_database)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 let Some(index) = temporary_tables.iter().position(|current| current == &key)
                 else {
@@ -485,7 +491,7 @@ pub fn evaluate_mysql_multi_statement(
         planned.push((statement, decision));
     }
 
-    if let Err(reason) = mysql_validate_submission_state(&planned) {
+    if let Err(reason) = mysql_validate_submission_state(&planned, selected_database) {
         return MultiStatementDecision::Block { reason };
     }
 
