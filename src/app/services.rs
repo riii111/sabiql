@@ -15,7 +15,9 @@ impl AppServices {
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn stub() -> Self {
-        use crate::policy::sql::mysql_statement::mysql_explain_rejection_message;
+        use crate::policy::sql::mysql_statement::{
+            mysql_explain_rejection_message, mysql_tree_explain_query_kind,
+        };
         use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
 
         fn quote_literal(value: &str) -> String {
@@ -83,7 +85,13 @@ impl AppServices {
             ) -> Option<String> {
                 match database_type {
                     DatabaseType::PostgreSQL => Some(format!("EXPLAIN ANALYZE {query}")),
-                    DatabaseType::SQLite | DatabaseType::MySQL => None,
+                    DatabaseType::SQLite => None,
+                    DatabaseType::MySQL => {
+                        let explain = format!("EXPLAIN ANALYZE FORMAT=TREE {query}");
+                        mysql_tree_explain_query_kind(&explain)
+                            .is_some()
+                            .then_some(explain)
+                    }
                 }
             }
 

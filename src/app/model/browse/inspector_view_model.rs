@@ -81,8 +81,8 @@ pub struct InspectorTriggerRow {
     pub name: String,
     pub timing: String,
     pub events: String,
-    pub function_name: String,
-    pub security_definer: bool,
+    pub definition: String,
+    pub security_context: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,8 +248,8 @@ impl InspectorViewModel {
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join("/"),
-                        function_name: trigger.function_name.clone(),
-                        security_definer: trigger.security_definer,
+                        definition: trigger.definition.clone(),
+                        security_context: trigger.security_context.clone(),
                     })
                     .collect();
                 (
@@ -500,8 +500,8 @@ mod tests {
                 name: "users_updated".to_string(),
                 timing: TriggerTiming::Before,
                 events: vec![TriggerEvent::Update],
-                function_name: "set_updated_at".to_string(),
-                security_definer: false,
+                definition: "set_updated_at".to_string(),
+                security_context: Some("INVOKER".to_string()),
             }],
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),

@@ -813,6 +813,47 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
     )
 }
 
+pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
+    let trimmed = sql.trim();
+    let (is_analyze, target) = if let Some(target) =
+        strip_ascii_prefix_case_insensitive(trimmed, "EXPLAIN ANALYZE FORMAT=TREE")
+    {
+        (true, target)
+    } else if let Some(target) = strip_ascii_prefix_case_insensitive(trimmed, "EXPLAIN FORMAT=TREE")
+    {
+        (false, target)
+    } else {
+        return None;
+    };
+
+    if target.is_empty() || !target.chars().next().is_some_and(char::is_whitespace) {
+        return None;
+    }
+    let target = target.trim();
+
+    let valid = if is_analyze {
+        !statement_contains_unsupported_mysql_control(target)
+            && split_mysql_statements(target).is_ok_and(|statements| {
+                statements.len() == 1
+                    && classify_mysql_statement(&statements[0]).is_ok_and(|statement| {
+                        matches!(
+                            statement.kind,
+                            MysqlStatementKind::Select | MysqlStatementKind::Table
+                        ) && !has_mysql_read_only_side_effect(target).unwrap_or(true)
+                    })
+            })
+    } else {
+        mysql_explain_rejection_message(target).is_none()
+    };
+    valid.then_some(is_analyze)
+}
+
+fn strip_ascii_prefix_case_insensitive<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    text.get(..prefix.len())
+        .filter(|candidate| candidate.eq_ignore_ascii_case(prefix))
+        .map(|_| &text[prefix.len()..])
+}
+
 pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {
     let tokens = lex_mysql_statement(sql)?;
     Ok(tokens.iter().any(|token| {
@@ -1121,5 +1162,21 @@ mod tests {
         assert_eq!(statement.target_database, Some("APP".to_string()));
         let statement = classify_mysql_statement("DROP INDEX IF EXISTS ix ON app.items").unwrap();
         assert_eq!(statement.target, Some("IX".to_string()));
+    }
+
+    #[test]
+    fn recognizes_generated_tree_explain_queries() {
+        assert_eq!(
+            mysql_tree_explain_query_kind("EXPLAIN FORMAT=TREE UPDATE items SET value = 1"),
+            Some(false)
+        );
+        assert_eq!(
+            mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE TABLE items"),
+            Some(true)
+        );
+        assert_eq!(
+            mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE DELETE FROM items"),
+            None
+        );
     }
 }

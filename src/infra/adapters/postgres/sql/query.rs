@@ -299,8 +299,8 @@ impl PostgresAdapter {
                         CASE WHEN (tg.tgtype & 16) != 0 THEN 'UPDATE' END,
                         CASE WHEN (tg.tgtype & 32) != 0 THEN 'TRUNCATE' END
                     ], NULL) AS events,
-                    p.proname AS function_name,
-                    p.prosecdef AS security_definer
+                    p.proname AS definition,
+                    CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END AS security_context
                 FROM pg_trigger tg
                 JOIN pg_class c ON c.oid = tg.tgrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace

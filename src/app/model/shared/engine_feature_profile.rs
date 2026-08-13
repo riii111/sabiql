@@ -109,6 +109,8 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorTab::Columns,
         InspectorTab::Indexes,
         InspectorTab::ForeignKeys,
+        InspectorTab::Triggers,
+        InspectorTab::Ddl,
     ],
     &[
         InspectorInfoField::Comment,
@@ -193,7 +195,9 @@ impl EngineFeatureProfile {
     pub fn mysql_like() -> Self {
         Self::new(
             MYSQL_INSPECTOR,
-            ExplainProfile::QueryPlanOnly,
+            ExplainProfile::QueryPlanAndAnalyze {
+                comparison: ComparisonSupport::Unsupported,
+            },
             MYSQL_FEATURES,
         )
     }
@@ -455,11 +459,11 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_browse_metadata_and_plan_only() {
+    fn mysql_profile_exposes_browse_metadata_ddl_and_analyze_without_compare() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
-        assert!(!profile.supports_explain_analyze());
+        assert!(profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
         assert!(profile.supports_json_document_detail());
@@ -472,6 +476,8 @@ mod tests {
                 InspectorTab::Columns,
                 InspectorTab::Indexes,
                 InspectorTab::ForeignKeys,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
             ]
         );
         assert_eq!(
