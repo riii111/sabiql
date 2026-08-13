@@ -1568,8 +1568,6 @@ where
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {
-                    #[cfg(test)]
-                    eprintln!("unexpected MySQL XML text outside field: {text:?}");
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
                     ));
@@ -1580,8 +1578,6 @@ where
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {
-                    #[cfg(test)]
-                    eprintln!("unexpected MySQL XML reference outside field: {text:?}");
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
                     ));
@@ -3220,8 +3216,6 @@ fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {
-                    #[cfg(test)]
-                    eprintln!("unexpected MySQL XML text outside field: {text:?}");
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
                     ));
@@ -3232,8 +3226,6 @@ fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
                 if let Some(field) = current_field.as_mut() {
                     field.value.push_str(&text);
                 } else if !text.chars().all(char::is_whitespace) {
-                    #[cfg(test)]
-                    eprintln!("unexpected MySQL XML reference outside field: {text:?}");
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
                     ));
