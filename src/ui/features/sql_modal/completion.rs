@@ -76,6 +76,7 @@ pub(super) fn render_completion_popup(
 
             let kind_label = match candidate.kind {
                 CompletionKind::Keyword => "keyword",
+                CompletionKind::Database => "database",
                 CompletionKind::Table => "table",
                 CompletionKind::Column => "column",
             };
