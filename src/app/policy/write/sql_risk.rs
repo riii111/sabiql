@@ -244,7 +244,8 @@ fn mysql_statement_risk(statement: &MysqlStatement) -> SqlRiskDecision {
         | MysqlStatementKind::CreateTable { .. }
         | MysqlStatementKind::CreateView
         | MysqlStatementKind::CreateIndex => mysql_low(false),
-        MysqlStatementKind::Update { has_where: true }
+        MysqlStatementKind::Replace
+        | MysqlStatementKind::Update { has_where: true }
         | MysqlStatementKind::Delete { has_where: true }
         | MysqlStatementKind::AlterTable => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
@@ -267,6 +268,7 @@ pub fn mysql_statement_label(kind: &MysqlStatementKind) -> &'static str {
         MysqlStatementKind::Show => "SHOW",
         MysqlStatementKind::Describe => "DESCRIBE",
         MysqlStatementKind::Insert => "INSERT",
+        MysqlStatementKind::Replace => "REPLACE",
         MysqlStatementKind::Update { has_where: true } => "UPDATE",
         MysqlStatementKind::Update { has_where: false } => "UPDATE (no WHERE)",
         MysqlStatementKind::Delete { has_where: true } => "DELETE",
@@ -309,6 +311,7 @@ pub fn mysql_statement_is_data_modifying(kind: &MysqlStatementKind) -> bool {
     matches!(
         kind,
         MysqlStatementKind::Insert
+            | MysqlStatementKind::Replace
             | MysqlStatementKind::Update { .. }
             | MysqlStatementKind::Delete { .. }
     )
@@ -471,6 +474,11 @@ pub fn evaluate_mysql_multi_statement(
                 };
             }
         };
+        if matches!(statement.kind, MysqlStatementKind::Replace) {
+            return MultiStatementDecision::Block {
+                reason: "MySQL REPLACE execution is not supported".to_string(),
+            };
+        }
         if matches!(
             statement.kind,
             MysqlStatementKind::Select | MysqlStatementKind::Table

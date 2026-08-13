@@ -7,6 +7,7 @@ pub enum MysqlStatementKind {
     Show,
     Describe,
     Insert,
+    Replace,
     Update { has_where: bool },
     Delete { has_where: bool },
     CreateTable { temporary: bool },
@@ -529,18 +530,29 @@ fn kind_and_target(
         "SHOW" => (MysqlStatementKind::Show, None, None),
         "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
         "INSERT" | "REPLACE" => {
-            let index = skip_mysql_modifiers(
-                tokens,
-                start + 1,
-                &["LOW_PRIORITY", "DELAYED", "HIGH_PRIORITY", "IGNORE"],
-            );
+            let index = if first == "INSERT" {
+                skip_mysql_modifiers(
+                    tokens,
+                    start + 1,
+                    &["LOW_PRIORITY", "DELAYED", "HIGH_PRIORITY", "IGNORE"],
+                )
+            } else {
+                start + 1
+            };
             let target_index = if word(tokens, index) == Some("INTO") {
                 index + 1
+            } else if first == "REPLACE" {
+                return Err(MysqlLexError("REPLACE requires INTO".to_string()));
             } else {
                 index
             };
             let (target, database) = target_after(target_index)?;
-            (MysqlStatementKind::Insert, target, database)
+            let kind = if first == "REPLACE" {
+                MysqlStatementKind::Replace
+            } else {
+                MysqlStatementKind::Insert
+            };
+            (kind, target, database)
         }
         "UPDATE" => {
             let has_where = top_level_word(&tokens[start..], "WHERE");
@@ -794,6 +806,7 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
         MysqlStatementKind::Select
             | MysqlStatementKind::Table
             | MysqlStatementKind::Insert
+            | MysqlStatementKind::Replace
             | MysqlStatementKind::Update { .. }
             | MysqlStatementKind::Delete { .. }
     ))

@@ -1286,7 +1286,7 @@ fn mysql_command_tag(
         | MysqlStatementKind::Describe => {
             CommandTag::Select(user_result.map_or(0, |result| result.values.len() as u64))
         }
-        MysqlStatementKind::Insert => CommandTag::Insert(rows()),
+        MysqlStatementKind::Insert | MysqlStatementKind::Replace => CommandTag::Insert(rows()),
         MysqlStatementKind::Update { .. } => CommandTag::Update(rows()),
         MysqlStatementKind::Delete { .. } => CommandTag::Delete(rows()),
         MysqlStatementKind::CreateTable { temporary: true } => {
