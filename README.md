@@ -149,9 +149,9 @@ SQLite support covers browsing, editing, and ad-hoc SQL on regular database file
 - **Main database only** — Attached and temporary databases are not browsed as separate namespaces.
 - **Session state is per operation** — sabiql starts a new `sqlite3` process for each operation. Statements in one SQL modal submission share that process, but `TEMP` tables/views and connection-local `PRAGMA` settings do not carry over to the next SQL execution. Persistent changes to the main database remain available.
 - **Grid editing requires a declared primary key** — Regular tables with a declared `PRIMARY KEY` support grid editing. Tables without a declared primary key, views, and virtual tables remain browsable but are read-only targets in the grid.
-- **Query plans** — SQLite shows `EXPLAIN QUERY PLAN` in the Plan tab. Plan comparison and `EXPLAIN ANALYZE` are PostgreSQL-only.
-- **No ER diagrams** — Graphviz export requires PostgreSQL metadata.
-- **No JSON tree view** — Structured JSON editing is PostgreSQL-only.
+- **Query plans** — SQLite shows `EXPLAIN QUERY PLAN` in the Plan tab. Plan comparison and `EXPLAIN ANALYZE` are supported for PostgreSQL and MySQL only.
+- **No ER diagrams** — Graphviz ER export is supported for PostgreSQL and MySQL only.
+- **No JSON tree view** — Structured JSON editing is supported for PostgreSQL and MySQL only.
 
 ## MySQL Limitations
 
