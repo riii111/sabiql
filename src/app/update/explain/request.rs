@@ -1,9 +1,11 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
+use crate::policy::sql::mysql_statement::mysql_explain_rejection_message;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
@@ -34,7 +36,12 @@ pub(super) fn reduce_request(
                 return DispatchResult::handled();
             }
             let database_type = state.session.active_database_type_or_default();
-            if is_multi_statement(database_type, &content) {
+            if database_type == DatabaseType::MySQL {
+                if let Some(message) = mysql_explain_rejection_message(&content) {
+                    show_explain_error_on_plan(state, message);
+                    return DispatchResult::handled();
+                }
+            } else if is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(state, "EXPLAIN does not support multiple statements");
                 return DispatchResult::handled();
             }
@@ -59,6 +66,7 @@ pub(super) fn reduce_request(
 
             DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                 dsn,
+                database_type,
                 run_id,
                 query,
                 source_query: content,

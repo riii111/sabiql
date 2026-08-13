@@ -525,12 +525,14 @@ mod tests {
         fn seed_explain_state(state: &mut AppState) {
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users",
             );
             state.explain.set_plan(
                 "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users WHERE id = 1",

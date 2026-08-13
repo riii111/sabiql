@@ -13,7 +13,9 @@ pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> 
             "EXPLAIN QUERY PLAN supports SELECT, INSERT, UPDATE, DELETE, or REPLACE statements"
         }
         DatabaseType::PostgreSQL => "EXPLAIN is unavailable for this statement",
-        DatabaseType::MySQL => "EXPLAIN is unavailable for this connection",
+        DatabaseType::MySQL => {
+            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements"
+        }
     }
 }
 
@@ -100,13 +102,18 @@ pub(super) fn begin_explain_running(state: &mut AppState, now: Instant) -> u64 {
 pub(super) fn finish_explain_success(
     state: &mut AppState,
     plan_text: String,
+    database_type: DatabaseType,
     is_analyze: bool,
     execution_time_ms: u64,
     query: &str,
 ) {
-    state
-        .explain
-        .set_plan(plan_text, is_analyze, execution_time_ms, query);
+    state.explain.set_plan(
+        plan_text,
+        database_type,
+        is_analyze,
+        execution_time_ms,
+        query,
+    );
     state.sql_modal.enter_normal();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.query.mark_idle();

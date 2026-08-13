@@ -6,10 +6,13 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::query_task::QueryTaskRegistry;
-use crate::domain::QuerySource;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
-use crate::domain::sqlite_explain_query_plan_text_from_result;
+use crate::domain::{DatabaseType, QuerySource};
+use crate::domain::{
+    mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
+    sqlite_explain_query_plan_text_from_result,
+};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
@@ -137,6 +140,7 @@ pub async fn run(
 
         Effect::ExecuteExplain {
             dsn,
+            database_type,
             run_id,
             query,
             source_query,
@@ -149,9 +153,18 @@ pub async fn run(
             query_tasks.spawn(async move {
                 match executor.execute_adhoc(&dsn, &query, access_mode).await {
                     Ok(result) => {
-                        let plan_text = sqlite_explain_query_plan_text_from_result(&result);
+                        let plan_text = match database_type {
+                            DatabaseType::SQLite => {
+                                sqlite_explain_query_plan_text_from_result(&result)
+                            }
+                            DatabaseType::PostgreSQL => {
+                                postgres_explain_plan_text_from_result(&result)
+                            }
+                            DatabaseType::MySQL => mysql_explain_plan_text_from_result(&result),
+                        };
                         tx.send(Action::ExplainCompleted {
                             dsn,
+                            database_type,
                             run_id,
                             query: source_query,
                             plan_text,
@@ -779,6 +792,7 @@ mod tests {
 
     mod execute_access_mode {
         use super::*;
+        use crate::domain::DatabaseType;
 
         struct NoopRenderer;
         impl Renderer for NoopRenderer {
@@ -858,6 +872,7 @@ mod tests {
             let action = run_effect(
                 Effect::ExecuteExplain {
                     dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                     run_id: 2,
                     query: "EXPLAIN SELECT 1".to_string(),
                     source_query: "SELECT 1".to_string(),

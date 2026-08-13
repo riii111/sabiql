@@ -170,7 +170,7 @@ impl EngineFeatureProfile {
     pub fn mysql_like() -> Self {
         Self::new(
             DISCONNECTED_INSPECTOR,
-            ExplainProfile::Unsupported,
+            ExplainProfile::QueryPlanOnly,
             NO_CONNECTION_FEATURES,
         )
     }
@@ -426,16 +426,19 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_has_no_unimplemented_features() {
+    fn mysql_profile_exposes_only_the_plan_tab() {
         let profile = EngineFeatureProfile::mysql_like();
 
-        assert!(!profile.supports_explain());
+        assert!(profile.supports_explain());
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
         assert!(!profile.supports_jsonb_detail());
         assert!(!profile.supports_sqlite_diagnostics());
-        assert_eq!(profile.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+        assert_eq!(
+            profile.supported_sql_modal_tabs(),
+            &[SqlModalTab::Sql, SqlModalTab::Plan]
+        );
     }
 
     #[test]

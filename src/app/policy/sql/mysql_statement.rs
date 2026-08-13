@@ -528,7 +528,7 @@ fn kind_and_target(
         "TABLE" => (MysqlStatementKind::Table, None, None),
         "SHOW" => (MysqlStatementKind::Show, None, None),
         "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
-        "INSERT" => {
+        "INSERT" | "REPLACE" => {
             let index = skip_mysql_modifiers(
                 tokens,
                 start + 1,
@@ -771,6 +771,35 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MysqlStatement, MysqlLexErr
         target,
         target_database,
     })
+}
+
+pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
+    let Ok(statements) = split_mysql_statements(sql) else {
+        return Some("MySQL EXPLAIN requires one valid statement");
+    };
+    if statements.len() != 1 {
+        return Some("MySQL EXPLAIN does not support multiple statements");
+    }
+    if statement_contains_unsupported_mysql_control(sql) {
+        return Some("MySQL EXPLAIN does not support MySQL client commands");
+    }
+
+    let Ok(statement) = classify_mysql_statement(&statements[0]) else {
+        return Some(
+            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+        );
+    };
+    (!matches!(
+        statement.kind,
+        MysqlStatementKind::Select
+            | MysqlStatementKind::Table
+            | MysqlStatementKind::Insert
+            | MysqlStatementKind::Update { .. }
+            | MysqlStatementKind::Delete { .. }
+    ))
+    .then_some(
+        "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+    )
 }
 
 pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {

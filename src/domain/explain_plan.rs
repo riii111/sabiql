@@ -7,7 +7,7 @@ pub struct ExplainPlan {
     pub raw_text: String,
     pub top_node_type: Option<String>,
     pub total_cost: Option<f64>,
-    pub estimated_rows: Option<u64>,
+    pub estimated_rows: Option<f64>,
     pub is_analyze: bool,
     pub execution_time_ms: u64,
 }
@@ -89,6 +89,21 @@ pub fn sqlite_explain_query_plan_text_from_result(result: &QueryResult) -> Strin
     })
 }
 
+fn first_result_column_text(result: &QueryResult) -> String {
+    (0..result.data_row_count())
+        .filter_map(|row_idx| result.display_value_at(row_idx, 0))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn postgres_explain_plan_text_from_result(result: &QueryResult) -> String {
+    first_result_column_text(result)
+}
+
+pub fn mysql_explain_plan_text_from_result(result: &QueryResult) -> String {
+    first_result_column_text(result)
+}
+
 impl ExplainPlan {
     pub fn execution_secs(&self) -> f64 {
         self.execution_time_ms as f64 / 1000.0
@@ -113,7 +128,7 @@ const IMPROVED_THRESHOLD: f64 = 0.9;
 const WORSENED_THRESHOLD: f64 = 1.1;
 const MAX_REASONS: usize = 3;
 
-fn parse_cost_fragment(line: &str) -> Option<(f64, u64)> {
+fn parse_cost_fragment(line: &str) -> Option<(f64, f64)> {
     let cost_start = line.find("(cost=")?;
     let after_cost = line.get(cost_start + 6..)?;
     let dots = after_cost.find("..")?;
@@ -125,11 +140,50 @@ fn parse_cost_fragment(line: &str) -> Option<(f64, u64)> {
     let rows_marker = after_dots.find("rows=")?;
     let after_rows = after_dots.get(rows_marker + 5..)?;
     let rows_end = after_rows
-        .find(|c: char| !c.is_ascii_digit())
+        .find(|c: char| c.is_whitespace() || c == ')')
         .unwrap_or(after_rows.len());
-    let rows: u64 = after_rows.get(..rows_end)?.parse().ok()?;
+    let rows: f64 = after_rows.get(..rows_end)?.parse().ok()?;
 
     Some((total_cost, rows))
+}
+
+fn parse_mysql_cost_fragment(line: &str) -> (Option<f64>, Option<f64>) {
+    let Some(cost_start) = line.find("(cost=") else {
+        return (None, None);
+    };
+    let Some(after_cost) = line.get(cost_start + 6..) else {
+        return (None, None);
+    };
+    let cost_end = after_cost
+        .find(|c: char| c.is_whitespace() || c == ')')
+        .unwrap_or(after_cost.len());
+    let cost_token = after_cost.get(..cost_end).unwrap_or_default();
+    let total_cost = cost_token
+        .rsplit_once("..")
+        .map_or(cost_token, |(_, total)| total)
+        .parse()
+        .ok();
+
+    let estimated_rows = line.find("rows=").and_then(|rows_start| {
+        let after_rows = line.get(rows_start + 5..)?;
+        let rows_end = after_rows
+            .find(|c: char| c.is_whitespace() || c == ')')
+            .unwrap_or(after_rows.len());
+        after_rows.get(..rows_end)?.parse().ok()
+    });
+
+    (total_cost, estimated_rows)
+}
+
+fn mysql_node_name(line: &str) -> Option<String> {
+    let node_name = line
+        .split("(cost=")
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("->")
+        .trim();
+    (!node_name.is_empty()).then(|| node_name.to_string())
 }
 
 pub fn parse_explain_text(text: &str, is_analyze: bool, execution_time_ms: u64) -> ExplainPlan {
@@ -154,6 +208,28 @@ pub fn parse_explain_text(text: &str, is_analyze: bool, execution_time_ms: u64) 
         }
         None => (None, None, None),
     };
+
+    ExplainPlan {
+        raw_text: text.to_string(),
+        top_node_type,
+        total_cost,
+        estimated_rows,
+        is_analyze,
+        execution_time_ms,
+    }
+}
+
+pub fn parse_mysql_tree_explain_text(
+    text: &str,
+    is_analyze: bool,
+    execution_time_ms: u64,
+) -> ExplainPlan {
+    let first_cost_line = text.lines().find(|line| line.contains("(cost="));
+    let (top_node_type, total_cost, estimated_rows) =
+        first_cost_line.map_or((None, None, None), |line| {
+            let (cost, rows) = parse_mysql_cost_fragment(line);
+            (mysql_node_name(line), cost, rows)
+        });
 
     ExplainPlan {
         raw_text: text.to_string(),
@@ -211,7 +287,7 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
         }
 
         if let (Some(b_rows), Some(c_rows)) = (baseline.estimated_rows, current.estimated_rows)
-            && b_rows != c_rows
+            && b_rows.partial_cmp(&c_rows) != Some(std::cmp::Ordering::Equal)
         {
             reasons.push(format!("Estimated rows: {b_rows} \u{2192} {c_rows}"));
         }
@@ -227,6 +303,7 @@ pub fn compare_plans(baseline: &ExplainPlan, current: &ExplainPlan) -> Compariso
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::query_result::QuerySource;
 
     mod parse {
         use super::*;
@@ -238,7 +315,7 @@ mod tests {
 
             assert_eq!(plan.top_node_type.as_deref(), Some("Seq Scan on users"));
             assert_eq!(plan.total_cost, Some(1000.0));
-            assert_eq!(plan.estimated_rows, Some(100));
+            assert_eq!(plan.estimated_rows, Some(100.0));
             assert!(!plan.is_analyze);
             assert_eq!(plan.execution_time_ms, 42);
         }
@@ -254,7 +331,7 @@ Sort  (cost=0.00..1234.56 rows=100 width=32)
 
             assert_eq!(plan.top_node_type.as_deref(), Some("Sort"));
             assert_eq!(plan.total_cost, Some(1234.56));
-            assert_eq!(plan.estimated_rows, Some(100));
+            assert_eq!(plan.estimated_rows, Some(100.0));
         }
 
         #[test]
@@ -266,7 +343,7 @@ Execution Time: 0.600 ms";
             let plan = parse_explain_text(text, true, 1);
 
             assert_eq!(plan.total_cost, Some(1000.0));
-            assert_eq!(plan.estimated_rows, Some(100));
+            assert_eq!(plan.estimated_rows, Some(100.0));
             assert!(plan.is_analyze);
         }
 
@@ -280,7 +357,7 @@ Execution Time: 0.600 ms";
                 Some("Index Scan using idx_users_email on users")
             );
             assert_eq!(plan.total_cost, Some(8.30));
-            assert_eq!(plan.estimated_rows, Some(1));
+            assert_eq!(plan.estimated_rows, Some(1.0));
         }
 
         #[test]
@@ -309,12 +386,65 @@ Execution Time: 0.600 ms";
             assert!(plan.top_node_type.is_none());
             assert!(plan.total_cost.is_none());
         }
+
+        #[test]
+        fn mysql_tree_parses_decimal_and_scientific_values() {
+            let text = "-> Filter: (id > 10)  (cost=1.25e-1..2.5 rows=3.75e+2)\n    -> Table scan on users  (cost=0.1 rows=1)";
+            let plan = parse_mysql_tree_explain_text(text, false, 7);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Filter: (id > 10)"));
+            assert_eq!(plan.total_cost, Some(2.5));
+            assert_eq!(plan.estimated_rows, Some(375.0));
+            assert_eq!(plan.raw_text, text);
+        }
+
+        #[test]
+        fn mysql_tree_supports_single_cost_value() {
+            let plan = parse_mysql_tree_explain_text(
+                "-> Table scan on users  (cost=1.25 rows=2.5)",
+                false,
+                0,
+            );
+
+            assert_eq!(plan.total_cost, Some(1.25));
+            assert_eq!(plan.estimated_rows, Some(2.5));
+        }
+
+        #[test]
+        fn mysql_tree_keeps_raw_text_when_node_metrics_are_unavailable() {
+            let text = "-> Filter: (id > 10)  (cost=unknown rows=unknown)";
+            let plan = parse_mysql_tree_explain_text(text, false, 0);
+
+            assert_eq!(plan.raw_text, text);
+            assert_eq!(plan.top_node_type.as_deref(), Some("Filter: (id > 10)"));
+            assert!(plan.total_cost.is_none());
+            assert!(plan.estimated_rows.is_none());
+        }
+    }
+
+    #[test]
+    fn mysql_plan_text_uses_the_first_result_column_without_sqlite_tree_reconstruction() {
+        let result = QueryResult::success(
+            "EXPLAIN FORMAT=TREE SELECT 1".to_string(),
+            vec!["EXPLAIN".to_string(), "ignored".to_string()],
+            vec![
+                vec!["-> first".to_string(), "x".to_string()],
+                vec!["  -> second".to_string(), "y".to_string()],
+            ],
+            0,
+            QuerySource::Adhoc,
+        );
+
+        assert_eq!(
+            mysql_explain_plan_text_from_result(&result),
+            "-> first\n  -> second"
+        );
     }
 
     mod compare {
         use super::*;
 
-        fn make_plan(cost: Option<f64>, rows: Option<u64>, node: Option<&str>) -> ExplainPlan {
+        fn make_plan(cost: Option<f64>, rows: Option<f64>, node: Option<&str>) -> ExplainPlan {
             ExplainPlan {
                 raw_text: String::new(),
                 top_node_type: node.map(ToString::to_string),
@@ -327,8 +457,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn improved_when_cost_drops_below_threshold() {
-            let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
-            let current = make_plan(Some(500.0), Some(100), Some("Seq Scan"));
+            let baseline = make_plan(Some(1000.0), Some(100.0), Some("Seq Scan"));
+            let current = make_plan(Some(500.0), Some(100.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -337,8 +467,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn worsened_when_cost_exceeds_threshold() {
-            let baseline = make_plan(Some(100.0), Some(10), Some("Index Scan"));
-            let current = make_plan(Some(1000.0), Some(10), Some("Seq Scan"));
+            let baseline = make_plan(Some(100.0), Some(10.0), Some("Index Scan"));
+            let current = make_plan(Some(1000.0), Some(10.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -347,8 +477,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn similar_within_threshold() {
-            let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
+            let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
+            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -409,8 +539,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn node_type_change_in_reasons() {
-            let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
-            let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
+            let baseline = make_plan(Some(1000.0), Some(100.0), Some("Seq Scan"));
+            let current = make_plan(Some(10.0), Some(1.0), Some("Index Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -424,8 +554,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn same_node_type_not_in_reasons() {
-            let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
+            let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
+            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -439,8 +569,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn row_estimate_change_in_reasons() {
-            let baseline = make_plan(Some(100.0), Some(1000), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
+            let baseline = make_plan(Some(100.0), Some(1000.0), Some("Seq Scan"));
+            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -454,8 +584,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn same_row_estimate_not_in_reasons() {
-            let baseline = make_plan(Some(100.0), Some(10), Some("Seq Scan"));
-            let current = make_plan(Some(105.0), Some(10), Some("Seq Scan"));
+            let baseline = make_plan(Some(100.0), Some(10.0), Some("Seq Scan"));
+            let current = make_plan(Some(105.0), Some(10.0), Some("Seq Scan"));
 
             let result = compare_plans(&baseline, &current);
 
@@ -469,8 +599,8 @@ Execution Time: 0.600 ms";
 
         #[test]
         fn reasons_capped_at_max() {
-            let baseline = make_plan(Some(1000.0), Some(100), Some("Seq Scan"));
-            let current = make_plan(Some(10.0), Some(1), Some("Index Scan"));
+            let baseline = make_plan(Some(1000.0), Some(100.0), Some("Seq Scan"));
+            let current = make_plan(Some(10.0), Some(1.0), Some("Index Scan"));
 
             let result = compare_plans(&baseline, &current);
 

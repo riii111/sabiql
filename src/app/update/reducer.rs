@@ -429,6 +429,7 @@ mod tests {
                 &mut explain_state,
                 Action::ExplainCompleted {
                     dsn: "sqlite://test.db".to_string(),
+                    database_type: DatabaseType::SQLite,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "QUERY PLAN".to_string(),
