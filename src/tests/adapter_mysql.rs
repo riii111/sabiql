@@ -1352,7 +1352,7 @@ async fn exports_with_a_read_only_session_and_rejects_writes() {
             let write_path = output_directory.path().join("write.csv");
             let result = export_mysql_csv_to_path_for_test(
                 db.dsn(),
-                &format!("INSERT INTO {MYSQL_FIXTURE_TABLE} (id) VALUES (2)"),
+                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE} FOR UPDATE"),
                 write_path.clone(),
             )
             .await;
