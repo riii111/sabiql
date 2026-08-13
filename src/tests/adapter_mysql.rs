@@ -17,9 +17,10 @@ use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_m
 use sabiql_domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
 };
-use sabiql_infra::adapters::mysql::MySqlAdapter;
+use sabiql_infra::adapters::mysql::{MySqlAdapter, export_mysql_csv_to_path_for_test};
 #[cfg(unix)]
 use tempfile::NamedTempFile;
+use tempfile::tempdir;
 
 fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
     ConnectionProfile::with_id_and_config(
@@ -1321,6 +1322,49 @@ async fn times_out_real_cli_query_and_discards_output() {
                 .await;
             if !matches!(result, Err(DbOperationError::Timeout(_))) {
                 return Err(format!("expected a query timeout: {result:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn exports_with_a_read_only_session_and_rejects_writes() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let output_directory = tempdir().map_err(|error| error.to_string())?;
+            let path = output_directory.path().join("read_only.csv");
+            let path = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                "SELECT @@SESSION.transaction_read_only AS transaction_read_only",
+                path,
+            )
+            .await
+            .map_err(|error| format!("read-only CSV export failed: {error:?}"))?;
+            let csv = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read CSV export: {error}"))?;
+            if csv != "transaction_read_only\n1\n" {
+                return Err(format!("unexpected read-only CSV export: {csv:?}"));
+            }
+
+            let write_path = output_directory.path().join("write.csv");
+            let result = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                &format!("INSERT INTO {MYSQL_FIXTURE_TABLE} (id) VALUES (2)"),
+                write_path.clone(),
+            )
+            .await;
+            if !matches!(
+                result,
+                Err(DbOperationError::QueryFailed(ref details))
+                    if details.contains("READ ONLY")
+            ) {
+                return Err(format!("write export was not rejected: {result:?}"));
+            }
+            if write_path.exists() {
+                return Err("write export created an output file".to_string());
             }
             Ok(())
         })

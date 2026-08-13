@@ -28,7 +28,7 @@ use tokio::time::timeout;
 use url::Url;
 use uuid::Uuid;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 use crate::adapters::csv_export::export_to_path;
 use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 #[cfg(test)]
@@ -59,6 +59,7 @@ pub struct MySqlAdapter;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
+const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
@@ -101,6 +102,25 @@ pub async fn run_mysql_cli_script_for_test(
         let _ = process.child.wait().await;
     }
     result
+}
+
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+/// Runs the export process without client-side query policy validation so integration tests can
+/// verify that the MySQL read-only session rejects a side effect at the server boundary.
+pub async fn export_mysql_csv_to_path_for_test(
+    dsn: &str,
+    query: &str,
+    path: PathBuf,
+) -> Result<PathBuf, DbOperationError> {
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    validate_mysql_tls_files(&target)?;
+    let query = query.to_string();
+    export_to_path(path, move |temporary_path| async move {
+        export_mysql_csv_to_file(target, &query, temporary_path).await
+    })
+    .await
 }
 
 #[async_trait]
@@ -1409,7 +1429,7 @@ async fn export_mysql_csv_to_file(
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = timeout(
-        MYSQL_QUERY_TIMEOUT,
+        MYSQL_EXPORT_TIMEOUT,
         run_mysql_export_process(&mut process, query, path),
     )
     .await;
@@ -1440,6 +1460,7 @@ async fn run_mysql_export_process(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &marker)?;
+    configure_mysql_session(process, AccessMode::ReadOnly).await?;
 
     write_mysql_statement(process, query).await?;
     let mut csv_writer = CsvFileWriter::create(path).await?;
@@ -1491,6 +1512,8 @@ async fn stream_mysql_resultset_to_csv(
         let source = MysqlExportPtySource {
             pty: &mut process.pty,
             error_output: Vec::new(),
+            pending: Vec::new(),
+            started: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
@@ -1499,6 +1522,7 @@ async fn stream_mysql_resultset_to_csv(
         let unread = buffered.buffer().to_vec();
         let source = buffered.into_inner();
         source.pty.pending.extend(unread);
+        source.pty.pending.extend(source.pending);
         if !source.error_output.is_empty() {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
@@ -1693,6 +1717,8 @@ where
 struct MysqlExportPtySource<'a> {
     pty: &'a mut MysqlPty,
     error_output: Vec<u8>,
+    pending: Vec<u8>,
+    started: bool,
 }
 
 #[cfg(unix)]
@@ -1701,6 +1727,18 @@ impl MysqlExportPtySource<'_> {
         if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
             self.error_output
                 .extend_from_slice(&bytes[..bytes.len().min(32 * 1024)]);
+        }
+    }
+
+    fn discard_before_resultset(&mut self) {
+        const RESULTSET_START: &[u8] = b"<resultset";
+        if let Some(start) = find_bytes(&self.pending, RESULTSET_START) {
+            self.pending.drain(..start);
+            self.started = true;
+        } else {
+            let keep = RESULTSET_START.len().saturating_sub(1);
+            let discard = self.pending.len().saturating_sub(keep);
+            self.pending.drain(..discard);
         }
     }
 }
@@ -1713,20 +1751,53 @@ impl AsyncRead for MysqlExportPtySource<'_> {
         buffer: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let this = self.get_mut();
-        if !this.pty.pending.is_empty() {
-            let count = buffer.remaining().min(this.pty.pending.len());
-            let bytes = this.pty.pending.drain(..count).collect::<Vec<_>>();
-            this.capture_error(&bytes);
-            buffer.put_slice(&bytes);
-            return Poll::Ready(Ok(()));
-        }
+        loop {
+            if !this.started {
+                if !this.pty.pending.is_empty() {
+                    let bytes = std::mem::take(&mut this.pty.pending);
+                    this.capture_error(&bytes);
+                    this.pending.extend_from_slice(&bytes);
+                }
+                if !this.pending.is_empty() {
+                    this.discard_before_resultset();
+                    if this.started {
+                        continue;
+                    }
+                }
 
-        let filled_before = buffer.filled().len();
-        let result = Pin::new(&mut this.pty.output).poll_read(cx, buffer);
-        if matches!(&result, Poll::Ready(Ok(()))) {
-            this.capture_error(&buffer.filled()[filled_before..]);
+                let mut chunk = [0; 4096];
+                let mut read_buffer = ReadBuf::new(&mut chunk);
+                match Pin::new(&mut this.pty.output).poll_read(cx, &mut read_buffer) {
+                    Poll::Ready(Ok(())) => {
+                        let bytes = read_buffer.filled().to_vec();
+                        if bytes.is_empty() {
+                            return Poll::Ready(Ok(()));
+                        }
+                        this.capture_error(&bytes);
+                        this.pending.extend_from_slice(&bytes);
+                    }
+                    Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
+                    Poll::Pending => return Poll::Pending,
+                }
+                continue;
+            }
+
+            if !this.pending.is_empty() {
+                let count = buffer.remaining().min(this.pending.len());
+                let bytes = this.pending.drain(..count).collect::<Vec<_>>();
+                buffer.put_slice(&bytes);
+                return Poll::Ready(Ok(()));
+            }
+
+            {
+                let filled_before = buffer.filled().len();
+                let result = Pin::new(&mut this.pty.output).poll_read(cx, buffer);
+                if matches!(&result, Poll::Ready(Ok(()))) {
+                    this.capture_error(&buffer.filled()[filled_before..]);
+                }
+                return result;
+            }
         }
-        result
     }
 }
 
@@ -2571,7 +2642,9 @@ async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
         match pty.output.read(&mut chunk).await {
             Ok(0) => return Ok(output),
             Ok(count) => output.extend_from_slice(&chunk[..count]),
-            Err(error) if error.raw_os_error() == Some(libc::EIO) => return Ok(output),
+            Err(error) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
+                return Ok(output);
+            }
             Err(error) => return Err(error),
         }
     }
@@ -4289,6 +4362,57 @@ done
         .unwrap();
 
         assert_eq!(fs::read_to_string(path).unwrap(), "value\none\n");
+    }
+
+    #[tokio::test]
+    async fn export_configures_read_only_session_before_user_sql() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let path = option_file.with_file_name("export.csv");
+
+        export_mysql_csv_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 1",
+            path,
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        let log = fs::read_to_string(log_file).unwrap();
+        let session_index = log
+            .find(MYSQL_READ_ONLY_STATEMENT)
+            .expect("read-only session statement");
+        let user_index = log.find("SELECT 1").expect("user statement");
+        assert!(session_index < user_index, "{log}");
+        assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+    }
+
+    #[tokio::test]
+    async fn export_read_only_session_failure_never_writes_user_sql_or_partial_file() {
+        let (_directory, program, option_file) = fake_mysql("read_only_failure");
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let output_directory = tempfile::tempdir().unwrap();
+        let final_path = output_directory.path().join("export.csv");
+
+        let result = export_to_path(final_path.clone(), |path| {
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123",
+                path,
+                Duration::from_secs(5),
+            )
+        })
+        .await;
+
+        assert!(result.is_err());
+        let log = fs::read_to_string(log_file).unwrap();
+        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+        assert!(!log.contains("SELECT 123"), "{log}");
+        assert!(!final_path.exists());
+        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
     }
 
     #[tokio::test]
