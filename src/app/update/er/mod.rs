@@ -24,7 +24,7 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
-    use crate::update::action::{SmartErRefreshError, SmartErRefreshResult};
+    use crate::update::action::{ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult};
     use std::sync::Arc;
 
     fn reduce_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -254,6 +254,35 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("ER diagrams are not available for this connection")
             );
+        }
+    }
+
+    mod stale_diagram_completion {
+        use super::*;
+
+        #[test]
+        fn completion_after_reset_is_ignored() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_rendering();
+            state.er_preparation.reset();
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    path: "stale.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("reducer should handle stale completion");
+
+            assert!(effects.is_empty());
+            assert!(state.messages.last_success().is_none());
+            assert!(state.messages.last_error().is_none());
         }
     }
 
