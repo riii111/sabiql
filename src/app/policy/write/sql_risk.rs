@@ -112,8 +112,11 @@ mod mysql_tests {
             "SELECT * FROM items FOR UPDATE",
             "SELECT * FROM items INTO OUTFILE '/tmp/items'",
             "SELECT 1; SELECT 2",
+            "SELECT 1\nsystem echo unsafe",
+            "SELECT 1\n\\! echo unsafe",
         ] {
             assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
+            assert!(evaluate_mysql_explain_target(sql, true).is_none(), "{sql}");
         }
         assert!(evaluate_mysql_explain_target("SELECT 1", true).is_some());
         assert!(evaluate_mysql_explain_target("TABLE items", true).is_some());
@@ -884,6 +887,9 @@ fn evaluate_mysql_statement_risk(sql: &str) -> SqlRiskDecision {
 }
 
 pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRiskDecision> {
+    if statement_contains_unsupported_mysql_control(sql) {
+        return None;
+    }
     let statements = split_mysql_statements(sql).ok()?;
     if statements.len() != 1 {
         return None;
