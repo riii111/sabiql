@@ -1,5 +1,10 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
+use crate::policy::sql::mysql_statement::{
+    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_top_level_into_clause,
+    split_mysql_statements, statement_contains_unsupported_mysql_control,
+    target_is_selected_database,
+};
 use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
 use crate::policy::sql::sqlite_transaction::{
     SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
@@ -24,6 +29,124 @@ pub enum AcknowledgeReason {
     // SQLite cannot run this multi-statement script inside the automatic
     // transaction because one statement changes connection-level settings.
     NonAtomicTransaction,
+}
+
+#[cfg(test)]
+mod mysql_tests {
+    use super::*;
+
+    fn mysql(sql: &str) -> MultiStatementDecision {
+        evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
+    }
+
+    #[test]
+    fn mysql_max_risk_uses_destructive_confirmation() {
+        let decision = mysql("SELECT 'a;#'; UPDATE items SET value = 1");
+        match decision {
+            MultiStatementDecision::Allow { risk, statements } => {
+                assert_eq!(statements.len(), 2);
+                assert_eq!(risk.risk_level, RiskLevel::High);
+                assert_eq!(
+                    risk.confirmation,
+                    ConfirmationType::TableNameInput {
+                        target: "ITEMS".to_string()
+                    }
+                );
+                assert!(!risk.read_only_allowed);
+            }
+            MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
+        }
+    }
+
+    #[test]
+    fn mysql_accepts_comments_hints_and_version_comments() {
+        assert!(matches!(
+            mysql("SELECT /*+ MAX_EXECUTION_TIME(1000) */ 1 # trailing\n"),
+            MultiStatementDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            mysql("SELECT 1 /*!80000 + 1 */"),
+            MultiStatementDecision::Allow { .. }
+        ));
+    }
+
+    #[test]
+    fn mysql_rejects_unsupported_controls_and_statements_before_execution() {
+        for sql in [
+            "USE app",
+            "SET sql_mode = 'ANSI_QUOTES'",
+            "LOCK TABLES items READ",
+            "UNLOCK TABLES",
+            "REPLACE INTO items VALUES (1)",
+            "CALL do_work()",
+            "LOAD DATA INFILE 'x' INTO TABLE items",
+            "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn mysql_ddl_rejects_a_different_database() {
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE other.items ADD COLUMN value INT",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE app.items ADD COLUMN value INT",
+            ),
+            MultiStatementDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                None,
+                "CREATE TABLE items (id INT)",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+    }
+
+    #[test]
+    fn mysql_transaction_modifiers_are_rejected() {
+        for sql in [
+            "START TRANSACTION READ ONLY",
+            "COMMIT AND CHAIN",
+            "ROLLBACK AND NO CHAIN",
+            "ROLLBACK TO SAVEPOINT named extra",
+            "RELEASE SAVEPOINT named extra",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "BEGIN",
+            "START TRANSACTION",
+            "COMMIT",
+            "ROLLBACK",
+            "SAVEPOINT named",
+            "ROLLBACK TO named",
+            "ROLLBACK TO SAVEPOINT named",
+            "RELEASE SAVEPOINT named",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
+                "{sql}"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,6 +178,213 @@ pub enum MultiStatementDecision {
     Block {
         reason: String,
     },
+}
+
+fn mysql_low(read_only_allowed: bool) -> SqlRiskDecision {
+    SqlRiskDecision {
+        risk_level: RiskLevel::Low,
+        confirmation: ConfirmationType::Immediate,
+        read_only_allowed,
+    }
+}
+
+fn mysql_table_name_input(statement: &MysqlStatement) -> SqlRiskDecision {
+    match statement.target.as_deref() {
+        Some(target) => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput {
+                target: target.to_string(),
+            },
+            read_only_allowed: false,
+        },
+        None => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::Acknowledge {
+                reason: AcknowledgeReason::TargetNameUnavailable,
+                label: mysql_statement_label(&statement.kind).to_string(),
+            },
+            read_only_allowed: false,
+        },
+    }
+}
+
+fn mysql_statement_risk(statement: &MysqlStatement) -> SqlRiskDecision {
+    match statement.kind {
+        MysqlStatementKind::Select
+        | MysqlStatementKind::Table
+        | MysqlStatementKind::Show
+        | MysqlStatementKind::Describe
+        | MysqlStatementKind::Begin
+        | MysqlStatementKind::StartTransaction
+        | MysqlStatementKind::Commit
+        | MysqlStatementKind::Rollback
+        | MysqlStatementKind::Savepoint
+        | MysqlStatementKind::RollbackToSavepoint
+        | MysqlStatementKind::ReleaseSavepoint => mysql_low(true),
+        MysqlStatementKind::Insert
+        | MysqlStatementKind::CreateTable { .. }
+        | MysqlStatementKind::CreateView
+        | MysqlStatementKind::CreateIndex => mysql_low(false),
+        MysqlStatementKind::Update { has_where: true }
+        | MysqlStatementKind::Delete { has_where: true }
+        | MysqlStatementKind::AlterTable => SqlRiskDecision {
+            risk_level: RiskLevel::Medium,
+            confirmation: ConfirmationType::Immediate,
+            read_only_allowed: false,
+        },
+        MysqlStatementKind::Update { has_where: false }
+        | MysqlStatementKind::Delete { has_where: false }
+        | MysqlStatementKind::DropTable { .. }
+        | MysqlStatementKind::DropView
+        | MysqlStatementKind::DropIndex
+        | MysqlStatementKind::TruncateTable => mysql_table_name_input(statement),
+    }
+}
+
+pub fn mysql_statement_label(kind: &MysqlStatementKind) -> &'static str {
+    match kind {
+        MysqlStatementKind::Select => "SELECT",
+        MysqlStatementKind::Table => "TABLE",
+        MysqlStatementKind::Show => "SHOW",
+        MysqlStatementKind::Describe => "DESCRIBE",
+        MysqlStatementKind::Insert => "INSERT",
+        MysqlStatementKind::Update { has_where: true } => "UPDATE",
+        MysqlStatementKind::Update { has_where: false } => "UPDATE (no WHERE)",
+        MysqlStatementKind::Delete { has_where: true } => "DELETE",
+        MysqlStatementKind::Delete { has_where: false } => "DELETE (no WHERE)",
+        MysqlStatementKind::CreateTable { temporary: true } => "CREATE TEMPORARY TABLE",
+        MysqlStatementKind::CreateTable { temporary: false } => "CREATE TABLE",
+        MysqlStatementKind::AlterTable => "ALTER TABLE",
+        MysqlStatementKind::DropTable { temporary: true } => "DROP TEMPORARY TABLE",
+        MysqlStatementKind::DropTable { temporary: false } => "DROP TABLE",
+        MysqlStatementKind::TruncateTable => "TRUNCATE TABLE",
+        MysqlStatementKind::CreateView => "CREATE VIEW",
+        MysqlStatementKind::DropView => "DROP VIEW",
+        MysqlStatementKind::CreateIndex => "CREATE INDEX",
+        MysqlStatementKind::DropIndex => "DROP INDEX",
+        MysqlStatementKind::Begin => "BEGIN",
+        MysqlStatementKind::StartTransaction => "START TRANSACTION",
+        MysqlStatementKind::Commit => "COMMIT",
+        MysqlStatementKind::Rollback => "ROLLBACK",
+        MysqlStatementKind::Savepoint => "SAVEPOINT",
+        MysqlStatementKind::RollbackToSavepoint => "ROLLBACK TO SAVEPOINT",
+        MysqlStatementKind::ReleaseSavepoint => "RELEASE SAVEPOINT",
+    }
+}
+
+pub fn mysql_statement_is_schema_modifying(kind: &MysqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MysqlStatementKind::CreateTable { .. }
+            | MysqlStatementKind::AlterTable
+            | MysqlStatementKind::DropTable { .. }
+            | MysqlStatementKind::TruncateTable
+            | MysqlStatementKind::CreateView
+            | MysqlStatementKind::DropView
+            | MysqlStatementKind::CreateIndex
+            | MysqlStatementKind::DropIndex
+    )
+}
+
+pub fn mysql_statement_is_data_modifying(kind: &MysqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MysqlStatementKind::Insert
+            | MysqlStatementKind::Update { .. }
+            | MysqlStatementKind::Delete { .. }
+    )
+}
+
+pub fn evaluate_mysql_multi_statement(
+    sql: &str,
+    selected_database: Option<&str>,
+) -> MultiStatementDecision {
+    if statement_contains_unsupported_mysql_control(sql) {
+        return MultiStatementDecision::Block {
+            reason: "unsupported MySQL session or table-lock statement".to_string(),
+        };
+    }
+    let statements = match split_mysql_statements(sql) {
+        Ok(statements) if !statements.is_empty() => statements,
+        Ok(_) => {
+            return MultiStatementDecision::Block {
+                reason: "Empty MySQL input".to_string(),
+            };
+        }
+        Err(error) => {
+            return MultiStatementDecision::Block {
+                reason: error.to_string(),
+            };
+        }
+    };
+
+    let mut planned = Vec::with_capacity(statements.len());
+    for statement_sql in statements {
+        let statement = match classify_mysql_statement(&statement_sql) {
+            Ok(statement) => statement,
+            Err(error) => {
+                return MultiStatementDecision::Block {
+                    reason: error.to_string(),
+                };
+            }
+        };
+        if matches!(
+            statement.kind,
+            MysqlStatementKind::Select | MysqlStatementKind::Table
+        ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
+        {
+            return MultiStatementDecision::Block {
+                reason: "MySQL SELECT INTO clauses are not supported".to_string(),
+            };
+        }
+        if mysql_statement_is_schema_modifying(&statement.kind)
+            && !target_is_selected_database(&statement, selected_database)
+        {
+            return MultiStatementDecision::Block {
+                reason: "MySQL DDL target must be in the selected database".to_string(),
+            };
+        }
+        let decision = mysql_statement_risk(&statement);
+        planned.push((statement, decision));
+    }
+
+    let max_risk = planned
+        .iter()
+        .map(|(_, decision)| decision.risk_level)
+        .max()
+        .unwrap_or(RiskLevel::Low);
+    let table_confirmations: Vec<String> = planned
+        .iter()
+        .filter_map(|(_, decision)| match &decision.confirmation {
+            ConfirmationType::TableNameInput { target } => Some(target.clone()),
+            _ => None,
+        })
+        .collect();
+    if table_confirmations.len() > 1 {
+        return MultiStatementDecision::Block {
+            reason: "MySQL statements require separate destructive confirmations".to_string(),
+        };
+    }
+    let confirmation = if let Some(target) = table_confirmations.into_iter().next() {
+        ConfirmationType::TableNameInput { target }
+    } else {
+        ConfirmationType::Immediate
+    };
+    let read_only_allowed = planned
+        .iter()
+        .all(|(_, decision)| decision.read_only_allowed);
+    let statements = planned
+        .iter()
+        .map(|(statement, _)| statement.sql.clone())
+        .collect();
+    MultiStatementDecision::Allow {
+        statements,
+        risk: SqlRiskDecision {
+            risk_level: max_risk,
+            confirmation,
+            read_only_allowed,
+        },
+    }
 }
 
 fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
@@ -134,6 +464,9 @@ pub fn split_statements(sql: &str) -> Vec<String> {
 }
 
 pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
+    if database_type == DatabaseType::MySQL {
+        return split_mysql_statements(sql).unwrap_or_default();
+    }
     if database_type == DatabaseType::SQLite {
         return split_sqlite_statements(sql)
             .statements()
@@ -341,6 +674,17 @@ pub fn evaluate_multi_statement_for_database(
     database_type: DatabaseType,
     sql: &str,
 ) -> MultiStatementDecision {
+    evaluate_multi_statement_for_database_with_context(database_type, None, sql)
+}
+
+pub fn evaluate_multi_statement_for_database_with_context(
+    database_type: DatabaseType,
+    selected_database: Option<&str>,
+    sql: &str,
+) -> MultiStatementDecision {
+    if database_type == DatabaseType::MySQL {
+        return evaluate_mysql_multi_statement(sql, selected_database);
+    }
     if contains_cli_meta_command(database_type, sql) {
         return MultiStatementDecision::Block {
             reason: "CLI meta-commands are not supported in SQL input".to_string(),
@@ -553,6 +897,10 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
 }
 
 pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
+    if database_type == DatabaseType::MySQL {
+        return classify_mysql_statement(sql)
+            .map_or("SQL", |statement| mysql_statement_label(&statement.kind));
+    }
     let sqlite_label = (database_type == DatabaseType::SQLite)
         .then(|| sqlite_specific_label(sql))
         .flatten();
@@ -565,6 +913,19 @@ pub fn adhoc_label_for_table_name_confirmation(
     database_type: DatabaseType,
     sql: &str,
 ) -> Option<&'static str> {
+    if database_type == DatabaseType::MySQL {
+        return split_mysql_statements(sql)
+            .ok()?
+            .into_iter()
+            .find_map(|statement| {
+                let statement = classify_mysql_statement(&statement).ok()?;
+                matches!(
+                    mysql_statement_risk(&statement).confirmation,
+                    ConfirmationType::TableNameInput { .. }
+                )
+                .then(|| mysql_statement_label(&statement.kind))
+            });
+    }
     for stmt in split_statements_for_database(database_type, sql) {
         let kind = classify(&stmt);
         let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);

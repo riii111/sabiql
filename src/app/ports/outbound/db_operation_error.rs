@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::RefreshScope;
 use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
@@ -54,6 +55,11 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("Query failed after a change")]
+    QueryFailedAfterChange {
+        details: String,
+        refresh_scope: RefreshScope,
+    },
     #[error("Unsupported operation")]
     UnsupportedOperation(String),
     #[error("Metadata parse failed")]
@@ -87,7 +93,7 @@ impl DbOperationError {
             Self::UniqueViolation(_) => "Unique constraint violation",
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
-            Self::QueryFailed(_) => "Query failed",
+            Self::QueryFailed(_) | Self::QueryFailedAfterChange { .. } => "Query failed",
             Self::UnsupportedOperation(_) => "Unsupported operation",
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
@@ -113,7 +119,9 @@ impl DbOperationError {
                 "Retry; if it persists, check for blocking transactions or timeout settings"
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
-            Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::QueryFailed(_) | Self::QueryFailedAfterChange { .. } => {
+                "Review the database error details and SQL"
+            }
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
             Self::MetadataParseFailed(_) => {
                 "Check whether the metadata output format changed unexpectedly"
@@ -138,6 +146,7 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
+            | Self::QueryFailedAfterChange { details, .. }
             | Self::UnsupportedOperation(details)
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
