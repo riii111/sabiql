@@ -2058,6 +2058,12 @@ async fn run_mysql_adhoc_process(
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
+    if has_mysql_cli_error(error_bytes) {
+        return Err(query_failed_after_change(
+            classify_mysql_query_failure(error_bytes),
+            refresh_scope,
+        ));
+    }
     if !status.success() {
         return Err(query_failed_after_change(
             classify_mysql_query_failure(error_bytes),
@@ -3966,6 +3972,7 @@ done
         let script = r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
+pending_error=0
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   case "$line" in
@@ -3987,9 +3994,14 @@ while IFS= read -r line; do
       rows=0
       case "$line" in *ROW_COUNT\(\)* ) rows=3 ;; esac
       printf '%s\n' '<resultset><row><field name="__sabiql_marker">'"$marker"'</field><field name="affected_rows">'"$rows"'</field></row></resultset>'
+      if [ "$pending_error" = 1 ]; then
+        sleep 0.05
+        printf '%s\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
+        pending_error=0
+      fi
       ;;
     *missing_column*)
-      printf '%s\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
+      pending_error=1
       ;;
     *SELECT*)
       value=one
@@ -4365,6 +4377,32 @@ done
                 refresh_scope: RefreshScope::Data,
                 ..
             })
+        ));
+    }
+
+    #[tokio::test]
+    async fn rejects_error_reported_after_row_count_marker() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let statements = split_mysql_statements("SELECT missing_column FROM items")
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT missing_column FROM items",
+            &statements,
+            AccessMode::ReadWrite,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("missing_column")
         ));
     }
 
