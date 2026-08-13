@@ -3,13 +3,124 @@ use std::collections::HashSet;
 use crate::cmd::cache::BoundedLruCache;
 #[cfg(test)]
 use crate::domain::ColumnAttributes;
-use crate::domain::{DatabaseMetadata, Table, TableSummary};
+use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
 use crate::update::helpers::char_to_byte_index;
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 const TABLE_CACHE_CAPACITY: usize = 500;
+
+const MYSQL_COMPLETION_KEYWORDS: &[&str] = &[
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "JOIN",
+    "LEFT",
+    "RIGHT",
+    "INNER",
+    "OUTER",
+    "CROSS",
+    "ON",
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "IS",
+    "NULL",
+    "TRUE",
+    "FALSE",
+    "LIKE",
+    "BETWEEN",
+    "EXISTS",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "AS",
+    "DISTINCT",
+    "ORDER",
+    "BY",
+    "ASC",
+    "DESC",
+    "GROUP",
+    "HAVING",
+    "LIMIT",
+    "OFFSET",
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+    "ALL",
+    "INSERT",
+    "INTO",
+    "VALUES",
+    "UPDATE",
+    "SET",
+    "DELETE",
+    "CREATE",
+    "DROP",
+    "ALTER",
+    "TABLE",
+    "INDEX",
+    "VIEW",
+    "WITH",
+    "RECURSIVE",
+    "COALESCE",
+    "NULLIF",
+    "CAST",
+    "USING",
+    "FULL",
+    "NATURAL",
+    "WINDOW",
+    "OVER",
+    "PARTITION",
+    "ROWS",
+    "RANGE",
+    "UNBOUNDED",
+    "PRECEDING",
+    "FOLLOWING",
+    "CURRENT",
+    "ROW",
+    "EXPLAIN",
+    "ANALYZE",
+    "SHOW",
+    "DESCRIBE",
+    "DATABASE",
+    "DATABASES",
+    "PRIMARY",
+    "KEY",
+    "FOREIGN",
+    "REFERENCES",
+    "UNIQUE",
+    "DEFAULT",
+    "CONSTRAINT",
+    "CHECK",
+    "IF",
+    "CASCADE",
+    "RENAME",
+    "MODIFY",
+    "COLUMN",
+    "ENGINE",
+    "CHARACTER",
+    "CHARSET",
+    "COLLATE",
+    "AUTO_INCREMENT",
+    "FOR",
+    "LOCK",
+    "SHARE",
+    "START",
+    "TRANSACTION",
+    "COMMIT",
+    "ROLLBACK",
+];
+
+#[derive(Clone, Copy)]
+pub(crate) struct CompletionDatabaseScope<'a> {
+    pub(crate) database_type: DatabaseType,
+    pub(crate) active_database: Option<&'a str>,
+    pub(crate) available_databases: &'a [String],
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompletionContext {
@@ -110,7 +221,7 @@ impl CompletionEngine {
                 "CAST",
                 "USING",
             ],
-            lexer: SqlLexer::new(),
+            lexer: SqlLexer::default(),
             table_detail_cache: BoundedLruCache::new(TABLE_CACHE_CAPACITY),
         }
     }
@@ -173,6 +284,33 @@ impl CompletionEngine {
             metadata,
             table_detail,
             recent_columns,
+            CompletionDatabaseScope {
+                database_type: DatabaseType::PostgreSQL,
+                active_database: None,
+                available_databases: &[],
+            },
+        )
+    }
+
+    #[cfg(test)]
+    fn get_candidates_for_database(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        metadata: Option<&DatabaseMetadata>,
+        table_detail: Option<&Table>,
+        recent_columns: &[String],
+        scope: CompletionDatabaseScope<'_>,
+    ) -> Vec<CompletionCandidate> {
+        let prep = self.prepare_for_database(content, cursor_pos, scope.database_type);
+        self.get_candidates_prepared_for_database(
+            content,
+            cursor_pos,
+            &prep,
+            metadata,
+            table_detail,
+            recent_columns,
+            scope,
         )
     }
 
@@ -182,8 +320,27 @@ impl CompletionEngine {
     }
 
     pub fn prepare(&self, content: &str, cursor_pos: usize) -> PreparedCompletion {
-        let tokens = self.lexer.tokenize(content, content.len());
-        let context = self.lexer.build_context(&tokens, cursor_pos);
+        self.prepare_with_lexer(content, cursor_pos, &self.lexer)
+    }
+
+    pub fn prepare_for_database(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        database_type: DatabaseType,
+    ) -> PreparedCompletion {
+        let lexer = SqlLexer::new(database_type);
+        self.prepare_with_lexer(content, cursor_pos, &lexer)
+    }
+
+    fn prepare_with_lexer(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        lexer: &SqlLexer,
+    ) -> PreparedCompletion {
+        let tokens = lexer.tokenize(content, content.len());
+        let context = lexer.build_context(&tokens, cursor_pos);
         let in_string_or_comment =
             SqlLexer::is_in_string_or_comment_from_tokens(&tokens, cursor_pos);
         let before_cursor: String = content.chars().take(cursor_pos).collect();
@@ -250,6 +407,32 @@ impl CompletionEngine {
             metadata,
             table_detail,
             recent_columns,
+            CompletionDatabaseScope {
+                database_type: DatabaseType::PostgreSQL,
+                active_database: None,
+                available_databases: &[],
+            },
+        )
+    }
+
+    pub(crate) fn get_candidates_prepared_for_database(
+        &self,
+        content: &str,
+        cursor_pos: usize,
+        prep: &PreparedCompletion,
+        metadata: Option<&DatabaseMetadata>,
+        table_detail: Option<&Table>,
+        recent_columns: &[String],
+        scope: CompletionDatabaseScope<'_>,
+    ) -> Vec<CompletionCandidate> {
+        self.get_candidates_inner(
+            content,
+            cursor_pos,
+            prep,
+            metadata,
+            table_detail,
+            recent_columns,
+            scope,
         )
     }
 
@@ -261,6 +444,7 @@ impl CompletionEngine {
         metadata: Option<&DatabaseMetadata>,
         table_detail: Option<&Table>,
         recent_columns: &[String],
+        scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
         if prep.in_string_or_comment {
             return vec![];
@@ -280,8 +464,12 @@ impl CompletionEngine {
         );
 
         let mut candidates = match &context {
-            CompletionContext::Keyword => self.keyword_candidates(&current_token),
-            CompletionContext::Table => self.table_candidates(metadata, &current_token),
+            CompletionContext::Keyword => {
+                self.keyword_candidates_for_database(&current_token, scope.database_type)
+            }
+            CompletionContext::Table => {
+                self.table_candidates_for_database(metadata, &current_token, scope)
+            }
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
 
@@ -376,18 +564,21 @@ impl CompletionEngine {
                 mixed
             }
             CompletionContext::SchemaQualified(schema) => {
-                self.schema_qualified_candidates(metadata, schema, &current_token)
+                self.schema_qualified_candidates_for_database(metadata, schema, &current_token)
             }
             CompletionContext::AliasColumn(alias) => {
                 self.alias_column_candidates(alias, &prep.context, metadata, &current_token)
             }
-            CompletionContext::CteOrTable => {
-                self.cte_or_table_candidates(&prep.context, metadata, &current_token)
-            }
+            CompletionContext::CteOrTable => self.cte_or_table_candidates_for_database(
+                &prep.context,
+                metadata,
+                &current_token,
+                scope,
+            ),
         };
 
         if candidates.is_empty() && context != CompletionContext::Keyword {
-            return self.keyword_candidates(&current_token);
+            return self.keyword_candidates_for_database(&current_token, scope.database_type);
         }
 
         let mut seen = HashSet::new();
@@ -456,33 +647,24 @@ impl CompletionEngine {
         current_token: &str,
         sql_context: &SqlContext,
     ) -> Option<String> {
-        let prefix_end = before_cursor.len().saturating_sub(current_token.len());
-        let prefix = &before_cursor[..prefix_end];
+        let prefix = before_cursor
+            .strip_suffix(current_token)
+            .unwrap_or(before_cursor);
 
-        if prefix.ends_with('.') {
-            let potential_alias: String = prefix
-                .trim_end_matches('.')
-                .chars()
-                .rev()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
-
-            if !potential_alias.is_empty() {
-                // Check if it matches any table alias in the context
-                let alias_lower = potential_alias.to_lowercase();
-                for table_ref in &sql_context.tables {
-                    if let Some(ref alias) = table_ref.alias
-                        && alias.to_lowercase() == alias_lower
-                    {
-                        return Some(potential_alias);
-                    }
-                    // Also check if it matches the table name directly
-                    if table_ref.table.to_lowercase() == alias_lower {
-                        return Some(potential_alias);
-                    }
+        if prefix.ends_with('.')
+            && let Some(potential_alias) = Self::identifier_before_dot(prefix)
+        {
+            // Check if it matches any table alias in the context
+            let alias_lower = potential_alias.to_lowercase();
+            for table_ref in &sql_context.tables {
+                if let Some(ref alias) = table_ref.alias
+                    && alias.to_lowercase() == alias_lower
+                {
+                    return Some(potential_alias);
+                }
+                // Also check if it matches the table name directly
+                if table_ref.table.to_lowercase() == alias_lower {
+                    return Some(potential_alias);
                 }
             }
         }
@@ -500,26 +682,30 @@ impl CompletionEngine {
     }
 
     fn detect_schema_prefix(&self, before_cursor: &str, current_token: &str) -> Option<String> {
-        let prefix_end = before_cursor.len().saturating_sub(current_token.len());
-        let prefix = &before_cursor[..prefix_end];
+        let prefix = before_cursor
+            .strip_suffix(current_token)
+            .unwrap_or(before_cursor);
 
         if prefix.ends_with('.') {
-            // Extract schema name before the dot
-            let schema: String = prefix
-                .trim_end_matches('.')
-                .chars()
-                .rev()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
-
-            if !schema.is_empty() {
-                return Some(schema);
-            }
+            return Self::identifier_before_dot(prefix);
         }
         None
+    }
+
+    fn identifier_before_dot(prefix: &str) -> Option<String> {
+        let name = prefix.strip_suffix('.')?.trim_end();
+        if let Some(unquoted) = name.strip_suffix('`') {
+            let start = unquoted.rfind('`')?;
+            return Some(unquoted[start + 1..].replace("``", "`"));
+        }
+
+        let start = name
+            .char_indices()
+            .rev()
+            .take_while(|(_, c)| c.is_alphanumeric() || *c == '_')
+            .last()
+            .map_or(name.len(), |(index, _)| index);
+        (start < name.len()).then(|| name[start..].to_string())
     }
 
     fn detect_context_from_tokens(&self, tokens: &[Token], cursor_pos: usize) -> CompletionContext {
@@ -553,10 +739,23 @@ impl CompletionEngine {
         }
     }
 
+    #[cfg(test)]
     fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
+        self.keyword_candidates_for_database(prefix, DatabaseType::PostgreSQL)
+    }
+
+    fn keyword_candidates_for_database(
+        &self,
+        prefix: &str,
+        database_type: DatabaseType,
+    ) -> Vec<CompletionCandidate> {
         let prefix_upper = prefix.to_uppercase();
-        let mut candidates: Vec<_> = self
-            .keywords
+        let keywords = if database_type == DatabaseType::MySQL {
+            MYSQL_COMPLETION_KEYWORDS
+        } else {
+            &self.keywords
+        };
+        let mut candidates: Vec<_> = keywords
             .iter()
             .filter(|kw| prefix.is_empty() || kw.starts_with(&prefix_upper))
             .map(|kw| {
@@ -631,43 +830,75 @@ impl CompletionEngine {
             .collect()
     }
 
+    #[cfg(test)]
     fn table_candidates(
         &self,
         metadata: Option<&DatabaseMetadata>,
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
+        self.table_candidates_for_database(
+            metadata,
+            prefix,
+            CompletionDatabaseScope {
+                database_type: DatabaseType::PostgreSQL,
+                active_database: None,
+                available_databases: &[],
+            },
+        )
+    }
+
+    fn table_candidates_for_database(
+        &self,
+        metadata: Option<&DatabaseMetadata>,
+        prefix: &str,
+        scope: CompletionDatabaseScope<'_>,
+    ) -> Vec<CompletionCandidate> {
+        let mut candidates = if scope.database_type == DatabaseType::MySQL {
+            self.database_candidates(scope.active_database, scope.available_databases, prefix)
+        } else {
+            Vec::new()
+        };
+
         let Some(metadata) = metadata else {
-            return vec![];
+            return candidates
+                .into_iter()
+                .take(COMPLETION_MAX_CANDIDATES)
+                .collect();
         };
 
         let prefix_lower = prefix.to_lowercase();
-        let mut candidates: Vec<_> = metadata
-            .table_summaries
-            .iter()
-            .filter(|t| {
-                prefix.is_empty()
-                    || t.name.to_lowercase().starts_with(&prefix_lower)
-                    || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
-            })
-            .map(|t| {
-                let name_lower = t.name.to_lowercase();
-                let is_name_prefix = name_lower.starts_with(&prefix_lower);
-                let is_qualified_prefix =
-                    t.qualified_name().to_lowercase().starts_with(&prefix_lower);
-                let score = if is_name_prefix {
-                    100
-                } else if is_qualified_prefix {
-                    50
-                } else {
-                    10
-                };
-                CompletionCandidate {
-                    text: t.qualified_name(),
-                    kind: CompletionKind::Table,
-                    score,
-                }
-            })
-            .collect();
+        candidates.extend(
+            metadata
+                .table_summaries
+                .iter()
+                .filter(|t| {
+                    prefix.is_empty()
+                        || t.name.to_lowercase().starts_with(&prefix_lower)
+                        || t.qualified_name().to_lowercase().starts_with(&prefix_lower)
+                })
+                .map(|t| {
+                    let name_lower = t.name.to_lowercase();
+                    let is_name_prefix = name_lower.starts_with(&prefix_lower);
+                    let is_qualified_prefix =
+                        t.qualified_name().to_lowercase().starts_with(&prefix_lower);
+                    let score = if is_name_prefix {
+                        100
+                    } else if is_qualified_prefix {
+                        50
+                    } else {
+                        10
+                    };
+                    CompletionCandidate {
+                        text: if scope.database_type == DatabaseType::MySQL {
+                            t.name.clone()
+                        } else {
+                            t.qualified_name()
+                        },
+                        kind: CompletionKind::Table,
+                        score,
+                    }
+                }),
+        );
 
         // Sort by score (descending), then alphabetically
         candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
@@ -679,6 +910,36 @@ impl CompletionEngine {
             .into_iter()
             .take(COMPLETION_MAX_CANDIDATES)
             .collect()
+    }
+
+    fn database_candidates(
+        &self,
+        active_database: Option<&str>,
+        available_databases: &[String],
+        prefix: &str,
+    ) -> Vec<CompletionCandidate> {
+        let prefix_lower = prefix.to_lowercase();
+        let mut names = Vec::with_capacity(available_databases.len() + 1);
+        if let Some(database) = active_database {
+            names.push(database.to_string());
+        }
+        names.extend(available_databases.iter().cloned());
+
+        let mut seen = HashSet::new();
+        let mut candidates: Vec<_> = names
+            .into_iter()
+            .filter(|name| {
+                seen.insert(name.to_lowercase())
+                    && (prefix.is_empty() || name.to_lowercase().starts_with(&prefix_lower))
+            })
+            .map(|name| CompletionCandidate {
+                text: name,
+                kind: CompletionKind::Database,
+                score: 120,
+            })
+            .collect();
+        candidates.sort_by(|a, b| a.text.cmp(&b.text));
+        candidates
     }
 
     fn column_candidates(
@@ -766,7 +1027,17 @@ impl CompletionEngine {
             .collect()
     }
 
+    #[cfg(test)]
     fn schema_qualified_candidates(
+        &self,
+        metadata: Option<&DatabaseMetadata>,
+        schema: &str,
+        prefix: &str,
+    ) -> Vec<CompletionCandidate> {
+        self.schema_qualified_candidates_for_database(metadata, schema, prefix)
+    }
+
+    fn schema_qualified_candidates_for_database(
         &self,
         metadata: Option<&DatabaseMetadata>,
         schema: &str,
@@ -840,14 +1111,38 @@ impl CompletionEngine {
         vec![]
     }
 
+    #[cfg(test)]
     fn cte_or_table_candidates(
         &self,
         sql_context: &SqlContext,
         metadata: Option<&DatabaseMetadata>,
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
+        self.cte_or_table_candidates_for_database(
+            sql_context,
+            metadata,
+            prefix,
+            CompletionDatabaseScope {
+                database_type: DatabaseType::PostgreSQL,
+                active_database: None,
+                available_databases: &[],
+            },
+        )
+    }
+
+    fn cte_or_table_candidates_for_database(
+        &self,
+        sql_context: &SqlContext,
+        metadata: Option<&DatabaseMetadata>,
+        prefix: &str,
+        scope: CompletionDatabaseScope<'_>,
+    ) -> Vec<CompletionCandidate> {
         let prefix_lower = prefix.to_lowercase();
-        let mut candidates = Vec::new();
+        let mut candidates = if scope.database_type == DatabaseType::MySQL {
+            self.database_candidates(scope.active_database, scope.available_databases, prefix)
+        } else {
+            Vec::new()
+        };
 
         // Add CTE names first (higher priority)
         for cte in &sql_context.ctes {
@@ -869,7 +1164,11 @@ impl CompletionEngine {
                 {
                     let is_name_prefix = t.name.to_lowercase().starts_with(&prefix_lower);
                     candidates.push(CompletionCandidate {
-                        text: t.qualified_name(),
+                        text: if scope.database_type == DatabaseType::MySQL {
+                            t.name.clone()
+                        } else {
+                            t.qualified_name()
+                        },
                         kind: CompletionKind::Table,
                         score: if is_name_prefix { 100 } else { 50 },
                     });
@@ -1285,6 +1584,148 @@ mod tests {
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
+        }
+    }
+
+    mod mysql_completion {
+        use super::*;
+
+        fn metadata() -> DatabaseMetadata {
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "app".to_string(),
+                "users".to_string(),
+                None,
+                false,
+            )];
+            metadata
+        }
+
+        #[test]
+        fn database_and_table_candidates_use_mysql_scope() {
+            let e = engine();
+            let metadata = metadata();
+            let candidates = e.get_candidates_for_database(
+                "SELECT * FROM ",
+                14,
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &["analytics".to_string()],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "app" && candidate.kind == CompletionKind::Database
+            }));
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "analytics" && candidate.kind == CompletionKind::Database
+            }));
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "users" && candidate.kind == CompletionKind::Table
+            }));
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "app.users")
+            );
+        }
+
+        #[test]
+        fn mysql_keyword_candidates_include_describe() {
+            let e = engine();
+            let candidates = e.get_candidates_for_database(
+                "DES",
+                3,
+                None,
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "DESCRIBE")
+            );
+            assert!(!candidates.iter().any(|candidate| candidate.text == "ILIKE"));
+        }
+
+        #[test]
+        fn mysql_comments_strings_and_backticks_return_no_candidates() {
+            let e = engine();
+            for sql in ["# SELECT", "SELECT 'FROM", "SELECT `FROM"] {
+                let candidates = e.get_candidates_for_database(
+                    sql,
+                    sql.chars().count(),
+                    None,
+                    None,
+                    &[],
+                    CompletionDatabaseScope {
+                        database_type: DatabaseType::MySQL,
+                        active_database: Some("app"),
+                        available_databases: &[],
+                    },
+                );
+
+                assert!(candidates.is_empty(), "unexpected candidates for {sql}");
+            }
+        }
+
+        #[test]
+        fn mysql_backtick_table_alias_returns_cached_columns() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.users".to_string(),
+                create_table("app", "users", &["id", "name"]),
+            );
+            let metadata = metadata();
+            let sql = "SELECT u.na FROM `app`.`users` AS `u`";
+            let cursor = "SELECT u.na".chars().count();
+            let candidates = e.get_candidates_for_database(
+                sql,
+                cursor,
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "name" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
+        fn mysql_backtick_database_prefix_returns_selected_tables() {
+            let e = engine();
+            let metadata = metadata();
+            let sql = "SELECT * FROM `app`.";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| candidate.text == "users"));
         }
     }
 
@@ -2658,7 +3099,7 @@ mod tests {
 
         #[test]
         fn is_in_string_or_comment_from_tokens_edges() {
-            let lexer = SqlLexer::new();
+            let lexer = SqlLexer::default();
 
             let cases = [
                 ("SELECT 'hello'", 10, true),     // inside string
