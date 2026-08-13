@@ -1004,7 +1004,7 @@ mod tests {
     }
 
     #[test]
-    fn origin_from_state_maps_sql_plan_and_jsonb_search() {
+    fn origin_from_state_maps_sql_plan_and_json_search() {
         let mut sql_state = AppState::new("test".to_string());
         sql_state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -1028,10 +1028,7 @@ mod tests {
             .set_mode(JsonbDetailMode::Searching);
         let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
 
-        assert_eq!(
-            jsonb_document.sections()[0].title(),
-            "Current: JSONB Search"
-        );
+        assert_eq!(jsonb_document.sections()[0].title(), "Current: JSON Search");
     }
 
     #[test]
@@ -1077,8 +1074,12 @@ mod tests {
     }
 
     #[test]
-    fn jsonb_help_rows_follow_cell_presentation_policy() {
-        for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+    fn json_help_rows_follow_cell_presentation_policy() {
+        for database_type in [
+            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
+            DatabaseType::SQLite,
+        ] {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
@@ -1091,13 +1092,23 @@ mod tests {
 
             let document = HelpDocument::from_state(&state);
             let descriptions = row_descriptions(&document);
-            let help_includes_jsonb = descriptions
+            let help_includes_json = descriptions
                 .iter()
-                .any(|description| description.contains("JSONB"));
-            let policy_allows_jsonb =
-                CellPresentationPolicy::new(database_type, "jsonb", "").uses_jsonb_detail_modal();
+                .any(|description| description.contains("Close JSON detail"));
+            let data_type = if database_type == DatabaseType::MySQL {
+                "json"
+            } else {
+                "jsonb"
+            };
+            let policy_allows_json =
+                CellPresentationPolicy::new(database_type, data_type, "").uses_jsonb_detail_modal();
 
-            assert_eq!(help_includes_jsonb, policy_allows_jsonb);
+            assert_eq!(help_includes_json, policy_allows_json);
+            assert!(
+                descriptions
+                    .iter()
+                    .all(|description| !description.contains("JSONB"))
+            );
         }
     }
 

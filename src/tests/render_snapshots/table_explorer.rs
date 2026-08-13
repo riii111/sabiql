@@ -139,3 +139,21 @@ fn mysql_explorer_requests_metadata_load() {
 
     insta::assert_snapshot!(output);
 }
+
+#[test]
+fn mysql_explorer_guides_to_database_picker_when_database_is_unselected() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_target(
+        &ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/?ssl-mode=PREFERRED",
+        None,
+    );
+    state.session.mark_probe_connected(false);
+
+    let mut terminal = create_test_terminal();
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}

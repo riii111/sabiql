@@ -6,7 +6,7 @@ test_project ▸ test_db ▸ -                                              no d
 ┌ [1] Explorer ─────────┐[Info] [Cols] [Idx] [FK] [RLS] [Trig] [DDL]                                
 │> public.users         │┌ [2] Inspector ──────────────────────────────────────────────────────────┐
 │  public.posts         ││Owner:   postgres                                                        │
-│  public.╭ JSONB Detail ── settings─────────────────────────────────────────────────────╮         │
+│  public.╭ JSON Detail ── settings──────────────────────────────────────────────────────╮         │
 │         │{                                                                            ▲│         │
 │         │  "key_0": "value_0",                                                        ┃│         │
 │         │  "key_1": "value_1",                                                        ┃│         │

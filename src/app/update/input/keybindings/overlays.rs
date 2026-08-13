@@ -1102,7 +1102,7 @@ pub mod jsonb_detail {
         key_short: "Esc",
         key: "Esc / q",
         desc_short: "Close",
-        description: "Close JSONB detail",
+        description: "Close JSON detail",
         bindings: &[ExecBinding {
             action: Action::CloseModal(ModalKind::JsonbDetail),
             combos: &[KeyCombo::plain(Key::Esc), KeyCombo::plain(Key::Char('q'))],
