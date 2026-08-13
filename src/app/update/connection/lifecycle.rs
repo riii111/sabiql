@@ -75,6 +75,12 @@ pub fn reduce_connection_lifecycle(
             } = target;
 
             if *database_type == DatabaseType::MySQL {
+                if state.session.active_database_type() != Some(DatabaseType::MySQL)
+                    && let Some(current_id) = state.session.active_connection_id().cloned()
+                {
+                    let cache = save_current_cache(state);
+                    state.connection_caches.save(&current_id, cache);
+                }
                 let run_id = state.session.begin_connection_probe(
                     id,
                     name,
@@ -347,6 +353,76 @@ mod tests {
             let saved = state.connection_caches.get(&current_id).unwrap();
             assert_eq!(saved.explorer_selected, 5);
             assert_eq!(saved.inspector_tab, InspectorTab::Indexes);
+        }
+
+        fn assert_non_mysql_cache_survives_mysql_switch(
+            database_type: DatabaseType,
+            dsn: &str,
+            name: &str,
+        ) {
+            let mut state = AppState::new("test".to_string());
+            let source_id = ConnectionId::from_string("source");
+            let mysql_id = ConnectionId::from_string("mysql");
+            let source = ConnectionTarget {
+                id: source_id.clone(),
+                dsn: dsn.to_string(),
+                name: name.to_string(),
+                database_type,
+                database: None,
+            };
+
+            state
+                .session
+                .activate_connection_with_dsn(&source_id, name, database_type, dsn);
+            state.ui.set_explorer_selected_raw(5);
+            state.ui.set_inspector_tab(InspectorTab::Indexes);
+
+            let mysql = ConnectionTarget {
+                id: mysql_id,
+                dsn: "mysql://user@localhost:3306/app".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            };
+            let effects = reduce(&mut state, &Action::SwitchConnection(mysql.clone())).unwrap();
+            let run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switching to MySQL should probe the connection");
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target: mysql,
+                    run_id,
+                },
+            );
+
+            reduce(&mut state, &Action::SwitchConnection(source));
+
+            assert_eq!(state.session.active_connection_id(), Some(&source_id));
+            assert_eq!(state.ui.explorer_selected(), 5);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::Indexes);
+        }
+
+        #[test]
+        fn restores_postgres_cache_after_switching_through_mysql() {
+            assert_non_mysql_cache_survives_mysql_switch(
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/current",
+                "postgres",
+            );
+        }
+
+        #[test]
+        fn restores_sqlite_cache_after_switching_through_mysql() {
+            assert_non_mysql_cache_survives_mysql_switch(
+                DatabaseType::SQLite,
+                "sqlite:///tmp/current.db",
+                "sqlite",
+            );
         }
 
         #[test]
