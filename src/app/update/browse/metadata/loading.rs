@@ -117,7 +117,7 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
 
-            let error_info = ConnectionErrorInfo::from_db_operation_error(error);
+            let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(error, dsn);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
             state.session.mark_connection_failed(error.masked_details());

@@ -34,6 +34,7 @@ fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> Dispat
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
+    use crate::domain::DatabaseType;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -176,6 +177,172 @@ mod tests {
                 SqlModalStatus::ConfirmingAnalyzeHigh { .. }
                     | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
             ));
+        }
+
+        #[test]
+        fn mysql_select_emits_tree_explain_effect_and_keeps_plan_only_surface() {
+            let mut state = sql_modal_state();
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                    ..
+                } if query == "EXPLAIN FORMAT=TREE SELECT 1"
+            ));
+            assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert!(
+                !state
+                    .session
+                    .active_engine_feature_profile()
+                    .supports_explain_analyze()
+            );
+            assert!(
+                !state
+                    .session
+                    .active_engine_feature_profile()
+                    .supports_plan_comparison()
+            );
+        }
+
+        #[test]
+        fn mysql_dml_emits_tree_explain_without_running_the_statement() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("UPDATE users SET active = TRUE".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                    ..
+                } if query == "EXPLAIN FORMAT=TREE UPDATE users SET active = TRUE"
+            ));
+        }
+
+        #[test]
+        fn mysql_explain_rejects_locking_reads() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT * FROM users FOR UPDATE".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("MySQL EXPLAIN only supports side-effect-free read statements")
+            );
+        }
+
+        #[test]
+        fn mysql_ddl_reports_supported_statement_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("CREATE TABLE users(id INT)".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some(
+                    "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+                )
+            );
+        }
+
+        #[test]
+        fn mysql_client_command_reports_client_command_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("\\C /tmp/other.sock".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("MySQL EXPLAIN does not support MySQL client commands")
+            );
+        }
+
+        #[test]
+        fn mysql_multiple_statements_reports_statement_boundary() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("SELECT 1; SELECT 2".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.explain.error.as_deref(),
+                Some("MySQL EXPLAIN does not support multiple statements")
+            );
         }
 
         #[test]
@@ -731,6 +898,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan".to_string(),
@@ -747,19 +915,54 @@ mod tests {
         }
 
         #[test]
+        fn mysql_completion_uses_tree_parser() {
+            let mut state = sql_modal_state();
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+            let _ = state.query.begin_running(Instant::now());
+            state.sql_modal.set_status_for_test(SqlModalStatus::Running);
+
+            reduce_explain(
+                &mut state,
+                &Action::ExplainCompleted {
+                    dsn: "mysql://test".to_string(),
+                    database_type: DatabaseType::MySQL,
+                    run_id: 1,
+                    query: "SELECT 1".to_string(),
+                    plan_text: "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
+                    is_analyze: false,
+                    execution_time_ms: 42,
+                },
+                Instant::now(),
+            );
+
+            let plan = state.explain.right().expect("MySQL plan").plan.clone();
+            assert_eq!(plan.total_cost, Some(1.25));
+            assert_eq!(plan.estimated_rows, Some(2.5));
+            assert_eq!(
+                plan.raw_text,
+                "-> Table scan on users  (cost=1.25 rows=2.5)"
+            );
+        }
+
+        #[test]
         fn mismatched_dsn_does_not_replace_plan() {
             let mut state = sql_modal_state();
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
-            state
-                .explain
-                .set_plan("Original".to_string(), false, 10, "SELECT old");
+            state.explain.set_plan(
+                "Original".to_string(),
+                DatabaseType::PostgreSQL,
+                false,
+                10,
+                "SELECT old",
+            );
 
             reduce_explain(
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://stale".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                     run_id: 1,
                     query: "SELECT stale".to_string(),
                     plan_text: "Stale".to_string(),
@@ -815,9 +1018,13 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "dsn://current");
             let _ = state.query.begin_running(Instant::now());
             state.sql_modal.set_status_for_test(SqlModalStatus::Running);
-            state
-                .explain
-                .set_plan("Original".to_string(), false, 10, "SELECT old");
+            state.explain.set_plan(
+                "Original".to_string(),
+                DatabaseType::PostgreSQL,
+                false,
+                10,
+                "SELECT old",
+            );
 
             reduce_explain(
                 &mut state,
@@ -842,9 +1049,13 @@ mod tests {
         #[test]
         fn sqlite_connection_rejects_compare_edit_query_with_error() {
             let mut state = sql_modal_state();
-            state
-                .explain
-                .set_plan("stale plan".to_string(), false, 1, "SELECT stale");
+            state.explain.set_plan(
+                "stale plan".to_string(),
+                DatabaseType::PostgreSQL,
+                false,
+                1,
+                "SELECT stale",
+            );
             state
                 .sql_modal
                 .editor
@@ -881,6 +1092,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
@@ -899,6 +1111,7 @@ mod tests {
                 &mut state,
                 &Action::ExplainCompleted {
                     dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
                     run_id: 2,
                     query: "SELECT 2".to_string(),
                     plan_text: "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
@@ -951,7 +1164,9 @@ mod tests {
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            state.explain.set_plan(long_plan, false, 0, "Q1");
+            state
+                .explain
+                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q1");
 
             reduce_explain(
                 &mut state,
@@ -974,7 +1189,9 @@ mod tests {
                 .map(|i| format!("line{i}"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            state.explain.set_plan(long_plan, false, 0, "Q1");
+            state
+                .explain
+                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q1");
             let modal_inner = ExplainContext::modal_inner_height(state.ui.terminal_height());
             let max = state.explain.line_count().saturating_sub(modal_inner);
             state.explain.scroll_offset = max;
@@ -1017,8 +1234,12 @@ mod tests {
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
-            state.explain.set_plan(long_plan, false, 0, "Q2");
+            state
+                .explain
+                .set_plan(long_plan.clone(), DatabaseType::PostgreSQL, false, 0, "Q1");
+            state
+                .explain
+                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q2");
 
             reduce_explain(
                 &mut state,
@@ -1041,8 +1262,12 @@ mod tests {
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            state.explain.set_plan(long_plan.clone(), false, 0, "Q1");
-            state.explain.set_plan(long_plan, false, 0, "Q2");
+            state
+                .explain
+                .set_plan(long_plan.clone(), DatabaseType::PostgreSQL, false, 0, "Q1");
+            state
+                .explain
+                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q2");
 
             let max = state.explain.compare_max_scroll(state.ui.terminal_height());
 
@@ -1082,7 +1307,9 @@ mod tests {
                 .map(|i| format!("  ->  Node{i}  (cost=0.00..{i}.00 rows=1 width=32)"))
                 .collect::<Vec<_>>()
                 .join("\n");
-            state.explain.set_plan(long_plan, false, 0, "Q1");
+            state
+                .explain
+                .set_plan(long_plan, DatabaseType::PostgreSQL, false, 0, "Q1");
 
             reduce_explain(
                 &mut state,

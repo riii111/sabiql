@@ -1,3 +1,5 @@
+use super::query_result::RefreshScope;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommandTag {
     Select(u64),
@@ -42,6 +44,16 @@ impl CommandTag {
                     "ANALYZE" | "ATTACH" | "DETACH" | "REINDEX" | "VACUUM"
                 )
         )
+    }
+
+    pub fn refresh_scope(&self) -> RefreshScope {
+        if self.is_schema_modifying() {
+            RefreshScope::Metadata
+        } else if self.needs_refresh() {
+            RefreshScope::Data
+        } else {
+            RefreshScope::None
+        }
     }
 
     pub fn affected_rows(&self) -> Option<u64> {

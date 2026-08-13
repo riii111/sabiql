@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
@@ -34,6 +34,11 @@ pub enum ConnectionSaveError {
     Store(#[from] ConnectionStoreError),
     #[error("{0}")]
     Metadata(#[from] DbOperationError),
+    #[error("{error}")]
+    Probe {
+        error: DbOperationError,
+        dsn: String,
+    },
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -535,6 +540,10 @@ pub enum Action {
         candidates: Vec<CompletionCandidate>,
         trigger_position: usize,
         visible: bool,
+        dsn: Option<String>,
+        connection_generation: u64,
+        database_generation: u64,
+        metadata_generation: u64,
     },
     CompletionAccept,
     CompletionDismiss,
@@ -548,6 +557,7 @@ pub enum Action {
     ExplainAnalyzeCancel,
     ExplainCompleted {
         dsn: String,
+        database_type: DatabaseType,
         run_id: u64,
         query: String,
         plan_text: String,
@@ -625,8 +635,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
-    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
@@ -923,6 +933,7 @@ mod tests {
         assert_eq!(
             Action::ExplainCompleted {
                 dsn: "dsn".to_string(),
+                database_type: DatabaseType::PostgreSQL,
                 run_id: 1,
                 query: "SELECT 1".to_string(),
                 plan_text: "plan".to_string(),

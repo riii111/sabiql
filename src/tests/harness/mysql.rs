@@ -120,6 +120,30 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
     )
 }
 
+pub fn mysql_tls_config() -> MySqlConnectionConfig {
+    MySqlConnectionConfig::new(
+        std::env::var("SABIQL_MYSQL_TEST_HOST")
+            .unwrap_or_else(|_| "host.docker.internal".to_string()),
+        std::env::var("SABIQL_MYSQL_TEST_PORT")
+            .ok()
+            .and_then(|port| port.parse().ok())
+            .unwrap_or(3306),
+        Some(
+            std::env::var("SABIQL_MYSQL_TEST_DATABASE")
+                .unwrap_or_else(|_| "sabiql_test".to_string()),
+        ),
+        std::env::var("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|_| "sabiql".to_string()),
+        std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
+            .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
+        MySqlSslMode::VerifyCa,
+    )
+    .with_tls_paths(
+        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_CA").expect("TLS CA path")),
+        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_CERT").expect("TLS client certificate path")),
+        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_KEY").expect("TLS client key path")),
+    )
+}
+
 fn serialize_option_file(config: &MySqlConnectionConfig) -> String {
     let mut contents = String::from("[client]\n");
     push_option(&mut contents, "host", &config.host);

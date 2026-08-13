@@ -52,6 +52,12 @@ pub struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_ssl_mode: Option<MySqlSslMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_ssl_ca: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_ssl_cert: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_ssl_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -92,6 +98,9 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             password: None,
             ssl_mode: None,
             mysql_ssl_mode: None,
+            mysql_ssl_ca: None,
+            mysql_ssl_cert: None,
+            mysql_ssl_key: None,
             path: None,
         };
         match &profile.config {
@@ -113,6 +122,9 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry.username = Some(config.username.clone());
                 entry.password = Some(config.password.clone());
                 entry.mysql_ssl_mode = Some(config.ssl_mode);
+                entry.mysql_ssl_ca.clone_from(&config.ssl_ca);
+                entry.mysql_ssl_cert.clone_from(&config.ssl_cert);
+                entry.mysql_ssl_key.clone_from(&config.ssl_key);
             }
         }
         entry
@@ -153,14 +165,21 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 Self::with_id_and_config(
                     id,
                     name.as_str().to_string(),
-                    ConnectionConfig::MySQL(MySqlConnectionConfig::new(
-                        required_mysql_host(entry.host.as_ref())?,
-                        entry.port.unwrap_or(3306),
-                        database,
-                        required_mysql_field(entry.username.as_ref(), "username")?,
-                        entry.password.clone().unwrap_or_default(),
-                        entry.mysql_ssl_mode.unwrap_or_default(),
-                    )),
+                    ConnectionConfig::MySQL(
+                        MySqlConnectionConfig::new(
+                            required_mysql_host(entry.host.as_ref())?,
+                            entry.port.unwrap_or(3306),
+                            database,
+                            required_mysql_field(entry.username.as_ref(), "username")?,
+                            entry.password.clone().unwrap_or_default(),
+                            entry.mysql_ssl_mode.unwrap_or_default(),
+                        )
+                        .with_tls_paths(
+                            entry.mysql_ssl_ca.clone(),
+                            entry.mysql_ssl_cert.clone(),
+                            entry.mysql_ssl_key.clone(),
+                        ),
+                    ),
                 )
             }
         }
@@ -237,6 +256,9 @@ mod tests {
             password: None,
             ssl_mode: Some(SslMode::Prefer),
             mysql_ssl_mode: None,
+            mysql_ssl_ca: None,
+            mysql_ssl_cert: None,
+            mysql_ssl_key: None,
             path: None,
         }
     }
@@ -253,6 +275,9 @@ mod tests {
             password: None,
             ssl_mode: None,
             mysql_ssl_mode: None,
+            mysql_ssl_ca: None,
+            mysql_ssl_cert: None,
+            mysql_ssl_key: None,
             path: path.map(str::to_string),
         }
     }
@@ -269,6 +294,9 @@ mod tests {
             password: Some("p@ss#word".to_string()),
             ssl_mode: None,
             mysql_ssl_mode: Some(MySqlSslMode::Required),
+            mysql_ssl_ca: None,
+            mysql_ssl_cert: None,
+            mysql_ssl_key: None,
             path: None,
         }
     }
@@ -378,6 +406,27 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_mode, Some(MySqlSslMode::Required));
         assert_eq!(serialized.port, Some(3306));
         assert_eq!(serialized.password.as_deref(), Some("p@ss#word"));
+    }
+
+    #[test]
+    fn mysql_entry_round_trips_certificate_paths() {
+        let mut entry = mysql_entry(Some("app"));
+        entry.mysql_ssl_mode = Some(MySqlSslMode::VerifyIdentity);
+        entry.mysql_ssl_ca = Some("/tmp/ca #1.pem".to_string());
+        entry.mysql_ssl_cert = Some(r"C:\certs\client.pem".to_string());
+        entry.mysql_ssl_key = Some(r"C:\certs\client-key.pem".to_string());
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let config = profile.mysql_config().unwrap();
+        assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
+        assert_eq!(config.ssl_ca.as_deref(), Some("/tmp/ca #1.pem"));
+        assert_eq!(config.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
+        assert_eq!(config.ssl_key.as_deref(), Some(r"C:\certs\client-key.pem"));
+
+        let serialized = ConnectionConfigEntry::from(&profile);
+        assert_eq!(serialized.mysql_ssl_ca, entry.mysql_ssl_ca);
+        assert_eq!(serialized.mysql_ssl_cert, entry.mysql_ssl_cert);
+        assert_eq!(serialized.mysql_ssl_key, entry.mysql_ssl_key);
     }
 
     #[test]

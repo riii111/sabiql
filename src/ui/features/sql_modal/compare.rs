@@ -438,7 +438,7 @@ mod tests {
                 raw_text: plan.to_string(),
                 top_node_type: Some("Seq Scan".to_string()),
                 total_cost: Some(10.0),
-                estimated_rows: Some(1),
+                estimated_rows: Some(1.0),
                 is_analyze: false,
                 execution_time_ms: 250,
             },

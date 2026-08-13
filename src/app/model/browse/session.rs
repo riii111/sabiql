@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
@@ -423,6 +424,23 @@ impl BrowseSession {
         self.metadata_run.is_current(run_id)
     }
 
+    pub fn metadata_generation(&self) -> u64 {
+        self.metadata_run.last_id()
+    }
+
+    pub fn is_current_completion_scope(
+        &self,
+        dsn: Option<&str>,
+        connection_generation: u64,
+        database_generation: u64,
+        metadata_generation: u64,
+    ) -> bool {
+        self.dsn() == dsn
+            && self.connection_generation == connection_generation
+            && self.database_generation == database_generation
+            && self.metadata_generation() == metadata_generation
+    }
+
     #[must_use]
     pub fn begin_effective_user_fetch(&mut self) -> u64 {
         self.effective_user_run.begin()
@@ -632,6 +650,15 @@ impl BrowseSession {
         self.active_connection
             .as_ref()
             .and_then(|connection| connection.database.as_deref())
+    }
+
+    pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {
+        let connection_id = self.active_connection_id()?.clone();
+        let database = match self.active_database_type() {
+            Some(DatabaseType::MySQL) => self.active_database().map(str::to_owned),
+            Some(DatabaseType::PostgreSQL | DatabaseType::SQLite) | None => None,
+        };
+        Some(QueryHistoryScope::new(connection_id, database))
     }
 
     pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {
@@ -1234,6 +1261,42 @@ mod tests {
             session.restore_from_cache(&cache, &mut query);
 
             assert!(session.database_name().is_none());
+        }
+    }
+
+    mod query_history_scope_tests {
+        use super::*;
+
+        #[test]
+        fn mysql_scope_includes_selected_database() {
+            let mut session = BrowseSession::default();
+            session.activate_connection_with_target(
+                &ConnectionId::from_string("mysql"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/app",
+                Some("app"),
+            );
+
+            let scope = session.query_history_scope().unwrap();
+
+            assert_eq!(scope.database.as_deref(), Some("app"));
+        }
+
+        #[test]
+        fn postgres_and_sqlite_scopes_omit_database() {
+            for database_type in [DatabaseType::PostgreSQL, DatabaseType::SQLite] {
+                let mut session = BrowseSession::default();
+                session.activate_connection_with_target(
+                    &ConnectionId::from_string("connection"),
+                    "connection",
+                    database_type,
+                    "dsn://connection",
+                    Some("database"),
+                );
+
+                assert_eq!(session.query_history_scope().unwrap().database, None);
+            }
         }
     }
 

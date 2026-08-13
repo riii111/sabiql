@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
+use crate::app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider};
 use crate::domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
     IndexType, QueryValue, Schema, Table, TableKind, TableKindInfo, TableSignature, TableSummary,
@@ -348,10 +348,21 @@ async fn execute_metadata_query(
 ) -> Result<MysqlResultSet, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
+    super::validate_mysql_tls_files(&target)?;
+    let statements = super::validate_mysql_multi_query(
+        query,
+        target.database.as_deref(),
+        AccessMode::ReadWrite,
+    )?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let result = run_mysql_adhoc(&option_file.path, query).await;
+    let result =
+        run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadWrite).await;
     drop(option_file);
-    result
+    result?.result_set.ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "MySQL metadata query returned no result set".to_string(),
+        )
+    })
 }
 
 fn selected_database(dsn: &str) -> Result<String, DbOperationError> {

@@ -184,7 +184,11 @@ impl EngineFeatureProfile {
     }
 
     pub fn mysql_like() -> Self {
-        Self::new(MYSQL_INSPECTOR, ExplainProfile::Unsupported, MYSQL_FEATURES)
+        Self::new(
+            MYSQL_INSPECTOR,
+            ExplainProfile::QueryPlanOnly,
+            MYSQL_FEATURES,
+        )
     }
 
     pub fn for_database_type(database_type: DatabaseType) -> Self {
@@ -438,10 +442,10 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_browse_metadata_only() {
+    fn mysql_profile_exposes_browse_metadata_and_plan_only() {
         let profile = EngineFeatureProfile::mysql_like();
 
-        assert!(!profile.supports_explain());
+        assert!(profile.supports_explain());
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
@@ -466,7 +470,10 @@ mod tests {
                 InspectorInfoField::TableKind,
             ]
         );
-        assert_eq!(profile.supported_sql_modal_tabs(), &[SqlModalTab::Sql]);
+        assert_eq!(
+            profile.supported_sql_modal_tabs(),
+            &[SqlModalTab::Sql, SqlModalTab::Plan]
+        );
     }
 
     #[test]

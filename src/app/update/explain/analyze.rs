@@ -1,11 +1,14 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::sql::statement_classifier;
-use crate::policy::write::sql_risk::{ConfirmationType, evaluate_sql_risk_for_database};
+use crate::policy::write::sql_risk::{
+    ConfirmationType, evaluate_mysql_explain_target, evaluate_sql_risk_for_database,
+};
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -42,8 +45,19 @@ pub(super) fn reduce_analyze(
                 );
                 return DispatchResult::handled();
             }
-            let kind = statement_classifier::classify(&content);
-            let risk = evaluate_sql_risk_for_database(database_type, &kind, &content);
+            let risk = if database_type == DatabaseType::MySQL {
+                let Some(risk) = evaluate_mysql_explain_target(&content, true) else {
+                    show_explain_error_on_plan(
+                        state,
+                        "MySQL EXPLAIN ANALYZE only supports side-effect-free SELECT or TABLE statements",
+                    );
+                    return DispatchResult::handled();
+                };
+                risk
+            } else {
+                let kind = statement_classifier::classify(&content);
+                evaluate_sql_risk_for_database(database_type, &kind, &content)
+            };
 
             if state.session.is_read_only() && !risk.read_only_allowed {
                 show_explain_error_on_plan(
@@ -77,6 +91,7 @@ pub(super) fn reduce_analyze(
                     let run_id = begin_explain_running(state, now);
                     return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                         dsn,
+                        database_type,
                         run_id,
                         query: explain_query,
                         source_query: content,
@@ -103,6 +118,12 @@ pub(super) fn reduce_analyze(
                 && let Some(dsn) = state.session.dsn().map(String::from)
             {
                 let database_type = state.session.active_database_type_or_default();
+                if database_type == DatabaseType::MySQL
+                    && evaluate_mysql_explain_target(&query, true).is_none()
+                {
+                    finish_explain_unsupported_analyze(state);
+                    return DispatchResult::handled();
+                }
                 let Some(explain_query) = services
                     .sql_dialect
                     .build_explain_analyze_sql(database_type, &query)
@@ -113,6 +134,7 @@ pub(super) fn reduce_analyze(
                 let run_id = begin_explain_running(state, now);
                 return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
                     dsn,
+                    database_type,
                     run_id,
                     query: explain_query,
                     source_query: query,

@@ -3,13 +3,27 @@
 //! Start the exact fixture and CLI wrapper with:
 //! bash scripts/mysql_integration.sh test
 
+use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
-    AccessMode, DbOperationError, MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider,
-    QueryExecutor,
+    AccessMode, ConnectionProbe, DbOperationError, DsnBuilder, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    MetadataProvider, QueryExecutor,
 };
-use sabiql_domain::{FkAction, IndexType, QueryValue, TableKind};
+use sabiql_domain::{CommandTag, FkAction, IndexType, QueryValue, RefreshScope, TableKind};
 
-use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
+use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
+use sabiql_domain::connection::{
+    ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
+};
+use sabiql_infra::adapters::mysql::MySqlAdapter;
+
+fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
+    ConnectionProfile::with_id_and_config(
+        ConnectionId::new(),
+        name,
+        ConnectionConfig::MySQL(config),
+    )
+    .unwrap()
+}
 
 const MYSQL_COMPOSITE_TABLE: &str = "mysql_preview_composite";
 const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
@@ -40,6 +54,60 @@ async fn connects_to_oracle_mysql_84_fixture() {
         })
     })
     .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
+    let config = mysql_tls_config();
+    let profile = mysql_tls_profile("mysql-tls-integration", config);
+    let adapter = MySqlAdapter::new();
+    let dsn = adapter.build_dsn(&profile);
+
+    adapter.probe(&dsn).await.unwrap();
+    let result = adapter
+        .execute_adhoc(
+            &dsn,
+            &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+            AccessMode::ReadWrite,
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn rejects_oracle_mysql_84_fixture_with_wrong_ca() {
+    let mut config = mysql_tls_config();
+    config.ssl_ca = config.ssl_cert.clone();
+    let profile = mysql_tls_profile("mysql-tls-wrong-ca", config);
+    let adapter = MySqlAdapter::new();
+    let dsn = adapter.build_dsn(&profile);
+    let error = adapter.probe(&dsn).await.unwrap_err();
+    assert_eq!(
+        ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn).kind,
+        ConnectionErrorKind::MySqlCaVerificationFailed
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn rejects_oracle_mysql_84_fixture_with_wrong_hostname() {
+    let mut config = mysql_tls_config();
+    config.host = "host.docker.internal".to_string();
+    config.ssl_mode = MySqlSslMode::VerifyIdentity;
+    let profile = mysql_tls_profile("mysql-tls-wrong-host", config);
+    let adapter = MySqlAdapter::new();
+    let dsn = adapter.build_dsn(&profile);
+    let error = adapter.probe(&dsn).await.unwrap_err();
+    let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+    assert_eq!(
+        error_info.kind,
+        ConnectionErrorKind::MySqlHostnameVerificationFailed,
+        "masked connection error details: {}",
+        error_info.masked_details()
+    );
 }
 
 #[tokio::test]
@@ -383,6 +451,177 @@ async fn previews_empty_mysql_table_with_metadata_columns() {
             if result.columns != ["id", "payload"] || !result.values().is_empty() {
                 return Err(format!("unexpected empty preview: {result:?}"));
             }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn executes_multiple_statements_and_returns_only_the_last_result() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'multi statement' WHERE id = 1; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+        if result.columns != ["empty_text"]
+            || result.values() != [[QueryValue::Text("multi statement".to_string())]]
+            || result.command_tag != Some(CommandTag::Update(1))
+            || result.refresh_scope != RefreshScope::Data
+        {
+            return Err(format!("unexpected multi-statement result: {result:?}"));
+        }
+        db.adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("failed to restore fixture: {error:?}"))?;
+        Ok(())
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn keeps_refresh_scope_and_discards_partial_result_after_a_later_failure() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'changed before failure' WHERE id = 1; SELECT missing_column FROM {MYSQL_FIXTURE_TABLE}"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await;
+        if !matches!(
+            result,
+            Err(DbOperationError::QueryFailedAfterChange {
+                refresh_scope: RefreshScope::Data,
+                ..
+            })
+        ) {
+            return Err(format!("expected partial-change failure: {result:?}"));
+        }
+        db.adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("failed to restore fixture: {error:?}"))?;
+        Ok(())
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn preserves_explicit_transaction_order_and_scope() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "BEGIN; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'rolled back' WHERE id = 1; ROLLBACK; SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+        if result.columns != ["empty_text"]
+            || result.values() != [[QueryValue::Text(String::new())]]
+            || result.command_tag != Some(CommandTag::Select(1))
+            || result.refresh_scope != RefreshScope::Data
+        {
+            return Err(format!("unexpected transaction result: {result:?}"));
+        }
+        Ok(())
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn keeps_temporary_table_state_inside_one_submission() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("system clock error: {error}"))?
+            .as_nanos();
+        let table = format!("sabiql_sab386_tmp_{suffix}");
+        let result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "CREATE TEMPORARY TABLE {table} (id INT); INSERT INTO {table} VALUES (1), (2); SELECT id FROM {table} ORDER BY id; DROP TEMPORARY TABLE {table}"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("{error:?}"))?;
+        if result.columns != ["id"]
+            || result.values() != [[QueryValue::Text("1".to_string())], [QueryValue::Text("2".to_string())]]
+            || result.command_tag != Some(CommandTag::Insert(2))
+            || result.refresh_scope != RefreshScope::Metadata
+        {
+            return Err(format!("unexpected temporary-table result: {result:?}"));
+        }
+        Ok(())
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn reports_metadata_scope_when_a_later_ddl_statement_fails() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("system clock error: {error}"))?
+                .as_nanos();
+            let table = format!("sabiql_sab386_{suffix}");
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("CREATE TABLE {table} (id INT); CREATE TABLE {table} (id INT)"),
+                    AccessMode::ReadWrite,
+                )
+                .await;
+            if !matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                })
+            ) {
+                return Err(format!("expected metadata-scope failure: {result:?}"));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE IF EXISTS {table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up DDL fixture: {error:?}"))?;
             Ok(())
         })
     })

@@ -291,9 +291,9 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state.session.mark_connection_failed(error.user_message());
             }
-            state
-                .connection_error
-                .set_error(ConnectionErrorInfo::from_db_operation_error(error));
+            state.connection_error.set_error(
+                ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
+            );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled()
         }
@@ -308,6 +308,7 @@ mod tests {
 
     use super::*;
     use crate::domain::connection::DatabaseType;
+    use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
     use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::error::ConnectionErrorKind;
@@ -524,12 +525,14 @@ mod tests {
         fn seed_explain_state(state: &mut AppState) {
             state.explain.set_plan(
                 "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users",
             );
             state.explain.set_plan(
                 "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 "SELECT * FROM users WHERE id = 1",
@@ -1624,6 +1627,15 @@ mod tests {
             ]);
             state.ui.set_database_picker(true);
             state.modal.set_mode(InputMode::TablePicker);
+            state
+                .query_history_picker
+                .replace_entries(&[QueryHistoryEntry::new(
+                    "SELECT old_database".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    id,
+                    QueryResultStatus::Success,
+                    None,
+                )]);
 
             let effects = reduce_app(
                 &mut state,
@@ -1641,11 +1653,62 @@ mod tests {
             );
             assert!(state.session.metadata().is_none());
             assert!(state.session.is_read_only());
+            assert_eq!(
+                state.session.available_databases(),
+                ["analytics".to_string()]
+            );
             assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.query_history_picker.entries().is_empty());
             assert!(
                 effects
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+        }
+
+        #[test]
+        fn database_switch_closes_query_history_picker_and_discards_entries() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql");
+            let target = mysql_target(&id, Some("app"));
+            state.session.activate_connection_with_target(
+                &target.id,
+                &target.name,
+                target.database_type,
+                &target.dsn,
+                target.database.as_deref(),
+            );
+            state.session.mark_probe_connected(true);
+            state.modal.set_mode(InputMode::QueryHistoryPicker);
+            state.sql_modal.completion_mut_for_test().visible = true;
+            state
+                .query_history_picker
+                .replace_entries(&[QueryHistoryEntry::new_with_database(
+                    "SELECT from app".to_string(),
+                    "2026-03-13T12:00:00Z".to_string(),
+                    id,
+                    Some("app".to_string()),
+                    QueryResultStatus::Success,
+                    None,
+                )]);
+
+            let effects = reduce_app(
+                &mut state,
+                Action::SwitchMySqlDatabase {
+                    database: "analytics".to_string(),
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_database(), Some("analytics"));
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.query_history_picker.entries().is_empty());
+            assert!(!state.sql_modal.completion().visible);
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
             );
         }
 
