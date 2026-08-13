@@ -38,7 +38,7 @@ quote_option_value() {
 }
 
 create_option_file() {
-    mysql_option_file="$(mktemp)"
+    mysql_option_file="$(mktemp "$temp_dir/mysql-option.XXXXXX")"
     chmod 600 "$mysql_option_file"
     {
         printf '%s\n' '[client]'
@@ -76,7 +76,7 @@ create_tls_material() {
 }
 
 install_cli_wrapper() {
-    mysql_bin_dir="$(mktemp -d)"
+    mysql_bin_dir="$(mktemp -d "$temp_dir/mysql-bin.XXXXXX")"
     ln -s "$script_dir/mysql-docker-cli.sh" "$mysql_bin_dir/mysql"
     export PATH="$mysql_bin_dir:$PATH"
     export SABIQL_MYSQL_IMAGE="$mysql_image"

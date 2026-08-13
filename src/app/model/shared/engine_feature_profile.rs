@@ -102,11 +102,27 @@ const SQLITE_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorInfoField::TableFlags,
     ],
 );
+const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
+    &[
+        InspectorTab::Info,
+        InspectorTab::Columns,
+        InspectorTab::Indexes,
+        InspectorTab::ForeignKeys,
+    ],
+    &[
+        InspectorInfoField::Comment,
+        InspectorInfoField::RowCount,
+        InspectorInfoField::Schema,
+        InspectorInfoField::TableName,
+        InspectorInfoField::TableKind,
+    ],
+);
 
 const NO_CONNECTION_FEATURES: &[ConnectionFeature] = &[];
 const POSTGRESQL_FEATURES: &[ConnectionFeature] =
     &[ConnectionFeature::ErDiagram, ConnectionFeature::JsonbDetail];
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
+const MYSQL_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::ErDiagram];
 
 impl EngineFeatureProfile {
     fn new(
@@ -169,11 +185,11 @@ impl EngineFeatureProfile {
 
     pub fn mysql_like() -> Self {
         Self::new(
-            DISCONNECTED_INSPECTOR,
+            MYSQL_INSPECTOR,
             ExplainProfile::QueryPlanAndAnalyze {
                 comparison: ComparisonSupport::Unsupported,
             },
-            NO_CONNECTION_FEATURES,
+            MYSQL_FEATURES,
         )
     }
 
@@ -428,15 +444,34 @@ mod tests {
     }
 
     #[test]
-    fn mysql_profile_exposes_plan_and_analyze_without_compare() {
+    fn mysql_profile_exposes_browse_metadata_and_analyze_without_compare() {
         let profile = EngineFeatureProfile::mysql_like();
 
         assert!(profile.supports_explain());
         assert!(profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
-        assert!(!profile.supports_er_diagram());
+        assert!(profile.supports_er_diagram());
         assert!(!profile.supports_jsonb_detail());
         assert!(!profile.supports_sqlite_diagnostics());
+        assert_eq!(
+            profile.supported_inspector_tabs(),
+            &[
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+            ]
+        );
+        assert_eq!(
+            profile.supported_inspector_info_fields(),
+            &[
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::Schema,
+                InspectorInfoField::TableName,
+                InspectorInfoField::TableKind,
+            ]
+        );
         assert_eq!(
             profile.supported_sql_modal_tabs(),
             &[SqlModalTab::Sql, SqlModalTab::Plan]
