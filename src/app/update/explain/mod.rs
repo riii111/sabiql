@@ -38,6 +38,7 @@ mod tests {
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+    use crate::policy::write::sql_risk::AcknowledgeReason;
     use crate::ports::outbound::AccessMode;
     use crate::services::AppServices;
     use crate::update::action::{ScrollAmount, ScrollDirection, ScrollTarget};
@@ -551,7 +552,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_select_emits_tree_analyze_effect() {
+        fn mysql_select_requires_execution_confirmation() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
@@ -559,6 +560,23 @@ mod tests {
             let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeRisk {
+                    query,
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                } if query == "SELECT 1"
+            ));
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeConfirm,
                 Instant::now(),
                 &AppServices::stub(),
             )
@@ -577,7 +595,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_table_emits_tree_analyze_effect() {
+        fn mysql_table_requires_execution_confirmation() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -593,14 +611,13 @@ mod tests {
             )
             .unwrap();
 
+            assert!(effects.is_empty());
             assert!(matches!(
-                &effects[0],
-                Effect::ExecuteExplain {
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeRisk {
                     query,
-                    database_type: DatabaseType::MySQL,
-                    is_analyze: true,
-                    ..
-                } if query == "EXPLAIN ANALYZE FORMAT=TREE TABLE items"
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                } if query == "TABLE items"
             ));
         }
 
@@ -837,7 +854,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_read_only_allows_select_analyze_with_read_only_access_mode() {
+        fn mysql_read_only_confirms_select_analyze_with_read_only_access_mode() {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
@@ -846,6 +863,23 @@ mod tests {
             let effects = dispatch_explain(
                 &mut state,
                 &Action::ExplainAnalyzeRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingAnalyzeRisk {
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                    ..
+                }
+            ));
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainAnalyzeConfirm,
                 Instant::now(),
                 &AppServices::stub(),
             )

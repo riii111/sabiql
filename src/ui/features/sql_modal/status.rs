@@ -212,6 +212,11 @@ fn render_confirming_risk_status(
             Style::default().fg(theme.semantic.status.warning),
             "SQLite must run this script without an automatic transaction",
         ),
+        AcknowledgeReason::AnalyzeExecution => (
+            format!("\u{26a0} LOW RISK  {label}"),
+            Style::default().fg(theme.semantic.status.warning),
+            "EXPLAIN ANALYZE will execute this read-only statement",
+        ),
     };
 
     let line1 = Line::from(Span::styled(badge_text, badge_style));

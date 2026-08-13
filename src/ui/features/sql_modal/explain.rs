@@ -266,6 +266,13 @@ fn build_analyze_acknowledge_lines<'a>(
                 " transaction. EXPLAIN ANALYZE will execute it.",
             ],
         ),
+        AcknowledgeReason::AnalyzeExecution => (
+            theme.semantic.status.warning,
+            [
+                " This read-only statement will be executed.",
+                " EXPLAIN ANALYZE will run it and may take time.",
+            ],
+        ),
     };
     let header_style = Style::default()
         .fg(header_color)
@@ -284,6 +291,12 @@ fn build_analyze_acknowledge_lines<'a>(
 
     for text in explanation {
         lines.push(Line::from(Span::styled(text, header_style)));
+    }
+    if matches!(reason, AcknowledgeReason::AnalyzeExecution) {
+        lines.push(Line::from(Span::styled(
+            " Risk: LOW",
+            Style::default().fg(theme.semantic.text.secondary),
+        )));
     }
     lines.push(Line::raw(""));
 
