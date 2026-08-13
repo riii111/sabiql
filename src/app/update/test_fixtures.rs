@@ -20,6 +20,15 @@ pub fn activate_sqlite_connection(state: &mut AppState, dsn: &str) {
     );
 }
 
+pub fn activate_mysql_connection(state: &mut AppState, dsn: &str) {
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "mysql",
+        DatabaseType::MySQL,
+        dsn,
+    );
+}
+
 pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: DatabaseType) {
     match database_type {
         DatabaseType::SQLite => {
@@ -42,6 +51,10 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
             assert!(matches!(effects[0], Effect::CancelActiveQuery));
             assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
             assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
+        }
+        DatabaseType::MySQL => {
+            assert_eq!(effects.len(), 1);
+            assert!(matches!(effects[0], Effect::ClearCompletionEngineCache));
         }
     }
 }

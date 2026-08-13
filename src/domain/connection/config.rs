@@ -1,6 +1,44 @@
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use super::ssl_mode::SslMode;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MySqlSslMode {
+    Disabled,
+    #[default]
+    Preferred,
+    Required,
+    #[serde(rename = "VERIFY_CA")]
+    VerifyCa,
+    #[serde(rename = "VERIFY_IDENTITY")]
+    VerifyIdentity,
+}
+
+impl MySqlSslMode {
+    pub const fn all_variants() -> &'static [Self] {
+        &[
+            Self::Disabled,
+            Self::Preferred,
+            Self::Required,
+            Self::VerifyCa,
+            Self::VerifyIdentity,
+        ]
+    }
+}
+
+impl std::fmt::Display for MySqlSslMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Disabled => "DISABLED",
+            Self::Preferred => "PREFERRED",
+            Self::Required => "REQUIRED",
+            Self::VerifyCa => "VERIFY_CA",
+            Self::VerifyIdentity => "VERIFY_IDENTITY",
+        })
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PostgresConnectionConfig {
@@ -29,6 +67,80 @@ impl PostgresConnectionConfig {
             password: password.into(),
             ssl_mode,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MySqlConnectionConfig {
+    pub host: String,
+    pub port: u16,
+    pub database: Option<String>,
+    pub username: String,
+    pub password: String,
+    pub ssl_mode: MySqlSslMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_ca: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_cert: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssl_key: Option<String>,
+}
+
+impl MySqlConnectionConfig {
+    pub fn new(
+        host: impl Into<String>,
+        port: u16,
+        database: Option<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: MySqlSslMode,
+    ) -> Self {
+        Self {
+            host: host.into(),
+            port,
+            database,
+            username: username.into(),
+            password: password.into(),
+            ssl_mode,
+            ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_tls_paths(
+        mut self,
+        ssl_ca: Option<String>,
+        ssl_cert: Option<String>,
+        ssl_key: Option<String>,
+    ) -> Self {
+        self.ssl_ca = ssl_ca;
+        self.ssl_cert = ssl_cert;
+        self.ssl_key = ssl_key;
+        self
+    }
+
+    pub fn is_valid_host(host: &str) -> bool {
+        let trimmed_host = host.trim();
+        if trimmed_host.is_empty() || trimmed_host != host {
+            return false;
+        }
+        let host = trimmed_host
+            .strip_prefix('[')
+            .and_then(|host| host.strip_suffix(']'))
+            .unwrap_or(host);
+        let host = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else {
+            host.to_string()
+        };
+        let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
+        url.set_host(Some(&host)).is_ok()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        Self::is_valid_host(&self.host)
     }
 }
 
@@ -104,6 +216,7 @@ fn is_sqlite_uri_filename(path: &str) -> bool {
 pub enum ConnectionConfig {
     PostgreSQL(PostgresConnectionConfig),
     SQLite(SqliteConnectionConfig),
+    MySQL(MySqlConnectionConfig),
 }
 
 impl ConnectionConfig {
@@ -111,20 +224,28 @@ impl ConnectionConfig {
         match self {
             Self::PostgreSQL(_) => super::DatabaseType::PostgreSQL,
             Self::SQLite(_) => super::DatabaseType::SQLite,
+            Self::MySQL(_) => super::DatabaseType::MySQL,
         }
     }
 
     pub fn as_postgres(&self) -> Option<&PostgresConnectionConfig> {
         match self {
             Self::PostgreSQL(config) => Some(config),
-            Self::SQLite(_) => None,
+            Self::SQLite(_) | Self::MySQL(_) => None,
         }
     }
 
     pub fn as_sqlite(&self) -> Option<&SqliteConnectionConfig> {
         match self {
             Self::SQLite(config) => Some(config),
-            Self::PostgreSQL(_) => None,
+            Self::PostgreSQL(_) | Self::MySQL(_) => None,
+        }
+    }
+
+    pub fn as_mysql(&self) -> Option<&MySqlConnectionConfig> {
+        match self {
+            Self::MySQL(config) => Some(config),
+            Self::PostgreSQL(_) | Self::SQLite(_) => None,
         }
     }
 }
@@ -132,6 +253,18 @@ impl ConnectionConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mysql_tls_modes_use_mysql_option_names() {
+        assert_eq!(
+            serde_json::to_string(&MySqlSslMode::VerifyCa).unwrap(),
+            "\"VERIFY_CA\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MySqlSslMode::VerifyIdentity).unwrap(),
+            "\"VERIFY_IDENTITY\""
+        );
+    }
 
     mod sqlite_deserialize {
         use super::*;
@@ -188,6 +321,28 @@ mod tests {
                 serde_json::from_str::<SqliteConnectionConfig>(r#"{ "path": "FILE:/tmp/app.db" }"#);
 
             assert!(result.is_err());
+        }
+    }
+
+    mod mysql_host_validation {
+        use super::*;
+
+        #[test]
+        fn accepts_dns_and_ipv6_hosts() {
+            assert!(MySqlConnectionConfig::is_valid_host("localhost"));
+            assert!(MySqlConnectionConfig::is_valid_host("db.example"));
+            assert!(MySqlConnectionConfig::is_valid_host("::1"));
+            assert!(MySqlConnectionConfig::is_valid_host("[::1]"));
+        }
+
+        #[test]
+        fn rejects_url_syntax_in_host() {
+            assert!(!MySqlConnectionConfig::is_valid_host("db example"));
+            assert!(!MySqlConnectionConfig::is_valid_host("db/example"));
+            assert!(!MySqlConnectionConfig::is_valid_host(" localhost "));
+            assert!(!MySqlConnectionConfig::is_valid_host(
+                "db?ssl-mode=REQUIRED"
+            ));
         }
     }
 

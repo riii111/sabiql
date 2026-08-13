@@ -165,7 +165,11 @@ pub fn reduce_input(state: &mut AppState, action: &Action) -> DispatchResult {
             target: ListTarget::TablePicker,
             motion: ListMotion::Next,
         } => {
-            let max = state.filtered_tables().len().saturating_sub(1);
+            let max = if state.ui.database_picker() {
+                state.filtered_databases().len().saturating_sub(1)
+            } else {
+                state.filtered_tables().len().saturating_sub(1)
+            };
             let selected = state.ui.table_picker().selected();
             if selected < max {
                 state.ui.table_picker_mut().set_selection(selected + 1);

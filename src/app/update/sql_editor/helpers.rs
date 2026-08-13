@@ -10,6 +10,13 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> DispatchResult {
+    if state.session.connection_state().is_awaiting_database() {
+        state
+            .sql_modal
+            .finish_adhoc_error("Select a MySQL database first".to_string());
+        return DispatchResult::handled();
+    }
+
     let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal

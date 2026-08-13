@@ -16,7 +16,7 @@ pub fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'st
         return vec![];
     }
 
-    let lexer = SqlLexer::new();
+    let lexer = SqlLexer::default();
     let tokens = lexer.tokenize(text, text.chars().count());
     let mut lines: Vec<Vec<Span<'static>>> = vec![Vec::new()];
 
@@ -65,6 +65,7 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
         TokenKind::Comment => Style::default().fg(theme.component.syntax.sql_comment),
         TokenKind::Operator(_) => Style::default().fg(theme.component.syntax.sql_operator),
         TokenKind::Identifier(_)
+        | TokenKind::BacktickIdentifier(_)
         | TokenKind::Punctuation(_)
         | TokenKind::Whitespace
         | TokenKind::Unknown => Style::default().fg(theme.component.syntax.sql_text),

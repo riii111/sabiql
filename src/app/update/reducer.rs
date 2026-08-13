@@ -99,6 +99,23 @@ fn reduce_inner(
 
         Action::ConfirmSelection => {
             if state.modal.active_mode() == InputMode::TablePicker {
+                if state.ui.database_picker() {
+                    let database = state
+                        .filtered_databases()
+                        .get(state.ui.table_picker().selected())
+                        .map(|database| (*database).clone());
+                    if let Some(database) = database {
+                        state.modal.set_mode(InputMode::Normal);
+                        state.ui.set_database_picker(false);
+                        return reduce(
+                            state,
+                            Action::SwitchMySqlDatabase { database },
+                            now,
+                            services,
+                        );
+                    }
+                    return vec![];
+                }
                 let table = state
                     .filtered_tables()
                     .get(state.ui.table_picker().selected())
@@ -412,6 +429,7 @@ mod tests {
                 &mut explain_state,
                 Action::ExplainCompleted {
                     dsn: "sqlite://test.db".to_string(),
+                    database_type: DatabaseType::SQLite,
                     run_id: 1,
                     query: "SELECT 1".to_string(),
                     plan_text: "QUERY PLAN".to_string(),
@@ -1560,6 +1578,7 @@ mod tests {
     mod effect_producing_actions {
         use super::*;
         use crate::domain::{DatabaseMetadata, MetadataState};
+        use crate::model::connection::state::ConnectionState;
 
         #[test]
         fn load_metadata_with_dsn_returns_fetch_effect() {
@@ -1677,6 +1696,74 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(effects[0], Effect::ExecuteAdhoc { .. }));
+        }
+
+        #[test]
+        fn awaiting_mysql_database_blocks_adhoc_execution() {
+            let mut state = create_test_state();
+            let id = ConnectionId::from_string("mysql-awaiting");
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306",
+                None,
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::AwaitingDatabase);
+            state.modal.set_mode(InputMode::TablePicker);
+            state.ui.set_database_picker(true);
+            reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::DatabasePicker),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
+        }
+
+        #[test]
+        fn awaiting_mysql_database_blocks_write_execution() {
+            let mut state = create_test_state();
+            let id = ConnectionId::from_string("mysql-awaiting");
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306",
+                None,
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::AwaitingDatabase);
+            state.modal.set_mode(InputMode::TablePicker);
+            state.ui.set_database_picker(true);
+            reduce(
+                &mut state,
+                Action::CloseModal(ModalKind::DatabasePicker),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteWrite("UPDATE t SET v = 1".to_string()),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
         }
     }
 
@@ -2025,6 +2112,7 @@ mod tests {
                     dsn: "postgres://db.example.com/mydb".to_string(),
                     name: "Test Connection".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2541,6 +2629,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     name: "Test".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2579,6 +2668,7 @@ mod tests {
                     dsn: "postgres://localhost/other".to_string(),
                     name: "Other".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2631,6 +2721,7 @@ mod tests {
                     dsn: "postgres://localhost/cached".to_string(),
                     name: "Cached".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 now,
                 &AppServices::stub(),
@@ -2682,6 +2773,7 @@ mod tests {
                     dsn: "postgres://localhost/b".to_string(),
                     name: "B".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),
@@ -2694,6 +2786,7 @@ mod tests {
                     dsn: dsn_a.clone(),
                     name: "A".to_string(),
                     database_type: DatabaseType::PostgreSQL,
+                    database: None,
                 }),
                 Instant::now(),
                 &AppServices::stub(),

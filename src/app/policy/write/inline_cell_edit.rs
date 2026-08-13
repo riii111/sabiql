@@ -64,7 +64,7 @@ fn classify_inline_cell_edit(
     value: &QueryValue,
 ) -> Result<InlineCellEditKind, InlineCellEditError> {
     match database_type {
-        DatabaseType::PostgreSQL => classify_postgres_inline_cell_edit(value),
+        DatabaseType::PostgreSQL | DatabaseType::MySQL => classify_postgres_inline_cell_edit(value),
         DatabaseType::SQLite => classify_sqlite_inline_cell_edit(value),
     }
 }

@@ -1,18 +1,30 @@
 use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
-    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-    SQLITE_TABLE_LIST_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
 };
+use sabiql_domain::connection::MySqlSslMode;
+use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
     CliNotFound,
+    MySqlCliNotFound,
+    MySqlCliVersionUnsupported,
+    MySqlServerVersionUnsupported,
+    MySqlSqlModeUnsupported,
+    MySqlTlsHandshakeFailed,
+    MySqlCaVerificationFailed,
+    MySqlHostnameVerificationFailed,
+    MySqlClientCertificateRejected,
     SqliteCliNotFound,
     HostUnreachable,
     AuthFailed,
     DatabaseNotFound,
     ConnectionLost,
     Timeout,
+    ConnectionRefused,
     SqliteVersionTooOld,
     SqliteFileNotFound,
     SqlitePathIsDirectory,
@@ -41,15 +53,33 @@ impl ConnectionErrorKind {
             || stderr_lower.contains("name or service not known")
             || stderr_lower.contains("nodename nor servname provided")
             || stderr_lower.contains("no such host")
+            || stderr_lower.contains("unknown mysql server host")
         {
             return Self::HostUnreachable;
         }
 
         if stderr_lower.contains("password authentication failed")
             || stderr_lower.contains("authentication failed")
+            || stderr_lower.contains("access denied for user")
             || (stderr_lower.contains("fatal:") && stderr_lower.contains("password"))
         {
             return Self::AuthFailed;
+        }
+
+        if is_mysql_client_certificate_error(&stderr_lower) {
+            return Self::MySqlClientCertificateRejected;
+        }
+
+        if is_mysql_hostname_verification_error(&stderr_lower) {
+            return Self::MySqlHostnameVerificationFailed;
+        }
+
+        if is_mysql_ca_verification_error(&stderr_lower) {
+            return Self::MySqlCaVerificationFailed;
+        }
+
+        if is_mysql_tls_handshake_error(&stderr_lower) {
+            return Self::MySqlTlsHandshakeFailed;
         }
 
         if stderr_lower.contains("does not exist")
@@ -58,11 +88,18 @@ impl ConnectionErrorKind {
             return Self::DatabaseNotFound;
         }
 
-        if stderr_lower.contains("timeout expired")
+        if is_mysql_connect_timeout_message(&stderr_lower)
+            || stderr_lower.contains("timeout expired")
             || stderr_lower.contains("timed out")
             || stderr_lower.contains("connection timed out")
         {
             return Self::Timeout;
+        }
+
+        if stderr_lower.contains("connection refused")
+            || stderr_lower.contains("can't connect to mysql server")
+        {
+            return Self::ConnectionRefused;
         }
 
         if is_connection_lost_message(&stderr_lower) {
@@ -75,12 +112,21 @@ impl ConnectionErrorKind {
     pub fn summary(self) -> &'static str {
         match self {
             Self::CliNotFound => "Database CLI not found",
+            Self::MySqlCliNotFound => DatabaseCli::MySql.not_found_summary(),
+            Self::MySqlCliVersionUnsupported => "Unsupported MySQL CLI version",
+            Self::MySqlServerVersionUnsupported => "Unsupported MySQL server version",
+            Self::MySqlSqlModeUnsupported => "Unsupported MySQL sql_mode",
+            Self::MySqlTlsHandshakeFailed => "MySQL TLS handshake failed",
+            Self::MySqlCaVerificationFailed => "MySQL server certificate could not be verified",
+            Self::MySqlHostnameVerificationFailed => "MySQL server hostname could not be verified",
+            Self::MySqlClientCertificateRejected => "MySQL client certificate was rejected",
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_summary(),
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
             Self::DatabaseNotFound => "Database does not exist",
             Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
+            Self::ConnectionRefused => "Connection refused",
             Self::SqliteVersionTooOld => "SQLite 3.41.1 or later required",
             Self::SqliteFileNotFound => "SQLite database file not found",
             Self::SqlitePathIsDirectory => "SQLite path is a directory",
@@ -96,12 +142,31 @@ impl ConnectionErrorKind {
     pub fn hint(self) -> &'static str {
         match self {
             Self::CliNotFound => "Install the database CLI (e.g. psql) and add it to PATH",
+            Self::MySqlCliNotFound => DatabaseCli::MySql.not_found_hint(),
+            Self::MySqlCliVersionUnsupported => "Install the Oracle MySQL 8.4 client",
+            Self::MySqlServerVersionUnsupported => "Connect to an Oracle MySQL 8.4 server",
+            Self::MySqlSqlModeUnsupported => {
+                "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
+            }
+            Self::MySqlTlsHandshakeFailed => {
+                "Check that the server and client support the selected TLS settings"
+            }
+            Self::MySqlCaVerificationFailed => {
+                "Check the CA certificate path and server certificate"
+            }
+            Self::MySqlHostnameVerificationFailed => {
+                "Use the hostname covered by the server certificate"
+            }
+            Self::MySqlClientCertificateRejected => {
+                "Check the client certificate, key, and server account requirements"
+            }
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_hint(),
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
             Self::DatabaseNotFound => "Check database name",
             Self::ConnectionLost => "Reconnect and retry the operation",
             Self::Timeout => "Check network connectivity",
+            Self::ConnectionRefused => "Check the host, port, and server availability",
             Self::SqliteVersionTooOld => "Upgrade sqlite3 to use SQLite safely",
             Self::SqliteFileNotFound => {
                 "Check the file path — sabiql does not create new database files"
@@ -119,6 +184,78 @@ impl ConnectionErrorKind {
             Self::Unknown => "See details for more information",
         }
     }
+}
+
+fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    value.contains("can't connect to mysql server")
+        && (value.contains("(110)") || value.contains("(10060)"))
+}
+
+fn is_mysql_client_certificate_error(value: &str) -> bool {
+    (value.contains("certificate")
+        && (value.contains("certificate required")
+            || value.contains("client certificate")
+            || value.contains("peer did not return a certificate")
+            || value.contains("bad certificate")))
+        || value.contains("tlsv1 alert certificate required")
+}
+
+fn is_mysql_hostname_verification_error(value: &str) -> bool {
+    value.contains("hostname mismatch")
+        || value.contains("host name mismatch")
+        || value.contains("hostname does not match")
+        || value.contains("host name does not match")
+        || value.contains("hostname verification failed")
+        || value.contains("host name verification failed")
+        || value.contains("certificate name mismatch")
+        || value.contains("certificate does not match")
+        || value.contains("does not match certificate")
+        || value.contains("not valid for the requested host")
+        || value.contains("not valid for hostname")
+        || value.contains("subject alternative name")
+        || (value.contains("verify identity") && value.contains("certificate"))
+}
+
+fn is_mysql_ca_verification_error(value: &str) -> bool {
+    value.contains("unable to get local issuer")
+        || value.contains("self-signed certificate")
+        || value.contains("unknown ca")
+        || value.contains("certificate signature failure")
+}
+
+fn is_mysql_ambiguous_certificate_verification_error(value: &str) -> bool {
+    value
+        .to_ascii_lowercase()
+        .contains("error:0a000086:ssl routines::certificate verify failed")
+}
+
+fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
+    let url = Url::parse(dsn).ok()?;
+    if url.scheme() != "mysql" {
+        return None;
+    }
+    url.query_pairs().find_map(|(key, value)| {
+        if key != "ssl-mode" {
+            return None;
+        }
+        Some(match value.as_ref() {
+            "DISABLED" => MySqlSslMode::Disabled,
+            "PREFERRED" => MySqlSslMode::Preferred,
+            "REQUIRED" => MySqlSslMode::Required,
+            "VERIFY_CA" => MySqlSslMode::VerifyCa,
+            "VERIFY_IDENTITY" => MySqlSslMode::VerifyIdentity,
+            _ => return None,
+        })
+    })
+}
+
+fn is_mysql_tls_handshake_error(value: &str) -> bool {
+    value.contains("tls/ssl error")
+        || value.contains("ssl handshake")
+        || value.contains("tls handshake")
+        || value.contains("handshake failure")
+        || value.contains("ssl connection error")
+        || value.contains("tlsv1 alert")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,9 +293,28 @@ impl ConnectionErrorInfo {
                 command: DatabaseCli::Sqlite3,
                 ..
             } => ConnectionErrorKind::SqliteCliNotFound,
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                ..
+            } => ConnectionErrorKind::MySqlCliNotFound,
             DbOperationError::CommandNotFound { .. } => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
+            DbOperationError::UnsupportedOperation(details)
+                if details.contains(MYSQL_CLI_VERSION_REQUIRED_MARKER) =>
+            {
+                ConnectionErrorKind::MySqlCliVersionUnsupported
+            }
+            DbOperationError::UnsupportedOperation(details)
+                if details.contains(MYSQL_SERVER_VERSION_REQUIRED_MARKER) =>
+            {
+                ConnectionErrorKind::MySqlServerVersionUnsupported
+            }
+            DbOperationError::UnsupportedOperation(details)
+                if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER) =>
+            {
+                ConnectionErrorKind::MySqlSqlModeUnsupported
+            }
             DbOperationError::UnsupportedOperation(details)
                 if details.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER)
                     || details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER) =>
@@ -171,6 +327,27 @@ impl ConnectionErrorInfo {
             }
             _ => ConnectionErrorKind::Unknown,
         };
+        Self::with_kind(kind, raw_details)
+    }
+
+    pub fn from_db_operation_error_with_dsn(error: &DbOperationError, dsn: &str) -> Self {
+        let raw_details = error.raw_details().into_owned();
+        let kind = mysql_ssl_mode_from_dsn(dsn)
+            .and_then(|ssl_mode| match (ssl_mode, error) {
+                (MySqlSslMode::VerifyCa, DbOperationError::ConnectionFailed(_))
+                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
+                {
+                    Some(ConnectionErrorKind::MySqlCaVerificationFailed)
+                }
+                (MySqlSslMode::VerifyIdentity, DbOperationError::ConnectionFailed(_))
+                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
+                {
+                    Some(ConnectionErrorKind::MySqlHostnameVerificationFailed)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| Self::from_db_operation_error(error).kind);
+
         Self::with_kind(kind, raw_details)
     }
 
@@ -271,13 +448,70 @@ mod tests {
         }
 
         #[rstest]
-        #[case("Connection refused")]
         #[case("Some random error")]
         #[case("")]
         fn stderr_as_unknown_fallback(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),
                 ConnectionErrorKind::Unknown
+            );
+        }
+
+        #[test]
+        fn stderr_as_connection_refused() {
+            assert_eq!(
+                ConnectionErrorKind::classify("Can't connect to MySQL server on 'localhost' (111)"),
+                ConnectionErrorKind::ConnectionRefused
+            );
+        }
+
+        #[rstest]
+        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)")]
+        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (10060)")]
+        fn stderr_as_mysql_timeout(#[case] stderr: &str) {
+            assert_eq!(
+                ConnectionErrorKind::classify(stderr),
+                ConnectionErrorKind::Timeout
+            );
+        }
+
+        #[test]
+        fn stderr_as_mysql_tls_error() {
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: certificate verify failed: hostname mismatch"
+                ),
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                ),
+                ConnectionErrorKind::MySqlTlsHandshakeFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate"
+                ),
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: unable to get local issuer certificate"
+                ),
+                ConnectionErrorKind::MySqlCaVerificationFailed
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: peer did not return a certificate"
+                ),
+                ConnectionErrorKind::MySqlClientCertificateRejected
+            );
+            assert_eq!(
+                ConnectionErrorKind::classify(
+                    "ERROR 2026 (HY000): TLS/SSL error: handshake failure"
+                ),
+                ConnectionErrorKind::MySqlTlsHandshakeFailed
             );
         }
     }
@@ -293,6 +527,15 @@ mod tests {
         #[case(ConnectionErrorKind::DatabaseNotFound)]
         #[case(ConnectionErrorKind::ConnectionLost)]
         #[case(ConnectionErrorKind::Timeout)]
+        #[case(ConnectionErrorKind::ConnectionRefused)]
+        #[case(ConnectionErrorKind::MySqlCliNotFound)]
+        #[case(ConnectionErrorKind::MySqlCliVersionUnsupported)]
+        #[case(ConnectionErrorKind::MySqlServerVersionUnsupported)]
+        #[case(ConnectionErrorKind::MySqlSqlModeUnsupported)]
+        #[case(ConnectionErrorKind::MySqlTlsHandshakeFailed)]
+        #[case(ConnectionErrorKind::MySqlCaVerificationFailed)]
+        #[case(ConnectionErrorKind::MySqlHostnameVerificationFailed)]
+        #[case(ConnectionErrorKind::MySqlClientCertificateRejected)]
         #[case(ConnectionErrorKind::SqliteVersionTooOld)]
         #[case(ConnectionErrorKind::SqliteFileNotFound)]
         #[case(ConnectionErrorKind::SqlitePathIsDirectory)]
@@ -338,6 +581,28 @@ mod tests {
         }
 
         #[test]
+        fn from_db_operation_error_with_dsn_uses_mysql_tls_mode_for_ambiguous_verification() {
+            let error = DbOperationError::ConnectionFailed(
+                "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                    .to_string(),
+            );
+            let ca = ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                &error,
+                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_CA",
+            );
+            let identity = ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                &error,
+                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY",
+            );
+
+            assert_eq!(ca.kind, ConnectionErrorKind::MySqlCaVerificationFailed);
+            assert_eq!(
+                identity.kind,
+                ConnectionErrorKind::MySqlHostnameVerificationFailed
+            );
+        }
+
+        #[test]
         fn from_db_operation_error_preserves_connection_lost_kind() {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::ConnectionLost("connection to server was lost".to_string()),
@@ -368,6 +633,50 @@ mod tests {
             assert_eq!(info.kind, ConnectionErrorKind::SqliteCliNotFound);
             assert_eq!(info.summary(), "sqlite3 not found");
             assert_eq!(info.hint(), "Install sqlite3 and add it to PATH");
+        }
+
+        #[rstest]
+        #[case(
+            DatabaseCli::MySql,
+            ConnectionErrorKind::MySqlCliNotFound,
+            "mysql not found"
+        )]
+        fn from_db_operation_error_classifies_missing_mysql_cli(
+            #[case] command: DatabaseCli,
+            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_summary: &str,
+        ) {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::CommandNotFound {
+                    command,
+                    details: "No such file or directory".to_string(),
+                });
+
+            assert_eq!(info.kind, expected_kind);
+            assert_eq!(info.summary(), expected_summary);
+        }
+
+        #[rstest]
+        #[case(
+            MYSQL_CLI_VERSION_REQUIRED_MARKER,
+            ConnectionErrorKind::MySqlCliVersionUnsupported
+        )]
+        #[case(
+            MYSQL_SERVER_VERSION_REQUIRED_MARKER,
+            ConnectionErrorKind::MySqlServerVersionUnsupported
+        )]
+        #[case(
+            MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+            ConnectionErrorKind::MySqlSqlModeUnsupported
+        )]
+        fn from_db_operation_error_classifies_mysql_requirements(
+            #[case] marker: &str,
+            #[case] expected_kind: ConnectionErrorKind,
+        ) {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::UnsupportedOperation(marker.to_string()),
+            );
+            assert_eq!(info.kind, expected_kind);
         }
 
         #[rstest]

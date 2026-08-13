@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::config::{
-    ConnectionConfig, PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
+    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
@@ -25,6 +26,10 @@ pub enum ConnectionProfileError {
     UnsupportedSqliteUriFilename,
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
+    #[error("MySQL connection field `{0}` is required")]
+    MissingMySqlField(&'static str),
+    #[error("MySQL connection host is invalid")]
+    InvalidMySqlHost,
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
 }
@@ -81,6 +86,24 @@ impl ConnectionProfile {
         })
     }
 
+    pub fn new_mysql(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        database: Option<String>,
+        username: impl Into<String>,
+        password: impl Into<String>,
+        ssl_mode: MySqlSslMode,
+    ) -> Result<Self, ConnectionProfileError> {
+        Self::with_id_and_config(
+            ConnectionId::new(),
+            name,
+            ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                host, port, database, username, password, ssl_mode,
+            )),
+        )
+    }
+
     pub fn with_id_postgres(
         id: ConnectionId,
         name: impl Into<String>,
@@ -117,6 +140,9 @@ impl ConnectionProfile {
         name: impl Into<String>,
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
+        if matches!(&config, ConnectionConfig::MySQL(config) if !config.is_valid()) {
+            return Err(ConnectionProfileError::InvalidMySqlHost);
+        }
         Ok(Self {
             id,
             name: ConnectionName::new(name)?,
@@ -134,6 +160,10 @@ impl ConnectionProfile {
 
     pub fn sqlite_config(&self) -> Option<&SqliteConnectionConfig> {
         self.config.as_sqlite()
+    }
+
+    pub fn mysql_config(&self) -> Option<&MySqlConnectionConfig> {
+        self.config.as_mysql()
     }
 
     pub fn display_name(&self) -> &str {
@@ -180,6 +210,24 @@ mod tests {
                 SslMode::Prefer,
             );
             assert!(result.is_err());
+        }
+
+        #[test]
+        fn invalid_mysql_host_returns_error() {
+            let result = ConnectionProfile::new_mysql(
+                "MySQL",
+                "db example",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Preferred,
+            );
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::InvalidMySqlHost)
+            ));
         }
     }
 

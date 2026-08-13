@@ -180,6 +180,7 @@ pub struct UiState {
     connection_list_pane_height: u16,
 
     table_picker: PickerState,
+    database_picker: bool,
 
     er_picker: PickerState,
     er_selected_tables: BTreeSet<String>,
@@ -331,6 +332,14 @@ impl UiState {
 
     pub fn table_picker_mut(&mut self) -> &mut PickerState {
         &mut self.table_picker
+    }
+
+    pub fn database_picker(&self) -> bool {
+        self.database_picker
+    }
+
+    pub fn set_database_picker(&mut self, active: bool) {
+        self.database_picker = active;
     }
 
     pub fn er_picker(&self) -> &PickerState {

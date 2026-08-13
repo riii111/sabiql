@@ -23,6 +23,7 @@ use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
+use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -163,6 +164,9 @@ impl Footer {
                     }
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
+                    }
+                    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                        list.push(global::DATABASE_PICKER.as_hint());
                     }
                     list.push(table_picker_key(keymap_preset).as_hint());
                     list.push(query_history(keymap_preset).as_hint());

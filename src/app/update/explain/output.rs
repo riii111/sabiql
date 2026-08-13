@@ -14,6 +14,7 @@ pub(super) fn reduce_output(
     match action {
         Action::ExplainCompleted {
             dsn,
+            database_type,
             run_id,
             query,
             plan_text,
@@ -26,6 +27,7 @@ pub(super) fn reduce_output(
             finish_explain_success(
                 state,
                 plan_text.clone(),
+                *database_type,
                 *is_analyze,
                 *execution_time_ms,
                 query,

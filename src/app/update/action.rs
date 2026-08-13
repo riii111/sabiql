@@ -1,9 +1,10 @@
+use std::fmt;
 use std::sync::Arc;
 
 use crate::domain::connection::{
-    ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
+    ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
-use crate::domain::query_history::QueryHistoryEntry;
+use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::JsonbDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
@@ -11,8 +12,8 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
-use crate::policy::FeatureRequirement;
 use crate::policy::write::write_guardrails::WritePreview;
+use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
 use crate::ports::outbound::folder_opener::FolderOpenError;
@@ -20,11 +21,10 @@ use crate::ports::outbound::query_history::QueryHistoryError;
 use crate::ports::outbound::settings_store::SettingsStoreError;
 use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
+use url::Url;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::{
-    ConnectionId, DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table,
-};
+use crate::domain::{DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
@@ -34,6 +34,11 @@ pub enum ConnectionSaveError {
     Store(#[from] ConnectionStoreError),
     #[error("{0}")]
     Metadata(#[from] DbOperationError),
+    #[error("{error}")]
+    Probe {
+        error: DbOperationError,
+        dsn: String,
+    },
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -192,6 +197,7 @@ pub enum ListMotion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalKind {
     TablePicker,
+    DatabasePicker,
     CommandPalette,
     Settings,
     Help,
@@ -249,12 +255,44 @@ pub struct TableTarget {
     pub generation: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ConnectionTarget {
     pub id: ConnectionId,
     pub dsn: String,
     pub name: String,
     pub database_type: DatabaseType,
+    pub database: Option<String>,
+}
+
+impl fmt::Debug for ConnectionTarget {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ConnectionTarget")
+            .field("id", &self.id)
+            .field("dsn", &mask_password(&self.dsn))
+            .field("name", &self.name)
+            .field("database_type", &self.database_type)
+            .field("database", &self.database)
+            .finish()
+    }
+}
+
+impl ConnectionTarget {
+    pub fn with_database(&self, database: &str) -> Option<Self> {
+        let mut url = Url::parse(&self.dsn).ok()?;
+        url.path_segments_mut().ok()?.clear().push(database);
+        Some(Self {
+            dsn: url.to_string(),
+            database: Some(database.to_string()),
+            ..self.clone()
+        })
+    }
+
+    pub fn server_dsn(&self) -> Option<String> {
+        let mut url = Url::parse(&self.dsn).ok()?;
+        url.path_segments_mut().ok()?.clear();
+        Some(url.to_string())
+    }
 }
 
 // Full Action equality is intentionally unavailable: some payloads carry
@@ -347,6 +385,32 @@ pub enum Action {
     ConnectionSetupCancel,
     ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(ConnectionSaveError),
+    ConnectionProbeCompleted {
+        target: ConnectionTarget,
+        run_id: u64,
+    },
+    ConnectionProbeFailed {
+        target: ConnectionTarget,
+        run_id: u64,
+        error: DbOperationError,
+    },
+    SwitchMySqlDatabase {
+        database: String,
+    },
+    MySqlDatabasesLoaded {
+        connection_id: ConnectionId,
+        dsn: String,
+        connection_generation: u64,
+        database_generation: u64,
+        databases: Vec<String>,
+    },
+    MySqlDatabasesFailed {
+        connection_id: ConnectionId,
+        dsn: String,
+        connection_generation: u64,
+        database_generation: u64,
+        error: DbOperationError,
+    },
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
     ShowConnectionError(ConnectionErrorInfo),
@@ -476,6 +540,10 @@ pub enum Action {
         candidates: Vec<CompletionCandidate>,
         trigger_position: usize,
         visible: bool,
+        dsn: Option<String>,
+        connection_generation: u64,
+        database_generation: u64,
+        metadata_generation: u64,
     },
     CompletionAccept,
     CompletionDismiss,
@@ -489,6 +557,7 @@ pub enum Action {
     ExplainAnalyzeCancel,
     ExplainCompleted {
         dsn: String,
+        database_type: DatabaseType,
         run_id: u64,
         query: String,
         plan_text: String,
@@ -566,8 +635,8 @@ pub enum Action {
     ToggleReadOnly,
 
     // Query history
-    QueryHistoryLoaded(ConnectionId, Vec<QueryHistoryEntry>),
-    QueryHistoryLoadFailed(ConnectionId, QueryHistoryError),
+    QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
+    QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
     QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
@@ -822,6 +891,22 @@ mod tests {
     use rstest::rstest;
 
     #[test]
+    fn connection_target_debug_masks_mysql_password() {
+        let target = ConnectionTarget {
+            id: ConnectionId::from_string("mysql"),
+            dsn: "mysql://user:secret@localhost:3306/app".to_string(),
+            name: "MySQL".to_string(),
+            database_type: DatabaseType::MySQL,
+            database: Some("app".to_string()),
+        };
+
+        let debug = format!("{target:?}");
+
+        assert!(!debug.contains("secret"));
+        assert!(debug.contains("mysql://user:****@localhost"));
+    }
+
+    #[test]
     fn scroll_action_returns_true() {
         let action = Action::Scroll {
             target: ScrollTarget::Result,
@@ -848,6 +933,7 @@ mod tests {
         assert_eq!(
             Action::ExplainCompleted {
                 dsn: "dsn".to_string(),
+                database_type: DatabaseType::PostgreSQL,
                 run_id: 1,
                 query: "SELECT 1".to_string(),
                 plan_text: "plan".to_string(),
