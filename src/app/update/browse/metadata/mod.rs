@@ -158,7 +158,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_metadata_actions_are_suppressed() {
+        fn mysql_metadata_actions_start_fetches() {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_target(
                 &ConnectionId::new(),
@@ -176,12 +176,17 @@ mod tests {
                     .into_effects()
                     .unwrap();
 
-                assert!(effects.is_empty());
+                assert!(effects.iter().any(contains_fetch_metadata));
             }
-            assert_eq!(
-                state.messages.last_error(),
-                Some("MySQL metadata is not available yet")
-            );
+            assert!(state.messages.last_error().is_none());
+        }
+
+        fn contains_fetch_metadata(effect: &Effect) -> bool {
+            match effect {
+                Effect::FetchMetadata { .. } => true,
+                Effect::Sequence(effects) => effects.iter().any(contains_fetch_metadata),
+                _ => false,
+            }
         }
     }
 
