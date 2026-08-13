@@ -1572,6 +1572,39 @@ mod tests {
         }
 
         #[test]
+        fn empty_mysql_json_editor_is_rejected_before_write_preview() {
+            let mut state = state_with_mysql_json_value(r#"{"theme":"dark"}"#);
+            let services = AppServices::stub();
+            let now = Instant::now();
+
+            reduce_app(
+                &mut state,
+                Action::OpenModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+            reduce_app(&mut state, Action::JsonbEnterEdit, now, &services);
+            state.jsonb_detail.editor_mut().set_content(String::new());
+            reduce_app(&mut state, Action::JsonbExitEdit, now, &services);
+            reduce_app(
+                &mut state,
+                Action::CloseModal(ModalKind::JsonbDetail),
+                now,
+                &services,
+            );
+
+            let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
+
+            assert!(effects.is_empty());
+            assert!(
+                state
+                    .messages
+                    .last_error()
+                    .is_some_and(|error| error.starts_with("Invalid JSON:"))
+            );
+        }
+
+        #[test]
         fn semantically_unchanged_mysql_json_is_not_written() {
             let mut state = state_with_mysql_json_value(r#"{"a":1,"b":2}"#);
             let services = AppServices::stub();
