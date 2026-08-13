@@ -11,7 +11,7 @@ use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
-    evaluate_guardrails, preview_writeability, stable_row_identity_for_table,
+    evaluate_guardrails, preview_writeability_for_result, stable_row_identity_for_preview,
 };
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
@@ -135,7 +135,7 @@ pub fn editable_preview_base(
     if !state.query.pagination.matches_table(table_detail) {
         return Err(EditGuardrailError::StaleTableMetadata);
     }
-    match preview_writeability(table_detail) {
+    match preview_writeability_for_result(table_detail, result) {
         PreviewWriteability::Writable => {}
         PreviewWriteability::ReadOnly(reason) => {
             return Err(EditGuardrailError::ReadOnlyPreviewTarget(reason));
@@ -144,7 +144,7 @@ pub fn editable_preview_base(
             return Err(EditGuardrailError::EditingRequiresPrimaryKey);
         }
     }
-    let identity = stable_row_identity_for_table(table_detail)
+    let identity = stable_row_identity_for_preview(table_detail, result)
         .ok_or(EditGuardrailError::EditingRequiresPrimaryKey)?;
 
     Ok((result, identity))

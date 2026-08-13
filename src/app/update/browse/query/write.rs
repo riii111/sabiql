@@ -103,9 +103,7 @@ fn build_update_preview(
         diff: {
             let database_type = state.session.active_database_type_or_default();
             let column_data_type = state
-                .session
-                .table_detail()
-                .and_then(|td| td.columns.get(col_idx))
+                .visible_preview_column(col_idx)
                 .map_or("", |c| c.data_type.as_str());
             let handling =
                 CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
@@ -1040,6 +1038,53 @@ mod tests {
                 preview.diff[0].json_diff.is_some(),
                 "jsonb column should have structured diff"
             );
+        }
+
+        #[test]
+        fn jsonb_diff_uses_visible_column_name_after_hidden_primary_key() {
+            let mut state = editable_state_with_jsonb();
+            let mut detail = jsonb_table_detail();
+            detail.columns[0].attributes = detail.columns[0].attributes
+                | ColumnAttributes::HIDDEN
+                | ColumnAttributes::READ_ONLY;
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.set_current_result(Arc::new(
+                QueryResult::success(
+                    "SELECT `name`, `metadata` FROM `public`.`users`".to_string(),
+                    vec!["name".to_string(), "metadata".to_string()],
+                    vec![vec!["Alice".to_string(), r#"{"role":"admin"}"#.to_string()]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_explicit_row_identity(
+                    vec!["id".to_string()],
+                    vec![vec![QueryValue::text("1")]],
+                ),
+            ));
+            state.result_interaction.clear_cell_edit();
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, r#"{"role":"admin"}"#.to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft(r#"{"role":"user"}"#.to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            let preview = match &effects[0] {
+                Effect::DispatchActions(actions) => match actions.first().expect("action") {
+                    Action::OpenWritePreviewConfirm(preview) => preview,
+                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
+                },
+                other => panic!("expected DispatchActions, got {other:?}"),
+            };
+            assert!(preview.diff[0].json_diff.is_some());
         }
 
         #[test]

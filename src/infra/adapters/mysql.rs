@@ -96,6 +96,16 @@ impl QueryExecutor for MySqlAdapter {
             table,
             &preview.order_columns,
             &preview.visible_columns,
+            &preview.identity_columns,
+            limit,
+            offset,
+        );
+        let display_query = metadata::build_preview_query(
+            schema,
+            table,
+            &preview.order_columns,
+            &preview.visible_columns,
+            &[],
             limit,
             offset,
         );
@@ -118,20 +128,35 @@ impl QueryExecutor for MySqlAdapter {
                 "MySQL preview query returned no result set".to_string(),
             )
         })?;
-        let values = metadata::convert_preview_values(&result_set, &preview.visible_columns)?;
+        let values = metadata::convert_preview_values(
+            &result_set,
+            &preview.visible_columns,
+            &preview.identity_columns,
+        )?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        Ok(QueryResult::success_with_values(
-            query,
+        let mut query_result = QueryResult::success_with_values(
+            display_query,
             preview
                 .visible_columns
                 .iter()
                 .map(|column| column.name.clone())
                 .collect(),
-            values,
+            values.visible,
             elapsed,
             QuerySource::Preview,
-        ))
+        );
+        if let Some(identity_values) = values.identity {
+            query_result = query_result.with_explicit_row_identity(
+                preview
+                    .identity_columns
+                    .iter()
+                    .map(|column| column.name.clone())
+                    .collect(),
+                identity_values,
+            );
+        }
+        Ok(query_result)
     }
 
     async fn execute_adhoc(

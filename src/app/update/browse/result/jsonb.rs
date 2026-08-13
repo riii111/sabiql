@@ -26,15 +26,14 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
                 _ => return DispatchResult::handled(),
             };
 
-            let table_detail = match state.session.table_detail() {
-                Some(td)
-                    if td.schema == state.query.pagination.schema()
-                        && td.name == state.query.pagination.table() =>
-                {
-                    td
-                }
-                _ => return DispatchResult::handled(),
+            let Some(table_detail) = state.session.table_detail() else {
+                return DispatchResult::handled();
             };
+            if table_detail.schema != state.query.pagination.schema()
+                || table_detail.name != state.query.pagination.table()
+            {
+                return DispatchResult::handled();
+            }
 
             let Some(row_idx) = state.result_interaction.selection().row() else {
                 return DispatchResult::handled();
@@ -44,7 +43,7 @@ pub fn reduce_jsonb(state: &mut AppState, action: &Action, now: Instant) -> Disp
             };
 
             let database_type = state.session.active_database_type_or_default();
-            let Some(column) = table_detail.columns.get(col_idx) else {
+            let Some(column) = state.visible_preview_column(col_idx) else {
                 return DispatchResult::handled();
             };
             let policy = CellPresentationPolicy::new(database_type, column.data_type.as_str(), "");
@@ -455,6 +454,38 @@ mod tests {
         state
     }
 
+    fn state_with_hidden_primary_key_jsonb_value() -> AppState {
+        let mut state = state_with_jsonb_value(r#"{"theme":"dark"}"#);
+        state.query.set_current_result(Arc::new(
+            QueryResult::success(
+                String::new(),
+                vec!["settings".to_string()],
+                vec![vec![r#"{"theme":"dark"}"#.to_string()]],
+                1,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(vec!["id".to_string()], vec![vec![QueryValue::text("1")]]),
+        ));
+        state.query.pagination.reset_for_table("public", "users");
+        state.session.set_table_detail_raw(Some(Table {
+            schema: "public".to_string(),
+            name: "users".to_string(),
+            columns: vec![
+                Column {
+                    attributes: ColumnAttributes::PRIMARY_KEY
+                        | ColumnAttributes::HIDDEN
+                        | ColumnAttributes::READ_ONLY,
+                    ..test_support::column::test_nullable_column("id", "integer", 1)
+                },
+                test_support::column::test_nullable_column("settings", "jsonb", 2),
+            ],
+            primary_key: Some(vec!["id".to_string()]),
+            ..test_support::table::minimal("", "")
+        }));
+        state.result_interaction.activate_cell(0, 0);
+        state
+    }
+
     fn open_detail(state: &mut AppState) {
         reduce_jsonb(
             state,
@@ -720,6 +751,16 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::JsonbDetail);
             assert_eq!(state.jsonb_detail.mode(), JsonbDetailMode::Viewing);
+        }
+
+        #[test]
+        fn hidden_primary_key_does_not_shift_jsonb_detail_column() {
+            let mut state = state_with_hidden_primary_key_jsonb_value();
+
+            open_detail(&mut state);
+
+            assert!(state.jsonb_detail.is_active());
+            assert_eq!(state.jsonb_detail.column_name(), "settings");
         }
 
         #[test]

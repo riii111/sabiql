@@ -222,6 +222,29 @@ pub enum QuerySource {
     Adhoc,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExplicitRowIdentity {
+    columns: Vec<String>,
+    values: Vec<Vec<QueryValue>>,
+}
+
+impl ExplicitRowIdentity {
+    #[must_use]
+    pub fn columns(&self) -> &[String] {
+        &self.columns
+    }
+
+    #[must_use]
+    pub fn values(&self) -> &[Vec<QueryValue>] {
+        &self.values
+    }
+
+    #[must_use]
+    pub fn values_for_row(&self, row: usize) -> Option<&[QueryValue]> {
+        self.values.get(row).map(Vec::as_slice)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RefreshScope {
     None,
@@ -247,6 +270,7 @@ pub struct QueryResult {
     pub refresh_scope: RefreshScope,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
+    explicit_row_identity: Option<ExplicitRowIdentity>,
     row_count: usize,
     typed_values: bool,
 }
@@ -270,6 +294,7 @@ impl QueryResult {
             columns,
             rows,
             values,
+            explicit_row_identity: None,
             row_count,
             typed_values: false,
             execution_time_ms,
@@ -294,6 +319,7 @@ impl QueryResult {
             columns,
             rows: Vec::new(),
             values,
+            explicit_row_identity: None,
             row_count,
             typed_values: true,
             execution_time_ms,
@@ -316,6 +342,7 @@ impl QueryResult {
             columns: Vec::new(),
             rows: Vec::new(),
             values: Vec::new(),
+            explicit_row_identity: None,
             row_count: 0,
             typed_values: false,
             execution_time_ms,
@@ -342,6 +369,16 @@ impl QueryResult {
     #[must_use]
     pub fn with_row_count(mut self, row_count: usize) -> Self {
         self.row_count = row_count;
+        self
+    }
+
+    #[must_use]
+    pub fn with_explicit_row_identity(
+        mut self,
+        columns: Vec<String>,
+        values: Vec<Vec<QueryValue>>,
+    ) -> Self {
+        self.explicit_row_identity = Some(ExplicitRowIdentity { columns, values });
         self
     }
 
@@ -399,6 +436,11 @@ impl QueryResult {
     #[must_use]
     pub fn values(&self) -> &[Vec<QueryValue>] {
         &self.values
+    }
+
+    #[must_use]
+    pub fn explicit_row_identity(&self) -> Option<&ExplicitRowIdentity> {
+        self.explicit_row_identity.as_ref()
     }
 
     #[must_use]
@@ -601,6 +643,30 @@ mod tests {
             assert_eq!(result.columns, vec!["body"]);
             assert_eq!(result.values(), &[vec![QueryValue::text("body")]]);
             assert_eq!(result.display_row_at(0), Some(vec!["body".to_string()]));
+        }
+
+        #[test]
+        fn explicit_identity_is_not_part_of_display_rows_or_column_count() {
+            let result = QueryResult::success_with_values(
+                "SELECT payload".to_string(),
+                vec!["payload".to_string()],
+                vec![vec![QueryValue::text("visible")]],
+                0,
+                QuerySource::Preview,
+            )
+            .with_explicit_row_identity(
+                vec!["id".to_string()],
+                vec![vec![QueryValue::SqlLiteral("42".to_string())]],
+            );
+
+            assert_eq!(result.column_count(), 1);
+            assert_eq!(result.display_row_at(0), Some(vec!["visible".to_string()]));
+            assert_eq!(
+                result
+                    .explicit_row_identity()
+                    .and_then(|identity| identity.values_for_row(0)),
+                Some([QueryValue::SqlLiteral("42".to_string())].as_slice())
+            );
         }
     }
 
