@@ -16,7 +16,8 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
 };
 use crate::update::connection::helpers::{
-    connection_save_fetch_effects, reset_for_new_connection, save_current_cache,
+    connection_save_fetch_effects, mysql_connection_completion_effects, reset_for_new_connection,
+    save_current_cache,
 };
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
@@ -250,25 +251,11 @@ pub fn reduce_connection_setup(
 
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
             if *database_type == DatabaseType::MySQL {
-                state.session.mark_probe_connected(database.is_some());
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
-                if database.is_none() {
-                    state.ui.table_picker_mut().clear_filter_and_reset();
-                    state.ui.set_database_picker(true);
-                    state.modal.set_mode(InputMode::TablePicker);
-                    if let (Some(connection_id), Some(server_dsn)) = (
-                        state.session.active_connection_id().cloned(),
-                        state.session.server_dsn(),
-                    ) {
-                        effects.push(Effect::FetchMySqlDatabases {
-                            connection_id,
-                            dsn: server_dsn,
-                            connection_generation: state.session.connection_generation(),
-                            database_generation: state.session.database_generation(),
-                        });
-                    }
-                }
-                return DispatchResult::handled_with(termination_effects(&state.query, effects));
+                return DispatchResult::handled_with(mysql_connection_completion_effects(
+                    state,
+                    dsn,
+                    database.as_deref(),
+                ));
             }
             let run_id = state.session.begin_connecting(dsn);
             DispatchResult::handled_with(connection_save_fetch_effects(
@@ -1073,6 +1060,29 @@ mod tests {
             assert_eq!(state.ui.table_picker().scroll_offset(), 0);
             assert!(state.ui.database_picker());
             assert_eq!(state.input_mode(), InputMode::TablePicker);
+        }
+
+        #[test]
+        fn mysql_save_completed_fetches_metadata_for_selected_database() {
+            let mut state = AppState::new("test".to_string());
+            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: "mysql://user@localhost:3306/app".to_string(),
+                name: "mysql".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            });
+
+            let effects = reduce(&mut state, &action, Instant::now()).unwrap();
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
+            )));
+            assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+            assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+            assert!(!state.ui.database_picker());
+            assert_eq!(state.input_mode(), InputMode::Normal);
         }
 
         #[test]

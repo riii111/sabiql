@@ -2,6 +2,7 @@ use crate::cmd::effect::Effect;
 use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
+use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
@@ -73,6 +74,38 @@ pub(super) fn connection_save_fetch_effects(
             vec![Effect::ClearCompletionEngineCache, fetch],
         )
     }
+}
+
+pub(super) fn mysql_connection_completion_effects(
+    state: &mut AppState,
+    dsn: &str,
+    database: Option<&str>,
+) -> Vec<Effect> {
+    state.session.mark_probe_connected(database.is_some());
+    let mut effects = vec![Effect::ClearCompletionEngineCache];
+    if database.is_none() {
+        state.ui.table_picker_mut().clear_filter_and_reset();
+        state.ui.set_database_picker(true);
+        state.modal.set_mode(InputMode::TablePicker);
+        if let (Some(connection_id), Some(server_dsn)) = (
+            state.session.active_connection_id().cloned(),
+            state.session.server_dsn(),
+        ) {
+            effects.push(Effect::FetchMySqlDatabases {
+                connection_id,
+                dsn: server_dsn,
+                connection_generation: state.session.connection_generation(),
+                database_generation: state.session.database_generation(),
+            });
+        }
+    } else {
+        let run_id = state.session.begin_metadata_refresh();
+        effects.push(Effect::FetchMetadata {
+            dsn: dsn.to_string(),
+            run_id,
+        });
+    }
+    termination_effects(&state.query, effects)
 }
 
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
