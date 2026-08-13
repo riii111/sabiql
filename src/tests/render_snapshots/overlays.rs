@@ -188,6 +188,25 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
 }
 
 #[test]
+fn sql_modal_analyze_read_only_acknowledge() {
+    let mut state = connected_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .set_status_for_test(SqlModalStatus::ConfirmingAnalyzeRisk {
+            query: "SELECT * FROM users".to_string(),
+            reason: AcknowledgeReason::AnalyzeExecution,
+        });
+    state.sql_modal.set_active_tab(SqlModalTab::Plan);
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_cursor_at_head() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -699,6 +718,7 @@ fn sql_modal_plan_tab_with_plan_text() {
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..35.50 rows=2550 width=36)\n  Filter: (id > 10)".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         42,
         "SELECT * FROM users WHERE id > 10",
@@ -747,6 +767,7 @@ fn sql_modal_compare_tab_right_only() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..10.20 rows=10 width=3273)\n  Filter: email_verified"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         40,
         "SELECT * FROM users WHERE email_verified",
@@ -769,6 +790,7 @@ fn sql_modal_compare_tab_with_verdict() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         100,
         "SELECT * FROM users WHERE id > 10",
@@ -777,6 +799,7 @@ fn sql_modal_compare_tab_with_verdict() {
     state.explain.set_plan(
         "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         5,
         "SELECT * FROM users WHERE id > 10",
@@ -797,6 +820,7 @@ fn sql_modal_compare_tab_unavailable() {
     // First EXPLAIN with unparseable text
     state.explain.set_plan(
         "CREATE TABLE foo (id int)".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         0,
         "CREATE TABLE foo",
@@ -804,6 +828,7 @@ fn sql_modal_compare_tab_unavailable() {
     // Second EXPLAIN with also unparseable text — auto-advances first to left
     state.explain.set_plan(
         "ALTER TABLE foo ADD COLUMN bar text".to_string(),
+        DatabaseType::PostgreSQL,
         false,
         0,
         "ALTER TABLE foo",
@@ -826,6 +851,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.explain.set_plan(
         "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         100,
         "SELECT * FROM users WHERE id > 10",
@@ -834,6 +860,7 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.explain.set_plan(
         "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
             .to_string(),
+        DatabaseType::PostgreSQL,
         false,
         5,
         "SELECT * FROM users WHERE id > 10",
@@ -893,6 +920,7 @@ fn sqlite_sql_modal_plan_tab_labels_query_plan() {
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.set_plan(
         "SEARCH users USING INDEX idx_users_name\n  - SCAN orders".to_string(),
+        DatabaseType::SQLite,
         false,
         42,
         "DELETE FROM users WHERE name = 'alice'",
