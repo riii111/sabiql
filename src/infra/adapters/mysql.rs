@@ -1423,13 +1423,6 @@ impl MysqlProcess {
         Self::spawn_with_args(program, mysql_query_args(option_file))
     }
 
-    fn spawn_with_metadata_program(
-        program: &OsStr,
-        option_file: &std::path::Path,
-    ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_metadata_args(option_file))
-    }
-
     fn spawn_with_args(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
         #[cfg(unix)]
         {
@@ -1526,8 +1519,6 @@ impl MysqlProcess {
 
 struct MysqlMetadataSession {
     process: MysqlProcess,
-    program: PathBuf,
-    option_file: PathBuf,
 }
 
 impl MysqlMetadataSession {
@@ -1537,8 +1528,6 @@ impl MysqlMetadataSession {
     ) -> Result<Self, DbOperationError> {
         Ok(Self {
             process: MysqlProcess::spawn_with_program(program, option_file)?,
-            program: PathBuf::from(program),
-            option_file: option_file.to_path_buf(),
         })
     }
 
@@ -1553,18 +1542,7 @@ impl MysqlMetadataSession {
     async fn execute(&mut self, query: &str) -> Result<MysqlResultSet, DbOperationError> {
         write_mysql_statement(&mut self.process, query).await?;
         let xml = read_one_mysql_resultset(&mut self.process).await?;
-        let result = parse_mysql_xml(&xml)?;
-        let kind = classify_mysql_statement(query)
-            .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-        fill_mysql_empty_result_columns(
-            &mut self.process,
-            result,
-            self.program.as_os_str(),
-            &self.option_file,
-            query,
-            &kind.kind,
-        )
-        .await
+        parse_mysql_xml(&xml)
     }
 
     async fn finish(&mut self) -> Result<(), DbOperationError> {
@@ -1671,13 +1649,7 @@ async fn export_mysql_csv_to_file(
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = timeout(
         MYSQL_EXPORT_TIMEOUT,
-        run_mysql_export_process(
-            &mut process,
-            OsStr::new("mysql"),
-            &option_file.path,
-            query,
-            path,
-        ),
+        run_mysql_export_process(&mut process, &option_file.path, query, path),
     )
     .await;
     match result {
@@ -1697,7 +1669,6 @@ async fn export_mysql_csv_to_file(
 
 async fn run_mysql_export_process(
     process: &mut MysqlProcess,
-    program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
     path: PathBuf,
@@ -1722,8 +1693,7 @@ async fn run_mysql_export_process(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )
         })?;
-        let columns =
-            mysql_metadata_columns(process, program, option_file, query, fallback_kind).await?;
+        let columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
         csv_writer.write_record(columns.iter()).await?;
     }
 
@@ -2222,7 +2192,7 @@ async fn export_mysql_csv_with_program(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_export_process(&mut process, program, option_file, query, path),
+        run_mysql_export_process(&mut process, option_file, query, path),
     )
     .await;
     match result {
@@ -2251,7 +2221,7 @@ async fn run_mysql_adhoc_with_program(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_single_statement_process(&mut process, program, option_file, query, access_mode),
+        run_mysql_single_statement_process(&mut process, query, access_mode),
     )
     .await;
     match result {
@@ -2277,13 +2247,7 @@ async fn run_mysql_single_statement(
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
     let result = timeout(
         MYSQL_QUERY_TIMEOUT,
-        run_mysql_single_statement_process(
-            &mut process,
-            OsStr::new("mysql"),
-            option_file,
-            query,
-            access_mode,
-        ),
+        run_mysql_single_statement_process(&mut process, query, access_mode),
     )
     .await;
     match result {
@@ -2303,8 +2267,6 @@ async fn run_mysql_single_statement(
 
 async fn run_mysql_single_statement_process(
     process: &mut MysqlProcess,
-    program: &OsStr,
-    option_file: &std::path::Path,
     query: &str,
     access_mode: AccessMode,
 ) -> Result<MysqlResultSet, DbOperationError> {
@@ -2320,18 +2282,6 @@ async fn run_mysql_single_statement_process(
     write_mysql_statement(process, query).await?;
 
     let stdout = read_one_mysql_resultset(process).await?;
-    let result = parse_mysql_xml(&stdout)?;
-    let statement = classify_mysql_statement(query)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let result = fill_mysql_empty_result_columns(
-        process,
-        result,
-        program,
-        option_file,
-        query,
-        &statement.kind,
-    )
-    .await?;
 
     #[cfg(not(unix))]
     process
@@ -2368,7 +2318,7 @@ async fn run_mysql_single_statement_process(
     if !status.success() {
         return Err(classify_mysql_query_failure(error_bytes));
     }
-    Ok(result)
+    parse_mysql_xml(&stdout)
 }
 
 async fn run_mysql_adhoc_with_program_and_statements(
@@ -2388,14 +2338,7 @@ async fn run_mysql_adhoc_with_program_and_statements(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(
-            &mut process,
-            program,
-            option_file,
-            query,
-            statements,
-            access_mode,
-        ),
+        run_mysql_adhoc_process(&mut process, option_file, query, statements, access_mode),
     )
     .await;
 
@@ -2416,7 +2359,6 @@ async fn run_mysql_adhoc_with_program_and_statements(
 
 async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
-    program: &OsStr,
     option_file: &std::path::Path,
     _query: &str,
     statements: &[MysqlStatement],
@@ -2484,7 +2426,6 @@ async fn run_mysql_adhoc_process(
             let user_result = fill_mysql_empty_result_columns(
                 process,
                 first_result,
-                program,
                 option_file,
                 &statement.sql,
                 &statement.kind,
@@ -3206,7 +3147,6 @@ fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
 
 async fn mysql_metadata_columns(
     process: &mut MysqlProcess,
-    program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
     kind: MysqlMetadataFallbackKind,
@@ -3219,7 +3159,7 @@ async fn mysql_metadata_columns(
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
-    mysql_metadata_columns_external(program, option_file, &query).await
+    mysql_metadata_columns_external(option_file, &query).await
 }
 
 async fn mysql_metadata_select_columns(
@@ -3251,56 +3191,17 @@ async fn mysql_metadata_select_columns(
 }
 
 async fn mysql_metadata_columns_external(
-    program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
 ) -> Result<Vec<String>, DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_metadata_program(program, option_file)?;
-    write_mysql_statement(&mut process, query).await?;
-
-    #[cfg(unix)]
-    let output = {
-        write_mysql_input(&mut process, b"\x04").await?;
-        read_pty_all(&mut process.pty)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
-    };
-
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .shutdown()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    #[cfg(not(unix))]
-    let (stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
-    let status = process
-        .child
-        .wait()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    #[cfg(unix)]
-    let error_output = output.as_slice();
-    #[cfg(not(unix))]
-    let error_output = stderr.as_slice();
-    if has_mysql_cli_error(error_output) {
-        return Err(classify_mysql_query_failure(error_output));
+    let mut args = mysql_metadata_args(option_file);
+    args.push(format!("--execute={query}"));
+    let option_file = option_file.to_path_buf();
+    let output = run_mysql_command(args, Some(&option_file)).await?;
+    if !output.status.success() {
+        return Err(classify_mysql_query_failure(&output.stderr));
     }
-    if !status.success() {
-        return Err(classify_mysql_query_failure(error_output));
-    }
-
-    #[cfg(unix)]
-    let output = output.as_slice();
-    #[cfg(not(unix))]
-    let output = stdout.as_slice();
-    parse_mysql_metadata_header(output, query)
+    parse_mysql_metadata_header(&output.stdout, query)
 }
 
 fn parse_mysql_metadata_header(
@@ -3350,7 +3251,6 @@ fn parse_mysql_metadata_header(
 async fn fill_mysql_empty_result_columns(
     process: &mut MysqlProcess,
     mut result: MysqlResultSet,
-    program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
     kind: &MysqlStatementKind,
@@ -3363,8 +3263,7 @@ async fn fill_mysql_empty_result_columns(
             "MySQL empty result has no supported metadata fallback".to_string(),
         )
     })?;
-    result.columns =
-        mysql_metadata_columns(process, program, option_file, query, fallback_kind).await?;
+    result.columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
     Ok(result)
 }
 

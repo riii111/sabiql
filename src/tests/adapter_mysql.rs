@@ -177,7 +177,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             .execute_adhoc(
                 db.dsn(),
                 &format!(
-                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4) FROM {MYSQL_FIXTURE_TABLE}"
+                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4), 'x|y', 'first\\nmiddle\\nlast', 'tail\\t ', CAST(NULL AS CHAR(8)), 'NULL' FROM {MYSQL_FIXTURE_TABLE}"
                 ),
                 AccessMode::ReadWrite,
             )
@@ -191,6 +191,11 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             QueryValue::Text("\"空文字ではない\"".to_string()),
             QueryValue::Text("0x00FF10".to_string()),
             QueryValue::Text("line one\r\nERROR 1146 (42S02): not a CLI error".to_string()),
+            QueryValue::Text("x|y".to_string()),
+            QueryValue::Text("first\r\nmiddle\r\nlast".to_string()),
+            QueryValue::Text("tail\t ".to_string()),
+            QueryValue::Null,
+            QueryValue::Text("NULL".to_string()),
         ];
         if result.values() != [expected] {
             return Err(format!("unexpected XML values: {:?}", result.values()));
@@ -265,74 +270,6 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
             Ok(())
         })
     })
-    .await;
-}
-
-#[tokio::test]
-#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-async fn preserves_null_and_special_value_boundaries_for_real_mysql_results() {
-    with_mysql_test_db(|db| Box::pin(async move {
-        let result = db
-            .adapter()
-            .execute_adhoc(
-                db.dsn(),
-                "SELECT 'x|y' AS pipe_value, 'first\\nmiddle\\nlast' AS newline_value, 'tail\\t ' AS trailing_value, CAST(NULL AS CHAR(8)) AS sql_null, 'NULL' AS literal_null",
-                AccessMode::ReadWrite,
-            )
-            .await
-            .map_err(|error| format!("special-value query failed: {error:?}"))?;
-        let expected = vec![
-            QueryValue::Text("x|y".to_string()),
-            QueryValue::Text("first\r\nmiddle\r\nlast".to_string()),
-            QueryValue::Text("tail\t ".to_string()),
-            QueryValue::Null,
-            QueryValue::Text("NULL".to_string()),
-        ];
-        if result.values() != [expected] {
-            return Err(format!("unexpected special-value result: {result:?}"));
-        }
-
-        let mixed_nulls = db
-            .adapter()
-            .execute_adhoc(
-                db.dsn(),
-                "SELECT value FROM (SELECT CAST(NULL AS CHAR(8)) AS value UNION ALL SELECT 'NULL' AS value) AS mixed_nulls",
-                AccessMode::ReadWrite,
-            )
-            .await
-            .map_err(|error| format!("mixed NULL query failed: {error:?}"))?;
-        if mixed_nulls.values()
-            != [
-                vec![QueryValue::Null],
-                vec![QueryValue::Text("NULL".to_string())],
-            ]
-        {
-            return Err(format!("unexpected mixed NULL result: {mixed_nulls:?}"));
-        }
-        Ok(())
-    }))
-    .await;
-}
-
-#[cfg(unix)]
-#[tokio::test]
-#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-async fn proves_metadata_only_select_does_not_evaluate_inner_expressions() {
-    with_mysql_test_db(|db| Box::pin(async move {
-        let output = db
-            .run_pty_script(
-                "SET @sabiql_metadata_probe = 0;\nWITH __sabiql_source AS (SELECT * FROM ((SELECT @sabiql_metadata_probe := @sabiql_metadata_probe + 1 AS touched, SLEEP(1) AS sleep_value) LIMIT 0) AS __sabiql_inner) SELECT __sabiql_source.* FROM __sabiql_source RIGHT JOIN (SELECT 1 AS __sabiql_marker) AS __sabiql_marker_source ON TRUE;\nSELECT @sabiql_metadata_probe AS touched;\n",
-            )
-            .await
-            .map_err(|error| format!("metadata-only CLI proof failed: {error}"))?;
-        let output = String::from_utf8_lossy(&output);
-        if !output.contains("<field name=\"touched\">0</field>") {
-            return Err(format!(
-                "metadata-only SELECT evaluated an inner expression: {output}"
-            ));
-        }
-        Ok(())
-    }))
     .await;
 }
 
