@@ -1668,7 +1668,14 @@ mod tests {
         #[test]
         fn mysql_comments_strings_and_backticks_return_no_candidates() {
             let e = engine();
-            for sql in ["# SELECT", "SELECT 'FROM", "SELECT `FROM", "SELECT `a``"] {
+            for sql in [
+                "# SELECT",
+                "SELECT 'FROM",
+                r#"SELECT "FROM"#,
+                "SELECT \"users.\\\"FROM ",
+                "SELECT `FROM",
+                "SELECT `a``",
+            ] {
                 let candidates = e.get_candidates_for_database(
                     sql,
                     sql.chars().count(),
@@ -1683,6 +1690,38 @@ mod tests {
                 );
 
                 assert!(candidates.is_empty(), "unexpected candidates for {sql}");
+            }
+        }
+
+        #[test]
+        fn resumes_at_quote_and_comment_boundaries() {
+            let e = engine();
+            for sql in [
+                r#"SELECT "users." SEL"#,
+                "SELECT `users` SEL",
+                "SELECT /* comment */ SEL",
+                "SELECT # comment\nSEL",
+            ] {
+                let cursor = sql.chars().count();
+                let candidates = e.get_candidates_for_database(
+                    sql,
+                    cursor,
+                    None,
+                    None,
+                    &[],
+                    CompletionDatabaseScope {
+                        database_type: DatabaseType::MySQL,
+                        active_database: Some("app"),
+                        available_databases: &[],
+                    },
+                );
+
+                assert!(
+                    candidates
+                        .iter()
+                        .any(|candidate| candidate.text == "SELECT"),
+                    "expected completion after boundary in {sql}"
+                );
             }
         }
 
