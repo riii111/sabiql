@@ -331,29 +331,29 @@ mod tests {
         use std::os::windows::ffi::OsStrExt;
         use std::ptr::null_mut;
 
-        use windows_sys::Win32::Foundation::{ERROR_SUCCESS, LocalFree};
+        use windows_sys::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, LocalFree};
         use windows_sys::Win32::Security::Authorization::GetNamedSecurityInfoW;
         use windows_sys::Win32::Security::{
             ACCESS_ALLOWED_ACE, AclSizeInformation, DACL_SECURITY_INFORMATION, EqualSid, GetAce,
             GetAclInformation, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
-            OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED,
+            PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED, TOKEN_QUERY,
         };
         use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
         let path = path
             .as_os_str()
             .encode_wide()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
-        let mut owner = null_mut();
         let mut dacl = null_mut();
         let mut security_descriptor: PSECURITY_DESCRIPTOR = null_mut();
         let status = unsafe {
             GetNamedSecurityInfoW(
                 path.as_ptr(),
                 windows_sys::Win32::Security::Authorization::SE_FILE_OBJECT,
-                OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
-                &raw mut owner,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
                 null_mut(),
                 &raw mut dacl,
                 null_mut(),
@@ -416,7 +416,19 @@ mod tests {
             FILE_GENERIC_READ | FILE_GENERIC_WRITE
         );
         let ace_sid = std::ptr::addr_of!(allowed_ace.SidStart).cast_mut().cast();
-        assert_ne!(unsafe { EqualSid(owner, ace_sid) }, 0);
+        let mut token = null_mut();
+        assert_ne!(
+            unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) },
+            0
+        );
+        let current_sid = current_user_sid(token).unwrap();
+        unsafe {
+            CloseHandle(token);
+        }
+        assert_ne!(
+            unsafe { EqualSid(current_sid.as_ptr().cast_mut().cast(), ace_sid) },
+            0
+        );
 
         unsafe {
             LocalFree(security_descriptor.cast());
