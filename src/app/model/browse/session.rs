@@ -24,6 +24,14 @@ struct ActiveConnection {
     database: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableDetailState {
+    NotSelected,
+    Loading,
+    Loaded,
+    Error(String),
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct PendingConnectionProbe {
     pub id: ConnectionId,
@@ -72,6 +80,7 @@ pub struct BrowseSession {
     // -- co-dependent: table selection --
     selected_table_key: Option<String>,
     table_detail: Option<Table>,
+    table_detail_state: TableDetailState,
     selection_generation: u64,
 
     // -- lifecycle-gated --
@@ -101,6 +110,7 @@ impl Default for BrowseSession {
             metadata_state: MetadataState::default(),
             selected_table_key: None,
             table_detail: None,
+            table_detail_state: TableDetailState::NotSelected,
             selection_generation: 0,
             metadata: None,
             metadata_run: AsyncRun::default(),
@@ -130,7 +140,9 @@ impl BrowseSession {
         query.clear_current_result();
         self.selected_table_key = Some(format!("{schema}.{table}"));
         self.table_detail = None;
+        self.table_detail_state = TableDetailState::Loading;
         self.selection_generation += 1;
+        self.table_detail_run.clear_active();
         query.pagination.reset_for_table(schema, table);
         self.selection_generation
     }
@@ -139,6 +151,7 @@ impl BrowseSession {
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
             self.table_detail = Some(detail);
+            self.table_detail_state = TableDetailState::Loaded;
             true
         } else {
             false
@@ -150,6 +163,7 @@ impl BrowseSession {
         query.clear_current_result();
         self.selected_table_key = None;
         self.table_detail = None;
+        self.table_detail_state = TableDetailState::NotSelected;
         self.selection_generation += 1;
         self.table_detail_run.clear_active();
         query.pagination.reset();
@@ -157,11 +171,29 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_table_detail_run(&mut self) -> u64 {
+        if self.selected_table_key.is_some() {
+            self.table_detail = None;
+            self.table_detail_state = TableDetailState::Loading;
+        }
         self.table_detail_run.begin()
     }
 
     pub fn is_current_table_detail_run(&self, run_id: u64) -> bool {
         self.table_detail_run.is_current(run_id)
+    }
+
+    pub fn is_current_table_selection(&self, schema: &str, table: &str, generation: u64) -> bool {
+        generation == self.selection_generation
+            && self.selected_table_key.as_deref() == Some(&format!("{schema}.{table}"))
+    }
+
+    pub fn mark_table_detail_failed(&mut self, generation: u64, error: String) -> bool {
+        if generation == self.selection_generation && self.selected_table_key.is_some() {
+            self.table_detail_state = TableDetailState::Error(error);
+            true
+        } else {
+            false
+        }
     }
 
     // ── Connection lifecycle ─────────────────────────────────────────
@@ -483,6 +515,11 @@ impl BrowseSession {
         self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key
             .clone_from(&cache.selected_table_key);
+        self.table_detail_state = match (&self.selected_table_key, &self.table_detail) {
+            (Some(_), Some(_)) => TableDetailState::Loaded,
+            (Some(_), None) => TableDetailState::Loading,
+            (None, _) => TableDetailState::NotSelected,
+        };
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
@@ -517,6 +554,7 @@ impl BrowseSession {
         query.reset_for_context_change();
         self.metadata = None;
         self.table_detail = None;
+        self.table_detail_state = TableDetailState::NotSelected;
         self.selected_table_key = None;
         self.selection_generation = 0;
         self.connection_state = ConnectionState::default();
@@ -562,6 +600,10 @@ impl BrowseSession {
 
     pub fn table_detail(&self) -> Option<&Table> {
         self.table_detail.as_ref()
+    }
+
+    pub fn table_detail_state(&self) -> &TableDetailState {
+        &self.table_detail_state
     }
 
     pub fn selection_generation(&self) -> u64 {
@@ -710,6 +752,13 @@ impl BrowseSession {
 
     pub(crate) fn set_table_detail_raw(&mut self, detail: Option<Table>) {
         self.table_detail = detail;
+        self.table_detail_state = if self.table_detail.is_some() {
+            TableDetailState::Loaded
+        } else if self.selected_table_key.is_some() {
+            TableDetailState::Loading
+        } else {
+            TableDetailState::NotSelected
+        };
     }
 
     #[cfg(test)]
@@ -781,6 +830,7 @@ mod tests {
             let _ = session.select_table("public", "users", &mut query);
 
             assert!(session.table_detail().is_none());
+            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
         }
 
         #[test]
@@ -849,6 +899,7 @@ mod tests {
 
             assert!(accepted);
             assert!(session.table_detail().is_some());
+            assert_eq!(session.table_detail_state(), &TableDetailState::Loaded);
         }
 
         #[test]
@@ -862,6 +913,57 @@ mod tests {
 
             assert!(!accepted);
             assert!(session.table_detail().is_none());
+        }
+
+        #[test]
+        fn records_error_for_current_generation() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+
+            assert!(session.mark_table_detail_failed(generation, "boom".to_string()));
+            assert_eq!(
+                session.table_detail_state(),
+                &TableDetailState::Error("boom".to_string())
+            );
+        }
+
+        #[test]
+        fn rejects_error_for_stale_generation() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let old_generation = session.select_table("public", "users", &mut query);
+            let _ = session.select_table("public", "posts", &mut query);
+
+            assert!(!session.mark_table_detail_failed(old_generation, "boom".to_string()));
+            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+        }
+
+        #[test]
+        fn starting_a_new_run_clears_previous_success() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let _ = session.set_table_detail(make_table_detail(), generation);
+
+            let _ = session.begin_table_detail_run();
+
+            assert!(session.table_detail().is_none());
+            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+        }
+
+        #[test]
+        fn starting_detail_run_keeps_current_query_result_visible() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let _ = session.set_table_detail(make_table_detail(), generation);
+            query.set_current_result(make_query_result());
+
+            let _ = session.begin_table_detail_run();
+
+            assert!(query.current_result().is_some());
+            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
         }
     }
 
@@ -879,6 +981,7 @@ mod tests {
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
+        assert_eq!(session.table_detail_state(), &TableDetailState::NotSelected);
         assert!(query.current_result().is_none());
         assert_eq!(query.pagination.current_page(), 0);
     }
@@ -895,6 +998,7 @@ mod tests {
         let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
         assert!(!accepted);
         assert!(session.table_detail().is_none());
+        assert_eq!(session.table_detail_state(), &TableDetailState::NotSelected);
     }
 
     #[test]

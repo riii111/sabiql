@@ -40,8 +40,12 @@ pub(super) fn reduce_table_detail(
                 return DispatchResult::handled();
             }
 
-            if *generation == state.session.selection_generation() {
-                state.messages.set_error_at(error.user_message(), now);
+            let message = error.user_message();
+            if state
+                .session
+                .mark_table_detail_failed(*generation, message.clone())
+            {
+                state.messages.set_error_at(message, now);
             }
             DispatchResult::handled()
         }
@@ -50,18 +54,21 @@ pub(super) fn reduce_table_detail(
             table,
             generation,
         }) => {
-            if let Some(dsn) = state.session.dsn().map(String::from) {
+            if state
+                .session
+                .is_current_table_selection(schema, table, *generation)
+                && let Some(dsn) = state.session.dsn().map(String::from)
+            {
                 let run_id = state.session.begin_table_detail_run();
-                DispatchResult::handled_with(vec![Effect::FetchTableDetail {
+                return DispatchResult::handled_with(vec![Effect::FetchTableDetail {
                     dsn,
                     schema: schema.clone(),
                     table: table.clone(),
                     generation: *generation,
                     run_id,
-                }])
-            } else {
-                DispatchResult::handled()
+                }]);
             }
+            DispatchResult::handled()
         }
         _ => DispatchResult::pass(),
     }

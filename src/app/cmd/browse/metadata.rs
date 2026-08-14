@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
+use crate::cmd::query_task::TableDetailTaskRegistry;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
 use crate::domain::sqlite_path_from_dsn;
@@ -21,6 +22,7 @@ pub async fn run(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
+    table_detail_tasks: &TableDetailTaskRegistry,
     _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
@@ -55,6 +57,7 @@ pub async fn run(
                 table,
                 generation,
                 run_id,
+                table_detail_tasks,
             );
             Ok(())
         }
@@ -195,11 +198,12 @@ fn fetch_table_detail(
     table: String,
     generation: u64,
     run_id: u64,
+    table_detail_tasks: &TableDetailTaskRegistry,
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    tokio::spawn(async move {
+    table_detail_tasks.spawn(async move {
         match provider.fetch_table_detail(&dsn, &schema, &table).await {
             Ok(detail) => {
                 tx.send(Action::TableDetailLoaded {
