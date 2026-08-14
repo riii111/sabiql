@@ -98,6 +98,7 @@ pub enum Effect {
         access_mode: AccessMode,
     },
     CancelActiveQuery,
+    CancelActiveTasks,
     CountRowsForExport {
         dsn: String,
         run_id: u64,

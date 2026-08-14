@@ -274,10 +274,13 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             let message = error.user_message();
-            if state.session.dsn_matches(&target.dsn) {
+            let detail_message = if state.session.dsn_matches(&target.dsn) {
                 state.session.mark_connection_failed(message.clone());
-            }
-            state.session.mark_table_detail_probe_failed(message);
+                message
+            } else {
+                "Load canceled by connection change".to_string()
+            };
+            state.session.mark_table_detail_probe_failed(detail_message);
             state.connection_error.set_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
             );
@@ -1141,7 +1144,7 @@ mod tests {
             assert!(state.session.table_detail().is_none());
             assert!(matches!(
                 state.session.table_detail_state(),
-                TableDetailState::Error(_)
+                TableDetailState::Error(message) if message == "Load canceled by connection change"
             ));
             assert_eq!(state.session.selection_generation(), generation);
             assert!(!state.session.is_current_table_detail_run(detail_run_id));
@@ -1213,7 +1216,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
-            assert!(matches!(effects.first(), Some(Effect::CancelActiveQuery)));
+            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
             assert!(!state.query.is_running());
             assert!(!state.query.is_current_run(query_run_id));
 

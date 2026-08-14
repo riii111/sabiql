@@ -82,7 +82,7 @@ fn reduce_inner(
         }
         Action::Quit => {
             state.should_quit = true;
-            vec![Effect::CancelActiveQuery]
+            vec![Effect::CancelActiveTasks]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -123,7 +123,7 @@ fn reduce_inner(
                     .cloned();
                 if let Some(table) = table {
                     state.modal.set_mode(InputMode::Normal);
-                    return select_table(state, &table);
+                    return select_table(state, &table, now);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
                 if state.connection_error.error_info.is_some() {
@@ -139,7 +139,7 @@ fn reduce_inner(
                     .copied()
                     .cloned();
                 if let Some(table) = table {
-                    return select_table(state, &table);
+                    return select_table(state, &table, now);
                 }
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
@@ -176,7 +176,7 @@ fn reduce_inner(
     }
 }
 
-fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
+fn select_table(state: &mut AppState, table: &TableSummary, now: Instant) -> Vec<Effect> {
     let generation = state
         .session
         .select_table(&table.schema, &table.name, &mut state.query);
@@ -195,6 +195,12 @@ fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
             generation,
             run_id,
         });
+    } else {
+        let message = "No active connection".to_string();
+        state
+            .session
+            .mark_table_detail_failed(generation, message.clone());
+        state.messages.set_error_at(message, now);
     }
     effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
         TableTarget {
@@ -212,6 +218,7 @@ mod tests {
 
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::browse::session::TableDetailState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
@@ -234,7 +241,7 @@ mod tests {
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -307,6 +314,21 @@ mod tests {
             reduce(&mut state, action, now, &AppServices::stub());
 
             assert_eq!(state.ui.explorer_selected(), 0);
+        }
+
+        #[test]
+        fn selecting_table_without_connection_does_not_leave_inspector_loading() {
+            let mut state = create_test_state();
+            let now = Instant::now();
+            let table = TableSummary::new("public".to_string(), "users".to_string(), None, false);
+
+            let effects = select_table(&mut state, &table, now);
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(message) if message == "No active connection"
+            ));
+            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
         }
     }
 
@@ -1344,7 +1366,7 @@ mod tests {
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.error_info.is_some());
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -2218,7 +2240,7 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
         #[test]
@@ -2743,7 +2765,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelActiveQuery))
+                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
             );
             assert!(
                 effects

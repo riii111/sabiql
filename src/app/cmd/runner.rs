@@ -220,6 +220,11 @@ impl EffectRunner {
             }
 
             Effect::CancelActiveQuery => {
+                self.query_tasks.cancel();
+                Ok(vec![])
+            }
+
+            Effect::CancelActiveTasks => {
                 self.cancel_active_tasks();
                 Ok(vec![])
             }

@@ -62,7 +62,7 @@ mod tests {
     use crate::model::browse::session::TableDetailState;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::ports::outbound::DbOperationError;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, TableTarget};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -162,6 +162,30 @@ mod tests {
             assert!(matches!(
                 state.session.table_detail_state(),
                 TableDetailState::Error(_)
+            ));
+            assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn table_detail_load_without_connection_ends_loading_state() {
+            let mut state = AppState::new("test".to_string());
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+
+            dispatch_metadata(
+                &mut state,
+                &Action::LoadTableDetail(TableTarget {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation,
+                }),
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(message) if message == "No active connection"
             ));
             assert!(state.messages.last_error().is_some());
         }

@@ -16,9 +16,12 @@ impl TaskRegistry {
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        self.cancel();
+        let mut active = self.active.lock().expect("task registry lock poisoned");
+        if let Some(handle) = active.take() {
+            handle.abort();
+        }
         let handle = tokio::spawn(task);
-        *self.active.lock().expect("task registry lock poisoned") = Some(handle.abort_handle());
+        *active = Some(handle.abort_handle());
     }
 
     pub fn cancel(&self) {

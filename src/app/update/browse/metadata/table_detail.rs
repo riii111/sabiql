@@ -54,21 +54,32 @@ pub(super) fn reduce_table_detail(
             table,
             generation,
         }) => {
-            if state
+            if !state
                 .session
                 .is_current_table_selection(schema, table, *generation)
-                && let Some(dsn) = state.session.dsn().map(String::from)
             {
-                let run_id = state.session.begin_table_detail_run();
-                return DispatchResult::handled_with(vec![Effect::FetchTableDetail {
-                    dsn,
-                    schema: schema.clone(),
-                    table: table.clone(),
-                    generation: *generation,
-                    run_id,
-                }]);
+                return DispatchResult::handled();
             }
-            DispatchResult::handled()
+
+            let Some(dsn) = state.session.dsn().map(String::from) else {
+                let message = "No active connection".to_string();
+                if state
+                    .session
+                    .mark_table_detail_failed(*generation, message.clone())
+                {
+                    state.messages.set_error_at(message, now);
+                }
+                return DispatchResult::handled();
+            };
+
+            let run_id = state.session.begin_table_detail_run();
+            DispatchResult::handled_with(vec![Effect::FetchTableDetail {
+                dsn,
+                schema: schema.clone(),
+                table: table.clone(),
+                generation: *generation,
+                run_id,
+            }])
         }
         _ => DispatchResult::pass(),
     }
