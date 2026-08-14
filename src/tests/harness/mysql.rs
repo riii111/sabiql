@@ -97,6 +97,10 @@ impl MySqlTestDb {
             .await
             .map_err(|error| error.to_string())
     }
+
+    pub async fn run_cli_script(&self, script: &str) -> Result<String, String> {
+        self.run_cli(script).await
+    }
 }
 
 pub async fn with_mysql_test_db<F>(test: F)

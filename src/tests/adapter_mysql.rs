@@ -1417,8 +1417,8 @@ async fn rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior()
         }
 
         let result = async {
-            db.run_pty_script(&format!(
-                "BEGIN;\nUPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'implicit commit' WHERE id = 1;\nCREATE TABLE {table} (id INT);\nROLLBACK;\n"
+            db.run_cli_script(&format!(
+                "BEGIN; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'implicit commit' WHERE id = 1; CREATE TABLE {table} (id INT); ROLLBACK"
             ))
             .await
             .map_err(|error| format!("raw MySQL implicit-commit check failed: {error}"))?;
