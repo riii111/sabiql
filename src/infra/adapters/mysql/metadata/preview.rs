@@ -2,7 +2,8 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{Column, QueryValue};
 
 use super::super::cli::MysqlResultSet;
-use super::catalog::{column_from_metadata, fetch_columns, primary_key_names, quote_identifier};
+use super::super::sql::quote_identifier;
+use super::catalog::{column_from_metadata, fetch_columns, primary_key_names};
 
 const PREVIEW_IDENTITY_ALIAS_PREFIX: &str = "__sabiql_row_identity_";
 
