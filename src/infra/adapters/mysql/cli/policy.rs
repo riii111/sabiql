@@ -1,11 +1,90 @@
+use std::sync::Arc;
+
+use crate::app::policy::sql::mysql_statement::{
+    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
+};
+use crate::app::policy::write::sql_risk::{
+    MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
+    mysql_statement_is_schema_modifying,
+};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
+use crate::domain::{CommandTag, QueryValue, RefreshScope};
+
+use super::super::sql;
+use super::xml::MysqlResultSet;
+
+pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
+
 #[derive(Debug, Clone, Copy)]
-enum MysqlMetadataFallbackKind {
+pub(super) enum MysqlMetadataFallbackKind {
     Select,
     Show,
     Describe,
 }
 
-fn mysql_metadata_fallback_kind(kind: &MysqlStatementKind) -> Option<MysqlMetadataFallbackKind> {
+#[derive(Debug, PartialEq, Eq)]
+pub(in crate::adapters::mysql) struct MysqlExecutionResult {
+    pub(in crate::adapters::mysql) result_set: Option<MysqlResultSet>,
+    pub(in crate::adapters::mysql) command_tag: Option<CommandTag>,
+    pub(in crate::adapters::mysql) refresh_scope: RefreshScope,
+}
+
+pub(super) struct MysqlCommandEvent {
+    pub(super) kind: MysqlStatementKind,
+    pub(super) target: Option<String>,
+    pub(super) tag: CommandTag,
+}
+
+pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
+    query: &str,
+    selected_database: Option<&str>,
+    access_mode: AccessMode,
+) -> Result<Vec<MysqlStatement>, DbOperationError> {
+    let decision = evaluate_mysql_multi_statement(query, selected_database);
+    let (statements, risk) = match decision {
+        MultiStatementDecision::Allow { statements, risk } => (statements, risk),
+        MultiStatementDecision::Block { reason } => {
+            return Err(DbOperationError::UnsupportedOperation(reason));
+        }
+    };
+    if access_mode.is_read_only() && !risk.read_only_allowed {
+        return Err(DbOperationError::PermissionDenied(
+            "read-only mode blocks MySQL write statements".to_string(),
+        ));
+    }
+    statements
+        .iter()
+        .map(|statement| {
+            classify_mysql_statement(statement)
+                .map_err(|error| DbOperationError::UnsupportedOperation(error.to_string()))
+        })
+        .collect()
+}
+
+pub(in crate::adapters::mysql) fn validate_mysql_export_query(
+    query: &str,
+    selected_database: Option<&str>,
+) -> Result<(), DbOperationError> {
+    let statements = validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
+    if statements.len() != 1
+        || !matches!(
+            statements[0].kind,
+            MysqlStatementKind::Select
+                | MysqlStatementKind::Table
+                | MysqlStatementKind::Show
+                | MysqlStatementKind::Describe
+        )
+    {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL CSV export supports a single read-only result query".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn mysql_metadata_fallback_kind(
+    kind: &MysqlStatementKind,
+) -> Option<MysqlMetadataFallbackKind> {
     match kind {
         MysqlStatementKind::Select => Some(MysqlMetadataFallbackKind::Select),
         MysqlStatementKind::Show => Some(MysqlMetadataFallbackKind::Show),
@@ -14,7 +93,30 @@ fn mysql_metadata_fallback_kind(kind: &MysqlStatementKind) -> Option<MysqlMetada
     }
 }
 
-fn mysql_metadata_select_query(
+pub(super) fn mysql_metadata_fallback_has_unsupported_session_state(
+    statements: &[MysqlStatement],
+) -> bool {
+    let mut temporary_table_created = false;
+    for statement in statements {
+        if temporary_table_created
+            && matches!(
+                statement.kind,
+                MysqlStatementKind::Show | MysqlStatementKind::Describe
+            )
+        {
+            return true;
+        }
+        if matches!(
+            statement.kind,
+            MysqlStatementKind::CreateTable { temporary: true }
+        ) {
+            temporary_table_created = true;
+        }
+    }
+    false
+}
+
+pub(super) fn mysql_metadata_select_query(
     query: &str,
     source_alias: &str,
     marker_alias: &str,
@@ -293,88 +395,7 @@ fn skip_mysql_metadata_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
     bytes.len()
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub(super) struct MysqlExecutionResult {
-    pub(super) result_set: Option<MysqlResultSet>,
-    pub(super) command_tag: Option<CommandTag>,
-    pub(super) refresh_scope: RefreshScope,
-}
-
-struct MysqlCommandEvent {
-    kind: MysqlStatementKind,
-    target: Option<String>,
-    tag: CommandTag,
-}
-
-pub(super) fn validate_mysql_multi_query(
-    query: &str,
-    selected_database: Option<&str>,
-    access_mode: AccessMode,
-) -> Result<Vec<MysqlStatement>, DbOperationError> {
-    let decision = evaluate_mysql_multi_statement(query, selected_database);
-    let (statements, risk) = match decision {
-        MultiStatementDecision::Allow { statements, risk } => (statements, risk),
-        MultiStatementDecision::Block { reason } => {
-            return Err(DbOperationError::UnsupportedOperation(reason));
-        }
-    };
-    if access_mode.is_read_only() && !risk.read_only_allowed {
-        return Err(DbOperationError::PermissionDenied(
-            "read-only mode blocks MySQL write statements".to_string(),
-        ));
-    }
-    statements
-        .iter()
-        .map(|statement| {
-            classify_mysql_statement(statement)
-                .map_err(|error| DbOperationError::UnsupportedOperation(error.to_string()))
-        })
-        .collect()
-}
-
-fn mysql_metadata_fallback_has_unsupported_session_state(statements: &[MysqlStatement]) -> bool {
-    let mut temporary_table_created = false;
-    for statement in statements {
-        if temporary_table_created
-            && matches!(
-                statement.kind,
-                MysqlStatementKind::Show | MysqlStatementKind::Describe
-            )
-        {
-            return true;
-        }
-        if matches!(
-            statement.kind,
-            MysqlStatementKind::CreateTable { temporary: true }
-        ) {
-            temporary_table_created = true;
-        }
-    }
-    false
-}
-
-pub(super) fn validate_mysql_export_query(
-    query: &str,
-    selected_database: Option<&str>,
-) -> Result<(), DbOperationError> {
-    let statements = validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
-    if statements.len() != 1
-        || !matches!(
-            statements[0].kind,
-            MysqlStatementKind::Select
-                | MysqlStatementKind::Table
-                | MysqlStatementKind::Show
-                | MysqlStatementKind::Describe
-        )
-    {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL CSV export supports a single read-only result query".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_mysql_session_marker(
+pub(super) fn validate_mysql_session_marker(
     result: &MysqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
@@ -390,7 +411,7 @@ fn validate_mysql_session_marker(
     Ok(())
 }
 
-fn query_failed_after_change(
+pub(super) fn query_failed_after_change(
     error: DbOperationError,
     refresh_scope: RefreshScope,
 ) -> DbOperationError {
@@ -404,7 +425,7 @@ fn query_failed_after_change(
     }
 }
 
-fn query_failed_after_mysql_statement(
+pub(super) fn query_failed_after_mysql_statement(
     error: DbOperationError,
     refresh_scope: RefreshScope,
     possible_refresh_scope: RefreshScope,
@@ -430,13 +451,16 @@ fn is_mysql_statement_failure(error: &DbOperationError) -> bool {
     )
 }
 
-fn is_mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> bool {
+pub(super) fn is_mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> bool {
     result.columns == ["__sabiql_marker", "affected_rows"]
         && result.values.len() == 1
         && result.values[0].first().and_then(QueryValue::as_str) == Some(marker)
 }
 
-fn mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> Result<i64, DbOperationError> {
+pub(super) fn mysql_row_count_marker(
+    result: &MysqlResultSet,
+    marker: &str,
+) -> Result<i64, DbOperationError> {
     if !is_mysql_row_count_marker(result, marker) || result.values[0].len() != 2 {
         return Err(DbOperationError::QueryFailed(
             "mysql ROW_COUNT marker did not match the executed statement".to_string(),
@@ -450,7 +474,7 @@ fn mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> Result<i64, 
     })
 }
 
-fn mysql_command_tag(
+pub(super) fn mysql_command_tag(
     kind: &MysqlStatementKind,
     affected_rows: i64,
     user_result: Option<&MysqlResultSet>,
@@ -492,7 +516,7 @@ fn mysql_command_tag(
     }
 }
 
-fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
+pub(super) fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
     if mysql_statement_is_schema_modifying(kind) {
         RefreshScope::Metadata
     } else if mysql_statement_is_data_modifying(kind) {
@@ -526,7 +550,7 @@ fn apply_pending_mysql_data(
     }
 }
 
-fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Option<CommandTag> {
+pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Option<CommandTag> {
     let mut committed_schema = None;
     let mut committed_data = None;
     let mut pending = None;
@@ -602,3 +626,7 @@ fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Option<CommandTa
 
     committed_schema.or(committed_data).or(last_tag)
 }
+
+#[cfg(test)]
+#[path = "policy_tests.rs"]
+mod tests;

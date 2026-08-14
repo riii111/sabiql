@@ -1,4 +1,11 @@
-fn has_mysql_cli_error(output: &[u8]) -> bool {
+use std::io::{self, Write};
+
+use crate::app::ports::outbound::DbOperationError;
+
+use super::probe::{is_mysql_connect_timeout_message, validate_sql_mode};
+use super::xml::MysqlResultSet;
+
+pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
     output
         .split(|byte| *byte == b'\n' || *byte == b'\r')
         .any(|line| {
@@ -13,23 +20,26 @@ fn has_mysql_cli_error(output: &[u8]) -> bool {
         })
 }
 
-fn is_mysql_batch_diagnostic(line: &[u8]) -> bool {
+pub(super) fn is_mysql_batch_diagnostic(line: &[u8]) -> bool {
     line.starts_with(b"mysql: ") || line.starts_with(b"Warning: ")
 }
 
-fn trace_mysql_error(output: &[u8]) {
+pub(super) fn trace_mysql_error(output: &[u8]) {
     if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() && has_mysql_cli_error(output) {
         write_mysql_transcript_line("sabiql mysql frame: ERROR line observed");
     }
 }
 
-fn write_mysql_transcript_line(line: &str) {
+pub(super) fn write_mysql_transcript_line(line: &str) {
     let mut stderr = io::stderr();
     let _ = stderr.write_all(line.as_bytes());
     let _ = stderr.write_all(b"\n");
 }
 
-fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
+pub(super) fn validate_mode_probe(
+    result: &MysqlResultSet,
+    marker: &str,
+) -> Result<(), DbOperationError> {
     if result.values.len() != 1 || result.columns != ["__sabiql_probe", "__sabiql_sql_mode"] {
         return Err(DbOperationError::QueryFailed(
             "mysql sql_mode probe returned an unexpected result".to_string(),
@@ -52,7 +62,7 @@ fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOp
     validate_sql_mode(mode)
 }
 
-fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
+pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
@@ -133,3 +143,7 @@ fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
         text
     }
 }
+
+#[cfg(test)]
+#[path = "error_tests.rs"]
+mod tests;

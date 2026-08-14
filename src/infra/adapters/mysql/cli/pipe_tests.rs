@@ -1,6 +1,8 @@
 #[cfg(all(test, not(unix)))]
 mod pipe_executor_tests {
-    use super::*;
+    use tokio::io::AsyncWriteExt;
+
+    use super::super::*;
 
     #[tokio::test]
     async fn pipe_errors_are_checked_before_resultset_frames() {
@@ -32,7 +34,10 @@ mod pipe_executor_tests {
 }
 #[cfg(all(test, not(unix)))]
 mod export_pipe_tests {
-    use super::*;
+    use tokio::io::AsyncWriteExt;
+
+    use super::super::super::error::{classify_mysql_query_failure, has_mysql_cli_error};
+    use super::super::*;
 
     #[tokio::test]
     async fn consumes_stderr_while_streaming_stdout() {
