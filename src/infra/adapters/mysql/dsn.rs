@@ -2,8 +2,10 @@ use std::fs;
 
 use url::Url;
 
-use crate::app::ports::outbound::DbOperationError;
-use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode};
+use crate::app::ports::outbound::{DbOperationError, DsnBuilder};
+use crate::domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
+
+use super::adapter::MySqlAdapter;
 
 #[derive(Debug)]
 pub(super) struct MySqlDsn {
@@ -51,6 +53,15 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
         url.query_pairs_mut().append_pair("ssl-key", path);
     }
     url.to_string()
+}
+
+impl DsnBuilder for MySqlAdapter {
+    fn build_dsn(&self, profile: &ConnectionProfile) -> String {
+        let config = profile
+            .mysql_config()
+            .expect("MySQL profile requires MySQL config");
+        build_mysql_dsn(config)
+    }
 }
 
 pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
