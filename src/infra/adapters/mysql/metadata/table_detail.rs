@@ -56,6 +56,22 @@ pub(super) async fn fetch_table_detail_in_session(
     .await
 }
 
+pub(super) async fn fetch_table_columns_and_fks(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Table, DbOperationError> {
+    let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
+    fetch_table_columns_and_fks_with_summaries(
+        dsn,
+        schema,
+        table,
+        &snapshot.tables,
+        &snapshot.table_summaries,
+    )
+    .await
+}
+
 async fn fetch_table_detail_in_session_with_program(
     dsn: &str,
     schema: &str,
@@ -180,22 +196,6 @@ async fn fetch_table_columns_and_fks_with_summaries(
             ..TableKindInfo::default()
         },
     })
-}
-
-pub(super) async fn fetch_table_columns_and_fks(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Table, DbOperationError> {
-    let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
-    fetch_table_columns_and_fks_with_summaries(
-        dsn,
-        schema,
-        table,
-        &snapshot.tables,
-        &snapshot.table_summaries,
-    )
-    .await
 }
 
 fn indexes_query(table: &str) -> String {

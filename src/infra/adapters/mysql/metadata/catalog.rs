@@ -55,6 +55,47 @@ pub(super) struct MysqlMetadataSnapshot {
     pub(super) table_summaries: Vec<TableSummary>,
 }
 
+pub(super) async fn fetch_metadata_snapshot(
+    dsn: &str,
+) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    let database = selected_database(dsn)?;
+    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    metadata_snapshot_from_result(&database, None, &result)
+}
+
+pub(super) async fn fetch_metadata_snapshot_for_schema(
+    dsn: &str,
+    schema: &str,
+) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    let database = selected_database(dsn)?;
+    validate_selected_schema_name(&database, schema)?;
+    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    metadata_snapshot_from_result(&database, Some(schema), &result)
+}
+
+pub(super) async fn fetch_columns(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+    validate_selected_schema(dsn, schema)?;
+    let result = execute_metadata_query(dsn, &columns_query(table)).await?;
+    let columns = parse_columns_for_table(&result, schema, table)?;
+    Ok(columns)
+}
+
+pub(super) async fn fetch_foreign_keys(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    summaries: &[TableSummary],
+) -> Result<Vec<ForeignKey>, DbOperationError> {
+    validate_selected_schema(dsn, schema)?;
+    let result = execute_metadata_query(dsn, &foreign_keys_query(table)).await?;
+    let raw = parse_foreign_key_metadata(&result)?;
+    foreign_keys_from_metadata(raw, summaries)
+}
+
 pub(super) fn find_table(
     schema: &str,
     table: &str,
@@ -67,17 +108,6 @@ pub(super) fn find_table(
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
         })
-}
-
-pub(super) async fn fetch_columns(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &columns_query(table)).await?;
-    let columns = parse_columns_for_table(&result, schema, table)?;
-    Ok(columns)
 }
 
 pub(super) fn columns_query(table: &str) -> String {
@@ -143,24 +173,6 @@ pub(super) fn validate_selected_schema_name(
         ));
     }
     Ok(())
-}
-
-pub(super) async fn fetch_metadata_snapshot(
-    dsn: &str,
-) -> Result<MysqlMetadataSnapshot, DbOperationError> {
-    let database = selected_database(dsn)?;
-    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
-    metadata_snapshot_from_result(&database, None, &result)
-}
-
-pub(super) async fn fetch_metadata_snapshot_for_schema(
-    dsn: &str,
-    schema: &str,
-) -> Result<MysqlMetadataSnapshot, DbOperationError> {
-    let database = selected_database(dsn)?;
-    validate_selected_schema_name(&database, schema)?;
-    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
-    metadata_snapshot_from_result(&database, Some(schema), &result)
 }
 
 pub(super) fn metadata_snapshot_from_result(
@@ -236,18 +248,6 @@ fn parse_table_metadata(
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(tables.into_iter().flatten().collect())
-}
-
-pub(super) async fn fetch_foreign_keys(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-    summaries: &[TableSummary],
-) -> Result<Vec<ForeignKey>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &foreign_keys_query(table)).await?;
-    let raw = parse_foreign_key_metadata(&result)?;
-    foreign_keys_from_metadata(raw, summaries)
 }
 
 pub(super) fn foreign_keys_query(table: &str) -> String {
