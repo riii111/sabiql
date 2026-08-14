@@ -239,6 +239,38 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 return Err(format!("unexpected empty CTE result: {cte:?}"));
             }
 
+            let cte_with_columns = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CTE column-list SELECT failed: {error:?}"))?;
+            if cte_with_columns.columns != ["first_alias"]
+                || !cte_with_columns.values().is_empty()
+            {
+                return Err(format!(
+                    "unexpected empty CTE column-list result: {cte_with_columns:?}"
+                ));
+            }
+
+            let trailing_comment = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT 1 AS value WHERE FALSE -- trailing comment",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty SELECT with trailing comment failed: {error:?}"))?;
+            if trailing_comment.columns != ["value"] || !trailing_comment.values().is_empty() {
+                return Err(format!(
+                    "unexpected empty SELECT with trailing comment: {trailing_comment:?}"
+                ));
+            }
+
             let non_evaluated = tokio::time::timeout(
                 Duration::from_secs(5),
                 db.adapter().execute_adhoc(
@@ -276,9 +308,12 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
 
             for query in [
                 "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
+                "SELECT @sabiql_metadata_value AS read_value WHERE FALSE",
                 "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
                 "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
                 "SELECT CONCAT('a', 'b') AS unproven_function_value WHERE FALSE",
+                "SELECT CONCAT/**/('a', 'b') AS commented_function_value WHERE FALSE",
+                "SELECT INTERVAL(10, 1, 5) AS unproven_interval_value WHERE FALSE",
             ] {
                 let result = db
                     .adapter()
