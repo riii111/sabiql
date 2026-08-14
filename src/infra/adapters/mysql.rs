@@ -2281,30 +2281,29 @@ async fn run_mysql_single_statement_process(
 
     write_mysql_statement(process, query).await?;
 
-    let stdout = read_one_mysql_resultset(process).await?;
-
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .shutdown()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
     #[cfg(unix)]
-    let tail = {
+    let (stdout, tail) = {
+        let stdout = read_one_mysql_resultset(process).await?;
         write_mysql_input(process, b"\x04").await?;
-        read_pty_all(&mut process.pty)
+        let tail = read_pty_all(&mut process.pty)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        (stdout, tail)
     };
 
     #[cfg(not(unix))]
-    let (stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let _stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let (stdout, stderr) = {
+        process
+            .stdin
+            .shutdown()
+            .await
+            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        let (stdout, stderr) =
+            tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+        let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        (stdout, stderr)
+    };
 
     let status = process
         .child
