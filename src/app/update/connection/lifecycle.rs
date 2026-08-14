@@ -274,13 +274,12 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             let message = error.user_message();
-            let detail_message = if state.session.dsn_matches(&target.dsn) {
-                state.session.mark_connection_failed(message.clone());
-                message
-            } else {
-                "Load canceled by connection change".to_string()
-            };
-            state.session.mark_table_detail_probe_failed(detail_message);
+            if state.session.dsn_matches(&target.dsn) {
+                state
+                    .session
+                    .mark_table_detail_probe_failed(&target.dsn, message.clone());
+                state.session.mark_connection_failed(message);
+            }
             state.connection_error.set_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
             );
@@ -315,6 +314,7 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
+    use crate::update::action::TableTarget;
     use crate::update::reducer::reduce as reduce_app;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -1142,12 +1142,36 @@ mod tests {
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
             assert!(state.session.table_detail().is_none());
-            assert!(matches!(
+            assert_eq!(
                 state.session.table_detail_state(),
-                TableDetailState::Error(message) if message == "Load canceled by connection change"
-            ));
+                &TableDetailState::Loading
+            );
             assert_eq!(state.session.selection_generation(), generation);
             assert!(!state.session.is_current_table_detail_run(detail_run_id));
+
+            let retry_effects = reduce_app(
+                &mut state,
+                Action::LoadTableDetail(TableTarget {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation,
+                }),
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(retry_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchTableDetail {
+                    dsn,
+                    schema,
+                    table,
+                    generation: effect_generation,
+                    ..
+                } if dsn == &first.dsn
+                    && schema == "public"
+                    && table == "users"
+                    && *effect_generation == generation
+            )));
         }
 
         #[test]

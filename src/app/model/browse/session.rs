@@ -40,6 +40,9 @@ pub struct PendingConnectionProbe {
     pub dsn: String,
     pub database: Option<String>,
     pub run_id: u64,
+    pub table_detail_dsn: Option<String>,
+    pub table_detail_run_id: Option<u64>,
+    pub table_detail_generation: u64,
 }
 
 impl fmt::Debug for PendingConnectionProbe {
@@ -52,6 +55,12 @@ impl fmt::Debug for PendingConnectionProbe {
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
             .field("run_id", &self.run_id)
+            .field(
+                "table_detail_dsn",
+                &self.table_detail_dsn.as_deref().map(mask_password),
+            )
+            .field("table_detail_run_id", &self.table_detail_run_id)
+            .field("table_detail_generation", &self.table_detail_generation)
             .finish()
     }
 }
@@ -196,8 +205,18 @@ impl BrowseSession {
         }
     }
 
-    pub fn mark_table_detail_probe_failed(&mut self, error: String) -> bool {
-        if self.selected_table_key.is_some()
+    pub fn mark_table_detail_probe_failed(&mut self, dsn: &str, error: String) -> bool {
+        let belongs_to_probe = self
+            .pending_connection_probe
+            .as_ref()
+            .is_some_and(|pending| {
+                pending.table_detail_dsn.as_deref() == Some(dsn)
+                    && pending.table_detail_run_id == Some(self.table_detail_run.last_id())
+                    && pending.table_detail_generation == self.selection_generation
+            });
+        if belongs_to_probe
+            && self.dsn_matches(dsn)
+            && self.selected_table_key.is_some()
             && self.table_detail.is_none()
             && self.table_detail_state == TableDetailState::Loading
         {
@@ -226,6 +245,9 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
+        let table_detail_dsn = self.dsn.clone();
+        let table_detail_run_id = self.table_detail_run.active_id();
+        let table_detail_generation = self.selection_generation;
         self.cancel_metadata_for_connection_probe();
         self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.connection_probe_run.begin();
@@ -236,6 +258,9 @@ impl BrowseSession {
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
             run_id,
+            table_detail_dsn,
+            table_detail_run_id,
+            table_detail_generation,
         });
         run_id
     }
