@@ -127,6 +127,25 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    run_mysql_command_with_timeout(
+        args,
+        option_file,
+        MYSQL_PROBE_TIMEOUT,
+        "mysql probe exceeded the connection timeout",
+    )
+    .await
+}
+
+pub(super) async fn run_mysql_command_with_timeout<I, S>(
+    args: I,
+    option_file: Option<&PathBuf>,
+    command_timeout: Duration,
+    timeout_message: &str,
+) -> Result<std::process::Output, DbOperationError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut command = Command::new("mysql");
     command
         .args(args)
@@ -138,7 +157,7 @@ where
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     }
 
-    match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
+    match timeout(command_timeout, command.output()).await {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
             Err(DbOperationError::CommandNotFound {
@@ -147,9 +166,7 @@ where
             })
         }
         Ok(Err(error)) => Err(DbOperationError::ConnectionFailed(error.to_string())),
-        Err(_) => Err(DbOperationError::Timeout(
-            "mysql probe exceeded the connection timeout".to_string(),
-        )),
+        Err(_) => Err(DbOperationError::Timeout(timeout_message.to_string())),
     }
 }
 

@@ -23,7 +23,6 @@ pub(super) fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> 
         "--connect-timeout=10".to_string(),
         "--batch".to_string(),
         "--column-names".to_string(),
-        "--column-type-info".to_string(),
         "--binary-as-hex".to_string(),
         "--binary-mode".to_string(),
         "--unbuffered".to_string(),
@@ -55,5 +54,13 @@ mod tests {
         }
         assert!(args.contains(&"--batch".to_string()));
         assert!(args.iter().all(|argument| !argument.contains("password")));
+    }
+
+    #[test]
+    fn metadata_arguments_request_only_column_names() {
+        let args = mysql_metadata_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert!(args.contains(&"--column-names".to_string()));
+        assert!(!args.contains(&"--column-type-info".to_string()));
     }
 }
