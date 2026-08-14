@@ -1391,6 +1391,100 @@ async fn preserves_explicit_transaction_order_and_scope() {
     .await;
 }
 
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("system clock error: {error}"))?
+            .as_nanos();
+        let table = format!("sabiql_sab439_{suffix}");
+        let query = format!(
+            "BEGIN; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'implicit commit' WHERE id = 1; CREATE TABLE {table} (id INT); ROLLBACK"
+        );
+        let validation = db
+            .adapter()
+            .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+            .await;
+        if !matches!(
+            validation,
+            Err(DbOperationError::UnsupportedOperation(ref details))
+                if details.contains("implicit commit")
+        ) {
+            return Err(format!("implicit-commit transaction was not rejected: {validation:?}"));
+        }
+
+        let result = async {
+            db.run_cli_script(&format!(
+                "BEGIN; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'implicit commit' WHERE id = 1; CREATE TABLE {table} (id INT); ROLLBACK"
+            ))
+            .await
+            .map_err(|error| format!("raw MySQL implicit-commit check failed: {error}"))?;
+
+            let updated = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read the committed update: {error:?}"))?;
+            let table_exists = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '{table}'"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read the committed DDL: {error:?}"))?;
+            if updated.values() != [[QueryValue::Text("implicit commit".to_string())]]
+                || table_exists.values() != [[QueryValue::Text("1".to_string())]]
+            {
+                return Err(format!(
+                    "Oracle MySQL did not preserve the implicit commit: updated={updated:?}, table_exists={table_exists:?}"
+                ));
+            }
+            Ok::<(), String>(())
+        }
+        .await;
+        let cleanup = async {
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE IF EXISTS {table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up implicit-commit table: {error:?}"))?;
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore fixture: {error:?}"))?;
+            Ok::<(), String>(())
+        };
+        match result {
+            Err(error) => {
+                cleanup.await?;
+                Err(error)
+            }
+            Ok(()) => cleanup.await,
+        }
+    }))
+    .await;
+}
+
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn keeps_temporary_table_state_inside_one_submission() {
