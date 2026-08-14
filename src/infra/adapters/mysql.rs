@@ -1379,10 +1379,6 @@ struct MysqlMetadataSession {
 }
 
 impl MysqlMetadataSession {
-    fn spawn(option_file: &std::path::Path) -> Result<Self, DbOperationError> {
-        Self::spawn_with_program(OsStr::new("mysql"), option_file)
-    }
-
     fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,

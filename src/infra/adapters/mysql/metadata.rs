@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
+use std::time::Duration;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider};
 use crate::domain::{
@@ -330,6 +332,23 @@ async fn fetch_table_detail_in_session(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
+    fetch_table_detail_in_session_with_program(
+        dsn,
+        schema,
+        table,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn fetch_table_detail_in_session_with_program(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Table, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
     super::validate_mysql_tls_files(&target)?;
@@ -340,9 +359,9 @@ async fn fetch_table_detail_in_session(
     })?;
     validate_selected_schema_name(database, schema)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MysqlMetadataSession::spawn(&option_file.path)?;
+    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
-        MYSQL_QUERY_TIMEOUT,
+        timeout,
         fetch_table_detail_with_session(&mut session, database, schema, table),
     )
     .await;
@@ -2129,5 +2148,296 @@ mod tests {
         let unresolved =
             foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &[]).unwrap();
         assert!(!unresolved[0].is_reference_resolved());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod session_tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn fake_metadata_cli(mode: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join(format!("mysql-{mode}"));
+        let transcript = directory.path().join("transcript.log");
+        std::fs::write(&transcript, "").unwrap();
+        let script = r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+transcript=$(dirname "$0")/transcript.log
+printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
+mode=$(basename "$0" | sed 's/^mysql-//')
+trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
+stty -icanon min 1 time 0 <&0 2>/dev/null || true
+if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
+  while [ ! -e "$(dirname "$0")/allow" ]; do sleep 0.001; done
+fi
+while IFS= read -r line; do
+  printf 'query=%s\n' "$line" >> "$transcript"
+  [ "$line" = ";" ] && continue
+  if printf '%s\n' "$line" | grep -q '__sabiql_probe'; then
+    if [ "$mode" = "probe-failure" ]; then
+      printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
+    else
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+    fi
+    continue
+  fi
+  case "$line" in
+    *TABLES*)
+      if [ "$mode" = "empty" ]; then
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA" xsi:nil="true"/><field name="TABLE_NAME" xsi:nil="true"/><field name="TABLE_TYPE" xsi:nil="true"/><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT" xsi:nil="true"/></row></resultset>'
+      elif [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
+      fi
+      ;;
+    *COLUMNS*)
+      if [ "$mode" = "timeout" ]; then
+        while :; do sleep 1; done
+      elif [ "$mode" = "malformed" ]; then
+        printf '%s\n' '<resultset><row><field name="WRONG">x</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
+      fi
+      ;;
+    *STATISTICS*)
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
+      ;;
+    *FOREIGN*)
+      printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
+      ;;
+    *TRIGGERS*)
+      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field></row></resultset>'
+      ;;
+    *SHOW\ CREATE\ VIEW*)
+      if [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
+      fi
+      stty icanon min 1 time 0 <&0 2>/dev/null || true
+      ;;
+    *SHOW\ CREATE\ TABLE*)
+      printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
+      stty icanon min 1 time 0 <&0 2>/dev/null || true
+      ;;
+    *)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+  esac
+done
+"#;
+        std::fs::write(&program, script).unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, transcript)
+    }
+
+    fn assert_process_stopped(transcript: &std::path::Path) {
+        for _ in 0..200 {
+            let pid = std::fs::read_to_string(transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
+            if let Some(pid) = pid
+                && unsafe { libc::kill(pid, 0) } == -1
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!(
+            "fake mysql process is alive or did not start: {}",
+            std::fs::read_to_string(transcript).unwrap()
+        );
+    }
+
+    fn assert_option_file_removed(transcript: &std::path::Path) {
+        let transcript_text = std::fs::read_to_string(transcript).unwrap();
+        let option = transcript_text
+            .lines()
+            .find_map(|line| line.strip_prefix("option="))
+            .unwrap();
+        assert!(
+            !std::path::Path::new(option).exists(),
+            "option file remains"
+        );
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_uses_one_process_for_table_and_view() {
+        for (mode, schema, table) in [("table", "app", "items"), ("view", "app", "items_view")] {
+            let (_directory, program, transcript) = fake_metadata_cli(mode);
+            let detail = fetch_table_detail_in_session_with_program(
+                "mysql://user:password@localhost:3306/app",
+                schema,
+                table,
+                OsStr::new(&program),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap_or_else(|error| {
+                panic!(
+                    "fake metadata CLI failed: {error:?}\n{}",
+                    std::fs::read_to_string(&transcript).unwrap()
+                )
+            });
+
+            assert_eq!(detail.name, table);
+            assert_eq!(detail.columns.len(), 1);
+            assert!(detail.source_ddl().is_some());
+            let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+            assert_eq!(
+                transcript_text
+                    .lines()
+                    .filter(|line| line.starts_with("process="))
+                    .count(),
+                1
+            );
+            let labels = if mode == "view" {
+                [
+                    "__sabiql_probe",
+                    "INFORMATION_SCHEMA.TABLES",
+                    "INFORMATION_SCHEMA.COLUMNS",
+                    "INFORMATION_SCHEMA.STATISTICS",
+                    "REFERENTIAL_CONSTRAINTS",
+                    "INFORMATION_SCHEMA.TRIGGERS",
+                    "SHOW CREATE VIEW",
+                ]
+            } else {
+                [
+                    "__sabiql_probe",
+                    "INFORMATION_SCHEMA.TABLES",
+                    "INFORMATION_SCHEMA.COLUMNS",
+                    "INFORMATION_SCHEMA.STATISTICS",
+                    "REFERENTIAL_CONSTRAINTS",
+                    "INFORMATION_SCHEMA.TRIGGERS",
+                    "SHOW CREATE TABLE",
+                ]
+            };
+            let positions = labels
+                .into_iter()
+                .map(|label| transcript_text.find(label).unwrap())
+                .collect::<Vec<_>>();
+            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+            assert_process_stopped(&transcript);
+            assert_option_file_removed(&transcript);
+        }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_rejects_empty_and_malformed_shapes_without_partial_table()
+     {
+        let (_directory, program, transcript) = fake_metadata_cli("empty");
+        let error = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
+
+        let (_directory, program, transcript) = fake_metadata_cli("malformed");
+        let error = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, DbOperationError::MetadataParseFailed(_)));
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_cleans_up_after_probe_failure_and_timeout() {
+        for (mode, timeout) in [
+            ("probe-failure", Duration::from_secs(5)),
+            ("timeout", Duration::from_secs(5)),
+        ] {
+            let (directory, program, transcript) = fake_metadata_cli(mode);
+            let task = tokio::spawn(async move {
+                fetch_table_detail_in_session_with_program(
+                    "mysql://user:password@localhost:3306/app",
+                    "app",
+                    "items",
+                    OsStr::new(&program),
+                    timeout,
+                )
+                .await
+            });
+            for _ in 0..1_000 {
+                if std::fs::read_to_string(&transcript)
+                    .unwrap()
+                    .lines()
+                    .any(|line| line.starts_with("process="))
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            std::fs::write(directory.path().join("allow"), "").unwrap();
+            let error = task.await.unwrap().unwrap_err();
+            if mode == "timeout" {
+                assert!(matches!(error, DbOperationError::Timeout(_)));
+            } else {
+                assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            }
+            assert_process_stopped(&transcript);
+            assert_option_file_removed(&transcript);
+        }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_cleans_up_after_cancellation() {
+        let (_directory, program, transcript) = fake_metadata_cli("timeout");
+        let task = tokio::spawn(async move {
+            fetch_table_detail_in_session_with_program(
+                "mysql://user:password@localhost:3306/app",
+                "app",
+                "items",
+                OsStr::new(&program),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        for _ in 0..1_000 {
+            if std::fs::read_to_string(&transcript)
+                .unwrap()
+                .lines()
+                .any(|line| line.starts_with("process="))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+
+        for _ in 0..100 {
+            let process_stopped = std::fs::read_to_string(&transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok())
+                .is_some_and(|pid| unsafe { libc::kill(pid, 0) } == -1);
+            if process_stopped {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 }
