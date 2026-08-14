@@ -1287,7 +1287,7 @@ fn mysql_metadata_select_has_unproven_function(sql: &str) -> bool {
                         || !name.eq_ignore_ascii_case("SLEEP")
                             && !matches!(
                                 name.to_ascii_uppercase().as_str(),
-                                "AS" | "IN" | "EXISTS" | "OVER"
+                                "AS" | "CASE" | "IN" | "EXISTS" | "OVER"
                             ))
                 {
                     return true;
@@ -4263,6 +4263,24 @@ mod probe_tests {
             )
             .is_ok()
         );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_ok()
+        );
+        for query in [
+            "SELECT CAST(1 AS CHAR) AS value WHERE FALSE",
+            "SELECT CONVERT(1, CHAR) AS value WHERE FALSE",
+            "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS value WHERE FALSE",
+        ] {
+            assert!(
+                mysql_metadata_select_query(query, "__source", "__marker").is_err(),
+                "{query}"
+            );
+        }
         assert!(
             mysql_metadata_select_query(
                 "SELECT SLEEP(1) AS value WHERE FALSE",

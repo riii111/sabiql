@@ -271,6 +271,21 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 ));
             }
 
+            let case_expression = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CASE SELECT failed: {error:?}"))?;
+            if case_expression.columns != ["value"] || !case_expression.values().is_empty() {
+                return Err(format!(
+                    "unexpected empty CASE SELECT result: {case_expression:?}"
+                ));
+            }
+
             let non_evaluated = tokio::time::timeout(
                 Duration::from_secs(5),
                 db.adapter().execute_adhoc(
@@ -314,6 +329,9 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 "SELECT CONCAT('a', 'b') AS unproven_function_value WHERE FALSE",
                 "SELECT CONCAT/**/('a', 'b') AS commented_function_value WHERE FALSE",
                 "SELECT INTERVAL(10, 1, 5) AS unproven_interval_value WHERE FALSE",
+                "SELECT CAST(1 AS CHAR) AS unproven_cast_value WHERE FALSE",
+                "SELECT CONVERT(1, CHAR) AS unproven_convert_value WHERE FALSE",
+                "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS unproven_extract_value WHERE FALSE",
             ] {
                 let result = db
                     .adapter()
