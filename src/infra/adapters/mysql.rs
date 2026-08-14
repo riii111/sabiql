@@ -2135,42 +2135,45 @@ async fn run_mysql_adhoc_process(
     let mut last_result_set = None;
     let mut command_tags = Vec::with_capacity(statements.len());
     let mut refresh_scope = RefreshScope::None;
+    let mut scope_before_statement = RefreshScope::None;
 
     for statement in statements {
+        scope_before_statement = refresh_scope;
         let marker = Uuid::new_v4().simple().to_string();
         let statement_scope = mysql_refresh_scope(&statement.kind);
+        let possible_refresh_scope = refresh_scope.merge(statement_scope);
         if let Err(error) = write_mysql_statement(process, &statement.sql).await {
             return Err(query_failed_after_change(error, refresh_scope));
         }
         let marker_query =
             format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows");
         if let Err(error) = write_mysql_statement(process, &marker_query).await {
-            return Err(query_failed_after_change(error, refresh_scope));
+            return Err(query_failed_after_change(error, possible_refresh_scope));
         }
         let first_xml = match read_one_mysql_resultset(process).await {
             Ok(xml) => xml,
-            Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
         };
         let first_result = match parse_mysql_xml(&first_xml) {
             Ok(result) => result,
-            Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
         };
         let (user_result, marker_result) = if is_mysql_row_count_marker(&first_result, &marker) {
             (None, first_result)
         } else {
             let xml = match read_one_mysql_resultset(process).await {
                 Ok(xml) => xml,
-                Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+                Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
             };
             let marker_result = match parse_mysql_xml(&xml) {
                 Ok(result) => result,
-                Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+                Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
             };
             (Some(first_result), marker_result)
         };
         let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
             Ok(rows) => rows,
-            Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
         };
         if let Some(result) = user_result {
             last_result_set = Some(result);
@@ -2181,7 +2184,7 @@ async fn run_mysql_adhoc_process(
             target: statement.target.clone(),
             tag,
         });
-        refresh_scope = refresh_scope.merge(statement_scope);
+        refresh_scope = possible_refresh_scope;
     }
 
     #[cfg(not(unix))]
@@ -2221,7 +2224,7 @@ async fn run_mysql_adhoc_process(
     if has_mysql_cli_error(error_bytes) {
         return Err(query_failed_after_change(
             classify_mysql_query_failure(error_bytes),
-            refresh_scope,
+            scope_before_statement,
         ));
     }
     if !status.success() {
@@ -4277,11 +4280,33 @@ done
     }
 
     fn fake_mysql_multi() -> (TempDir, PathBuf, PathBuf) {
+        fake_mysql_multi_with_mode(false)
+    }
+
+    fn fake_mysql_multi_with_marker_failure() -> (TempDir, PathBuf, PathBuf) {
+        fake_mysql_multi_with_mode(true)
+    }
+
+    fn fake_mysql_multi_with_mode(marker_failure: bool) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
         fs::write(&option_file, "[client]\n").unwrap();
         let program = directory.path().join("mysql");
-        let script = r#"#!/bin/sh
+        let marker_response = if marker_failure {
+            "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
+        } else {
+            "marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)' AS __sabiql_marker.*/\\\\1/\")
+      rows=0
+      case \"$line\" in *ROW_COUNT\\(\\)* ) rows=3 ;; esac
+      printf '%s\\n' '<resultset><row><field name=\"__sabiql_marker\">'\"$marker\"'</field><field name=\"affected_rows\">'\"$rows\"'</field></row></resultset>'
+      if [ \"$pending_error\" = 1 ]; then
+        sleep 0.05
+        printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
+        pending_error=0
+      fi"
+        };
+        let script = format!(
+            r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 pending_error=0
@@ -4298,16 +4323,8 @@ while IFS= read -r line; do
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
       ;;
-    *__sabiql_marker*)
-      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_marker.*/\\1/")
-      rows=0
-      case "$line" in *ROW_COUNT\(\)* ) rows=3 ;; esac
-      printf '%s\n' '<resultset><row><field name="__sabiql_marker">'"$marker"'</field><field name="affected_rows">'"$rows"'</field></row></resultset>'
-      if [ "$pending_error" = 1 ]; then
-        sleep 0.05
-        printf '%s\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
-        pending_error=0
-      fi
+      *__sabiql_marker*)
+      {marker_response}
       ;;
     *missing_column*)
       pending_error=1
@@ -4325,7 +4342,8 @@ while IFS= read -r line; do
       ;;
   esac
 done
-"#;
+"#,
+        );
         fs::write(&program, script).unwrap();
         let mut permissions = fs::metadata(&program).unwrap().permissions();
         permissions.set_mode(0o755);
@@ -4709,6 +4727,35 @@ done
         let log = fs::read_to_string(log_file).unwrap();
         assert!(log.contains("UPDATE items SET value = 1"));
         assert!(log.matches("__sabiql_marker").count() >= 2);
+    }
+
+    #[tokio::test]
+    async fn marker_failure_after_a_change_refreshes_the_current_scope() {
+        let (_directory, program, option_file) = fake_mysql_multi_with_marker_failure();
+        let statements = split_mysql_statements("UPDATE items SET value = 1")
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements(
+            OsStr::new(&program),
+            &option_file,
+            "UPDATE items SET value = 1",
+            &statements,
+            AccessMode::ReadWrite,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailedAfterChange {
+                source,
+                refresh_scope: RefreshScope::Data,
+                ..
+            }) if matches!(&*source, DbOperationError::QueryFailed(_))
+        ));
     }
 
     #[tokio::test]
