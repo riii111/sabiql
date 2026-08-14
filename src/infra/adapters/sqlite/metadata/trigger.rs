@@ -1,6 +1,46 @@
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{Trigger, TriggerEvent, TriggerTiming};
 
+// SQLite stores trigger DDL in sqlite_master without TEMP/TEMPORARY or IF NOT EXISTS.
+// TEMP prefix support is for direct SQL input only; metadata collection uses sqlite_master.
+pub(super) fn parse_sqlite_trigger(
+    trigger_name: &str,
+    sql: &str,
+) -> Result<Trigger, DbOperationError> {
+    let Some((first, pos)) = next_keyword_from(sql, 0) else {
+        return Err(sqlite_trigger_parse_error(sql, "missing CREATE"));
+    };
+    if !first.eq_ignore_ascii_case("CREATE") {
+        return Err(sqlite_trigger_parse_error(sql, "expected CREATE"));
+    }
+    let Some((second, mut pos)) = next_keyword_from(sql, pos) else {
+        return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
+    };
+    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
+        let Some((third, next)) = next_keyword_from(sql, pos) else {
+            return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
+        };
+        if !third.eq_ignore_ascii_case("TRIGGER") {
+            return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
+        }
+        pos = next;
+    } else if !second.eq_ignore_ascii_case("TRIGGER") {
+        return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
+    }
+    pos = skip_optional_if_not_exists(sql, pos);
+    pos = skip_object_reference(sql, pos);
+
+    let (timing, events, _) = parse_sqlite_trigger_header(sql, pos)?;
+
+    Ok(Trigger {
+        name: trigger_name.to_string(),
+        timing,
+        events,
+        definition: sql.to_string(),
+        security_context: None,
+    })
+}
+
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
@@ -217,46 +257,6 @@ fn parse_sqlite_trigger_header(
             "unsupported trigger timing or event",
         )),
     }
-}
-
-// SQLite stores trigger DDL in sqlite_master without TEMP/TEMPORARY or IF NOT EXISTS.
-// TEMP prefix support is for direct SQL input only; metadata collection uses sqlite_master.
-pub(super) fn parse_sqlite_trigger(
-    trigger_name: &str,
-    sql: &str,
-) -> Result<Trigger, DbOperationError> {
-    let Some((first, pos)) = next_keyword_from(sql, 0) else {
-        return Err(sqlite_trigger_parse_error(sql, "missing CREATE"));
-    };
-    if !first.eq_ignore_ascii_case("CREATE") {
-        return Err(sqlite_trigger_parse_error(sql, "expected CREATE"));
-    }
-    let Some((second, mut pos)) = next_keyword_from(sql, pos) else {
-        return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
-    };
-    if second.eq_ignore_ascii_case("TEMP") || second.eq_ignore_ascii_case("TEMPORARY") {
-        let Some((third, next)) = next_keyword_from(sql, pos) else {
-            return Err(sqlite_trigger_parse_error(sql, "missing TRIGGER"));
-        };
-        if !third.eq_ignore_ascii_case("TRIGGER") {
-            return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
-        }
-        pos = next;
-    } else if !second.eq_ignore_ascii_case("TRIGGER") {
-        return Err(sqlite_trigger_parse_error(sql, "expected TRIGGER"));
-    }
-    pos = skip_optional_if_not_exists(sql, pos);
-    pos = skip_object_reference(sql, pos);
-
-    let (timing, events, _) = parse_sqlite_trigger_header(sql, pos)?;
-
-    Ok(Trigger {
-        name: trigger_name.to_string(),
-        timing,
-        events,
-        definition: sql.to_string(),
-        security_context: None,
-    })
 }
 
 #[cfg(test)]

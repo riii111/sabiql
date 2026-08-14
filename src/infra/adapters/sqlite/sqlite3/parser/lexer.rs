@@ -272,7 +272,7 @@ fn is_create_keyword_prefix(sql: &str, keyword: &str) -> bool {
     second.eq_ignore_ascii_case(keyword)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: &str) -> bool {
+pub(in crate::adapters::sqlite) fn is_create_virtual_table_prefix(sql: &str) -> bool {
     let Some((first, pos)) = next_keyword_from(sql, 0) else {
         return false;
     };
@@ -291,11 +291,11 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_create_virtual_table_prefix(sql: 
     third.eq_ignore_ascii_case("TABLE")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_create_view_prefix(sql: &str) -> bool {
+pub(in crate::adapters::sqlite) fn is_create_view_prefix(sql: &str) -> bool {
     is_create_keyword_prefix(sql, "VIEW")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn virtual_table_module_name(sql: &str) -> Option<String> {
+pub(in crate::adapters::sqlite) fn virtual_table_module_name(sql: &str) -> Option<String> {
     let mut offset = 0;
     while let Some((keyword, end)) = next_keyword_from(sql, offset) {
         if keyword.eq_ignore_ascii_case("USING") {

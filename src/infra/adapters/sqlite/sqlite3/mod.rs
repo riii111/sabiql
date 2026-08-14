@@ -1,9 +1,12 @@
 mod error;
 mod executor;
-mod metadata;
-pub(super) mod parser;
+pub(super) mod metadata;
+mod parser;
 
 pub(super) use executor::SqliteCli;
+pub(in crate::adapters::sqlite) use parser::{
+    is_create_view_prefix, is_create_virtual_table_prefix, virtual_table_module_name,
+};
 
 #[cfg(test)]
 mod tests {
@@ -40,12 +43,12 @@ mod tests {
         }
     }
 
-    pub(super) struct TestCommandContext {
+    pub(in crate::adapters::sqlite) struct TestCommandContext {
         path: String,
     }
 
     impl TestCommandContext {
-        pub(super) fn count(&self) -> usize {
+        pub(in crate::adapters::sqlite) fn count(&self) -> usize {
             command_configs()
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -64,7 +67,9 @@ mod tests {
     }
 
     impl SqliteAdapter {
-        pub(super) fn with_process_counter(dsn: &str) -> (Self, TestCommandContext) {
+        pub(in crate::adapters::sqlite) fn with_process_counter(
+            dsn: &str,
+        ) -> (Self, TestCommandContext) {
             Self::with_test_command_config(dsn, TestCommandConfig::default())
         }
 
