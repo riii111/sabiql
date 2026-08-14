@@ -227,4 +227,65 @@ mod policy_tests {
             &statements
         ));
     }
+    #[test]
+    fn transaction_rollback_removes_pending_data_tag() {
+        let events = vec![
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Begin,
+                target: None,
+                tag: CommandTag::Begin,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Update { has_where: true },
+                target: Some("items".to_string()),
+                tag: CommandTag::Update(1),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Rollback,
+                target: None,
+                tag: CommandTag::Rollback,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Select,
+                target: None,
+                tag: CommandTag::Select(1),
+            },
+        ];
+
+        assert_eq!(
+            aggregate_mysql_command_tag(&events),
+            Some(CommandTag::Select(1))
+        );
+    }
+
+    #[test]
+    fn ddl_implicit_commit_keeps_prior_data_change() {
+        let events = vec![
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Begin,
+                target: None,
+                tag: CommandTag::Begin,
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Insert,
+                target: Some("items".to_string()),
+                tag: CommandTag::Insert(1),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::CreateTable { temporary: false },
+                target: Some("created".to_string()),
+                tag: CommandTag::Create("TABLE".to_string()),
+            },
+            MysqlCommandEvent {
+                kind: MysqlStatementKind::Rollback,
+                target: None,
+                tag: CommandTag::Rollback,
+            },
+        ];
+
+        assert_eq!(
+            aggregate_mysql_command_tag(&events),
+            Some(CommandTag::Create("TABLE".to_string()))
+        );
+    }
 }
