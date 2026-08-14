@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod args_tests {
-    use super::*;
+    use super::super::*;
 
     #[test]
     fn arguments_keep_credentials_out_of_argv() {

@@ -1,23 +1,73 @@
-pub(super) struct MysqlProcess {
-    child: Child,
+use std::ffi::OsStr;
+use std::io;
+use std::process::Stdio;
+use std::time::Duration;
+
+#[cfg(unix)]
+use tokio::fs::File as TokioFile;
+use tokio::io::AsyncWriteExt;
+use tokio::process::{Child, Command};
+#[cfg(not(unix))]
+use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
+use tokio::time::timeout;
+use uuid::Uuid;
+
+use crate::app::policy::sql::mysql_statement::{MysqlStatement, MysqlStatementKind};
+use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use crate::domain::{QueryValue, RefreshScope};
+
+use super::args::{mysql_metadata_args, mysql_query_args};
+#[cfg(unix)]
+use super::error::trace_mysql_error;
+use super::error::{
+    classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
+    validate_mode_probe,
+};
+#[cfg(not(unix))]
+use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
+use super::policy::{
+    MYSQL_SESSION_MARKER_COLUMN, MysqlCommandEvent, MysqlExecutionResult,
+    MysqlMetadataFallbackKind, aggregate_mysql_command_tag, is_mysql_row_count_marker,
+    mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
+    mysql_metadata_fallback_kind, mysql_metadata_select_query, mysql_refresh_scope,
+    mysql_row_count_marker, query_failed_after_change, query_failed_after_mysql_statement,
+    validate_mysql_session_marker,
+};
+use super::probe::run_mysql_command;
+#[cfg(unix)]
+use super::pty::{MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all};
+#[cfg(unix)]
+use super::xml::trace_mysql_frame;
+use super::xml::{MysqlResultSet, MysqlResultsetFrameScanner, parse_mysql_xml};
+
+#[cfg(all(unix, feature = "test-support"))]
+use super::super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
+#[cfg(all(unix, feature = "test-support"))]
+use super::super::option_file::MySqlOptionFile;
+
+pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
+const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
+
+pub(in crate::adapters::mysql) struct MysqlProcess {
+    pub(super) child: Child,
     #[cfg(unix)]
-    pty: MysqlPty,
+    pub(super) pty: MysqlPty,
     #[cfg(not(unix))]
-    stdin: ChildStdin,
+    pub(super) stdin: ChildStdin,
     #[cfg(not(unix))]
-    stdout: ChildStdout,
+    pub(super) stdout: ChildStdout,
     #[cfg(not(unix))]
-    stderr: ChildStderr,
+    pub(super) stderr: ChildStderr,
     #[cfg(not(unix))]
-    pending: Vec<u8>,
+    pub(super) pending: Vec<u8>,
     #[cfg(not(unix))]
-    pending_stderr: Vec<u8>,
+    pub(super) pending_stderr: Vec<u8>,
     #[cfg(not(unix))]
-    frame_scanner: MysqlResultsetFrameScanner,
+    pub(super) frame_scanner: MysqlResultsetFrameScanner,
 }
 
 impl MysqlProcess {
-    pub(super) fn spawn_with_program(
+    pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
@@ -117,12 +167,12 @@ impl MysqlProcess {
     }
 }
 
-pub(super) struct MysqlMetadataSession {
+pub(in crate::adapters::mysql) struct MysqlMetadataSession {
     process: MysqlProcess,
 }
 
 impl MysqlMetadataSession {
-    pub(super) fn spawn_with_program(
+    pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
@@ -131,7 +181,7 @@ impl MysqlMetadataSession {
         })
     }
 
-    pub(super) async fn probe(&mut self) -> Result<(), DbOperationError> {
+    pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<(), DbOperationError> {
         let marker = Uuid::new_v4().simple().to_string();
         let query =
             format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
@@ -139,7 +189,7 @@ impl MysqlMetadataSession {
         validate_mode_probe(&result, &marker)
     }
 
-    pub(super) async fn execute(
+    pub(in crate::adapters::mysql) async fn execute(
         &mut self,
         query: &str,
     ) -> Result<MysqlResultSet, DbOperationError> {
@@ -148,7 +198,7 @@ impl MysqlMetadataSession {
         parse_mysql_xml(&xml)
     }
 
-    pub(super) async fn finish(&mut self) -> Result<(), DbOperationError> {
+    pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
         #[cfg(not(unix))]
         self.process
             .stdin
@@ -191,12 +241,12 @@ impl MysqlMetadataSession {
         Ok(())
     }
 
-    pub(super) async fn cleanup(&mut self) {
+    pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
         cleanup_mysql_process(&mut self.process).await;
     }
 }
 
-pub(super) async fn run_mysql_adhoc(
+pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     option_file: &std::path::Path,
     query: &str,
     statements: &[MysqlStatement],
@@ -213,7 +263,7 @@ pub(super) async fn run_mysql_adhoc(
     .await
 }
 
-pub(super) async fn run_mysql_single_statement(
+pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
     option_file: &std::path::Path,
     query: &str,
     access_mode: AccessMode,
@@ -478,7 +528,7 @@ async fn run_mysql_adhoc_process(
     })
 }
 
-async fn configure_mysql_session(
+pub(super) async fn configure_mysql_session(
     process: &mut MysqlProcess,
     access_mode: AccessMode,
 ) -> Result<(), DbOperationError> {
@@ -503,7 +553,7 @@ async fn configure_mysql_session(
     }
 }
 
-async fn write_mysql_statement(
+pub(super) async fn write_mysql_statement(
     process: &mut MysqlProcess,
     query: &str,
 ) -> Result<(), DbOperationError> {
@@ -590,7 +640,7 @@ fn mysql_skip_block_comment(bytes: &[u8], index: usize) -> usize {
     bytes.len()
 }
 
-async fn write_mysql_input(
+pub(super) async fn write_mysql_input(
     process: &mut MysqlProcess,
     input: &[u8],
 ) -> Result<(), DbOperationError> {
@@ -623,7 +673,7 @@ async fn write_mysql_input(
     Ok(())
 }
 
-async fn cleanup_mysql_process(process: &mut MysqlProcess) {
+pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     let _ = process.child.kill().await;
     #[cfg(unix)]
     let _ = read_pty_all(&mut process.pty).await;
@@ -632,7 +682,9 @@ async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     let _ = process.child.wait().await;
 }
 
-async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>, DbOperationError> {
+pub(super) async fn read_one_mysql_resultset(
+    process: &mut MysqlProcess,
+) -> Result<Vec<u8>, DbOperationError> {
     #[cfg(unix)]
     {
         return read_one_pty_resultset(&mut process.pty).await;
@@ -648,7 +700,7 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
     .await
 }
 
-async fn mysql_metadata_columns(
+pub(super) async fn mysql_metadata_columns(
     process: &mut MysqlProcess,
     option_file: &std::path::Path,
     query: &str,
@@ -783,7 +835,7 @@ async fn fill_mysql_empty_result_columns(
 }
 
 #[cfg(all(unix, feature = "test-support"))]
-pub(super) async fn run_mysql_cli_script_for_test(
+pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     dsn: &str,
     script: &str,
 ) -> Result<Vec<u8>, DbOperationError> {
@@ -807,3 +859,7 @@ pub(super) async fn run_mysql_cli_script_for_test(
     }
     result
 }
+
+#[cfg(test)]
+#[path = "process_tests.rs"]
+mod tests;

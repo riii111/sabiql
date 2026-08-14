@@ -1,6 +1,9 @@
 #[cfg(test)]
 mod policy_tests {
-    use super::*;
+    use crate::app::ports::outbound::MYSQL_SQL_MODE_UNSUPPORTED_MARKER;
+
+    use super::super::super::error::validate_mode_probe;
+    use super::super::*;
 
     #[test]
     fn csv_export_accepts_one_read_only_result_query() {
@@ -120,7 +123,7 @@ mod policy_tests {
         );
         assert!(
             mysql_metadata_select_query(
-            "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
+                "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
                 "__source",
                 "__marker"
             )

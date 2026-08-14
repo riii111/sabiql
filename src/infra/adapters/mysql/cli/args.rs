@@ -1,4 +1,4 @@
-fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
+pub(super) fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
@@ -15,7 +15,7 @@ fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
         "--prompt=".to_string(),
     ]
 }
-fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
+pub(super) fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
@@ -32,3 +32,7 @@ fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
         "--prompt=".to_string(),
     ]
 }
+
+#[cfg(test)]
+#[path = "args_tests.rs"]
+mod tests;
