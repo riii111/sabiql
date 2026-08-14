@@ -68,12 +68,14 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql uses the CLI for the database you want to open:
 
 - **To use PostgreSQL:** install `psql`
-- **To use MySQL:** install the Oracle `mysql` CLI from the 8.4 series and connect to Oracle MySQL 8.4 LTS
+- **To use MySQL:** install `mysql`
 - **To use SQLite:** install `sqlite3` version 3.41.1 or later
 
-When connecting to a remote MySQL server, only the local `mysql` CLI is required; a local MySQL server is not. Graphviz is optional and enables ER diagrams for PostgreSQL and MySQL. Windows support is experimental.
+Graphviz is optional and enables ER diagrams for PostgreSQL and MySQL.
 
-See [MySQL support and limitations](docs/mysql.md) and [SQLite support and limitations](docs/sqlite.md) for database-specific details.
+Windows support is experimental.
+
+See [MySQL support and limitations](docs/mysql.md) and [SQLite support and limitations](docs/sqlite.md) for supported versions and database-specific limitations.
 
 ## Quick Start
 
@@ -103,7 +105,7 @@ Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for h
 - [x] JSON/JSONB support (tree view, editing, validation)
 - [x] Theme switching (Sabiql Dark / Light)
 - [x] SQLite support
-- [x] MySQL support (Oracle MySQL 8.4 server and `mysql` CLI)
+- [x] MySQL support
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
