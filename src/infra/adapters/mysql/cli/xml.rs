@@ -573,7 +573,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
 
         let result = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner);
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         assert_eq!(
             buffer,
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>"
@@ -588,7 +588,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
 
         assert!(matches!(
             take_mysql_resultset_frame_after_error_check(&mut buffer, error, &mut scanner),
-            Err(DbOperationError::QueryFailed(_))
+            Err(DbOperationError::ObjectMissing(_))
         ));
         assert_eq!(buffer, b"<resultset><row></row></resultset>");
     }

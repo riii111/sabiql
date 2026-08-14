@@ -70,6 +70,21 @@ pub(super) async fn stop_mysql_process(
     Ok((status, true))
 }
 
+#[cfg(not(unix))]
+async fn finish_mysql_pipe_process(
+    process: &mut MysqlProcess,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
+    let (stdout, stderr, status) = tokio::join!(
+        read_all(&mut process.stdout),
+        read_all(&mut process.stderr),
+        process.child.wait()
+    );
+    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, stdout, stderr))
+}
+
 pub(in crate::adapters::mysql) struct MysqlProcess {
     pub(super) child: Child,
     #[cfg(unix)]
@@ -237,14 +252,11 @@ impl MysqlMetadataSession {
         };
 
         #[cfg(not(unix))]
-        let (_stdout, stderr) = tokio::join!(
-            read_all(&mut self.process.stdout),
-            read_all(&mut self.process.stderr)
-        );
-        #[cfg(not(unix))]
-        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+        let (status, _stdout, stderr) = finish_mysql_pipe_process(&mut self.process).await?;
+        #[cfg(unix)]
         let (status, forcibly_stopped) = stop_mysql_process(&mut self.process).await?;
+        #[cfg(not(unix))]
+        let forcibly_stopped = false;
         #[cfg(unix)]
         let error_bytes = tail.as_slice();
         #[cfg(not(unix))]
@@ -340,18 +352,18 @@ async fn run_mysql_single_statement_process(
     };
 
     #[cfg(not(unix))]
-    let (stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+    let (status, stdout, stderr) = finish_mysql_pipe_process(process).await?;
+    #[cfg(unix)]
     let (status, forcibly_stopped) = stop_mysql_process(process).await?;
+    #[cfg(not(unix))]
+    let forcibly_stopped = false;
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
+    if has_mysql_cli_error(error_bytes) {
+        return Err(classify_mysql_query_failure(error_bytes));
+    }
     if !status.success() && !forcibly_stopped {
         return Err(classify_mysql_query_failure(error_bytes));
     }
@@ -504,12 +516,11 @@ async fn run_mysql_adhoc_process(
     };
 
     #[cfg(not(unix))]
-    let (_stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+    let (status, _stdout, stderr) = finish_mysql_pipe_process(process).await?;
+    #[cfg(unix)]
     let (status, forcibly_stopped) = stop_mysql_process(process).await?;
+    #[cfg(not(unix))]
+    let forcibly_stopped = false;
 
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
@@ -700,6 +711,7 @@ pub(super) async fn read_one_mysql_resultset(
     read_one_mysql_resultset_from_pipes(
         &mut process.stdout,
         &mut process.stderr,
+        &mut process.child,
         &mut process.pending,
         &mut process.pending_stderr,
         &mut process.frame_scanner,
@@ -1048,10 +1060,21 @@ done
             },
             |error| format!("printf '%s\\n' '{error}' >&2"),
         );
+        let tail = if tail_error {
+            "printf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
+        } else {
+            "exit 0"
+        };
+        let tail_after_create = if tail_error {
+            format!("if [ \"$last_statement\" = create ]; then\n        {tail}\n      fi")
+        } else {
+            String::new()
+        };
         let marker_response = if marker_failure {
             "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
+                .to_string()
         } else {
-            "marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)' AS __sabiql_marker.*/\\\\1/\")
+            format!("marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)' AS __sabiql_marker.*/\\\\1/\")
       rows=0
       case \"$line\" in *ROW_COUNT\\(\\)* ) rows=3 ;; esac
       printf '%s\\n' '<resultset><row><field name=\"__sabiql_marker\">'\"$marker\"'</field><field name=\"affected_rows\">'\"$rows\"'</field></row></resultset>'
@@ -1059,12 +1082,8 @@ done
         sleep 0.05
         printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
         pending_error=0
-      fi"
-        };
-        let tail = if tail_error {
-            "printf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
-        } else {
-            "exit 0"
+      fi
+      {tail_after_create}")
         };
         let script = format!(
             r#"#!/bin/sh
@@ -1072,13 +1091,14 @@ option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 printf 'process=%s\n' "$$" >> "$log"
 pending_error=0
+last_statement=none
 eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
-  if [ "$line" = "$eof" ]; then
-    {tail}
-  fi
   case "$line" in
+    *"$eof"*)
+      {tail}
+      ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
@@ -1101,9 +1121,11 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="value">'"$value"'</field></row></resultset>'
       ;;
     *UPDATE*)
+      last_statement=update
       {update_response}
       ;;
     *CREATE*)
+      last_statement=create
       printf '%s\n' '<resultset><row><field name="affected">ok</field></row></resultset>'
       ;;
     *)
@@ -1111,6 +1133,7 @@ while IFS= read -r line; do
       ;;
   esac
 done
+{tail}
 "#,
         );
         fs::write(&program, script).unwrap();
@@ -1478,7 +1501,7 @@ done
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
         ));
     }
@@ -1544,7 +1567,7 @@ done
                 source,
                 refresh_scope: RefreshScope::Metadata,
                 ..
-            }) if matches!(&*source, DbOperationError::QueryFailed(_))
+            }) if matches!(&*source, DbOperationError::ObjectMissing(_))
         ));
     }
 
@@ -1652,7 +1675,7 @@ done
                 source,
                 refresh_scope: RefreshScope::Data,
                 ..
-            }) if matches!(&*source, DbOperationError::QueryFailed(_))
+            }) if matches!(&*source, DbOperationError::ObjectMissing(_))
         ));
     }
 
@@ -1677,7 +1700,7 @@ done
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
         ));
     }

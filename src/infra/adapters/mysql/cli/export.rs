@@ -133,6 +133,7 @@ async fn stream_mysql_resultset_to_csv(
         let source = MysqlExportPtySource {
             pty: &mut process.pty,
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             pending: Vec::new(),
             frame_scanner: super::xml::MysqlResultsetFrameScanner::default(),
             started: false,

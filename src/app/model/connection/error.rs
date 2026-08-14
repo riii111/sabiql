@@ -1,6 +1,6 @@
 use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
     SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
 };
@@ -188,7 +188,9 @@ impl ConnectionErrorKind {
 
 fn is_mysql_connect_timeout_message(value: &str) -> bool {
     value.contains("can't connect to mysql server")
-        && (value.contains("(110)") || value.contains("(10060)"))
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| value.contains(errno))
 }
 
 fn is_mysql_client_certificate_error(value: &str) -> bool {
@@ -468,6 +470,7 @@ mod tests {
         #[rstest]
         #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)")]
         #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (10060)")]
+        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)")]
         fn stderr_as_mysql_timeout(#[case] stderr: &str) {
             assert_eq!(
                 ConnectionErrorKind::classify(stderr),

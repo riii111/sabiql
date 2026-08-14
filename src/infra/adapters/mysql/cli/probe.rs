@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
 };
 
@@ -190,7 +190,9 @@ fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
 pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.contains("can't connect to mysql server")
-        && (lower.contains("(110)") || lower.contains("(10060)"))
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lower.contains(errno))
 }
 
 #[cfg(test)]
@@ -262,6 +264,12 @@ mod probe_tests {
                     .to_string()
             ),
             DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)".to_string()
+            ),
+            DbOperationError::Timeout(_)
         ));
     }
 
