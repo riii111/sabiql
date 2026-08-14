@@ -2,6 +2,27 @@ use super::{MysqlLexError, MysqlStatementKind, lexer::Token, target, transaction
 
 type MysqlClassification = (MysqlStatementKind, Option<String>, Option<String>);
 
+pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, MysqlLexError> {
+    let start = target::effective_start(tokens);
+    let first = target::word(tokens, start)
+        .ok_or_else(|| MysqlLexError("unknown MySQL statement".to_string()))?;
+    match first {
+        "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
+            classify_mysql_crud_statement(tokens, start, first)
+        }
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" => {
+            classify_mysql_ddl_statement(tokens, start, first)
+        }
+        "BEGIN" | "START" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE" => {
+            transaction::classify_mysql_transaction_statement(tokens, start, first)
+        }
+        "TABLE" | "SHOW" | "DESCRIBE" | "DESC" => Ok(classify_mysql_utility_statement(first)),
+        _ => Err(MysqlLexError(format!(
+            "unsupported MySQL statement: {first}"
+        ))),
+    }
+}
+
 fn classify_mysql_crud_statement(
     tokens: &[Token],
     start: usize,
@@ -190,26 +211,5 @@ fn classify_mysql_utility_statement(first: &str) -> MysqlClassification {
         "SHOW" => (MysqlStatementKind::Show, None, None),
         "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
         _ => unreachable!("not a MySQL utility statement: {first}"),
-    }
-}
-
-pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, MysqlLexError> {
-    let start = target::effective_start(tokens);
-    let first = target::word(tokens, start)
-        .ok_or_else(|| MysqlLexError("unknown MySQL statement".to_string()))?;
-    match first {
-        "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
-            classify_mysql_crud_statement(tokens, start, first)
-        }
-        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" => {
-            classify_mysql_ddl_statement(tokens, start, first)
-        }
-        "BEGIN" | "START" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE" => {
-            transaction::classify_mysql_transaction_statement(tokens, start, first)
-        }
-        "TABLE" | "SHOW" | "DESCRIBE" | "DESC" => Ok(classify_mysql_utility_statement(first)),
-        _ => Err(MysqlLexError(format!(
-            "unsupported MySQL statement: {first}"
-        ))),
     }
 }

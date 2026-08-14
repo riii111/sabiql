@@ -3,6 +3,47 @@ use super::{
     lexer::{Token, TokenKind},
 };
 
+pub(super) fn target_after(
+    tokens: &[Token],
+    index: usize,
+) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+    identifier_at(tokens, index)
+        .map(|(target, database, _)| (Some(target), database))
+        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))
+}
+
+pub(super) fn drop_target_after(
+    tokens: &[Token],
+    index: usize,
+) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+    let (target, database, next) = identifier_at(tokens, index)
+        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
+    if tokens[next..]
+        .iter()
+        .any(|token| token.depth == 0 && matches!(token.kind, TokenKind::Symbol(',')))
+    {
+        return Err(MysqlLexError(
+            "MySQL DROP statements must have one target".to_string(),
+        ));
+    }
+    Ok((Some(target), database))
+}
+
+pub(super) fn effective_start(tokens: &[Token]) -> usize {
+    cte_body_start(tokens).unwrap_or(0)
+}
+
+pub(super) fn target_is_selected_database(
+    statement: &MysqlStatement,
+    selected_database: Option<&str>,
+) -> bool {
+    match (statement.target_database.as_deref(), selected_database) {
+        (Some(target_database), Some(selected)) => target_database.eq_ignore_ascii_case(selected),
+        (None, Some(_)) => true,
+        (Some(_) | None, None) => false,
+    }
+}
+
 pub(super) fn word(tokens: &[Token], index: usize) -> Option<&str> {
     match tokens.get(index)?.kind {
         TokenKind::Word(ref word) => Some(word),
@@ -134,45 +175,4 @@ fn skip_parenthesized_tokens(tokens: &[Token], index: usize) -> Option<usize> {
         }
     }
     None
-}
-
-pub(super) fn drop_target_after(
-    tokens: &[Token],
-    index: usize,
-) -> Result<(Option<String>, Option<String>), MysqlLexError> {
-    let (target, database, next) = identifier_at(tokens, index)
-        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
-    if tokens[next..]
-        .iter()
-        .any(|token| token.depth == 0 && matches!(token.kind, TokenKind::Symbol(',')))
-    {
-        return Err(MysqlLexError(
-            "MySQL DROP statements must have one target".to_string(),
-        ));
-    }
-    Ok((Some(target), database))
-}
-
-pub(super) fn effective_start(tokens: &[Token]) -> usize {
-    cte_body_start(tokens).unwrap_or(0)
-}
-
-pub(super) fn target_after(
-    tokens: &[Token],
-    index: usize,
-) -> Result<(Option<String>, Option<String>), MysqlLexError> {
-    identifier_at(tokens, index)
-        .map(|(target, database, _)| (Some(target), database))
-        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))
-}
-
-pub(super) fn target_is_selected_database(
-    statement: &MysqlStatement,
-    selected_database: Option<&str>,
-) -> bool {
-    match (statement.target_database.as_deref(), selected_database) {
-        (Some(target_database), Some(selected)) => target_database.eq_ignore_ascii_case(selected),
-        (None, Some(_)) => true,
-        (Some(_) | None, None) => false,
-    }
 }
