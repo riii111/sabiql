@@ -1,7 +1,7 @@
 mod error;
 mod executor;
 pub(super) mod metadata;
-mod parser;
+pub(super) mod parser;
 
 pub(super) use executor::SqliteCli;
 pub(in crate::adapters::sqlite) use parser::{

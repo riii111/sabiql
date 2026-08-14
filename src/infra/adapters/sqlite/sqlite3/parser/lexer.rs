@@ -184,9 +184,7 @@ fn contains_sqlite_fsdir_access(sql: &str) -> bool {
     false
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn reject_sqlite_fsdir(
-    sql: &str,
-) -> Result<(), DbOperationError> {
+pub(in crate::adapters::sqlite) fn reject_sqlite_fsdir(sql: &str) -> Result<(), DbOperationError> {
     if contains_sqlite_fsdir_access(sql) {
         return Err(DbOperationError::UnsupportedOperation(
             SQLITE_FSDIR_SAFE_MODE_ERROR.to_string(),
@@ -446,7 +444,7 @@ fn contains_sqlite_meta_command(sql: &str) -> bool {
     false
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
+pub(in crate::adapters::sqlite) fn is_sqlite_rerunnable_export_query(
     query: &str,
 ) -> Result<bool, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -456,8 +454,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn is_sqlite_rerunnable_export_query(
             .all(|statement| is_sqlite_rerunnable_export_statement(statement)))
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_export_not_rerunnable_error() -> DbOperationError
-{
+pub(in crate::adapters::sqlite) fn sqlite_export_not_rerunnable_error() -> DbOperationError {
     DbOperationError::UnsupportedOperation(
         "Cannot re-execute this query for CSV export because it contains write or DDL statements"
             .to_string(),
@@ -471,7 +468,7 @@ pub(in crate::adapters::sqlite::sqlite3) enum SqliteWrapMode {
 }
 
 #[derive(Debug)]
-pub(in crate::adapters::sqlite::sqlite3) struct SqliteStatementPlan<'a> {
+pub(in crate::adapters::sqlite) struct SqliteStatementPlan<'a> {
     query: &'a str,
     statements: Vec<&'a str>,
     wrap_mode: SqliteWrapMode,
@@ -482,7 +479,7 @@ impl<'a> SqliteStatementPlan<'a> {
         self.query
     }
 
-    pub(in crate::adapters::sqlite::sqlite3) fn statements(&self) -> &[&'a str] {
+    pub(in crate::adapters::sqlite) fn statements(&self) -> &[&'a str] {
         &self.statements
     }
 
@@ -495,7 +492,7 @@ impl<'a> SqliteStatementPlan<'a> {
     }
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_statement_plan(
+pub(in crate::adapters::sqlite) fn sqlite_statement_plan(
     query: &str,
 ) -> Result<SqliteStatementPlan<'_>, DbOperationError> {
     let statements = try_split_sqlite_statements(query)?;
@@ -619,7 +616,7 @@ fn sqlite_execution_query_for_plan<'query>(plan: &SqliteStatementPlan<'query>) -
     }
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_probe_marker() -> String {
+pub(in crate::adapters::sqlite) fn sqlite_probe_marker() -> String {
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -660,11 +657,11 @@ fn sqlite_empty_result_frame(statement: &str, marker: &str) -> String {
     )
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_empty_result_sentinel(marker: &str) -> String {
+pub(in crate::adapters::sqlite) fn sqlite_empty_result_sentinel(marker: &str) -> String {
     format!("{marker}_empty")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_plan(
+pub(in crate::adapters::sqlite) fn sqlite_adhoc_execution_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
     marker: &str,
 ) -> String {
@@ -700,7 +697,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn sqlite_adhoc_execution_query_for_pla
     parts.join("\n;\n")
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn append_changes_query_for_plan(
+pub(in crate::adapters::sqlite) fn append_changes_query_for_plan(
     plan: &SqliteStatementPlan<'_>,
 ) -> String {
     let body = sqlite_execution_query_for_plan(plan).trim_end().to_string();
