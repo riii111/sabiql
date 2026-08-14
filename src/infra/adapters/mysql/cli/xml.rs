@@ -308,9 +308,9 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationE
 }
 
 pub(super) struct MysqlField {
-    pub(super) name: String,
+    name: String,
     pub(super) value: String,
-    pub(super) is_null: bool,
+    is_null: bool,
 }
 
 impl MysqlField {
