@@ -3,7 +3,10 @@ use std::fmt::Write as _;
 use crate::app::policy::sql::mysql_statement::{
     mysql_explain_rejection_message, mysql_tree_explain_query_kind,
 };
-use crate::domain::QueryValue;
+use crate::app::ports::outbound::{DdlGenerator, SqlDialect};
+use crate::domain::{DatabaseType, QueryValue, Table};
+
+use super::adapter::MySqlAdapter;
 
 pub(super) fn build_explain_sql(query: &str) -> Option<String> {
     if mysql_explain_rejection_message(query).is_some() {
@@ -76,6 +79,48 @@ pub(super) fn build_bulk_delete_sql(
         mysql_quote_identifier(table),
         where_clause
     )
+}
+
+impl DdlGenerator for MySqlAdapter {
+    fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
+        table.source_ddl().unwrap_or_default().to_string()
+    }
+}
+
+impl SqlDialect for MySqlAdapter {
+    fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
+        build_explain_sql(query)
+    }
+
+    fn build_explain_analyze_sql(
+        &self,
+        _database_type: DatabaseType,
+        query: &str,
+    ) -> Option<String> {
+        build_explain_analyze_sql(query)
+    }
+
+    fn build_update_sql(
+        &self,
+        _database_type: DatabaseType,
+        schema: &str,
+        table: &str,
+        column: &str,
+        new_value: &QueryValue,
+        pk_pairs: &[(String, QueryValue)],
+    ) -> String {
+        build_update_sql(schema, table, column, new_value, pk_pairs)
+    }
+
+    fn build_bulk_delete_sql(
+        &self,
+        _database_type: DatabaseType,
+        schema: &str,
+        table: &str,
+        pk_pairs_per_row: &[Vec<(String, QueryValue)>],
+    ) -> String {
+        build_bulk_delete_sql(schema, table, pk_pairs_per_row)
+    }
 }
 
 pub(super) fn build_metadata_select_query(
