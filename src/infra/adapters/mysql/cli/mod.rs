@@ -44,7 +44,7 @@ use crate::app::ports::outbound::{
 };
 use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
-#[cfg(feature = "test-support")]
+#[cfg(all(unix, feature = "test-support"))]
 use super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
 use super::{dsn::MySqlDsn, option_file::MySqlOptionFile, sql};
 
@@ -65,3 +65,9 @@ include!("pipe.rs");
 include!("process.rs");
 include!("error.rs");
 include!("export.rs");
+include!("process_tests.rs");
+include!("xml_tests.rs");
+include!("export_tests.rs");
+include!("policy_tests.rs");
+include!("args_tests.rs");
+include!("error_tests.rs");
