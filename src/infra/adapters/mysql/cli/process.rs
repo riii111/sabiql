@@ -33,7 +33,7 @@ use super::policy::{
     mysql_row_count_marker, query_failed_after_change, query_failed_after_mysql_statement,
     validate_mysql_session_marker,
 };
-use super::probe::run_mysql_command;
+use super::probe::run_mysql_command_with_timeout;
 #[cfg(unix)]
 use super::pty::{
     MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
@@ -716,7 +716,7 @@ pub(super) async fn mysql_metadata_columns(
     kind: MysqlMetadataFallbackKind,
 ) -> Result<Vec<String>, DbOperationError> {
     let query = match kind {
-        MysqlMetadataFallbackKind::Select => {
+        MysqlMetadataFallbackKind::Select | MysqlMetadataFallbackKind::Table => {
             return mysql_metadata_select_columns(process, query).await;
         }
         MysqlMetadataFallbackKind::Show | MysqlMetadataFallbackKind::Describe => {
@@ -773,7 +773,13 @@ async fn mysql_metadata_columns_external(
     let mut args = mysql_metadata_args(option_file);
     args.push(format!("--execute={query}"));
     let option_file = option_file.to_path_buf();
-    let output = run_mysql_command(args, Some(&option_file)).await?;
+    let output = run_mysql_command_with_timeout(
+        args,
+        Some(&option_file),
+        MYSQL_QUERY_TIMEOUT,
+        "mysql query exceeded the execution timeout",
+    )
+    .await?;
     if !output.status.success() {
         return Err(classify_mysql_query_failure(&output.stderr));
     }

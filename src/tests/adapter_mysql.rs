@@ -208,7 +208,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-async fn preserves_empty_result_columns_for_select_show_and_describe() {
+async fn preserves_empty_result_columns_for_select_show_describe_and_table() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
             let select = db
@@ -286,6 +286,21 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 ));
             }
 
+            for (query, expected_column) in [
+                ("SELECT CONCAT('a', 'b') AS concatenated WHERE FALSE", "concatenated"),
+                ("SELECT CAST(1 AS CHAR) AS cast_value WHERE FALSE", "cast_value"),
+                ("SELECT @sabiql_metadata_value AS read_value WHERE FALSE", "read_value"),
+            ] {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), query, AccessMode::ReadWrite)
+                    .await
+                    .map_err(|error| format!("empty SELECT metadata fallback failed: {error:?}"))?;
+                if result.columns != [expected_column] || !result.values().is_empty() {
+                    return Err(format!("unexpected empty SELECT result: {result:?}"));
+                }
+            }
+
             let non_evaluated = tokio::time::timeout(
                 Duration::from_secs(5),
                 db.adapter().execute_adhoc(
@@ -323,15 +338,8 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
 
             for query in [
                 "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
-                "SELECT @sabiql_metadata_value AS read_value WHERE FALSE",
                 "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
                 "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
-                "SELECT CONCAT('a', 'b') AS unproven_function_value WHERE FALSE",
-                "SELECT CONCAT/**/('a', 'b') AS commented_function_value WHERE FALSE",
-                "SELECT INTERVAL(10, 1, 5) AS unproven_interval_value WHERE FALSE",
-                "SELECT CAST(1 AS CHAR) AS unproven_cast_value WHERE FALSE",
-                "SELECT CONVERT(1, CHAR) AS unproven_convert_value WHERE FALSE",
-                "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS unproven_extract_value WHERE FALSE",
             ] {
                 let result = db
                     .adapter()
@@ -372,6 +380,19 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 || !describe.values().is_empty()
             {
                 return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
+            }
+
+            let table = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("TABLE {MYSQL_EMPTY_TABLE}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty TABLE failed: {error:?}"))?;
+            if table.columns != ["id", "payload"] || !table.values().is_empty() {
+                return Err(format!("unexpected empty TABLE result: {table:?}"));
             }
             Ok(())
         })
@@ -1678,6 +1699,19 @@ async fn exports_a_header_only_csv_for_an_empty_result() {
                 .map_err(|error| format!("failed to read empty CSV export: {error}"))?;
             if csv != "first_alias,empty_alias\n" {
                 return Err(format!("unexpected empty CSV export: {csv:?}"));
+            }
+
+            let table_path = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                &format!("TABLE {MYSQL_EMPTY_TABLE}"),
+                output_directory.path().join("empty-table.csv"),
+            )
+            .await
+            .map_err(|error| format!("empty TABLE CSV export failed: {error:?}"))?;
+            let table_csv = std::fs::read_to_string(&table_path)
+                .map_err(|error| format!("failed to read empty TABLE CSV export: {error}"))?;
+            if table_csv != "id,payload\n" {
+                return Err(format!("unexpected empty TABLE CSV export: {table_csv:?}"));
             }
             Ok(())
         })

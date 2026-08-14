@@ -56,4 +56,12 @@ mod tests {
         assert!(args.contains(&"--batch".to_string()));
         assert!(args.iter().all(|argument| !argument.contains("password")));
     }
+
+    #[test]
+    fn metadata_arguments_request_column_names_for_empty_results() {
+        let args = mysql_metadata_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert!(args.contains(&"--column-names".to_string()));
+        assert!(args.contains(&"--column-type-info".to_string()));
+    }
 }
