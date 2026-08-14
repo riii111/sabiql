@@ -58,6 +58,12 @@ class LintTestNamesTest < Minitest::Test
       fn misplaced_function() {}
 
       #[cfg(test)]
+      extern "C" fn misplaced_extern_function() {}
+
+      #[cfg(test)]
+      async unsafe fn misplaced_async_unsafe_function() {}
+
+      #[cfg(test)]
       struct MisplacedStruct;
 
       #[cfg(test)]
@@ -79,7 +85,7 @@ class LintTestNamesTest < Minitest::Test
     RUST
 
     refute status.success?
-    assert_equal 7, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
+    assert_equal 9, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
     assert_includes stderr, "fixture.rs"
   end
 

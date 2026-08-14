@@ -6,7 +6,7 @@ DEFAULT_PATHS = [
   "src",
   "tests",
 ].freeze
-TEST_ONLY_ITEM_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*(?:async\s+)?(fn|struct|impl|const|type|static)\b/
+TEST_ONLY_ITEM_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe|async|extern(?:\s+"[^"]+")?)\s+)*(fn|struct|impl|const|type|static)\b/
 MODULE_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*mod\s+([a-zA-Z0-9_]+)\s*\{/
 
 # This lint only checks mechanically detectable anti-patterns.
