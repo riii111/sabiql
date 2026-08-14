@@ -2665,6 +2665,13 @@ async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperati
             Err(error) => return Err(DbOperationError::ConnectionLost(error.to_string())),
         };
         if count == 0 {
+            let tail = read_pty_all(pty)
+                .await
+                .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+            if has_mysql_cli_error(&tail) {
+                trace_mysql_error(&tail);
+                return Err(classify_mysql_query_failure(&tail));
+            }
             return Err(DbOperationError::EmptyResponse(
                 "mysql query returned no resultset".to_string(),
             ));
@@ -4272,6 +4279,8 @@ mod executor_tests {
         };
         let user_response = if mode == "failure" {
             "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
+        } else if mode == "no_result_failure" {
+            "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
         } else {
             "printf '%s\\n' '<resultset><row><field name=\"value\">ok</field></row></resultset>'"
         };
@@ -4744,6 +4753,27 @@ done
         .await;
 
         assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+    }
+
+    #[tokio::test]
+    async fn classifies_cli_error_when_no_resultset_is_emitted() {
+        let (_directory, program, log_file) = fake_mysql("no_result_failure");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_adhoc_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            AccessMode::ReadWrite,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("missing_column")
+        ));
     }
 
     #[tokio::test]
