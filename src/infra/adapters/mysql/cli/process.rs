@@ -70,6 +70,21 @@ pub(super) async fn stop_mysql_process(
     Ok((status, true))
 }
 
+#[cfg(not(unix))]
+async fn finish_mysql_pipe_process(
+    process: &mut MysqlProcess,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
+    let (stdout, stderr, status) = tokio::join!(
+        read_all(&mut process.stdout),
+        read_all(&mut process.stderr),
+        process.child.wait()
+    );
+    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, stdout, stderr))
+}
+
 pub(in crate::adapters::mysql) struct MysqlProcess {
     pub(super) child: Child,
     #[cfg(unix)]
@@ -237,14 +252,11 @@ impl MysqlMetadataSession {
         };
 
         #[cfg(not(unix))]
-        let (_stdout, stderr) = tokio::join!(
-            read_all(&mut self.process.stdout),
-            read_all(&mut self.process.stderr)
-        );
-        #[cfg(not(unix))]
-        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+        let (status, _stdout, stderr) = finish_mysql_pipe_process(&mut self.process).await?;
+        #[cfg(unix)]
         let (status, forcibly_stopped) = stop_mysql_process(&mut self.process).await?;
+        #[cfg(not(unix))]
+        let forcibly_stopped = false;
         #[cfg(unix)]
         let error_bytes = tail.as_slice();
         #[cfg(not(unix))]
@@ -340,18 +352,18 @@ async fn run_mysql_single_statement_process(
     };
 
     #[cfg(not(unix))]
-    let (stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+    let (status, stdout, stderr) = finish_mysql_pipe_process(process).await?;
+    #[cfg(unix)]
     let (status, forcibly_stopped) = stop_mysql_process(process).await?;
+    #[cfg(not(unix))]
+    let forcibly_stopped = false;
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
+    if has_mysql_cli_error(error_bytes) {
+        return Err(classify_mysql_query_failure(error_bytes));
+    }
     if !status.success() && !forcibly_stopped {
         return Err(classify_mysql_query_failure(error_bytes));
     }
@@ -506,12 +518,11 @@ async fn run_mysql_adhoc_process(
     };
 
     #[cfg(not(unix))]
-    let (_stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
+    let (status, _stdout, stderr) = finish_mysql_pipe_process(process).await?;
+    #[cfg(unix)]
     let (status, forcibly_stopped) = stop_mysql_process(process).await?;
+    #[cfg(not(unix))]
+    let forcibly_stopped = false;
 
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
@@ -702,6 +713,7 @@ pub(super) async fn read_one_mysql_resultset(
     read_one_mysql_resultset_from_pipes(
         &mut process.stdout,
         &mut process.stderr,
+        &mut process.child,
         &mut process.pending,
         &mut process.pending_stderr,
         &mut process.frame_scanner,
@@ -1441,7 +1453,7 @@ done
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
         ));
     }
@@ -1585,7 +1597,7 @@ done
                 source,
                 refresh_scope: RefreshScope::Data,
                 ..
-            }) if matches!(&*source, DbOperationError::QueryFailed(_))
+            }) if matches!(&*source, DbOperationError::ObjectMissing(_))
         ));
     }
 
@@ -1610,7 +1622,7 @@ done
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
         ));
     }

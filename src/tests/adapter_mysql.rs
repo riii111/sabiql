@@ -1613,7 +1613,7 @@ async fn discards_real_cli_results_when_query_fails() {
                 AccessMode::ReadWrite,
             )
             .await;
-        if !matches!(result, Err(DbOperationError::QueryFailed(ref details)) if details.contains("missing_column")) {
+        if !matches!(result, Err(DbOperationError::ObjectMissing(ref details)) if details.contains("missing_column")) {
             return Err(format!("expected a query failure without a result: {result:?}"));
         }
         Ok(())
