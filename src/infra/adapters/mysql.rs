@@ -5,7 +5,6 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -63,7 +62,6 @@ const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.a
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
-static OPTION_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 impl MySqlAdapter {
     pub fn new() -> Self {
@@ -885,15 +883,17 @@ fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
 
 fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
     let values = [
-        target.host.as_str(),
-        target.username.as_str(),
-        target.password.as_str(),
+        Some(target.host.as_str()),
+        Some(target.username.as_str()),
+        Some(target.password.as_str()),
+        target.database.as_deref(),
+        target.ssl_ca.as_deref(),
+        target.ssl_cert.as_deref(),
+        target.ssl_key.as_deref(),
     ];
-    if target
-        .database
-        .as_deref()
+    if values
         .into_iter()
-        .chain(values)
+        .flatten()
         .any(|value| value.chars().any(char::is_control))
     {
         return Err(DbOperationError::ConnectionFailed(
@@ -1106,13 +1106,10 @@ struct MySqlOptionFile {
 
 impl MySqlOptionFile {
     fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
+        validate_mysql_values(target)?;
         validate_mysql_tls_files(target)?;
-        let sequence = OPTION_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let mut path = std::env::temp_dir();
-        path.push(format!(
-            "sabiql-mysql-{}-{sequence}.cnf",
-            std::process::id()
-        ));
+        path.push(format!("sabiql-mysql-{}.cnf", Uuid::new_v4()));
         if !path.is_absolute() {
             path = std::env::current_dir()
                 .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?
@@ -3570,6 +3567,7 @@ mod probe_tests {
 
     #[test]
     fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
+        let ca_path = r#" C:\certs\ca #1;= "quoted".pem "#;
         let target = MySqlDsn {
             host: "localhost".to_string(),
             port: 3306,
@@ -3577,7 +3575,7 @@ mod probe_tests {
             username: "user".to_string(),
             password: "password".to_string(),
             ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(r"C:\certs\ca #1.pem".to_string()),
+            ssl_ca: Some(ca_path.to_string()),
             ssl_cert: Some(r"C:\certs\client.pem".to_string()),
             ssl_key: Some(r"C:\certs\client-key.pem".to_string()),
         };
@@ -3585,9 +3583,41 @@ mod probe_tests {
         let contents = serialize_option_file(&target);
 
         assert!(contents.contains("ssl-mode = \"VERIFY_CA\"\n"));
-        assert!(contents.contains("ssl-ca = \"C:\\\\certs\\\\ca #1.pem\"\n"));
+        assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
         assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
         assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn rejects_control_characters_in_tls_paths_before_option_file_creation() {
+        for field in ["CA", "client certificate", "client key"] {
+            let mut target = MySqlDsn {
+                host: "localhost".to_string(),
+                port: 3306,
+                database: None,
+                username: "user".to_string(),
+                password: "password".to_string(),
+                ssl_mode: MySqlSslMode::Disabled,
+                ssl_ca: None,
+                ssl_cert: None,
+                ssl_key: None,
+            };
+            match field {
+                "CA" => target.ssl_ca = Some("ca\n.pem".to_string()),
+                "client certificate" => target.ssl_cert = Some("client\r.pem".to_string()),
+                "client key" => target.ssl_key = Some("client\0-key.pem".to_string()),
+                _ => unreachable!(),
+            }
+
+            assert!(
+                matches!(
+                    MySqlOptionFile::create(&target),
+                    Err(DbOperationError::ConnectionFailed(details))
+                        if details == "MySQL connection settings contain a control character"
+                ),
+                "{field}"
+            );
+        }
     }
 
     #[test]
@@ -3673,6 +3703,77 @@ mod probe_tests {
         }
         let path = option_file.path.clone();
         drop(option_file);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn option_file_names_are_unique_uuid_v4_paths_under_concurrency() {
+        use std::collections::HashSet;
+
+        fn target() -> MySqlDsn {
+            MySqlDsn {
+                host: "localhost".to_string(),
+                port: 3306,
+                database: None,
+                username: "user".to_string(),
+                password: "secret".to_string(),
+                ssl_mode: MySqlSslMode::Disabled,
+                ssl_ca: None,
+                ssl_cert: None,
+                ssl_key: None,
+            }
+        }
+
+        let files = (0..16)
+            .map(|_| {
+                std::thread::spawn(|| {
+                    let target = target();
+                    MySqlOptionFile::create(&target).unwrap()
+                })
+            })
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+        let paths = files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        let unique_paths = paths.iter().collect::<HashSet<_>>();
+
+        assert_eq!(unique_paths.len(), paths.len());
+        for path in &paths {
+            let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap();
+            let uuid = stem.strip_prefix("sabiql-mysql-").unwrap();
+            assert_eq!(uuid::Uuid::parse_str(uuid).unwrap().get_version_num(), 4);
+        }
+
+        drop(files);
+        assert!(paths.iter().all(|path| !path.exists()));
+    }
+
+    #[test]
+    fn option_file_is_removed_when_mysql_process_start_fails() {
+        let (result, path) = {
+            let target = MySqlDsn {
+                host: "localhost".to_string(),
+                port: 3306,
+                database: None,
+                username: "user".to_string(),
+                password: "secret".to_string(),
+                ssl_mode: MySqlSslMode::Disabled,
+                ssl_ca: None,
+                ssl_cert: None,
+                ssl_key: None,
+            };
+            let option_file = MySqlOptionFile::create(&target).unwrap();
+            let path = option_file.path.clone();
+            let result = MysqlProcess::spawn_with_program(
+                OsStr::new("__sabiql_missing_mysql_binary__"),
+                &path,
+            );
+            (result, path)
+        };
+
+        assert!(result.is_err());
         assert!(!path.exists());
     }
 
