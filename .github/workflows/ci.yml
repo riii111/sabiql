@@ -117,10 +117,16 @@ jobs:
       - name: Install SQLite
         shell: pwsh
         run: |
-          choco install sqlite --no-progress -y
-          $sqliteTools = Join-Path $env:ChocolateyInstall 'lib'
-          $sqliteTools = Join-Path $sqliteTools 'SQLite'
-          $sqliteTools = Join-Path $sqliteTools 'tools'
+          $sqliteVersion = '3530400'
+          $sqliteArchive = Join-Path $env:RUNNER_TEMP "sqlite-tools-win-x64-$sqliteVersion.zip"
+          $sqliteTools = Join-Path $env:RUNNER_TEMP 'sqlite-tools'
+          $sqliteUrl = "https://www.sqlite.org/2026/sqlite-tools-win-x64-$sqliteVersion.zip"
+          curl.exe --fail --location --retry 3 --output $sqliteArchive $sqliteUrl
+          $actualHash = (Get-FileHash -Path $sqliteArchive -Algorithm SHA256).Hash
+          if ($actualHash -cne 'F46EE2475DE4CBE287E6E5F7D43C838796B14E7379CD216BDBB28D391429F9FC') {
+            throw "SQLite archive checksum mismatch: $actualHash"
+          }
+          Expand-Archive -Path $sqliteArchive -DestinationPath $sqliteTools
           $sqliteTools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & (Join-Path $sqliteTools 'sqlite3.exe') --version
       - run: cargo nextest run --workspace --profile ci-all --all-features --show-progress=none --status-level=fail --final-status-level=fail
