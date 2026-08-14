@@ -1,6 +1,11 @@
 #[cfg(test)]
 mod export_tests {
-    use super::*;
+    use std::fs;
+
+    #[cfg(unix)]
+    use tokio::io::AsyncWriteExt;
+
+    use super::super::*;
     use tempfile::tempdir;
 
     #[tokio::test]
