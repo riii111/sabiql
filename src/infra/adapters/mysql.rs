@@ -1269,6 +1269,27 @@ fn validate_mysql_multi_query(
         .collect()
 }
 
+fn mysql_metadata_fallback_has_unsupported_session_state(statements: &[MysqlStatement]) -> bool {
+    let mut temporary_table_created = false;
+    for statement in statements {
+        if temporary_table_created
+            && matches!(
+                statement.kind,
+                MysqlStatementKind::Show | MysqlStatementKind::Describe
+            )
+        {
+            return true;
+        }
+        if matches!(
+            statement.kind,
+            MysqlStatementKind::CreateTable { temporary: true }
+        ) {
+            temporary_table_created = true;
+        }
+    }
+    false
+}
+
 fn validate_mysql_export_query(
     query: &str,
     selected_database: Option<&str>,
@@ -2358,6 +2379,12 @@ async fn run_mysql_adhoc_with_program_and_statements(
     access_mode: AccessMode,
     execution_timeout: Duration,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
+    if mysql_metadata_fallback_has_unsupported_session_state(statements) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL empty SHOW/DESCRIBE metadata fallback cannot preserve temporary-table session state"
+                .to_string(),
+        ));
+    }
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
@@ -5088,6 +5115,31 @@ done
             ));
             assert!(!log_file.exists(), "{query}");
         }
+    }
+
+    #[test]
+    fn rejects_empty_metadata_fallback_after_temporary_table_creation() {
+        for query in [
+            "CREATE TEMPORARY TABLE temp_items (id INT); DESCRIBE temp_items 'missing'; DROP TEMPORARY TABLE temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); SHOW COLUMNS FROM temp_items LIKE 'missing'; DROP TEMPORARY TABLE temp_items",
+        ] {
+            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
+                .expect("query should be classified before the session-state check");
+
+            assert!(mysql_metadata_fallback_has_unsupported_session_state(
+                &statements
+            ));
+        }
+
+        let statements = validate_mysql_multi_query(
+            "SHOW COLUMNS FROM items",
+            Some("app"),
+            AccessMode::ReadWrite,
+        )
+        .expect("single SHOW should be classified");
+        assert!(!mysql_metadata_fallback_has_unsupported_session_state(
+            &statements
+        ));
     }
 
     #[tokio::test]
