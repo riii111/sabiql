@@ -157,6 +157,26 @@ mod mysql_tests {
     }
 
     #[test]
+    fn rejects_top_level_into_clauses_before_execution() {
+        for sql in [
+            "SELECT id INTO OUTFILE '/tmp/result' FROM items",
+            "SELECT id INTO DUMPFILE '/tmp/result' FROM items",
+            "SELECT id INTO @value FROM items",
+            "TABLE items INTO OUTFILE '/tmp/result'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { ref reason } if reason.contains("SELECT INTO clauses")),
+                "{sql}"
+            );
+        }
+        assert!(matches!(
+            mysql("WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows"),
+            MultiStatementDecision::Allow { .. }
+        ));
+    }
+
+    #[test]
     fn rejects_unsupported_controls_and_statements_before_execution() {
         for sql in [
             "USE app",
