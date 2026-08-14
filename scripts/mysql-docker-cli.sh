@@ -22,9 +22,6 @@ if [[ -n "${SABIQL_MYSQL_TEST_TLS_DIR:-}" ]]; then
 fi
 
 docker_args=(--rm --interactive)
-if [[ -t 0 && -t 1 ]]; then
-    docker_args+=(--tty)
-fi
 
 exec docker run "${docker_args[@]}" \
     --add-host=host.docker.internal:host-gateway \

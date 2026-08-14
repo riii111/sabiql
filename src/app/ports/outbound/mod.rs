@@ -32,7 +32,7 @@ pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_probe::ConnectionProbe;
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
     SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
 };

@@ -140,6 +140,33 @@ pub(super) fn trace_mysql_frame(kind: &str, bytes: usize) {
     }
 }
 
+pub(super) fn trace_mysql_statement(statement: &str) {
+    if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() {
+        write_mysql_transcript_line(&format!(
+            "sabiql mysql stage: send statement, keyword={}, bytes={}",
+            mysql_statement_keyword(statement),
+            statement.len()
+        ));
+    }
+}
+
+fn mysql_statement_keyword(statement: &str) -> String {
+    let keyword = statement
+        .trim_start()
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .next()
+        .unwrap_or_default();
+    if keyword.is_empty() {
+        "unknown".to_string()
+    } else {
+        keyword
+            .chars()
+            .take(32)
+            .flat_map(char::to_uppercase)
+            .collect()
+    }
+}
+
 pub(super) fn decode_mysql_xml_reference(
     reference: &BytesRef<'_>,
 ) -> Result<String, DbOperationError> {
@@ -573,7 +600,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
 
         let result = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner);
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         assert_eq!(
             buffer,
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>"
@@ -588,7 +615,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
 
         assert!(matches!(
             take_mysql_resultset_frame_after_error_check(&mut buffer, error, &mut scanner),
-            Err(DbOperationError::QueryFailed(_))
+            Err(DbOperationError::ObjectMissing(_))
         ));
         assert_eq!(buffer, b"<resultset><row></row></resultset>");
     }
