@@ -10,9 +10,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error};
-use super::xml::{
-    MysqlResultsetFrameScanner, find_bytes, take_mysql_pty_resultset_frame, trace_mysql_frame,
-};
+use super::xml::{MysqlResultsetFrameScanner, take_mysql_pty_resultset_frame, trace_mysql_frame};
 
 pub(super) struct MysqlPty {
     pub(super) input: TokioFile,
@@ -122,24 +120,33 @@ pub(super) struct MysqlExportPtySource<'a> {
     pub(super) pty: &'a mut MysqlPty,
     pub(super) error_output: Vec<u8>,
     pub(super) pending: Vec<u8>,
+    pub(super) frame_scanner: MysqlResultsetFrameScanner,
     pub(super) started: bool,
 }
 
 impl MysqlExportPtySource<'_> {
-    fn capture_error(&mut self, bytes: &[u8]) {
-        if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
-            self.error_output
-                .extend_from_slice(&bytes[..bytes.len().min(32 * 1024)]);
+    fn append_before_resultset(&mut self, bytes: &[u8]) {
+        if self.started {
+            self.pending.extend_from_slice(bytes);
+            return;
         }
-    }
 
-    fn discard_before_resultset(&mut self) {
-        const RESULTSET_START: &[u8] = b"<resultset";
-        if let Some(start) = find_bytes(&self.pending, RESULTSET_START) {
+        let previous_len = self.pending.len();
+        self.pending.extend_from_slice(bytes);
+        let start = self.frame_scanner.frame_start(&self.pending);
+        let prefix_end = start.unwrap_or(self.pending.len());
+        let new_prefix_end = prefix_end.max(previous_len).min(self.pending.len());
+        let remaining = (32usize * 1024).saturating_sub(self.error_output.len());
+        if remaining > 0 && new_prefix_end > previous_len {
+            self.error_output.extend_from_slice(
+                &self.pending[previous_len..new_prefix_end.min(previous_len + remaining)],
+            );
+        }
+        if let Some(start) = start {
             self.pending.drain(..start);
             self.started = true;
         } else {
-            let keep = RESULTSET_START.len().saturating_sub(1);
+            let keep = b"<resultset".len().saturating_sub(1);
             let discard = self.pending.len().saturating_sub(keep);
             self.pending.drain(..discard);
         }
@@ -157,14 +164,10 @@ impl AsyncRead for MysqlExportPtySource<'_> {
             if !this.started {
                 if !this.pty.pending.is_empty() {
                     let bytes = std::mem::take(&mut this.pty.pending);
-                    this.capture_error(&bytes);
-                    this.pending.extend_from_slice(&bytes);
+                    this.append_before_resultset(&bytes);
                 }
-                if !this.pending.is_empty() {
-                    this.discard_before_resultset();
-                    if this.started {
-                        continue;
-                    }
+                if this.started {
+                    continue;
                 }
 
                 let mut chunk = [0; 4096];
@@ -175,8 +178,7 @@ impl AsyncRead for MysqlExportPtySource<'_> {
                         if bytes.is_empty() {
                             return Poll::Ready(Ok(()));
                         }
-                        this.capture_error(&bytes);
-                        this.pending.extend_from_slice(&bytes);
+                        this.append_before_resultset(&bytes);
                     }
                     Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),
                     Poll::Pending => return Poll::Pending,
@@ -192,13 +194,69 @@ impl AsyncRead for MysqlExportPtySource<'_> {
             }
 
             {
-                let filled_before = buffer.filled().len();
-                let result = Pin::new(&mut this.pty.output).poll_read(cx, buffer);
-                if matches!(&result, Poll::Ready(Ok(()))) {
-                    this.capture_error(&buffer.filled()[filled_before..]);
-                }
-                return result;
+                return Pin::new(&mut this.pty.output).poll_read(cx, buffer);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Seek, SeekFrom, Write};
+
+    use tokio::fs::File as TokioFile;
+
+    use super::*;
+
+    fn source_with_output(output: &[u8]) -> (tempfile::NamedTempFile, MysqlPty) {
+        let mut output_file = tempfile::NamedTempFile::new().unwrap();
+        output_file.write_all(output).unwrap();
+        output_file.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
+        let input_file = tempfile::NamedTempFile::new().unwrap();
+        let pty = MysqlPty {
+            input: TokioFile::from_std(input_file.reopen().unwrap()),
+            output: TokioFile::from_std(output_file.reopen().unwrap()),
+            pending: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+        };
+        (output_file, pty)
+    }
+
+    #[tokio::test]
+    async fn export_source_ignores_cli_error_text_inside_resultset() {
+        let xml = br#"<resultset><row><field name="message">line 1
+ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
+        let (_output_file, mut pty) = source_with_output(xml);
+        let mut source = MysqlExportPtySource {
+            pty: &mut pty,
+            error_output: Vec::new(),
+            pending: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+            started: false,
+        };
+        let mut result = Vec::new();
+
+        source.read_to_end(&mut result).await.unwrap();
+
+        assert_eq!(result, xml);
+        assert!(!has_mysql_cli_error(&source.error_output));
+    }
+
+    #[tokio::test]
+    async fn export_source_keeps_cli_error_before_resultset() {
+        let output = b"ERROR 1054 (42S22): Unknown column\n<resultset></resultset>";
+        let (_output_file, mut pty) = source_with_output(output);
+        let mut source = MysqlExportPtySource {
+            pty: &mut pty,
+            error_output: Vec::new(),
+            pending: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+            started: false,
+        };
+        let mut result = Vec::new();
+
+        source.read_to_end(&mut result).await.unwrap();
+
+        assert!(has_mysql_cli_error(&source.error_output));
     }
 }

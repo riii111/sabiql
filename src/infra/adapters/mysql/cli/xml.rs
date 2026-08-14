@@ -28,6 +28,11 @@ pub(super) struct MysqlResultsetFrameScanner {
 }
 
 impl MysqlResultsetFrameScanner {
+    pub(super) fn frame_start(&mut self, buffer: &[u8]) -> Option<usize> {
+        let _ = self.frame_bounds(buffer);
+        self.resultset_start
+    }
+
     pub(super) fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
         if self.resultset_start_cursor > buffer.len() {
             self.resultset_start_cursor = 0;
@@ -119,11 +124,6 @@ pub(super) fn take_mysql_resultset_frame_after_error_check(
         return Err(classify_mysql_query_failure(error_output));
     }
     Ok(scanner.take(buffer))
-}
-
-#[cfg(unix)]
-pub(super) fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    find_bytes_from(haystack, needle, 0)
 }
 
 fn find_bytes_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {

@@ -414,10 +414,8 @@ async fn run_mysql_adhoc_process(
     let mut last_result_set = None;
     let mut command_tags = Vec::with_capacity(statements.len());
     let mut refresh_scope = RefreshScope::None;
-    let mut scope_before_statement = RefreshScope::None;
 
     for statement in statements {
-        scope_before_statement = refresh_scope;
         let marker = Uuid::new_v4().simple().to_string();
         let statement_scope = mysql_refresh_scope(&statement.kind);
         let possible_refresh_scope = refresh_scope.merge(statement_scope);
@@ -520,7 +518,7 @@ async fn run_mysql_adhoc_process(
     if has_mysql_cli_error(error_bytes) {
         return Err(query_failed_after_change(
             classify_mysql_query_failure(error_bytes),
-            scope_before_statement,
+            refresh_scope,
         ));
     }
     if !status.success() && !forcibly_stopped {
@@ -968,6 +966,9 @@ mod tests {
             "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
         } else if mode == "no_result_failure" {
             "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
+        } else if mode == "field_error" {
+            "printf '%s\\n' '<resultset><row><field name=\"message\">line 1
+ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
         } else {
             "printf '%s\\n' '<resultset><row><field name=\"value\">ok</field></row></resultset>'"
         };
@@ -1016,20 +1017,25 @@ done
     }
 
     fn fake_mysql_multi() -> (TempDir, PathBuf, PathBuf) {
-        fake_mysql_multi_with_mode(false, None)
+        fake_mysql_multi_with_mode(false, None, false)
     }
 
     fn fake_mysql_multi_with_marker_failure() -> (TempDir, PathBuf, PathBuf) {
-        fake_mysql_multi_with_mode(true, None)
+        fake_mysql_multi_with_mode(true, None, false)
     }
 
     fn fake_mysql_multi_with_statement_failure(error: &str) -> (TempDir, PathBuf, PathBuf) {
-        fake_mysql_multi_with_mode(false, Some(error))
+        fake_mysql_multi_with_mode(false, Some(error), false)
+    }
+
+    fn fake_mysql_multi_with_tail_failure() -> (TempDir, PathBuf, PathBuf) {
+        fake_mysql_multi_with_mode(false, None, true)
     }
 
     fn fake_mysql_multi_with_mode(
         marker_failure: bool,
         statement_error: Option<&str>,
+        tail_error: bool,
     ) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
@@ -1055,6 +1061,11 @@ done
         pending_error=0
       fi"
         };
+        let tail = if tail_error {
+            "printf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
+        } else {
+            "exit 0"
+        };
         let script = format!(
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
@@ -1064,7 +1075,9 @@ pending_error=0
 eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
-  [ "$line" = "$eof" ] && exit 0
+  if [ "$line" = "$eof" ]; then
+    {tail}
+  fi
   case "$line" in
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
@@ -1089,6 +1102,9 @@ while IFS= read -r line; do
       ;;
     *UPDATE*)
       {update_response}
+      ;;
+    *CREATE*)
+      printf '%s\n' '<resultset><row><field name="affected">ok</field></row></resultset>'
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -1299,6 +1315,27 @@ done
     }
 
     #[tokio::test]
+    async fn export_ignores_cli_error_text_inside_resultset_fields() {
+        let (_directory, program, option_file) = fake_mysql("field_error");
+        let path = option_file.with_file_name("export.csv");
+
+        export_mysql_csv_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 1",
+            path.clone(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n"
+        );
+    }
+
+    #[tokio::test]
     async fn export_read_only_session_failure_never_writes_user_sql_or_partial_file() {
         let (_directory, program, option_file) = fake_mysql("read_only_failure");
         let log_file = PathBuf::from(format!("{}.log", option_file.display()));
@@ -1479,6 +1516,36 @@ done
         let log = fs::read_to_string(log_file).unwrap();
         assert!(log.contains("UPDATE items SET value = 1"));
         assert!(log.matches("__sabiql_marker").count() >= 2);
+    }
+
+    #[tokio::test]
+    async fn tail_error_preserves_the_cumulative_refresh_scope() {
+        let (_directory, program, option_file) = fake_mysql_multi_with_tail_failure();
+        let query = "UPDATE items SET value = 1; CREATE TABLE created (id INT)";
+        let statements = split_mysql_statements(query)
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements(
+            OsStr::new(&program),
+            &option_file,
+            query,
+            &statements,
+            AccessMode::ReadWrite,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailedAfterChange {
+                source,
+                refresh_scope: RefreshScope::Metadata,
+                ..
+            }) if matches!(&*source, DbOperationError::QueryFailed(_))
+        ));
     }
 
     #[tokio::test]
