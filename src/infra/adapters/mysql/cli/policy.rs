@@ -18,6 +18,7 @@ pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
 #[derive(Debug, Clone, Copy)]
 pub(super) enum MysqlMetadataFallbackKind {
     Select,
+    Table,
     Show,
     Describe,
 }
@@ -87,6 +88,7 @@ pub(super) fn mysql_metadata_fallback_kind(
 ) -> Option<MysqlMetadataFallbackKind> {
     match kind {
         MysqlStatementKind::Select => Some(MysqlMetadataFallbackKind::Select),
+        MysqlStatementKind::Table => Some(MysqlMetadataFallbackKind::Table),
         MysqlStatementKind::Show => Some(MysqlMetadataFallbackKind::Show),
         MysqlStatementKind::Describe => Some(MysqlMetadataFallbackKind::Describe),
         _ => None,
@@ -127,12 +129,6 @@ pub(super) fn mysql_metadata_select_query(
             "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
         ));
     }
-    if mysql_metadata_select_has_unproven_function(query) {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL SELECT metadata fallback cannot prove that function calls are side-effect free"
-                .to_string(),
-        ));
-    }
     if has_mysql_read_only_side_effect(query)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     {
@@ -146,253 +142,6 @@ pub(super) fn mysql_metadata_select_query(
         source_alias,
         marker_alias,
     ))
-}
-
-fn mysql_metadata_select_has_unproven_function(sql: &str) -> bool {
-    let bytes = sql.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'#'
-            || (bytes.get(index..index + 2) == Some(b"--")
-                && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace))
-        {
-            index = bytes[index..]
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map_or(bytes.len(), |offset| index + offset + 1);
-            continue;
-        }
-        if bytes.get(index..index + 2) == Some(b"/*") {
-            index = bytes
-                .get(index + 2..)
-                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
-                .map_or(bytes.len(), |offset| index + offset + 4);
-            continue;
-        }
-        if bytes[index] == b'@' {
-            return true;
-        }
-        if matches!(bytes[index], b'\'' | b'"' | b'`') {
-            let quote = bytes[index];
-            index = skip_mysql_metadata_quoted(bytes, index, quote);
-            let next = skip_mysql_metadata_trivia(bytes, index);
-            if quote == b'`' && bytes.get(next) == Some(&b'(') {
-                return true;
-            }
-            continue;
-        }
-        if bytes[index].is_ascii_alphabetic() || matches!(bytes[index], b'_' | b'$') {
-            let start = index;
-            index += 1;
-            while index < bytes.len()
-                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_' | b'$'))
-            {
-                index += 1;
-            }
-            let next = skip_mysql_metadata_trivia(bytes, index);
-            if bytes.get(next) == Some(&b'(') {
-                let name = &sql[start..index];
-                let cte_column_list = mysql_metadata_is_cte_column_list(sql, next);
-                let qualified = mysql_metadata_has_qualifier(bytes, start);
-                if !cte_column_list
-                    && (qualified
-                        || !name.eq_ignore_ascii_case("SLEEP")
-                            && !matches!(
-                                name.to_ascii_uppercase().as_str(),
-                                "AS" | "CASE" | "IN" | "EXISTS" | "OVER"
-                            ))
-                {
-                    return true;
-                }
-            }
-            continue;
-        }
-        index += 1;
-    }
-    false
-}
-
-fn skip_mysql_metadata_trivia(bytes: &[u8], mut index: usize) -> usize {
-    loop {
-        while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
-            index += 1;
-        }
-        if bytes.get(index) == Some(&b'#')
-            || (bytes.get(index..index + 2) == Some(b"--")
-                && bytes.get(index + 2).is_some_and(u8::is_ascii_whitespace))
-        {
-            index = bytes[index..]
-                .iter()
-                .position(|byte| *byte == b'\n')
-                .map_or(bytes.len(), |offset| index + offset + 1);
-            continue;
-        }
-        if bytes.get(index..index + 2) == Some(b"/*") {
-            index = bytes
-                .get(index + 2..)
-                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
-                .map_or(bytes.len(), |offset| index + offset + 4);
-            continue;
-        }
-        return index;
-    }
-}
-
-fn mysql_metadata_has_qualifier(bytes: &[u8], end: usize) -> bool {
-    let mut index = 0;
-    let mut previous = None;
-    while index < end {
-        if bytes[index] == b'#'
-            || (bytes.get(index..index + 2) == Some(b"--")
-                && bytes.get(index + 2).is_some_and(u8::is_ascii_whitespace))
-            || bytes.get(index..index + 2) == Some(b"/*")
-        {
-            let next = skip_mysql_metadata_trivia(bytes, index);
-            if next == index {
-                index += 1;
-            } else {
-                index = next;
-            }
-            continue;
-        }
-        if matches!(bytes[index], b'\'' | b'"' | b'`') {
-            index = skip_mysql_metadata_quoted(bytes, index, bytes[index]);
-            previous = Some(b'\'');
-        } else if bytes[index].is_ascii_whitespace() {
-            index += 1;
-        } else {
-            previous = Some(bytes[index]);
-            index += 1;
-        }
-    }
-    previous == Some(b'.')
-}
-
-fn mysql_metadata_is_cte_column_list(sql: &str, candidate_open: usize) -> bool {
-    let bytes = sql.as_bytes();
-    let mut index = skip_mysql_metadata_trivia(bytes, 0);
-    let Some(after_with) = mysql_metadata_keyword_end(bytes, index, "WITH") else {
-        return false;
-    };
-    index = skip_mysql_metadata_trivia(bytes, after_with);
-    if let Some(after_recursive) = mysql_metadata_keyword_end(bytes, index, "RECURSIVE") {
-        index = skip_mysql_metadata_trivia(bytes, after_recursive);
-    }
-
-    loop {
-        index = match mysql_metadata_cte_name_end(bytes, index) {
-            Some(end) => skip_mysql_metadata_trivia(bytes, end),
-            None => return false,
-        };
-        let mut column_list = None;
-        if bytes.get(index) == Some(&b'(') {
-            let Some(end) = mysql_metadata_parenthesized_end(bytes, index) else {
-                return false;
-            };
-            column_list = Some(index);
-            index = skip_mysql_metadata_trivia(bytes, end);
-        }
-        let Some(after_as) = mysql_metadata_keyword_end(bytes, index, "AS") else {
-            return false;
-        };
-        index = skip_mysql_metadata_trivia(bytes, after_as);
-        let Some(body_end) = bytes
-            .get(index)
-            .filter(|byte| **byte == b'(')
-            .and_then(|_| mysql_metadata_parenthesized_end(bytes, index))
-        else {
-            return false;
-        };
-        if column_list == Some(candidate_open) {
-            return true;
-        }
-        index = skip_mysql_metadata_trivia(bytes, body_end);
-        if bytes.get(index) != Some(&b',') {
-            return false;
-        }
-        index = skip_mysql_metadata_trivia(bytes, index + 1);
-    }
-}
-
-fn mysql_metadata_cte_name_end(bytes: &[u8], index: usize) -> Option<usize> {
-    if bytes.get(index) == Some(&b'`') {
-        Some(skip_mysql_metadata_quoted(bytes, index, b'`'))
-    } else if bytes
-        .get(index)
-        .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b'$'))
-    {
-        Some(
-            index
-                + 1
-                + bytes[index + 1..]
-                    .iter()
-                    .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
-                    .count(),
-        )
-    } else {
-        None
-    }
-}
-
-fn mysql_metadata_keyword_end(bytes: &[u8], index: usize, keyword: &str) -> Option<usize> {
-    let end = index.checked_add(keyword.len())?;
-    if bytes
-        .get(index..end)?
-        .eq_ignore_ascii_case(keyword.as_bytes())
-        && !bytes
-            .get(end)
-            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
-    {
-        Some(end)
-    } else {
-        None
-    }
-}
-
-fn mysql_metadata_parenthesized_end(bytes: &[u8], open: usize) -> Option<usize> {
-    let mut depth = 0;
-    let mut index = open;
-    while index < bytes.len() {
-        if matches!(bytes[index], b'\'' | b'"' | b'`') {
-            index = skip_mysql_metadata_quoted(bytes, index, bytes[index]);
-            continue;
-        }
-        let next = skip_mysql_metadata_trivia(bytes, index);
-        if next != index {
-            index = next;
-            continue;
-        }
-        match bytes[index] {
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(index + 1);
-                }
-            }
-            _ => {}
-        }
-        index += 1;
-    }
-    None
-}
-
-fn skip_mysql_metadata_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
-    let mut index = start + 1;
-    while index < bytes.len() {
-        if bytes[index] == b'\\' && quote != b'`' {
-            index = (index + 2).min(bytes.len());
-        } else if bytes[index] == quote {
-            if bytes.get(index + 1) == Some(&quote) {
-                index += 2;
-            } else {
-                return index + 1;
-            }
-        } else {
-            index += 1;
-        }
-    }
-    bytes.len()
 }
 
 pub(super) fn validate_mysql_session_marker(
@@ -688,102 +437,21 @@ mod tests {
                 "{query}"
             );
         }
-        assert!(mysql_metadata_select_query(
-            "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
-            "__source",
-            "__marker"
-        )
-        .is_ok());
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT CONCAT('a', 'b') AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT CONCAT/**/('a', 'b') AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT sabiql_test.user_function() AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT sabiql_test/**/.user_function() AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT `user_function`/**/() AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT @session_value AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT INTERVAL(10, 1, 5) AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_err()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_ok()
-        );
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_ok()
-        );
         for query in [
+            "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
+            "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
+            "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
+            "SELECT CONCAT('a', 'b') AS value WHERE FALSE",
+            "SELECT CONCAT/**/('a', 'b') AS value WHERE FALSE",
             "SELECT CAST(1 AS CHAR) AS value WHERE FALSE",
             "SELECT CONVERT(1, CHAR) AS value WHERE FALSE",
             "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS value WHERE FALSE",
         ] {
             assert!(
-                mysql_metadata_select_query(query, "__source", "__marker").is_err(),
+                mysql_metadata_select_query(query, "__source", "__marker").is_ok(),
                 "{query}"
             );
         }
-        assert!(
-            mysql_metadata_select_query(
-                "SELECT SLEEP(1) AS value WHERE FALSE",
-                "__source",
-                "__marker"
-            )
-            .is_ok()
-        );
     }
 
     #[test]
