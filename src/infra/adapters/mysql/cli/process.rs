@@ -993,7 +993,7 @@ while IFS= read -r line; do
     phase=user
   else
     case "$line" in
-      "SET SESSION TRANSACTION READ ONLY")
+      "SET SESSION TRANSACTION READ ONLY;")
         {session_failure}
         ;;
       *__sabiql_session_marker*)

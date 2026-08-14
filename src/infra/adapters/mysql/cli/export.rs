@@ -134,7 +134,7 @@ async fn stream_mysql_resultset_to_csv(
             pty: &mut process.pty,
             error_output: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: Default::default(),
+            frame_scanner: super::xml::MysqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
