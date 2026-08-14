@@ -41,59 +41,6 @@ struct WindowsCsvNewlineNormalizer {
     pending_carriage_return: bool,
 }
 
-#[cfg(any(windows, test))]
-impl WindowsCsvNewlineNormalizer {
-    fn normalize<'a>(&mut self, input: &[u8], output: &'a mut Vec<u8>) -> &'a [u8] {
-        output.clear();
-        output.reserve(input.len());
-
-        for &byte in input {
-            if self.pending_carriage_return {
-                if byte == b'\n' {
-                    output.push(b'\n');
-                    self.pending_carriage_return = false;
-                    continue;
-                }
-                output.push(b'\r');
-                self.pending_carriage_return = false;
-            }
-
-            if byte == b'\r' {
-                self.pending_carriage_return = true;
-            } else {
-                output.push(byte);
-            }
-        }
-
-        output
-    }
-
-    fn finish(&self) -> Option<u8> {
-        self.pending_carriage_return.then_some(b'\r')
-    }
-}
-
-impl SqliteVersion {
-    const fn new(major: u16, minor: u16, patch: u16) -> Self {
-        Self {
-            major,
-            minor,
-            patch,
-        }
-    }
-
-    fn parse(output: &str) -> Option<Self> {
-        let mut components = output.split_whitespace().next()?.split('.');
-        let major = components.next()?.parse().ok()?;
-        let minor = components.next()?.parse().ok()?;
-        let patch = components.next()?.parse().ok()?;
-        components
-            .next()
-            .is_none()
-            .then_some(Self::new(major, minor, patch))
-    }
-}
-
 impl SqliteCli {
     pub(in crate::adapters::sqlite) fn new() -> Self {
         Self { timeout_secs: 30 }
@@ -432,6 +379,59 @@ impl SqliteCli {
             stdout,
             stderr,
         })
+    }
+}
+
+#[cfg(any(windows, test))]
+impl WindowsCsvNewlineNormalizer {
+    fn normalize<'a>(&mut self, input: &[u8], output: &'a mut Vec<u8>) -> &'a [u8] {
+        output.clear();
+        output.reserve(input.len());
+
+        for &byte in input {
+            if self.pending_carriage_return {
+                if byte == b'\n' {
+                    output.push(b'\n');
+                    self.pending_carriage_return = false;
+                    continue;
+                }
+                output.push(b'\r');
+                self.pending_carriage_return = false;
+            }
+
+            if byte == b'\r' {
+                self.pending_carriage_return = true;
+            } else {
+                output.push(byte);
+            }
+        }
+
+        output
+    }
+
+    fn finish(&self) -> Option<u8> {
+        self.pending_carriage_return.then_some(b'\r')
+    }
+}
+
+impl SqliteVersion {
+    const fn new(major: u16, minor: u16, patch: u16) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+        }
+    }
+
+    fn parse(output: &str) -> Option<Self> {
+        let mut components = output.split_whitespace().next()?.split('.');
+        let major = components.next()?.parse().ok()?;
+        let minor = components.next()?.parse().ok()?;
+        let patch = components.next()?.parse().ok()?;
+        components
+            .next()
+            .is_none()
+            .then_some(Self::new(major, minor, patch))
     }
 }
 
