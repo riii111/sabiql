@@ -24,7 +24,6 @@ tokio.workspace = true
 toml.workspace = true
 urlencoding.workspace = true
 url.workspace = true
-quick-xml.workspace = true
 uuid.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
