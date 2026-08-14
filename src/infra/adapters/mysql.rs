@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
-use std::fmt::Write as _;
-use std::fs::{self, OpenOptions};
+#[cfg(test)]
+use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -25,7 +25,6 @@ use tokio::process::Command;
 #[cfg(not(unix))]
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use tokio::time::timeout;
-use url::Url;
 use uuid::Uuid;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -35,7 +34,7 @@ use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
     MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
-    mysql_explain_rejection_message, mysql_tree_explain_query_kind,
+    mysql_tree_explain_query_kind,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
@@ -46,14 +45,20 @@ use crate::app::ports::outbound::{
     MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_SERVER_VERSION_REQUIRED_MARKER,
     MYSQL_SQL_MODE_UNSUPPORTED_MARKER, QueryExecutor, SqlDialect,
 };
-use crate::domain::connection::{
-    ConnectionProfile, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
-};
+use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, QueryValue, RefreshScope, Table, WriteExecutionResult,
 };
 
+mod dsn;
 mod metadata;
+mod option_file;
+mod sql;
+
+use dsn::{
+    MySqlDsn, build_mysql_dsn, parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values,
+};
+use option_file::MySqlOptionFile;
 
 pub struct MySqlAdapter;
 
@@ -360,10 +365,7 @@ impl DdlGenerator for MySqlAdapter {
 
 impl SqlDialect for MySqlAdapter {
     fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
-        if mysql_explain_rejection_message(query).is_some() {
-            return None;
-        }
-        Some(format!("EXPLAIN FORMAT=TREE {query}"))
+        sql::build_explain_sql(query)
     }
 
     fn build_explain_analyze_sql(
@@ -371,8 +373,7 @@ impl SqlDialect for MySqlAdapter {
         _database_type: DatabaseType,
         query: &str,
     ) -> Option<String> {
-        mysql_tree_explain_query_kind(&format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))?;
-        Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))
+        sql::build_explain_analyze_sql(query)
     }
 
     fn build_update_sql(
@@ -384,20 +385,7 @@ impl SqlDialect for MySqlAdapter {
         new_value: &QueryValue,
         pk_pairs: &[(String, QueryValue)],
     ) -> String {
-        let where_clause = pk_pairs
-            .iter()
-            .map(|(column, value)| mysql_equality_predicate(column, value))
-            .collect::<Vec<_>>()
-            .join(" AND ");
-
-        format!(
-            "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
-            mysql_quote_identifier(schema),
-            mysql_quote_identifier(table),
-            mysql_quote_identifier(column),
-            mysql_sql_literal(new_value),
-            where_clause
-        )
+        sql::build_update_sql(schema, table, column, new_value, pk_pairs)
     }
 
     fn build_bulk_delete_sql(
@@ -407,182 +395,7 @@ impl SqlDialect for MySqlAdapter {
         table: &str,
         pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
-        assert!(
-            !pk_pairs_per_row.is_empty(),
-            "pk_pairs_per_row must not be empty"
-        );
-
-        let predicates = pk_pairs_per_row
-            .iter()
-            .map(|pairs| {
-                pairs
-                    .iter()
-                    .map(|(column, value)| mysql_equality_predicate(column, value))
-                    .collect::<Vec<_>>()
-                    .join(" AND ")
-            })
-            .collect::<Vec<_>>();
-        let where_clause = if predicates.len() == 1 {
-            predicates[0].clone()
-        } else {
-            predicates
-                .into_iter()
-                .map(|predicate| format!("({predicate})"))
-                .collect::<Vec<_>>()
-                .join(" OR ")
-        };
-
-        format!(
-            "DELETE FROM {}.{}\nWHERE {};",
-            mysql_quote_identifier(schema),
-            mysql_quote_identifier(table),
-            where_clause
-        )
-    }
-}
-
-fn mysql_quote_identifier(value: &str) -> String {
-    format!("`{}`", value.replace('`', "``"))
-}
-
-fn mysql_sql_literal(value: &QueryValue) -> String {
-    match value {
-        QueryValue::Null => "NULL".to_string(),
-        QueryValue::Text(value) => mysql_quote_string(value),
-        QueryValue::SqlLiteral(value) => value.clone(),
-        QueryValue::Blob(bytes) => {
-            let mut hex = String::with_capacity(bytes.len() * 2);
-            for byte in bytes {
-                let _ = write!(hex, "{byte:02X}");
-            }
-            format!("X'{hex}'")
-        }
-    }
-}
-
-fn mysql_quote_string(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for character in value.chars() {
-        match character {
-            '\0' => escaped.push_str("\\0"),
-            '\n' => escaped.push_str("\\n"),
-            '\r' => escaped.push_str("\\r"),
-            '\t' => escaped.push_str("\\t"),
-            '\u{0008}' => escaped.push_str("\\b"),
-            '\u{001a}' => escaped.push_str("\\Z"),
-            '\\' => escaped.push_str("\\\\"),
-            '\'' => escaped.push_str("\\'"),
-            _ => escaped.push(character),
-        }
-    }
-    format!("'{escaped}'")
-}
-
-fn mysql_equality_predicate(column: &str, value: &QueryValue) -> String {
-    let column = mysql_quote_identifier(column);
-    match value {
-        QueryValue::Null => format!("{column} IS NULL"),
-        _ => format!("{column} = {}", mysql_sql_literal(value)),
-    }
-}
-
-#[cfg(test)]
-mod write_sql_tests {
-    use super::*;
-
-    #[test]
-    fn update_quotes_identifiers_and_mysql_string_escapes() {
-        let adapter = MySqlAdapter::new();
-        let sql = adapter.build_update_sql(
-            DatabaseType::MySQL,
-            "db`name",
-            "table`name",
-            "value`name",
-            &QueryValue::text("O'Reilly\\path\n\t\0"),
-            &[
-                (
-                    "id`part".to_string(),
-                    QueryValue::SqlLiteral("18446744073709551615".into()),
-                ),
-                ("tenant".to_string(), QueryValue::Null),
-            ],
-        );
-
-        assert_eq!(
-            sql,
-            "UPDATE \x60db\x60\x60name\x60.\x60table\x60\x60name\x60\nSET \x60value\x60\x60name\x60 = 'O\\'Reilly\\\\path\\n\\t\\0'\nWHERE \x60id\x60\x60part\x60 = 18446744073709551615 AND \x60tenant\x60 IS NULL;"
-        );
-    }
-
-    #[test]
-    fn update_uses_text_datetime_and_blob_literals_without_coercion() {
-        let adapter = MySqlAdapter::new();
-        let sql = adapter.build_update_sql(
-            DatabaseType::MySQL,
-            "sabiql_test",
-            "events",
-            "payload",
-            &QueryValue::Blob(vec![0, 255, 16]),
-            &[(
-                "created_at".to_string(),
-                QueryValue::text("2026-08-13 12:34:56"),
-            )],
-        );
-
-        assert_eq!(
-            sql,
-            "UPDATE `sabiql_test`.`events`\nSET `payload` = X'00FF10'\nWHERE `created_at` = '2026-08-13 12:34:56';"
-        );
-    }
-
-    #[test]
-    fn json_document_update_keeps_json_null_distinct_from_string_null() {
-        let adapter = MySqlAdapter::new();
-        let json_null = adapter.build_update_sql(
-            DatabaseType::MySQL,
-            "sabiql_test",
-            "documents",
-            "payload",
-            &QueryValue::text("null"),
-            &[("id".to_string(), QueryValue::SqlLiteral("1".into()))],
-        );
-        let string_null = adapter.build_update_sql(
-            DatabaseType::MySQL,
-            "sabiql_test",
-            "documents",
-            "payload",
-            &QueryValue::text(r#""null""#),
-            &[("id".to_string(), QueryValue::SqlLiteral("1".into()))],
-        );
-
-        assert!(json_null.contains("SET `payload` = 'null'"));
-        assert!(string_null.contains("SET `payload` = '\"null\"'"));
-        assert_ne!(json_null, string_null);
-    }
-
-    #[test]
-    fn bulk_delete_targets_each_composite_primary_key_row() {
-        let adapter = MySqlAdapter::new();
-        let sql = adapter.build_bulk_delete_sql(
-            DatabaseType::MySQL,
-            "sabiql_test",
-            "items",
-            &[
-                vec![
-                    ("first".to_string(), QueryValue::SqlLiteral("1".into())),
-                    ("second".to_string(), QueryValue::SqlLiteral("20".into())),
-                ],
-                vec![
-                    ("first".to_string(), QueryValue::SqlLiteral("2".into())),
-                    ("second".to_string(), QueryValue::SqlLiteral("10".into())),
-                ],
-            ],
-        );
-
-        assert_eq!(
-            sql,
-            "DELETE FROM `sabiql_test`.`items`\nWHERE (`first` = 1 AND `second` = 20) OR (`first` = 2 AND `second` = 10);"
-        );
+        sql::build_bulk_delete_sql(schema, table, pk_pairs_per_row)
     }
 }
 
@@ -592,80 +405,6 @@ impl DsnBuilder for MySqlAdapter {
             .mysql_config()
             .expect("MySQL profile requires MySQL config");
         build_mysql_dsn(config)
-    }
-}
-
-#[cfg(test)]
-mod explain_tests {
-    use super::*;
-
-    #[test]
-    fn builds_tree_explain_for_select_table_and_dml() {
-        let adapter = MySqlAdapter::new();
-
-        for query in [
-            "SELECT * FROM users",
-            "TABLE users",
-            "INSERT INTO users VALUES (1)",
-            "REPLACE INTO users VALUES (1)",
-            "REPLACE users VALUES (1)",
-            "REPLACE LOW_PRIORITY INTO users VALUES (1)",
-            "REPLACE DELAYED users VALUES (1)",
-            "UPDATE users SET name = 'Ada' WHERE id = 1",
-            "DELETE FROM users WHERE id = 1",
-        ] {
-            assert_eq!(
-                adapter.build_explain_sql(DatabaseType::MySQL, query),
-                Some(format!("EXPLAIN FORMAT=TREE {query}")),
-                "{query}"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_mysql_explain_for_unsupported_input() {
-        let adapter = MySqlAdapter::new();
-
-        for query in [
-            "CREATE TABLE users(id INT)",
-            "DROP TABLE users",
-            "\\C /tmp/other.sock",
-            "SELECT 1; SELECT 2",
-        ] {
-            assert_eq!(
-                adapter.build_explain_sql(DatabaseType::MySQL, query),
-                None,
-                "{query}"
-            );
-        }
-    }
-
-    #[test]
-    fn builds_tree_explain_analyze_only_for_side_effect_free_reads() {
-        let adapter = MySqlAdapter::new();
-
-        for query in ["SELECT * FROM users", "TABLE users"] {
-            assert_eq!(
-                adapter.build_explain_analyze_sql(DatabaseType::MySQL, query),
-                Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
-                "{query}"
-            );
-        }
-
-        for query in [
-            "UPDATE users SET name = 'Ada' WHERE id = 1",
-            "DELETE FROM users WHERE id = 1",
-            "INSERT INTO users VALUES (1)",
-            "REPLACE INTO users VALUES (1)",
-            "SELECT * FROM users FOR UPDATE",
-            "SELECT 1; SELECT 2",
-        ] {
-            assert_eq!(
-                adapter.build_explain_analyze_sql(DatabaseType::MySQL, query),
-                None,
-                "{query}"
-            );
-        }
     }
 }
 
@@ -757,226 +496,6 @@ struct MySqlProbeResponse {
     user: String,
     version: String,
     sql_mode: String,
-}
-
-#[derive(Debug)]
-struct MySqlDsn {
-    host: String,
-    port: u16,
-    database: Option<String>,
-    username: String,
-    password: String,
-    ssl_mode: MySqlSslMode,
-    ssl_ca: Option<String>,
-    ssl_cert: Option<String>,
-    ssl_key: Option<String>,
-}
-
-fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
-    let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
-    url.set_username(&config.username)
-        .expect("MySQL username is valid URL data");
-    url.set_password(Some(&config.password))
-        .expect("MySQL password is valid URL data");
-    let host = normalize_mysql_host(&config.host);
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host
-    };
-    url.set_host(Some(&host))
-        .expect("validated MySQL host is valid URL data");
-    url.set_port(Some(config.port))
-        .expect("MySQL port is valid URL data");
-    if let Some(database) = config.database.as_deref() {
-        url.path_segments_mut()
-            .expect("MySQL URL supports path segments")
-            .push(database);
-    }
-    url.query_pairs_mut()
-        .append_pair("ssl-mode", &config.ssl_mode.to_string());
-    if let Some(path) = config.ssl_ca.as_deref() {
-        url.query_pairs_mut().append_pair("ssl-ca", path);
-    }
-    if let Some(path) = config.ssl_cert.as_deref() {
-        url.query_pairs_mut().append_pair("ssl-cert", path);
-    }
-    if let Some(path) = config.ssl_key.as_deref() {
-        url.query_pairs_mut().append_pair("ssl-key", path);
-    }
-    url.to_string()
-}
-
-fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
-    let url = Url::parse(dsn).map_err(|error| {
-        DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}"))
-    })?;
-    if url.scheme() != "mysql" {
-        return Err(DbOperationError::ConnectionFailed(
-            "Invalid MySQL DSN scheme".to_string(),
-        ));
-    }
-    let host = url.host_str().ok_or_else(|| {
-        DbOperationError::ConnectionFailed("MySQL DSN is missing a host".to_string())
-    })?;
-    let host = normalize_mysql_host(host);
-    let username = decode_url_component(url.username())?;
-    let password = decode_url_component(url.password().unwrap_or_default())?;
-    let database = url
-        .path_segments()
-        .and_then(|mut segments| segments.next())
-        .filter(|segment| !segment.is_empty())
-        .map(decode_url_component)
-        .transpose()?;
-    let ssl_mode = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-mode").then(|| parse_ssl_mode(&value)))
-        .transpose()?
-        .unwrap_or_default();
-    let ssl_ca = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-ca").then(|| value.into_owned()));
-    let ssl_cert = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-cert").then(|| value.into_owned()));
-    let ssl_key = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-key").then(|| value.into_owned()));
-
-    Ok(MySqlDsn {
-        host,
-        port: url.port().unwrap_or(3306),
-        database,
-        username,
-        password,
-        ssl_mode,
-        ssl_ca,
-        ssl_cert,
-        ssl_key,
-    })
-}
-
-fn normalize_mysql_host(host: &str) -> String {
-    host.strip_prefix('[')
-        .and_then(|host| host.strip_suffix(']'))
-        .unwrap_or(host)
-        .to_string()
-}
-
-fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
-    match value {
-        "DISABLED" => Ok(MySqlSslMode::Disabled),
-        "PREFERRED" => Ok(MySqlSslMode::Preferred),
-        "REQUIRED" => Ok(MySqlSslMode::Required),
-        "VERIFY_CA" => Ok(MySqlSslMode::VerifyCa),
-        "VERIFY_IDENTITY" => Ok(MySqlSslMode::VerifyIdentity),
-        _ => Err(DbOperationError::ConnectionFailed(
-            "Invalid MySQL TLS mode".to_string(),
-        )),
-    }
-}
-
-fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
-    urlencoding::decode(value)
-        .map(std::borrow::Cow::into_owned)
-        .map_err(|error| DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}")))
-}
-
-fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
-    let values = [
-        Some(target.host.as_str()),
-        Some(target.username.as_str()),
-        Some(target.password.as_str()),
-        target.database.as_deref(),
-        target.ssl_ca.as_deref(),
-        target.ssl_cert.as_deref(),
-        target.ssl_key.as_deref(),
-    ];
-    if values
-        .into_iter()
-        .flatten()
-        .any(|value| value.chars().any(char::is_control))
-    {
-        return Err(DbOperationError::ConnectionFailed(
-            "MySQL connection settings contain a control character".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
-    let has_tls_path =
-        target.ssl_ca.is_some() || target.ssl_cert.is_some() || target.ssl_key.is_some();
-    if target.ssl_mode == MySqlSslMode::Disabled && has_tls_path {
-        return Err(DbOperationError::ConnectionFailed(
-            "MySQL TLS paths require an enabled TLS mode".to_string(),
-        ));
-    }
-    if matches!(
-        target.ssl_mode,
-        MySqlSslMode::VerifyCa | MySqlSslMode::VerifyIdentity
-    ) && target.ssl_ca.is_none()
-    {
-        return Err(DbOperationError::ConnectionFailed(
-            "MySQL CA path is required for certificate verification".to_string(),
-        ));
-    }
-    if target.ssl_cert.is_some() != target.ssl_key.is_some() {
-        return Err(DbOperationError::ConnectionFailed(
-            "MySQL client certificate and key must be specified together".to_string(),
-        ));
-    }
-
-    for (kind, path) in [
-        ("CA", target.ssl_ca.as_deref()),
-        ("client certificate", target.ssl_cert.as_deref()),
-        ("client key", target.ssl_key.as_deref()),
-    ] {
-        let Some(path) = path else { continue };
-        let metadata = fs::metadata(path).map_err(|error| {
-            DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} path cannot be accessed: {error}"
-            ))
-        })?;
-        if !metadata.is_file() {
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} path is not a regular file"
-            )));
-        }
-        let contents = fs::read(path).map_err(|error| {
-            DbOperationError::ConnectionFailed(format!("MySQL {kind} cannot be read: {error}"))
-        })?;
-        let text = String::from_utf8_lossy(&contents);
-        if matches!(kind, "CA" | "client certificate") && !text.contains("BEGIN CERTIFICATE") {
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} is not a PEM certificate"
-            )));
-        }
-        if kind == "client key" {
-            if text.contains("BEGIN ENCRYPTED PRIVATE KEY")
-                || text
-                    .lines()
-                    .any(|line| line.trim().eq_ignore_ascii_case("Proc-Type: 4,ENCRYPTED"))
-            {
-                return Err(DbOperationError::ConnectionFailed(
-                    "Encrypted MySQL client keys are not supported".to_string(),
-                ));
-            }
-            if ![
-                "BEGIN PRIVATE KEY",
-                "BEGIN RSA PRIVATE KEY",
-                "BEGIN EC PRIVATE KEY",
-            ]
-            .iter()
-            .any(|marker| text.contains(marker))
-            {
-                return Err(DbOperationError::ConnectionFailed(
-                    "MySQL client key is not a PEM private key".to_string(),
-                ));
-            }
-        }
-    }
-    Ok(())
 }
 
 fn contains_unsupported_mysql_product(value: &str) -> bool {
@@ -1101,89 +620,6 @@ fn is_mysql_connect_timeout_message(value: &str) -> bool {
         && (lower.contains("(110)") || lower.contains("(10060)"))
 }
 
-struct MySqlOptionFile {
-    path: PathBuf,
-}
-
-impl MySqlOptionFile {
-    fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
-        validate_mysql_values(target)?;
-        validate_mysql_tls_files(target)?;
-        let mut path = std::env::temp_dir();
-        path.push(format!("sabiql-mysql-{}.cnf", Uuid::new_v4()));
-        if !path.is_absolute() {
-            path = std::env::current_dir()
-                .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?
-                .join(path);
-        }
-
-        let mut options = OpenOptions::new();
-        options.write(true).create_new(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut file = options.open(&path).map_err(|error| {
-            DbOperationError::ConnectionFailed(format!(
-                "Unable to create MySQL option file: {error}"
-            ))
-        })?;
-        let contents = serialize_option_file(target);
-        if let Err(error) = file.write_all(contents.as_bytes()) {
-            let _ = fs::remove_file(&path);
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "Unable to write MySQL option file: {error}"
-            )));
-        }
-        Ok(Self { path })
-    }
-}
-
-impl Drop for MySqlOptionFile {
-    fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
-    }
-}
-
-fn serialize_option_file(target: &MySqlDsn) -> String {
-    let mut contents = String::from("[client]\n");
-    push_option(&mut contents, "host", &target.host);
-    push_option(&mut contents, "port", &target.port.to_string());
-    push_option(&mut contents, "user", &target.username);
-    push_option(&mut contents, "password", &target.password);
-    if let Some(database) = target.database.as_deref() {
-        push_option(&mut contents, "database", database);
-    }
-    push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
-    if let Some(path) = target.ssl_ca.as_deref() {
-        push_option(&mut contents, "ssl-ca", path);
-    }
-    if let Some(path) = target.ssl_cert.as_deref() {
-        push_option(&mut contents, "ssl-cert", path);
-    }
-    if let Some(path) = target.ssl_key.as_deref() {
-        push_option(&mut contents, "ssl-key", path);
-    }
-    contents
-}
-
-fn push_option(contents: &mut String, key: &str, value: &str) {
-    contents.push_str(key);
-    contents.push_str(" = ");
-    contents.push_str(&quote_option_value(value));
-    contents.push('\n');
-}
-
-fn quote_option_value(value: &str) -> String {
-    let mut escaped = String::with_capacity(value.len());
-    for character in value.chars() {
-        match character {
-            '\\' => escaped.push_str("\\\\"),
-            '"' => escaped.push_str("\\\""),
-            _ => escaped.push(character),
-        }
-    }
-    format!("\"{escaped}\"")
-}
-
 #[derive(Debug, PartialEq, Eq)]
 struct MysqlResultSet {
     columns: Vec<String>,
@@ -1231,8 +667,10 @@ fn mysql_metadata_select_query(
                 .to_string(),
         ));
     }
-    Ok(format!(
-        "WITH {source_alias} AS (SELECT * FROM (({query}\n) LIMIT 0) AS __sabiql_metadata_inner) SELECT {source_alias}.* FROM {source_alias} RIGHT JOIN (SELECT 1 AS {marker_alias}) AS __sabiql_metadata_marker ON TRUE"
+    Ok(sql::build_metadata_select_query(
+        query,
+        source_alias,
+        marker_alias,
     ))
 }
 
@@ -3968,319 +3406,6 @@ mod probe_tests {
             )
             .is_ok()
         );
-    }
-
-    #[test]
-    fn builds_and_parses_mysql_dsn_with_encoded_components() {
-        let config = MySqlConnectionConfig::new(
-            "db.example",
-            3307,
-            Some("app/schema".to_string()),
-            "user name",
-            "p@ss#word",
-            MySqlSslMode::Required,
-        );
-        let dsn = build_mysql_dsn(&config);
-        let parsed = parse_mysql_dsn(&dsn).unwrap();
-
-        assert_eq!(parsed.host, "db.example");
-        assert_eq!(parsed.port, 3307);
-        assert_eq!(parsed.database.as_deref(), Some("app/schema"));
-        assert_eq!(parsed.username, "user name");
-        assert_eq!(parsed.password, "p@ss#word");
-        assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
-    }
-
-    #[test]
-    fn builds_and_parses_mysql_dsn_with_tls_paths() {
-        let config = MySqlConnectionConfig::new(
-            "db.example",
-            3307,
-            Some("app".to_string()),
-            "user",
-            "password",
-            MySqlSslMode::VerifyIdentity,
-        )
-        .with_tls_paths(
-            Some(r"C:\certs\ca #1.pem".to_string()),
-            Some(r"C:\certs\client.pem".to_string()),
-            Some(r"C:\certs\client-key.pem".to_string()),
-        );
-        let parsed = parse_mysql_dsn(&build_mysql_dsn(&config)).unwrap();
-
-        assert_eq!(parsed.ssl_mode, MySqlSslMode::VerifyIdentity);
-        assert_eq!(parsed.ssl_ca.as_deref(), Some(r"C:\certs\ca #1.pem"));
-        assert_eq!(parsed.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
-        assert_eq!(parsed.ssl_key.as_deref(), Some(r"C:\certs\client-key.pem"));
-    }
-
-    #[test]
-    fn ipv6_host_round_trip_serializes_without_url_brackets() {
-        let config = MySqlConnectionConfig::new(
-            "::1",
-            3306,
-            None,
-            "user",
-            "password",
-            MySqlSslMode::Disabled,
-        );
-        let parsed = parse_mysql_dsn(&build_mysql_dsn(&config)).unwrap();
-
-        assert_eq!(parsed.host, "::1");
-        assert!(serialize_option_file(&parsed).contains("host = \"::1\"\n"));
-    }
-
-    #[test]
-    fn option_file_quotes_syntax_characters_and_windows_paths() {
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: Some("app".to_string()),
-            username: "user".to_string(),
-            password: "p a#ss;=\"\\word".to_string(),
-            ssl_mode: MySqlSslMode::Preferred,
-            ssl_ca: None,
-            ssl_cert: None,
-            ssl_key: None,
-        };
-        let contents = serialize_option_file(&target);
-
-        assert!(contents.contains("password = \"p a#ss;=\\\"\\\\word\""));
-        let mut certificate = String::new();
-        push_option(&mut certificate, "ssl-ca", r"C:\certs\server.pem");
-        assert_eq!(certificate, "ssl-ca = \"C:\\\\certs\\\\server.pem\"\n");
-        assert_eq!(
-            quote_option_value(r"C:\certs\server.pem"),
-            r#""C:\\certs\\server.pem""#
-        );
-    }
-
-    #[test]
-    fn server_database_listing_option_file_omits_selected_database() {
-        let mut target = parse_mysql_dsn("mysql://user:password@localhost:3306/app").unwrap();
-        target.database = None;
-
-        let contents = serialize_option_file(&target);
-
-        assert!(!contents.contains("database ="));
-    }
-
-    #[test]
-    fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
-        let ca_path = r#" C:\certs\ca #1;= "quoted".pem "#;
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "password".to_string(),
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca_path.to_string()),
-            ssl_cert: Some(r"C:\certs\client.pem".to_string()),
-            ssl_key: Some(r"C:\certs\client-key.pem".to_string()),
-        };
-
-        let contents = serialize_option_file(&target);
-
-        assert!(contents.contains("ssl-mode = \"VERIFY_CA\"\n"));
-        assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
-        assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
-        assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
-    }
-
-    #[test]
-    fn rejects_control_characters_in_tls_paths_before_option_file_creation() {
-        for field in ["CA", "client certificate", "client key"] {
-            let mut target = MySqlDsn {
-                host: "localhost".to_string(),
-                port: 3306,
-                database: None,
-                username: "user".to_string(),
-                password: "password".to_string(),
-                ssl_mode: MySqlSslMode::Disabled,
-                ssl_ca: None,
-                ssl_cert: None,
-                ssl_key: None,
-            };
-            match field {
-                "CA" => target.ssl_ca = Some("ca\n.pem".to_string()),
-                "client certificate" => target.ssl_cert = Some("client\r.pem".to_string()),
-                "client key" => target.ssl_key = Some("client\0-key.pem".to_string()),
-                _ => unreachable!(),
-            }
-
-            assert!(
-                matches!(
-                    MySqlOptionFile::create(&target),
-                    Err(DbOperationError::ConnectionFailed(details))
-                        if details == "MySQL connection settings contain a control character"
-                ),
-                "{field}"
-            );
-        }
-    }
-
-    #[test]
-    fn rejects_encrypted_client_keys_before_process_start() {
-        let directory = tempfile::tempdir().unwrap();
-        let ca = directory.path().join("ca.pem");
-        let cert = directory.path().join("client.pem");
-        let key = directory.path().join("client-key.pem");
-        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
-        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
-        fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "password".to_string(),
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca.display().to_string()),
-            ssl_cert: Some(cert.display().to_string()),
-            ssl_key: Some(key.display().to_string()),
-        };
-
-        let result = validate_mysql_tls_files(&target);
-
-        assert!(matches!(
-            result,
-            Err(DbOperationError::ConnectionFailed(details))
-                if details == "Encrypted MySQL client keys are not supported"
-        ));
-    }
-
-    #[test]
-    fn rejects_traditional_encrypted_client_keys_before_process_start() {
-        let directory = tempfile::tempdir().unwrap();
-        let ca = directory.path().join("ca.pem");
-        let cert = directory.path().join("client.pem");
-        let key = directory.path().join("client-key.pem");
-        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
-        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
-        fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "password".to_string(),
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca.display().to_string()),
-            ssl_cert: Some(cert.display().to_string()),
-            ssl_key: Some(key.display().to_string()),
-        };
-
-        assert!(validate_mysql_tls_files(&target).is_err());
-    }
-
-    #[test]
-    fn option_file_is_owner_only_and_removed_on_drop() {
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "secret".to_string(),
-            ssl_mode: MySqlSslMode::Disabled,
-            ssl_ca: None,
-            ssl_cert: None,
-            ssl_key: None,
-        };
-        let option_file = MySqlOptionFile::create(&target).unwrap();
-        assert!(option_file.path.is_absolute());
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(
-                fs::metadata(&option_file.path)
-                    .unwrap()
-                    .permissions()
-                    .mode()
-                    & 0o777,
-                0o600
-            );
-        }
-        let path = option_file.path.clone();
-        drop(option_file);
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn option_file_names_are_unique_uuid_v4_paths_under_concurrency() {
-        use std::collections::HashSet;
-        use std::sync::{Arc, Barrier};
-
-        fn target() -> MySqlDsn {
-            MySqlDsn {
-                host: "localhost".to_string(),
-                port: 3306,
-                database: None,
-                username: "user".to_string(),
-                password: "secret".to_string(),
-                ssl_mode: MySqlSslMode::Disabled,
-                ssl_ca: None,
-                ssl_cert: None,
-                ssl_key: None,
-            }
-        }
-
-        let barrier = Arc::new(Barrier::new(16));
-        let mut handles = Vec::with_capacity(16);
-        for _ in 0..16 {
-            let barrier = Arc::clone(&barrier);
-            handles.push(std::thread::spawn(move || {
-                barrier.wait();
-                let target = target();
-                MySqlOptionFile::create(&target).unwrap()
-            }));
-        }
-        let files = handles
-            .into_iter()
-            .map(|handle| handle.join().unwrap())
-            .collect::<Vec<_>>();
-        let paths = files
-            .iter()
-            .map(|file| file.path.clone())
-            .collect::<Vec<_>>();
-        let unique_paths = paths.iter().collect::<HashSet<_>>();
-
-        assert_eq!(unique_paths.len(), paths.len());
-        for path in &paths {
-            let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap();
-            let uuid = stem.strip_prefix("sabiql-mysql-").unwrap();
-            assert_eq!(uuid::Uuid::parse_str(uuid).unwrap().get_version_num(), 4);
-        }
-
-        drop(files);
-        assert!(paths.iter().all(|path| !path.exists()));
-    }
-
-    #[test]
-    fn option_file_is_removed_when_mysql_process_start_fails() {
-        let (result, path) = {
-            let target = MySqlDsn {
-                host: "localhost".to_string(),
-                port: 3306,
-                database: None,
-                username: "user".to_string(),
-                password: "secret".to_string(),
-                ssl_mode: MySqlSslMode::Disabled,
-                ssl_ca: None,
-                ssl_cert: None,
-                ssl_key: None,
-            };
-            let option_file = MySqlOptionFile::create(&target).unwrap();
-            let path = option_file.path.clone();
-            let result = MysqlProcess::spawn_with_program(
-                OsStr::new("__sabiql_missing_mysql_binary__"),
-                &path,
-            );
-            (result, path)
-        };
-
-        assert!(result.is_err());
-        assert!(!path.exists());
     }
 
     #[test]
