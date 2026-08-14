@@ -83,7 +83,7 @@ async fn connects_to_oracle_mysql_84_fixture() {
 #[tokio::test]
 #[cfg(unix)]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-async fn batch_mysql_cli_does_not_execute_shell_commands() {
+async fn mysql_cli_does_not_execute_shell_commands() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
             let marker = NamedTempFile::new().map_err(|error| error.to_string())?;
@@ -94,8 +94,8 @@ async fn batch_mysql_cli_does_not_execute_shell_commands() {
                 .await
                 .map_err(|error| format!("failed to run MySQL CLI: {error}"))?;
             if !output
-                .split(|byte| *byte == b'\n' || *byte == b'\r')
-                .any(|line| line.trim_ascii_start().trim_ascii_end() == b"| 1 |" || line == b"1")
+                .windows(b"<resultset statement=\"SELECT 1\"".len())
+                .any(|window| window == b"<resultset statement=\"SELECT 1\"")
             {
                 return Err(format!(
                     "MySQL CLI did not execute SELECT 1 through the PTY: {}",
@@ -170,7 +170,7 @@ async fn rejects_oracle_mysql_84_fixture_with_wrong_hostname() {
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-async fn preserves_batch_value_boundaries_for_real_mysql_results() {
+async fn preserves_xml_value_boundaries_for_real_mysql_results() {
     with_mysql_test_db(|db| Box::pin(async move {
         let result = db
             .adapter()
@@ -190,10 +190,10 @@ async fn preserves_batch_value_boundaries_for_real_mysql_results() {
             QueryValue::Text("[1, true]".to_string()),
             QueryValue::Text("\"空文字ではない\"".to_string()),
             QueryValue::Text("0x00FF10".to_string()),
-            QueryValue::Text("line one\nERROR 1146 (42S02): not a CLI error".to_string()),
+            QueryValue::Text("line one\r\nERROR 1146 (42S02): not a CLI error".to_string()),
         ];
         if result.values() != [expected] {
-            return Err(format!("unexpected batch values: {:?}", result.values()));
+            return Err(format!("unexpected XML values: {:?}", result.values()));
         }
         Ok(())
     }))
@@ -201,22 +201,20 @@ async fn preserves_batch_value_boundaries_for_real_mysql_results() {
 }
 
 #[tokio::test]
-#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-async fn preserves_empty_mysql_result_columns_for_select_show_and_describe() {
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn preserves_empty_result_columns_for_select_show_and_describe() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
             let select = db
-                .adapter()
-                .execute_adhoc(
-                    db.dsn(),
-                    &format!(
-                        "SELECT 1 AS one, '' AS empty_text, NULL AS null_value FROM {MYSQL_FIXTURE_TABLE} WHERE 0"
-                    ),
-                    AccessMode::ReadWrite,
-                )
-                .await
-                .map_err(|error| format!("empty SELECT failed: {error:?}"))?;
-            if select.columns != ["one", "empty_text", "null_value"]
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                "SELECT 1 AS first_alias, '' AS empty_alias, '日本語' AS unicode_alias WHERE FALSE",
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("empty SELECT failed: {error:?}"))?;
+            if select.columns != ["first_alias", "empty_alias", "unicode_alias"]
                 || !select.values().is_empty()
             {
                 return Err(format!("unexpected empty SELECT result: {select:?}"));
@@ -226,12 +224,14 @@ async fn preserves_empty_mysql_result_columns_for_select_show_and_describe() {
                 .adapter()
                 .execute_adhoc(
                     db.dsn(),
-                    "SHOW TABLES LIKE '__sabiql_missing_table__'",
+                    "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'",
                     AccessMode::ReadWrite,
                 )
                 .await
                 .map_err(|error| format!("empty SHOW failed: {error:?}"))?;
-            if show.columns.is_empty() || !show.values().is_empty() {
+            if show.columns != ["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"]
+                || !show.values().is_empty()
+            {
                 return Err(format!("unexpected empty SHOW result: {show:?}"));
             }
 
@@ -239,15 +239,15 @@ async fn preserves_empty_mysql_result_columns_for_select_show_and_describe() {
                 .adapter()
                 .execute_adhoc(
                     db.dsn(),
-                    &format!("DESCRIBE {MYSQL_FIXTURE_TABLE}"),
+                    &format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
                     AccessMode::ReadWrite,
                 )
                 .await
-                .map_err(|error| format!("DESCRIBE failed: {error:?}"))?;
+                .map_err(|error| format!("empty DESCRIBE failed: {error:?}"))?;
             if describe.columns != ["Field", "Type", "Null", "Key", "Default", "Extra"]
-                || describe.values().is_empty()
+                || !describe.values().is_empty()
             {
-                return Err(format!("unexpected DESCRIBE result: {describe:?}"));
+                return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
             }
             Ok(())
         })
@@ -256,28 +256,70 @@ async fn preserves_empty_mysql_result_columns_for_select_show_and_describe() {
 }
 
 #[tokio::test]
-#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-async fn exports_header_only_csv_for_empty_mysql_result() {
-    with_mysql_test_db(|db| {
-        Box::pin(async move {
-            let directory = tempdir().map_err(|error| error.to_string())?;
-            let path = export_mysql_csv_to_path_for_test(
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn preserves_null_and_special_value_boundaries_for_real_mysql_results() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let result = db
+            .adapter()
+            .execute_adhoc(
                 db.dsn(),
-                &format!(
-                    "SELECT 1 AS one, '' AS empty_text, NULL AS null_value FROM {MYSQL_FIXTURE_TABLE} WHERE 0"
-                ),
-                directory.path().join("empty.csv"),
+                "SELECT 'x|y' AS pipe_value, 'first\\nmiddle\\nlast' AS newline_value, 'tail\\t ' AS trailing_value, CAST(NULL AS CHAR(8)) AS sql_null, 'NULL' AS literal_null",
+                AccessMode::ReadWrite,
             )
             .await
-            .map_err(|error| format!("empty CSV export failed: {error:?}"))?;
-            let csv = std::fs::read_to_string(path)
-                .map_err(|error| format!("failed to read empty CSV export: {error}"))?;
-            if csv != "one,empty_text,null_value\n" {
-                return Err(format!("unexpected empty CSV export: {csv:?}"));
-            }
-            Ok(())
-        })
-    })
+            .map_err(|error| format!("special-value query failed: {error:?}"))?;
+        let expected = vec![
+            QueryValue::Text("x|y".to_string()),
+            QueryValue::Text("first\r\nmiddle\r\nlast".to_string()),
+            QueryValue::Text("tail\t ".to_string()),
+            QueryValue::Null,
+            QueryValue::Text("NULL".to_string()),
+        ];
+        if result.values() != [expected] {
+            return Err(format!("unexpected special-value result: {result:?}"));
+        }
+
+        let mixed_nulls = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                "SELECT value FROM (SELECT CAST(NULL AS CHAR(8)) AS value UNION ALL SELECT 'NULL' AS value) AS mixed_nulls",
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("mixed NULL query failed: {error:?}"))?;
+        if mixed_nulls.values()
+            != [
+                vec![QueryValue::Null],
+                vec![QueryValue::Text("NULL".to_string())],
+            ]
+        {
+            return Err(format!("unexpected mixed NULL result: {mixed_nulls:?}"));
+        }
+        Ok(())
+    }))
+    .await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn proves_metadata_only_select_does_not_evaluate_inner_expressions() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let output = db
+            .run_pty_script(
+                "SET @sabiql_metadata_probe = 0;\nSELECT * FROM ((SELECT @sabiql_metadata_probe := @sabiql_metadata_probe + 1 AS touched, SLEEP(1) AS sleep_value) LIMIT 0) AS __sabiql_metadata;\nSELECT @sabiql_metadata_probe AS touched;\n",
+            )
+            .await
+            .map_err(|error| format!("metadata-only CLI proof failed: {error}"))?;
+        let output = String::from_utf8_lossy(&output);
+        if !output.contains("<field name=\"touched\">0</field>") {
+            return Err(format!(
+                "metadata-only SELECT evaluated an inner expression: {output}"
+            ));
+        }
+        Ok(())
+    }))
     .await;
 }
 
@@ -1446,6 +1488,30 @@ async fn exports_with_a_read_only_session_and_rejects_writes() {
             }
             if write_path.exists() {
                 return Err("write export created an output file".to_string());
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn exports_a_header_only_csv_for_an_empty_result() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let output_directory = tempdir().map_err(|error| error.to_string())?;
+            let path = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                "SELECT 1 AS first_alias, '' AS empty_alias WHERE FALSE",
+                output_directory.path().join("empty.csv"),
+            )
+            .await
+            .map_err(|error| format!("empty CSV export failed: {error:?}"))?;
+            let csv = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read empty CSV export: {error}"))?;
+            if csv != "first_alias,empty_alias\n" {
+                return Err(format!("unexpected empty CSV export: {csv:?}"));
             }
             Ok(())
         })

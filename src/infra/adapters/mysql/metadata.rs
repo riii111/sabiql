@@ -2180,66 +2180,59 @@ fi
 while IFS= read -r line; do
   printf 'query=%s\n' "$line" >> "$transcript"
   [ "$line" = ";" ] && continue
-  if printf '%s\n' "$line" | grep -q '__sabiql_marker'; then
-    marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-    printf '%b\n' '__sabiql_marker\taffected_rows'
-    printf '%s\t-1\n' "$marker"
-    continue
-  fi
   if printf '%s\n' "$line" | grep -q '__sabiql_probe'; then
     if [ "$mode" = "probe-failure" ]; then
-      printf '%s\n' 'wrong' 'x'
+      printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
     else
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%b\n' '__sabiql_probe\t__sabiql_sql_mode'
-      printf '%s\t%s\n' "$marker" 'STRICT_TRANS_TABLES'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
     fi
     continue
   fi
   case "$line" in
     *TABLES*)
       if [ "$mode" = "empty" ]; then
-        printf '%b\n' 'TABLE_SCHEMA\tTABLE_NAME\tTABLE_TYPE\tTABLE_ROWS\tTABLE_COMMENT' 'NULL\tNULL\tNULL\tNULL\tNULL'
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA" xsi:nil="true"/><field name="TABLE_NAME" xsi:nil="true"/><field name="TABLE_TYPE" xsi:nil="true"/><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT" xsi:nil="true"/></row></resultset>'
       elif [ "$mode" = "view" ]; then
-        printf '%b\n' 'TABLE_SCHEMA\tTABLE_NAME\tTABLE_TYPE\tTABLE_ROWS\tTABLE_COMMENT' 'app\titems_view\tVIEW\tNULL\tview comment'
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field></row></resultset>'
       else
-        printf '%b\n' 'TABLE_SCHEMA\tTABLE_NAME\tTABLE_TYPE\tTABLE_ROWS\tTABLE_COMMENT' 'app\titems\tBASE TABLE\t1\ttable comment'
+        printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
       fi
       ;;
     *COLUMNS*)
       if [ "$mode" = "timeout" ]; then
         while :; do sleep 1; done
       elif [ "$mode" = "malformed" ]; then
-        printf '%s\n' 'WRONG' 'x'
+        printf '%s\n' '<resultset><row><field name="WRONG">x</field></row></resultset>'
       else
-        printf '%b\n' 'COLUMN_NAME\tCOLUMN_TYPE\tIS_NULLABLE\tCOLUMN_DEFAULT\tEXTRA\tCOLUMN_COMMENT\tORDINAL_POSITION\tPRIMARY_KEY_POSITION' 'id\tint\tNO\tNULL\t\tNULL\t1\t1'
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
       fi
       ;;
     *STATISTICS*)
-      printf '%b\n' 'INDEX_NAME\tNON_UNIQUE\tINDEX_TYPE\tSEQ_IN_INDEX\tCOLUMN_NAME\tEXPRESSION\tIS_PRIMARY' 'PRIMARY\t0\tBTREE\t1\tNULL\texpr\tYES'
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
       ;;
     *FOREIGN*)
-      printf '%b\n' 'CONSTRAINT_NAME\tTABLE_SCHEMA\tTABLE_NAME\tCOLUMN_NAME\tREFERENCED_TABLE_SCHEMA\tREFERENCED_TABLE_NAME\tREFERENCED_COLUMN_NAME\tORDINAL_POSITION\tUPDATE_RULE\tDELETE_RULE' 'fk_items_self\tapp\titems\tid\tapp\titems\tid\t1\tCASCADE\tCASCADE'
+      printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
       ;;
     *TRIGGERS*)
-      printf '%b\n' 'TRIGGER_NAME\tACTION_TIMING\tEVENT_MANIPULATION\tACTION_STATEMENT\tDEFINER' 'items_audit\tBEFORE\tINSERT\tSET NEW.id = NEW.id\tapp@localhost'
+      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field></row></resultset>'
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
-        printf '%b\n' 'View\tCreate View' 'items_view\tCREATE VIEW items_view AS SELECT 1'
+        printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
       fi
       if [ "$platform" = "Darwin" ]; then
         stty icanon <&0 2>/dev/null || true
       fi
       ;;
     *SHOW\ CREATE\ TABLE*)
-      printf '%b\n' 'Table\tCreate Table' 'items\tCREATE TABLE items (id int PRIMARY KEY)'
+      printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
       if [ "$platform" = "Darwin" ]; then
         stty icanon <&0 2>/dev/null || true
       fi
       ;;
     *)
-      :
+      printf '%s\n' '<resultset></resultset>'
       ;;
   esac
 done
