@@ -40,12 +40,12 @@ mod tests {
         }
     }
 
-    pub(super) struct TestCommandContext {
+    pub(in crate::adapters::sqlite) struct TestCommandContext {
         path: String,
     }
 
     impl TestCommandContext {
-        pub(super) fn count(&self) -> usize {
+        pub(in crate::adapters::sqlite) fn count(&self) -> usize {
             command_configs()
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -64,7 +64,9 @@ mod tests {
     }
 
     impl SqliteAdapter {
-        pub(super) fn with_process_counter(dsn: &str) -> (Self, TestCommandContext) {
+        pub(in crate::adapters::sqlite) fn with_process_counter(
+            dsn: &str,
+        ) -> (Self, TestCommandContext) {
             Self::with_test_command_config(dsn, TestCommandConfig::default())
         }
 
