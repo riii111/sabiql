@@ -40,9 +40,6 @@ class LintTestNamesTest < Minitest::Test
           static SHARED: usize = 1;
       }
 
-      #[cfg(test)]
-      use crate::Fixture;
-
       #[cfg(feature = "test-support")]
       fn test_support_helper() {}
     RUST
@@ -105,5 +102,51 @@ class LintTestNamesTest < Minitest::Test
 
     refute status.success?
     assert_equal 1, stderr.lines.grep(/test-only item must be inside a cfg\(test\) module/).length
+  end
+
+  def test_allows_stacked_test_use_tree_inside_test_module
+    stdout, stderr, status = run_lint(<<~RUST)
+      #[cfg(test)]
+      mod tests {
+          #[cfg(test)]
+          #[allow(unused_imports)]
+          use crate::{
+              Fixture,
+              OtherFixture,
+          };
+      }
+
+      #[cfg(any(test, feature = "test-support"))]
+      use crate::SharedFixture;
+
+      #[cfg(feature = "test-support")]
+      use crate::FeatureFixture;
+    RUST
+
+    assert status.success?, stderr
+    assert_equal "test-name lint passed\n", stdout
+    assert_empty stderr
+  end
+
+  def test_rejects_private_test_use_at_module_scope
+    _stdout, stderr, status = run_lint(<<~RUST)
+      #[cfg(test)]
+      #[allow(unused_imports)]
+      use crate::Fixture;
+
+      #[cfg(test)]
+      use crate::{
+          FirstFixture,
+          SecondFixture,
+      };
+
+      mod production {
+          #[cfg(test)]
+          use crate::NestedFixture;
+      }
+    RUST
+
+    refute status.success?
+    assert_equal 3, stderr.lines.grep(/test-only use must be inside a cfg\(test\) module/).length
   end
 end

@@ -10,13 +10,6 @@ use crate::config::connection_config::{
 };
 use crate::domain::connection::{ConnectionId, ConnectionProfile};
 
-#[cfg(test)]
-use super::app_config_file::CONFIG_FILE_NAME;
-#[cfg(test)]
-use crate::domain::connection::{ConnectionConfig, DatabaseType, PostgresConnectionConfig};
-#[cfg(test)]
-use std::path::Path;
-
 pub struct TomlConnectionStore {
     config_dir: PathBuf,
 }
@@ -138,8 +131,11 @@ fn get_config_dir() -> Result<PathBuf, ConnectionStoreError> {
 
 #[cfg(test)]
 mod tests {
+    use super::app_config_file::CONFIG_FILE_NAME;
     use super::*;
     use crate::domain::connection::SslMode;
+    use crate::domain::connection::{ConnectionConfig, DatabaseType, PostgresConnectionConfig};
+    use std::path::Path;
     use tempfile::TempDir;
 
     fn make_test_profile(name: &str) -> ConnectionProfile {

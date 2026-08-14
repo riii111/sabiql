@@ -11,9 +11,6 @@ use crate::app::policy::sql::sqlite_transaction::{
 };
 use crate::app::ports::outbound::DbOperationError;
 
-#[cfg(test)]
-use crate::app::policy::sql::sqlite_transaction::SqliteStatementClassification;
-
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
@@ -764,6 +761,8 @@ fn statement_emits_result_set(statement: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::app::policy::sql::sqlite_transaction::SqliteStatementClassification;
+
     use super::*;
     use rstest::rstest;
 

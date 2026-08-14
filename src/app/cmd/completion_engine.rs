@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
 use crate::cmd::cache::BoundedLruCache;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
@@ -1219,10 +1217,11 @@ impl CompletionEngine {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::Column;
+    use crate::domain::ColumnAttributes;
     use crate::test_support;
 
     use super::*;
-    pub use crate::domain::Column;
 
     impl CompletionEngine {
         fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {

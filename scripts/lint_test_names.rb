@@ -8,6 +8,7 @@ DEFAULT_PATHS = [
 ].freeze
 TEST_ONLY_ITEM_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe|async|extern(?:\s+"[^"]+")?)\s+)*(fn|struct|impl|const|type|static)\b/
 MODULE_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*mod\s+([a-zA-Z0-9_]+)\s*\{/
+PRIVATE_TEST_USE_PATTERN = /\Ause\b/
 
 # This lint only checks mechanically detectable anti-patterns.
 # Category-specific naming still relies on local rules and review.
@@ -161,6 +162,10 @@ def test_only_item_kind(stripped)
   match && match[1]
 end
 
+def private_test_use?(stripped)
+  PRIVATE_TEST_USE_PATTERN.match?(stripped)
+end
+
 paths = ARGV.empty? ? DEFAULT_PATHS : ARGV
 errors = []
 
@@ -192,6 +197,7 @@ rust_files(paths).each do |file|
 
     module_match = stripped.match(MODULE_PATTERN)
     item_kind = test_only_item_kind(stripped)
+    private_test_use = private_test_use?(stripped)
     cfg_test_module = pending_cfg_test_attr
     module_depth = mod_stack.last&.dig(:depth) || 0
     at_module_scope = brace_depth == module_depth
@@ -199,9 +205,11 @@ rust_files(paths).each do |file|
 
     if stripped.start_with?("#[")
       pending_cfg_test_attr ||= cfg_test_attribute?(stripped)
-    elsif pending_cfg_test_attr && (item_kind || module_match)
+    elsif pending_cfg_test_attr && (item_kind || module_match || private_test_use)
       if item_kind && at_module_scope && !inside_test_module
         errors << "#{rel}:#{line_no} test-only item must be inside a cfg(test) module: #{item_kind}"
+      elsif private_test_use && at_module_scope && !inside_test_module
+        errors << "#{rel}:#{line_no} test-only use must be inside a cfg(test) module"
       end
 
       pending_cfg_test_attr = false
