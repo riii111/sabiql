@@ -1871,64 +1871,6 @@ mod export_pipe_tests {
     }
 }
 
-#[cfg(test)]
-async fn export_mysql_csv_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    path: PathBuf,
-    execution_timeout: Duration,
-) -> Result<(), DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-    let result = timeout(
-        execution_timeout,
-        run_mysql_export_process(&mut process, option_file, query, path),
-    )
-    .await;
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
-}
-
-#[cfg(test)]
-async fn run_mysql_adhoc_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-    execution_timeout: Duration,
-) -> Result<MysqlResultSet, DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-    let result = timeout(
-        execution_timeout,
-        run_mysql_single_statement_process(&mut process, query, access_mode),
-    )
-    .await;
-    match result {
-        Ok(Ok(result_set)) => Ok(result_set),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
-}
-
 async fn run_mysql_single_statement(
     option_file: &std::path::Path,
     query: &str,
@@ -3737,6 +3679,62 @@ mod executor_tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    async fn export_mysql_csv_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+        query: &str,
+        path: PathBuf,
+        execution_timeout: Duration,
+    ) -> Result<(), DbOperationError> {
+        let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+        let result = timeout(
+            execution_timeout,
+            run_mysql_export_process(&mut process, option_file, query, path),
+        )
+        .await;
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => {
+                cleanup_mysql_process(&mut process).await;
+                Err(error)
+            }
+            Err(_) => {
+                cleanup_mysql_process(&mut process).await;
+                Err(DbOperationError::Timeout(
+                    "mysql query exceeded the execution timeout".to_string(),
+                ))
+            }
+        }
+    }
+
+    async fn run_mysql_adhoc_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+        query: &str,
+        access_mode: AccessMode,
+        execution_timeout: Duration,
+    ) -> Result<MysqlResultSet, DbOperationError> {
+        let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+        let result = timeout(
+            execution_timeout,
+            run_mysql_single_statement_process(&mut process, query, access_mode),
+        )
+        .await;
+        match result {
+            Ok(Ok(result_set)) => Ok(result_set),
+            Ok(Err(error)) => {
+                cleanup_mysql_process(&mut process).await;
+                Err(error)
+            }
+            Err(_) => {
+                cleanup_mysql_process(&mut process).await;
+                Err(DbOperationError::Timeout(
+                    "mysql query exceeded the execution timeout".to_string(),
+                ))
+            }
+        }
+    }
 
     #[test]
     fn failure_before_a_change_keeps_original_error() {

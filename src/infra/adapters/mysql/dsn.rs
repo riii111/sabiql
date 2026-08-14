@@ -102,32 +102,6 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     })
 }
 
-fn normalize_mysql_host(host: &str) -> String {
-    host.strip_prefix('[')
-        .and_then(|host| host.strip_suffix(']'))
-        .unwrap_or(host)
-        .to_string()
-}
-
-fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
-    match value {
-        "DISABLED" => Ok(MySqlSslMode::Disabled),
-        "PREFERRED" => Ok(MySqlSslMode::Preferred),
-        "REQUIRED" => Ok(MySqlSslMode::Required),
-        "VERIFY_CA" => Ok(MySqlSslMode::VerifyCa),
-        "VERIFY_IDENTITY" => Ok(MySqlSslMode::VerifyIdentity),
-        _ => Err(DbOperationError::ConnectionFailed(
-            "Invalid MySQL TLS mode".to_string(),
-        )),
-    }
-}
-
-fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
-    urlencoding::decode(value)
-        .map(std::borrow::Cow::into_owned)
-        .map_err(|error| DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}")))
-}
-
 pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
     let values = [
         Some(target.host.as_str()),
@@ -223,6 +197,32 @@ pub(super) fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperat
         }
     }
     Ok(())
+}
+
+fn normalize_mysql_host(host: &str) -> String {
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
+        .to_string()
+}
+
+fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
+    match value {
+        "DISABLED" => Ok(MySqlSslMode::Disabled),
+        "PREFERRED" => Ok(MySqlSslMode::Preferred),
+        "REQUIRED" => Ok(MySqlSslMode::Required),
+        "VERIFY_CA" => Ok(MySqlSslMode::VerifyCa),
+        "VERIFY_IDENTITY" => Ok(MySqlSslMode::VerifyIdentity),
+        _ => Err(DbOperationError::ConnectionFailed(
+            "Invalid MySQL TLS mode".to_string(),
+        )),
+    }
+}
+
+fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
+    urlencoding::decode(value)
+        .map(std::borrow::Cow::into_owned)
+        .map_err(|error| DbOperationError::ConnectionFailed(format!("Invalid MySQL DSN: {error}")))
 }
 
 #[cfg(test)]
