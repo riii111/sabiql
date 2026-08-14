@@ -248,7 +248,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_explain_rejects_locking_reads() {
+        fn mysql_explain_emits_tree_explain_for_locking_reads() {
             let mut state = sql_modal_state();
             state
                 .sql_modal
@@ -264,11 +264,16 @@ mod tests {
             )
             .unwrap();
 
-            assert!(effects.is_empty());
-            assert_eq!(
-                state.explain.error.as_deref(),
-                Some("MySQL EXPLAIN only supports side-effect-free read statements")
-            );
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                    ..
+                } if query == "EXPLAIN FORMAT=TREE SELECT * FROM users FOR UPDATE"
+            ));
         }
 
         #[test]

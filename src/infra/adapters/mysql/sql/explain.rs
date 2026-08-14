@@ -30,6 +30,7 @@ mod tests {
             "REPLACE DELAYED users VALUES (1)",
             "UPDATE users SET name = 'Ada' WHERE id = 1",
             "DELETE FROM users WHERE id = 1",
+            "SELECT * FROM users FOR UPDATE",
         ] {
             assert_eq!(
                 build_explain_sql(query),

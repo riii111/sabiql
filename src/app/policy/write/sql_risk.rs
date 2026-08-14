@@ -122,9 +122,17 @@ mod mysql_tests {
     }
 
     #[test]
-    fn explain_targets_share_the_read_only_allowlist() {
-        for sql in ["SELECT 1", "TABLE items", "SHOW TABLES", "DESCRIBE items"] {
+    fn explain_target_policy_separates_nonexecuting_explain_from_analyze() {
+        for sql in [
+            "SELECT 1",
+            "TABLE items",
+            "SELECT * FROM items FOR UPDATE",
+            "UPDATE items SET value = 1 WHERE id = 1",
+        ] {
             assert!(evaluate_mysql_explain_target(sql, false).is_some(), "{sql}");
+        }
+        for sql in ["SHOW TABLES", "DESCRIBE items"] {
+            assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
         }
         for sql in [
             "UPDATE items SET value = 1",
@@ -134,6 +142,11 @@ mod mysql_tests {
             "SELECT id INTO @value FROM items",
             "TABLE items INTO OUTFILE '/tmp/items'",
             "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
+        ] {
+            assert!(evaluate_mysql_explain_target(sql, false).is_some(), "{sql}");
+            assert!(evaluate_mysql_explain_target(sql, true).is_none(), "{sql}");
+        }
+        for sql in [
             "SELECT 1; SELECT 2",
             "SELECT 1\nsystem echo unsafe",
             "SELECT 1\n\\! echo unsafe",
@@ -267,6 +280,7 @@ mod mysql_tests {
             "COMMIT",
             "ROLLBACK",
             "BEGIN; COMMIT",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ROLLBACK",
             "START TRANSACTION; ROLLBACK",
             "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
             "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); SELECT * FROM temp_items",
@@ -274,6 +288,25 @@ mod mysql_tests {
         ] {
             assert!(
                 matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_persistent_ddl_inside_an_explicit_transaction() {
+        for sql in [
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE TABLE new_items (id INT); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ALTER TABLE items ADD COLUMN extra INT; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; TRUNCATE TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE VIEW item_view AS SELECT 1; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP VIEW item_view; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE INDEX item_index ON items (value); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP INDEX item_index ON items; ROLLBACK",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { ref reason } if reason.contains("implicit commit")),
                 "{sql}"
             );
         }
@@ -542,8 +575,12 @@ fn mysql_validate_submission_state(
                 temporary_tables.remove(index);
             }
             kind if mysql_statement_is_persistent_schema_change(kind) => {
-                transaction_open = false;
-                savepoints.clear();
+                if transaction_open {
+                    return Err(
+                        "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
+                            .to_string(),
+                    );
+                }
             }
             _ => {}
         }
@@ -972,20 +1009,27 @@ pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRisk
             statement.kind,
             MysqlStatementKind::Select
                 | MysqlStatementKind::Table
-                | MysqlStatementKind::Show
-                | MysqlStatementKind::Describe
+                | MysqlStatementKind::Insert
+                | MysqlStatementKind::Replace
+                | MysqlStatementKind::Update { .. }
+                | MysqlStatementKind::Delete { .. }
         )
     };
+    if !allowed_kind {
+        return None;
+    }
+
     let mut risk = mysql_statement_risk(&statement);
-    if analyze && risk.read_only_allowed {
+    if analyze {
+        if !risk.read_only_allowed {
+            return None;
+        }
         risk.confirmation = ConfirmationType::Acknowledge {
             reason: AcknowledgeReason::AnalyzeExecution,
             label: mysql_statement_label(&statement.kind).to_string(),
         };
     }
-    allowed_kind
-        .then_some(risk)
-        .filter(|risk| risk.read_only_allowed)
+    Some(risk)
 }
 
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
