@@ -2152,7 +2152,13 @@ async fn run_mysql_adhoc_process(
         }
         let first_xml = match read_one_mysql_resultset(process).await {
             Ok(xml) => xml,
-            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
+            Err(error) => {
+                return Err(query_failed_after_mysql_statement(
+                    error,
+                    refresh_scope,
+                    possible_refresh_scope,
+                ));
+            }
         };
         let first_result = match parse_mysql_xml(&first_xml) {
             Ok(result) => result,
@@ -2163,7 +2169,13 @@ async fn run_mysql_adhoc_process(
         } else {
             let xml = match read_one_mysql_resultset(process).await {
                 Ok(xml) => xml,
-                Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
+                Err(error) => {
+                    return Err(query_failed_after_mysql_statement(
+                        error,
+                        refresh_scope,
+                        possible_refresh_scope,
+                    ));
+                }
             };
             let marker_result = match parse_mysql_xml(&xml) {
                 Ok(result) => result,
@@ -2294,6 +2306,32 @@ fn query_failed_after_change(
             refresh_scope,
         }
     }
+}
+
+fn query_failed_after_mysql_statement(
+    error: DbOperationError,
+    refresh_scope: RefreshScope,
+    possible_refresh_scope: RefreshScope,
+) -> DbOperationError {
+    let refresh_scope = if is_mysql_statement_failure(&error) {
+        refresh_scope
+    } else {
+        possible_refresh_scope
+    };
+    query_failed_after_change(error, refresh_scope)
+}
+
+fn is_mysql_statement_failure(error: &DbOperationError) -> bool {
+    matches!(
+        error,
+        DbOperationError::PermissionDenied(_)
+            | DbOperationError::ForeignKeyViolation(_)
+            | DbOperationError::UniqueViolation(_)
+            | DbOperationError::LockTimeout(_)
+            | DbOperationError::ObjectMissing(_)
+            | DbOperationError::QueryFailed(_)
+            | DbOperationError::Canceled(_)
+    )
 }
 
 fn is_mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> bool {
@@ -4280,18 +4318,32 @@ done
     }
 
     fn fake_mysql_multi() -> (TempDir, PathBuf, PathBuf) {
-        fake_mysql_multi_with_mode(false)
+        fake_mysql_multi_with_mode(false, None)
     }
 
     fn fake_mysql_multi_with_marker_failure() -> (TempDir, PathBuf, PathBuf) {
-        fake_mysql_multi_with_mode(true)
+        fake_mysql_multi_with_mode(true, None)
     }
 
-    fn fake_mysql_multi_with_mode(marker_failure: bool) -> (TempDir, PathBuf, PathBuf) {
+    fn fake_mysql_multi_with_statement_failure(error: &str) -> (TempDir, PathBuf, PathBuf) {
+        fake_mysql_multi_with_mode(false, Some(error))
+    }
+
+    fn fake_mysql_multi_with_mode(
+        marker_failure: bool,
+        statement_error: Option<&str>,
+    ) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
         fs::write(&option_file, "[client]\n").unwrap();
         let program = directory.path().join("mysql");
+        let update_response = statement_error.map_or_else(
+            || {
+                "printf '%s\\n' '<resultset><row><field name=\"affected\">ok</field></row></resultset>'"
+                    .to_string()
+            },
+            |error| format!("printf '%s\\n' '{error}' >&2"),
+        );
         let marker_response = if marker_failure {
             "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
         } else {
@@ -4335,7 +4387,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="value">'"$value"'</field></row></resultset>'
       ;;
     *UPDATE*)
-      printf '%s\n' '<resultset><row><field name="affected">ok</field></row></resultset>'
+      {update_response}
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -4756,6 +4808,56 @@ done
                 ..
             }) if matches!(&*source, DbOperationError::QueryFailed(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn first_change_statement_failure_keeps_the_classified_error_unwrapped() {
+        for (details, summary) in [
+            (
+                "ERROR 1142 (42000): command denied to user",
+                "Permission denied",
+            ),
+            (
+                "ERROR 1062 (23000): Duplicate entry duplicate_value for key PRIMARY",
+                "Unique constraint violation",
+            ),
+            (
+                "ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails",
+                "Foreign key constraint violation",
+            ),
+            (
+                "ERROR 1205 (HY000): Lock wait timeout exceeded",
+                "Operation blocked by lock or timeout",
+            ),
+        ] {
+            let (_directory, program, option_file) =
+                fake_mysql_multi_with_statement_failure(details);
+            let statements = split_mysql_statements("UPDATE items SET value = 1")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements(
+                OsStr::new(&program),
+                &option_file,
+                "UPDATE items SET value = 1",
+                &statements,
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await;
+            let error = match result {
+                Ok(_) => panic!("expected the fake MySQL statement to fail"),
+                Err(error) => error,
+            };
+
+            assert_eq!(error.summary(), summary);
+            assert!(!matches!(
+                error,
+                DbOperationError::QueryFailedAfterChange { .. }
+            ));
+        }
     }
 
     #[tokio::test]
