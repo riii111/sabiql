@@ -1264,6 +1264,86 @@ struct MysqlProcess {
     pending: Vec<u8>,
     #[cfg(not(unix))]
     pending_stderr: Vec<u8>,
+    #[cfg(not(unix))]
+    frame_scanner: MysqlResultsetFrameScanner,
+}
+
+const MYSQL_RESULTSET_START: &[u8] = b"<resultset";
+const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
+
+#[derive(Debug, Default)]
+struct MysqlResultsetFrameScanner {
+    resultset_start: Option<usize>,
+    resultset_end: Option<usize>,
+    resultset_start_cursor: usize,
+    resultset_end_cursor: usize,
+}
+
+impl MysqlResultsetFrameScanner {
+    fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
+        if self.resultset_start_cursor > buffer.len() {
+            self.resultset_start_cursor = 0;
+        }
+        if self.resultset_end_cursor > buffer.len() {
+            self.resultset_end_cursor = 0;
+        }
+
+        if self.resultset_start.is_none() {
+            let scan_start = self
+                .resultset_start_cursor
+                .saturating_sub(MYSQL_RESULTSET_START.len().saturating_sub(1));
+            self.resultset_start = find_bytes_from(buffer, MYSQL_RESULTSET_START, scan_start);
+            if let Some(start) = self.resultset_start {
+                self.resultset_end_cursor = start;
+            } else {
+                self.resultset_start_cursor = buffer.len();
+                return None;
+            }
+        }
+
+        let start = self.resultset_start?;
+        if self.resultset_end.is_none() {
+            let scan_start = self
+                .resultset_end_cursor
+                .saturating_sub(MYSQL_RESULTSET_END.len().saturating_sub(1))
+                .max(start);
+            self.resultset_end = find_bytes_from(buffer, MYSQL_RESULTSET_END, scan_start)
+                .map(|end| end + MYSQL_RESULTSET_END.len());
+            if self.resultset_end.is_none() {
+                self.resultset_end_cursor = buffer.len();
+                return None;
+            }
+        }
+
+        self.resultset_end.map(|end| (start, end))
+    }
+
+    #[cfg(any(not(unix), test))]
+    fn take(&mut self, buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
+        let bounds = self.frame_bounds(buffer)?;
+        Some(self.take_bounds(buffer, bounds))
+    }
+
+    fn take_bounds(&mut self, buffer: &mut Vec<u8>, (start, end): (usize, usize)) -> Vec<u8> {
+        let frame = buffer[start..end].to_vec();
+        buffer.drain(..end);
+        self.resultset_start_cursor = self
+            .resultset_start_cursor
+            .saturating_sub(end)
+            .min(buffer.len());
+        self.resultset_end_cursor = self
+            .resultset_end_cursor
+            .saturating_sub(end)
+            .min(buffer.len());
+        self.resultset_start = None;
+        self.resultset_end = None;
+        frame
+    }
+
+    #[cfg(unix)]
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[cfg(unix)]
@@ -1271,6 +1351,7 @@ struct MysqlPty {
     input: TokioFile,
     output: TokioFile,
     pending: Vec<u8>,
+    frame_scanner: MysqlResultsetFrameScanner,
 }
 
 impl MysqlProcess {
@@ -1320,6 +1401,7 @@ impl MysqlProcess {
                 stderr,
                 pending: Vec::new(),
                 pending_stderr: Vec::new(),
+                frame_scanner: MysqlResultsetFrameScanner::default(),
             });
         }
     }
@@ -1367,6 +1449,7 @@ impl MysqlProcess {
                 input,
                 output,
                 pending: Vec::new(),
+                frame_scanner: MysqlResultsetFrameScanner::default(),
             },
         })
     }
@@ -2723,6 +2806,7 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
         &mut process.stderr,
         &mut process.pending,
         &mut process.pending_stderr,
+        &mut process.frame_scanner,
     )
     .await
 }
@@ -2731,7 +2815,9 @@ async fn read_one_mysql_resultset(process: &mut MysqlProcess) -> Result<Vec<u8>,
 async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        if let Some(frame) = take_mysql_pty_resultset_frame(&mut pty.pending)? {
+        if let Some(frame) =
+            take_mysql_pty_resultset_frame(&mut pty.pending, &mut pty.frame_scanner)?
+        {
             trace_mysql_frame("receive resultset", frame.len());
             return Ok(frame);
         }
@@ -2759,6 +2845,7 @@ async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperati
 #[cfg(unix)]
 async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     let mut output = std::mem::take(&mut pty.pending);
+    pty.frame_scanner.reset();
     let mut chunk = [0; 4096];
     loop {
         match pty.output.read(&mut chunk).await {
@@ -2787,51 +2874,44 @@ fn has_mysql_cli_error(output: &[u8]) -> bool {
         })
 }
 
-fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
-    let (start, end) = mysql_resultset_frame_bounds(buffer)?;
-    let frame = buffer[start..end].to_vec();
-    buffer.drain(..end);
-    Some(frame)
-}
-
 #[cfg(any(unix, test))]
 fn take_mysql_pty_resultset_frame(
     buffer: &mut Vec<u8>,
+    scanner: &mut MysqlResultsetFrameScanner,
 ) -> Result<Option<Vec<u8>>, DbOperationError> {
-    let resultset_start = find_bytes(buffer, b"<resultset").unwrap_or(buffer.len());
+    let bounds = scanner.frame_bounds(buffer);
+    let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
     if has_mysql_cli_error(&buffer[..resultset_start]) {
         trace_mysql_error(&buffer[..resultset_start]);
         return Err(classify_mysql_query_failure(&buffer[..resultset_start]));
     }
-    Ok(take_mysql_resultset_frame(buffer))
-}
-
-fn mysql_resultset_frame_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
-    let start = find_bytes(buffer, b"<resultset")?;
-    let end = buffer[start..]
-        .windows(b"</resultset>".len())
-        .position(|window| window == b"</resultset>")?
-        + start
-        + b"</resultset>".len();
-    Some((start, end))
+    Ok(bounds.map(|bounds| scanner.take_bounds(buffer, bounds)))
 }
 
 #[cfg(any(not(unix), test))]
 fn take_mysql_resultset_frame_after_error_check(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
+    scanner: &mut MysqlResultsetFrameScanner,
 ) -> Result<Option<Vec<u8>>, DbOperationError> {
     if has_mysql_cli_error(error_output) {
         trace_mysql_error(error_output);
         return Err(classify_mysql_query_failure(error_output));
     }
-    Ok(take_mysql_resultset_frame(buffer))
+    Ok(scanner.take(buffer))
 }
 
+#[cfg(unix)]
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    find_bytes_from(haystack, needle, 0)
+}
+
+fn find_bytes_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
     haystack
+        .get(start..)?
         .windows(needle.len())
         .position(|window| window == needle)
+        .map(|offset| start + offset)
 }
 
 fn trace_mysql_frame(kind: &str, bytes: usize) {
@@ -2868,6 +2948,7 @@ async fn read_one_mysql_resultset_from_pipes<R, E>(
     stderr: &mut E,
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
+    frame_scanner: &mut MysqlResultsetFrameScanner,
 ) -> Result<Vec<u8>, DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -2877,7 +2958,7 @@ where
     let mut stderr_chunk = [0; 4096];
     let mut stderr_closed = false;
     loop {
-        if mysql_resultset_frame_bounds(pending).is_some() && !stderr_closed {
+        if frame_scanner.frame_bounds(pending).is_some() && !stderr_closed {
             tokio::select! {
                 biased;
                 result = stderr.read(&mut stderr_chunk) => {
@@ -2891,7 +2972,8 @@ where
                 _ = tokio::task::yield_now() => {}
             }
         }
-        if let Some(frame) = take_mysql_resultset_frame_after_error_check(pending, pending_stderr)?
+        if let Some(frame) =
+            take_mysql_resultset_frame_after_error_check(pending, pending_stderr, frame_scanner)?
         {
             trace_mysql_frame("receive resultset", frame.len());
             return Ok(frame);
@@ -4792,13 +4874,14 @@ done
     fn frames_one_xml_resultset_and_preserves_following_output() {
         let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
             .to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             Some(b"<resultset></resultset>".to_vec())
         );
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             None,
             "an incomplete following frame must remain buffered"
         );
@@ -4809,9 +4892,10 @@ done
     fn frames_resultset_after_mysql_cli_text() {
         let mut buffer =
             b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             Some(b"<resultset></resultset>".to_vec())
         );
         assert!(buffer.is_empty());
@@ -5132,12 +5216,88 @@ mod resultset_frame_tests {
     use super::*;
 
     #[test]
+    fn extracts_one_frame_when_end_delimiter_crosses_4k_chunk_boundary() {
+        let delimiter_start = 4096 - 3;
+        let mut expected = MYSQL_RESULTSET_START.to_vec();
+        expected.resize(delimiter_start, b'x');
+        expected.extend_from_slice(MYSQL_RESULTSET_END);
+
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+        for chunk in expected.chunks(4096) {
+            buffer.extend_from_slice(chunk);
+            if let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![expected]);
+        assert!(buffer.is_empty());
+        assert_eq!(scanner.take(&mut buffer), None);
+    }
+
+    #[test]
+    fn extracts_large_resultset_from_small_chunks() {
+        let mut expected = MYSQL_RESULTSET_START.to_vec();
+        expected.extend_from_slice(b"<row><field name=\"value\">");
+        expected.extend(vec![b'x'; 128 * 1024]);
+        expected.extend_from_slice(b"</field></row>");
+        expected.extend_from_slice(MYSQL_RESULTSET_END);
+
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+        for chunk in expected.chunks(37) {
+            buffer.extend_from_slice(chunk);
+            if let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![expected]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn drains_frames_in_order_without_skipping_the_following_frame() {
+        let first = b"<resultset><row><field name=\"value\">one</field></row></resultset>";
+        let second = b"noise<resultset><row><field name=\"value\">two</field></row></resultset>";
+        let mut input = first.to_vec();
+        input.extend_from_slice(second);
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+
+        for chunk in input.chunks(11) {
+            buffer.extend_from_slice(chunk);
+            while let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![first.to_vec(), second[5..].to_vec()]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn delimiter_prefix_in_field_text_does_not_end_the_frame() {
+        let expected = b"<resultset><row><field name=\"value\">literal </resultset prefix</field></row></resultset>";
+        let mut buffer = expected.to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        assert_eq!(scanner.take(&mut buffer), Some(expected.to_vec()));
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
     fn resultset_field_error_text_is_not_classified_as_cli_error() {
         let mut buffer = br#"<resultset><row><field name="message">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             .to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
-        let frame = take_mysql_pty_resultset_frame(&mut buffer).unwrap();
+        let frame = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner).unwrap();
 
         assert!(frame.is_some());
         assert!(buffer.is_empty());
@@ -5147,8 +5307,9 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn cli_error_before_resultset_frame_is_still_rejected() {
         let mut buffer =
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
-        let result = take_mysql_pty_resultset_frame(&mut buffer);
+        let result = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner);
 
         assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
         assert_eq!(
@@ -5161,9 +5322,10 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn error_before_resultset_frame_is_not_accepted() {
         let mut buffer = b"<resultset><row></row></resultset>".to_vec();
         let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
         assert!(matches!(
-            take_mysql_resultset_frame_after_error_check(&mut buffer, error),
+            take_mysql_resultset_frame_after_error_check(&mut buffer, error, &mut scanner),
             Err(DbOperationError::QueryFailed(_))
         ));
         assert_eq!(buffer, b"<resultset><row></row></resultset>");
@@ -5188,12 +5350,14 @@ mod pipe_executor_tests {
             .unwrap();
         drop(stdout_writer);
         drop(stderr_writer);
+        let mut frame_scanner = MysqlResultsetFrameScanner::default();
 
         let result = read_one_mysql_resultset_from_pipes(
             &mut stdout_reader,
             &mut stderr_reader,
             &mut Vec::new(),
             &mut Vec::new(),
+            &mut frame_scanner,
         )
         .await;
 
