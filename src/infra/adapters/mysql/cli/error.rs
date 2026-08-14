@@ -77,6 +77,13 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
         || lower.contains("command denied")
     {
         DbOperationError::PermissionDenied(details)
+    } else if error_code == Some(1049) || lower.contains("unknown database") {
+        DbOperationError::ConnectionFailed(details)
+    } else if matches!(error_code, Some(1054 | 1146))
+        || lower.contains("doesn't exist")
+        || lower.contains("does not exist")
+    {
+        DbOperationError::ObjectMissing(details)
     } else if error_code == Some(1045)
         || lower.contains("access denied")
         || lower.contains("authentication")
@@ -90,8 +97,6 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
         || lower.contains("foreign key constraint")
     {
         DbOperationError::ForeignKeyViolation(details)
-    } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
-        DbOperationError::ObjectMissing(details)
     } else if lower.contains("duplicate entry") {
         DbOperationError::UniqueViolation(details)
     } else if lower.contains("query execution was interrupted")
@@ -158,6 +163,20 @@ mod tests {
             DbOperationError::ConnectionFailed(_)
         ));
         assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)"
+            ),
+            DbOperationError::Timeout(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1049 (42000): schema selection failed"),
+            DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1054 (42S22): column lookup failed"),
+            DbOperationError::ObjectMissing(_)
+        ));
+        assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1142 (42000): command denied to user"),
             DbOperationError::PermissionDenied(_)
         ));
@@ -168,7 +187,7 @@ mod tests {
             DbOperationError::PermissionDenied(_)
         ));
         assert!(matches!(
-            classify_mysql_query_failure(b"ERROR 1146 (42S02): Table does not exist"),
+            classify_mysql_query_failure(b"ERROR 1146 (42S02): table lookup failed"),
             DbOperationError::ObjectMissing(_)
         ));
         assert!(matches!(

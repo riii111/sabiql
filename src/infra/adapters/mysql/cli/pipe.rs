@@ -221,7 +221,7 @@ mod tests {
         )
         .await;
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     }
 
     #[tokio::test]
