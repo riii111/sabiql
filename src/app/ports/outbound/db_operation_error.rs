@@ -57,7 +57,8 @@ pub enum DbOperationError {
     QueryFailed(String),
     #[error("Query failed after a change")]
     QueryFailedAfterChange {
-        details: String,
+        #[source]
+        source: Arc<Self>,
         refresh_scope: RefreshScope,
     },
     #[error("Unsupported operation")]
@@ -94,7 +95,7 @@ impl DbOperationError {
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
             Self::QueryFailed(_) => "Query failed",
-            Self::QueryFailedAfterChange { .. } => "Query failed after a change",
+            Self::QueryFailedAfterChange { source, .. } => source.summary(),
             Self::UnsupportedOperation(_) => "Unsupported operation",
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
@@ -121,9 +122,7 @@ impl DbOperationError {
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
-            Self::QueryFailedAfterChange { .. } => {
-                "Some changes may have been committed; refresh the database state before retrying"
-            }
+            Self::QueryFailedAfterChange { source, .. } => source.hint(),
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
             Self::MetadataParseFailed(_) => {
                 "Check whether the metadata output format changed unexpectedly"
@@ -138,6 +137,52 @@ impl DbOperationError {
         }
     }
 
+    pub fn masked_details(&self) -> String {
+        mask_password(self.raw_details().as_ref())
+    }
+
+    pub fn user_message(&self) -> String {
+        let summary = self.summary();
+        let hint = self.hint();
+        let details = self.masked_details();
+
+        let message = match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}: {details}"),
+            (false, false) => format!("{summary}: {details}. {hint}."),
+        };
+
+        if matches!(self, Self::QueryFailedAfterChange { .. }) {
+            format!(
+                "{message} Some changes may have been committed; refresh the database state before retrying."
+            )
+        } else {
+            message
+        }
+    }
+
+    pub fn result_message(&self) -> String {
+        let summary = self.summary();
+        let hint = self.hint();
+        let details = self.masked_details();
+
+        let message = match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}\n\nDetails:\n{details}"),
+            (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
+        };
+
+        if matches!(self, Self::QueryFailedAfterChange { .. }) {
+            format!(
+                "{message}\n\nSome changes may have been committed; refresh the database state before retrying."
+            )
+        } else {
+            message
+        }
+    }
+
     pub(crate) fn raw_details(&self) -> Cow<'_, str> {
         match self {
             Self::ConnectionFailed(details)
@@ -148,7 +193,6 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
-            | Self::QueryFailedAfterChange { details, .. }
             | Self::UnsupportedOperation(details)
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
@@ -158,36 +202,7 @@ impl DbOperationError {
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
-        }
-    }
-
-    pub fn masked_details(&self) -> String {
-        mask_password(self.raw_details().as_ref())
-    }
-
-    pub fn user_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
-        let details = self.masked_details();
-
-        match (details.trim().is_empty(), hint.is_empty()) {
-            (true, true) => summary.to_string(),
-            (true, false) => format!("{summary}. {hint}."),
-            (false, true) => format!("{summary}: {details}"),
-            (false, false) => format!("{summary}: {details}. {hint}."),
-        }
-    }
-
-    pub fn result_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
-        let details = self.masked_details();
-
-        match (details.trim().is_empty(), hint.is_empty()) {
-            (true, true) => summary.to_string(),
-            (true, false) => format!("{summary}. {hint}."),
-            (false, true) => format!("{summary}\n\nDetails:\n{details}"),
-            (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
+            Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
         }
     }
 }
@@ -346,16 +361,53 @@ mod tests {
         #[test]
         fn change_failure_warns_about_possible_commits() {
             let error = DbOperationError::QueryFailedAfterChange {
-                details: "syntax error".to_string(),
+                source: Arc::new(DbOperationError::QueryFailed("syntax error".to_string())),
                 refresh_scope: RefreshScope::Metadata,
             };
 
-            assert_eq!(error.summary(), "Query failed after a change");
+            assert_eq!(error.summary(), "Query failed");
+            assert_eq!(error.hint(), "Review the database error details and SQL");
+            assert_eq!(error.masked_details(), "syntax error");
             assert!(
                 error
                     .user_message()
                     .contains("Some changes may have been committed")
             );
+        }
+
+        #[rstest]
+        #[case(DbOperationError::PermissionDenied("permission denied".to_string()))]
+        #[case(DbOperationError::UniqueViolation("duplicate entry".to_string()))]
+        #[case(DbOperationError::ForeignKeyViolation("foreign key failed".to_string()))]
+        #[case(DbOperationError::LockTimeout("lock wait timeout".to_string()))]
+        fn change_failure_preserves_classification(#[case] source: DbOperationError) {
+            let expected_summary = source.summary();
+            let expected_hint = source.hint();
+            let expected_details = source.masked_details();
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(source),
+                refresh_scope: RefreshScope::Data,
+            };
+
+            assert_eq!(error.summary(), expected_summary);
+            assert_eq!(error.hint(), expected_hint);
+            assert_eq!(error.masked_details(), expected_details);
+            assert!(error.user_message().contains(expected_summary));
+            assert!(error.user_message().contains(expected_hint));
+        }
+
+        #[test]
+        fn change_failure_masks_nested_source_details() {
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::PermissionDenied(
+                    "password=secret".to_string(),
+                )),
+                refresh_scope: RefreshScope::Data,
+            };
+
+            assert_eq!(error.masked_details(), "password=****");
+            assert!(!error.user_message().contains("secret"));
+            assert!(!format!("{error:?}").contains("secret"));
         }
 
         #[test]
