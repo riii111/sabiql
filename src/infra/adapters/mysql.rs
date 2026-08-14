@@ -1372,6 +1372,82 @@ impl MysqlProcess {
     }
 }
 
+struct MysqlMetadataSession {
+    process: MysqlProcess,
+}
+
+impl MysqlMetadataSession {
+    fn spawn_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        Ok(Self {
+            process: MysqlProcess::spawn_with_program(program, option_file)?,
+        })
+    }
+
+    async fn probe(&mut self) -> Result<(), DbOperationError> {
+        let marker = Uuid::new_v4().simple().to_string();
+        let query =
+            format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
+        let result = self.execute(&query).await?;
+        validate_mode_probe(&result, &marker)
+    }
+
+    async fn execute(&mut self, query: &str) -> Result<MysqlResultSet, DbOperationError> {
+        write_mysql_statement(&mut self.process, query).await?;
+        let xml = read_one_mysql_resultset(&mut self.process).await?;
+        parse_mysql_xml(&xml)
+    }
+
+    async fn finish(&mut self) -> Result<(), DbOperationError> {
+        #[cfg(not(unix))]
+        self.process
+            .stdin
+            .shutdown()
+            .await
+            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
+        #[cfg(unix)]
+        let tail = {
+            write_mysql_input(&mut self.process, b"\x04").await?;
+            read_pty_all(&mut self.process.pty)
+                .await
+                .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+        };
+
+        #[cfg(not(unix))]
+        let (_stdout, stderr) = tokio::join!(
+            read_all(&mut self.process.stdout),
+            read_all(&mut self.process.stderr)
+        );
+        #[cfg(not(unix))]
+        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+
+        let status = self
+            .process
+            .child
+            .wait()
+            .await
+            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        #[cfg(unix)]
+        let error_bytes = tail.as_slice();
+        #[cfg(not(unix))]
+        let error_bytes = stderr.as_slice();
+        if has_mysql_cli_error(error_bytes) {
+            return Err(classify_mysql_query_failure(error_bytes));
+        }
+        if !status.success() {
+            return Err(classify_mysql_query_failure(error_bytes));
+        }
+        Ok(())
+    }
+
+    async fn cleanup(&mut self) {
+        cleanup_mysql_process(&mut self.process).await;
+    }
+}
+
 #[cfg(unix)]
 fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
     let mut master = -1;
@@ -4370,6 +4446,7 @@ done
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
+printf 'process=%s\n' "$$" >> "$log"
 pending_error=0
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
@@ -4470,6 +4547,48 @@ done
         let user_index = log.find("SELECT 2").expect("user statement");
         assert!(session_index < user_index, "{log}");
         assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+    }
+
+    #[tokio::test]
+    async fn metadata_session_reuses_one_process_for_ordered_resultsets() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let mut session =
+            MysqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
+                .expect("spawn fake mysql");
+
+        session.probe().await.expect("mode probe");
+        for query in [
+            "SELECT TABLES",
+            "SELECT COLUMNS",
+            "SELECT INDEXES",
+            "SELECT FOREIGN_KEYS",
+            "SELECT TRIGGERS",
+            "SHOW CREATE TABLE items",
+        ] {
+            session.execute(query).await.expect("metadata resultset");
+        }
+        session.finish().await.expect("finish fake mysql");
+
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert_eq!(
+            log.lines()
+                .filter(|line| line.starts_with("process="))
+                .count(),
+            1
+        );
+        let positions = [
+            "__sabiql_probe",
+            "SELECT TABLES",
+            "SELECT COLUMNS",
+            "SELECT INDEXES",
+            "SELECT FOREIGN_KEYS",
+            "SELECT TRIGGERS",
+            "SHOW CREATE TABLE items",
+        ]
+        .into_iter()
+        .map(|query| log.find(query).expect("query in transcript"))
+        .collect::<Vec<_>>();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
     }
 
     #[tokio::test]

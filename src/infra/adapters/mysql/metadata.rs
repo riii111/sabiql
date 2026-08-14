@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
+use std::time::Duration;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError, MetadataProvider};
 use crate::domain::{
@@ -9,8 +11,8 @@ use crate::domain::{
 };
 
 use super::{
-    MySqlAdapter, MySqlOptionFile, MysqlResultSet, parse_mysql_dsn, run_mysql_adhoc,
-    validate_mysql_values,
+    MYSQL_QUERY_TIMEOUT, MySqlAdapter, MySqlOptionFile, MysqlMetadataSession, MysqlResultSet,
+    parse_mysql_dsn, run_mysql_adhoc, validate_mysql_values,
 };
 
 const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_SCHEMA, TABLE_NAME";
@@ -117,15 +119,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
-        fetch_table(
-            dsn,
-            schema,
-            table,
-            &snapshot.tables,
-            &snapshot.table_summaries,
-        )
-        .await
+        fetch_table_detail_in_session(dsn, schema, table).await
     }
 
     async fn fetch_table_columns_and_fks(
@@ -333,26 +327,101 @@ fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
     QueryValue::Text(value.clone())
 }
 
-async fn fetch_table(
+async fn fetch_table_detail_in_session(
     dsn: &str,
     schema: &str,
     table: &str,
-    tables: &[MysqlTableMetadata],
-    summaries: &[TableSummary],
 ) -> Result<Table, DbOperationError> {
-    let table_metadata = find_table(schema, table, tables)?;
-    let columns = fetch_columns(dsn, schema, table).await?;
-    let indexes = fetch_indexes(dsn, schema, table).await?;
-    let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
-    let triggers = fetch_triggers(dsn, schema, table).await?;
-    let source_ddl = fetch_source_ddl(dsn, table, table_metadata.kind).await?;
+    fetch_table_detail_in_session_with_program(
+        dsn,
+        schema,
+        table,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn fetch_table_detail_in_session_with_program(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Table, DbOperationError> {
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    super::validate_mysql_tls_files(&target)?;
+    let database = target.database.as_deref().ok_or_else(|| {
+        DbOperationError::UnsupportedOperation(
+            "MySQL metadata requires a selected database".to_string(),
+        )
+    })?;
+    validate_selected_schema_name(database, schema)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let result = tokio::time::timeout(
+        timeout,
+        fetch_table_detail_with_session(&mut session, database, schema, table),
+    )
+    .await;
+    let result = match result {
+        Ok(Ok(table)) => Ok(table),
+        Ok(Err(error)) => {
+            session.cleanup().await;
+            Err(error)
+        }
+        Err(_) => {
+            session.cleanup().await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    };
+    drop(option_file);
+    result
+}
+
+async fn fetch_table_detail_with_session(
+    session: &mut MysqlMetadataSession,
+    database: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Table, DbOperationError> {
+    session.probe().await?;
+    let tables_result = session.execute(TABLES_QUERY).await?;
+    let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
+    let table_metadata = find_table(schema, table, &snapshot.tables)?;
+
+    let columns = parse_columns_for_table(
+        &session.execute(&columns_query(table)).await?,
+        schema,
+        table,
+    )?;
+    let indexes = indexes_from_metadata(parse_index_metadata(
+        &session.execute(&indexes_query(table)).await?,
+    )?);
+    let foreign_keys = foreign_keys_from_metadata(
+        parse_foreign_key_metadata(&session.execute(&foreign_keys_query(table)).await?)?,
+        &snapshot.table_summaries,
+    )?;
+    let triggers = triggers_from_metadata(parse_trigger_metadata(
+        &session.execute(&triggers_query(table)).await?,
+    )?)?;
+    let source_ddl = parse_source_ddl(
+        &session
+            .execute(&show_create_query(table, table_metadata.kind))
+            .await?,
+        table_metadata.kind,
+    )?;
+    session.finish().await?;
+
     let primary_key = primary_key_names(&columns);
-    let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
         schema: table_metadata.schema,
         name: table_metadata.name,
         owner: None,
-        columns,
+        columns: columns.iter().map(column_from_metadata).collect(),
         primary_key: (!primary_key.is_empty()).then_some(primary_key),
         foreign_keys,
         indexes,
@@ -419,12 +488,24 @@ async fn fetch_columns(
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let query = format!(
+    let result = execute_metadata_query(dsn, &columns_query(table)).await?;
+    let columns = parse_columns_for_table(&result, schema, table)?;
+    Ok(columns)
+}
+
+fn columns_query(table: &str) -> String {
+    format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
         quote_string(table)
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
-    let columns = parse_column_metadata(&result)?;
+    )
+}
+
+fn parse_columns_for_table(
+    result: &MysqlResultSet,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+    let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
             "MySQL object has no column metadata: {schema}.{table}"
@@ -568,20 +649,12 @@ fn parse_table_metadata(
     Ok(tables.into_iter().flatten().collect())
 }
 
-async fn fetch_indexes(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<Index>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let query = format!(
+fn indexes_query(table: &str) -> String {
+    format!(
         "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(table),
         quote_string(table),
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
-    let raw = parse_index_metadata(&result)?;
-    Ok(indexes_from_metadata(raw))
+    )
 }
 
 async fn fetch_foreign_keys(
@@ -591,33 +664,17 @@ async fn fetch_foreign_keys(
     summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let query = format!(
-        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
-        quote_string(table),
-        quote_string(table),
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
+    let result = execute_metadata_query(dsn, &foreign_keys_query(table)).await?;
     let raw = parse_foreign_key_metadata(&result)?;
     foreign_keys_from_metadata(raw, summaries)
 }
 
-async fn fetch_triggers(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<Trigger>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &triggers_query(table)).await?;
-    triggers_from_metadata(parse_trigger_metadata(&result)?)
-}
-
-async fn fetch_source_ddl(
-    dsn: &str,
-    table: &str,
-    kind: TableKind,
-) -> Result<String, DbOperationError> {
-    let result = execute_metadata_query(dsn, &show_create_query(table, kind)).await?;
-    parse_source_ddl(&result, kind)
+fn foreign_keys_query(table: &str) -> String {
+    format!(
+        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        quote_string(table),
+        quote_string(table),
+    )
 }
 
 fn triggers_query(table: &str) -> String {
@@ -2091,5 +2148,303 @@ mod tests {
         let unresolved =
             foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &[]).unwrap();
         assert!(!unresolved[0].is_reference_resolved());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod session_tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn fake_metadata_cli(mode: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join(format!("mysql-{mode}"));
+        let transcript = directory.path().join("transcript.log");
+        std::fs::write(&transcript, "").unwrap();
+        let script = r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+transcript=$(dirname "$0")/transcript.log
+printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
+mode=$(basename "$0" | sed 's/^mysql-//')
+trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
+platform=$(uname -s)
+if [ "$platform" = "Darwin" ]; then
+  stty -icanon <&0 2>/dev/null || true
+fi
+if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
+  while [ ! -e "$(dirname "$0")/allow" ]; do sleep 0.001; done
+fi
+while IFS= read -r line; do
+  printf 'query=%s\n' "$line" >> "$transcript"
+  [ "$line" = ";" ] && continue
+  if printf '%s\n' "$line" | grep -q '__sabiql_probe'; then
+    if [ "$mode" = "probe-failure" ]; then
+      printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
+    else
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+    fi
+    continue
+  fi
+  case "$line" in
+    *TABLES*)
+      if [ "$mode" = "empty" ]; then
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA" xsi:nil="true"/><field name="TABLE_NAME" xsi:nil="true"/><field name="TABLE_TYPE" xsi:nil="true"/><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT" xsi:nil="true"/></row></resultset>'
+      elif [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
+      fi
+      ;;
+    *COLUMNS*)
+      if [ "$mode" = "timeout" ]; then
+        while :; do sleep 1; done
+      elif [ "$mode" = "malformed" ]; then
+        printf '%s\n' '<resultset><row><field name="WRONG">x</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
+      fi
+      ;;
+    *STATISTICS*)
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
+      ;;
+    *FOREIGN*)
+      printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
+      ;;
+    *TRIGGERS*)
+      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field></row></resultset>'
+      ;;
+    *SHOW\ CREATE\ VIEW*)
+      if [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
+      fi
+      if [ "$platform" = "Darwin" ]; then
+        stty icanon <&0 2>/dev/null || true
+      fi
+      ;;
+    *SHOW\ CREATE\ TABLE*)
+      printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
+      if [ "$platform" = "Darwin" ]; then
+        stty icanon <&0 2>/dev/null || true
+      fi
+      ;;
+    *)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+  esac
+done
+"#;
+        std::fs::write(&program, script).unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, transcript)
+    }
+
+    fn assert_process_stopped(transcript: &std::path::Path) {
+        for _ in 0..200 {
+            let pid = std::fs::read_to_string(transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
+            if let Some(pid) = pid
+                && unsafe { libc::kill(pid, 0) } == -1
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!(
+            "fake mysql process is alive or did not start: {}",
+            std::fs::read_to_string(transcript).unwrap()
+        );
+    }
+
+    fn assert_option_file_removed(transcript: &std::path::Path) {
+        let transcript_text = std::fs::read_to_string(transcript).unwrap();
+        let option = transcript_text
+            .lines()
+            .find_map(|line| line.strip_prefix("option="))
+            .unwrap();
+        assert!(
+            !std::path::Path::new(option).exists(),
+            "option file remains"
+        );
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_uses_one_process_for_table_and_view() {
+        for (mode, schema, table) in [("table", "app", "items"), ("view", "app", "items_view")] {
+            let (_directory, program, transcript) = fake_metadata_cli(mode);
+            let detail = fetch_table_detail_in_session_with_program(
+                "mysql://user:password@localhost:3306/app",
+                schema,
+                table,
+                OsStr::new(&program),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap_or_else(|error| {
+                panic!(
+                    "fake metadata CLI failed: {error:?}\n{}",
+                    std::fs::read_to_string(&transcript).unwrap()
+                )
+            });
+
+            assert_eq!(detail.name, table);
+            assert_eq!(detail.columns.len(), 1);
+            assert!(detail.source_ddl().is_some());
+            let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+            assert_eq!(
+                transcript_text
+                    .lines()
+                    .filter(|line| line.starts_with("process="))
+                    .count(),
+                1
+            );
+            let labels = if mode == "view" {
+                [
+                    "__sabiql_probe",
+                    "INFORMATION_SCHEMA.TABLES",
+                    "INFORMATION_SCHEMA.COLUMNS",
+                    "INFORMATION_SCHEMA.STATISTICS",
+                    "REFERENTIAL_CONSTRAINTS",
+                    "INFORMATION_SCHEMA.TRIGGERS",
+                    "SHOW CREATE VIEW",
+                ]
+            } else {
+                [
+                    "__sabiql_probe",
+                    "INFORMATION_SCHEMA.TABLES",
+                    "INFORMATION_SCHEMA.COLUMNS",
+                    "INFORMATION_SCHEMA.STATISTICS",
+                    "REFERENTIAL_CONSTRAINTS",
+                    "INFORMATION_SCHEMA.TRIGGERS",
+                    "SHOW CREATE TABLE",
+                ]
+            };
+            let positions = labels
+                .into_iter()
+                .map(|label| transcript_text.find(label).unwrap())
+                .collect::<Vec<_>>();
+            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+            assert_process_stopped(&transcript);
+            assert_option_file_removed(&transcript);
+        }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_rejects_empty_and_malformed_shapes_without_partial_table()
+     {
+        let (_directory, program, transcript) = fake_metadata_cli("empty");
+        let error = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
+
+        let (_directory, program, transcript) = fake_metadata_cli("malformed");
+        let error = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, DbOperationError::MetadataParseFailed(_)));
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_cleans_up_after_probe_failure_and_timeout() {
+        for (mode, timeout) in [
+            ("probe-failure", Duration::from_secs(5)),
+            ("timeout", Duration::from_secs(5)),
+        ] {
+            let (directory, program, transcript) = fake_metadata_cli(mode);
+            let task = tokio::spawn(async move {
+                fetch_table_detail_in_session_with_program(
+                    "mysql://user:password@localhost:3306/app",
+                    "app",
+                    "items",
+                    OsStr::new(&program),
+                    timeout,
+                )
+                .await
+            });
+            for _ in 0..1_000 {
+                if std::fs::read_to_string(&transcript)
+                    .unwrap()
+                    .lines()
+                    .any(|line| line.starts_with("process="))
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            std::fs::write(directory.path().join("allow"), "").unwrap();
+            let error = task.await.unwrap().unwrap_err();
+            if mode == "timeout" {
+                assert!(matches!(error, DbOperationError::Timeout(_)));
+            } else {
+                assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            }
+            assert_process_stopped(&transcript);
+            assert_option_file_removed(&transcript);
+        }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_cleans_up_after_cancellation() {
+        let (_directory, program, transcript) = fake_metadata_cli("timeout");
+        let task = tokio::spawn(async move {
+            fetch_table_detail_in_session_with_program(
+                "mysql://user:password@localhost:3306/app",
+                "app",
+                "items",
+                OsStr::new(&program),
+                Duration::from_secs(5),
+            )
+            .await
+        });
+        for _ in 0..1_000 {
+            if std::fs::read_to_string(&transcript)
+                .unwrap()
+                .lines()
+                .any(|line| line.starts_with("process="))
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+
+        for _ in 0..100 {
+            let process_stopped = std::fs::read_to_string(&transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok())
+                .is_some_and(|pid| unsafe { libc::kill(pid, 0) } == -1);
+            if process_stopped {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 }
