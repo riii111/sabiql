@@ -221,7 +221,7 @@ mod tests {
 
     use super::*;
 
-    async fn exited_child() -> Child {
+    fn exited_child() -> Child {
         Command::new("cmd.exe")
             .args(["/C", "exit 0"])
             .stdin(Stdio::null())
@@ -246,7 +246,7 @@ mod tests {
         drop(stdout_writer);
         drop(stderr_writer);
         let mut frame_scanner = MysqlResultsetFrameScanner::default();
-        let mut child = exited_child().await;
+        let mut child = exited_child();
 
         let result = read_one_mysql_resultset_from_pipes(
             &mut stdout_reader,
