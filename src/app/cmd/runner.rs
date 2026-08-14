@@ -103,6 +103,11 @@ impl EffectRunner {
         &self.action_tx
     }
 
+    fn cancel_active_tasks(&self) {
+        self.query_tasks.cancel();
+        self.table_detail_tasks.cancel();
+    }
+
     pub async fn run<T: Renderer>(
         &self,
         effects: Vec<Effect>,
@@ -215,8 +220,7 @@ impl EffectRunner {
             }
 
             Effect::CancelActiveQuery => {
-                self.query_tasks.cancel();
-                self.table_detail_tasks.cancel();
+                self.cancel_active_tasks();
                 Ok(vec![])
             }
 
@@ -787,9 +791,16 @@ mod tests {
                 .expect("pending table detail should start")
                 .expect("started signal should be sent");
 
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
             runner
                 .run(
-                    vec![Effect::CancelActiveQuery],
+                    shutdown_effects,
                     &mut renderer,
                     &mut state,
                     &completion_engine,

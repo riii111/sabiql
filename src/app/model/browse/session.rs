@@ -517,8 +517,7 @@ impl BrowseSession {
             .clone_from(&cache.selected_table_key);
         self.table_detail_state = match (&self.selected_table_key, &self.table_detail) {
             (Some(_), Some(_)) => TableDetailState::Loaded,
-            (Some(_), None) => TableDetailState::Loading,
-            (None, _) => TableDetailState::NotSelected,
+            (Some(_), None) | (None, _) => TableDetailState::NotSelected,
         };
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
@@ -1222,6 +1221,27 @@ mod tests {
 
             assert_eq!(new_session.selection_generation(), 0);
             assert!(!new_session.is_reloading());
+        }
+
+        #[test]
+        fn restore_without_table_detail_does_not_claim_loading() {
+            let mut session = BrowseSession::default();
+            session.mark_connected(make_metadata("db"));
+            let mut query = QueryExecution::default();
+            let _ = session.select_table("public", "users", &mut query);
+
+            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
+
+            let mut restored = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            restored.restore_from_cache(&cache, &mut query);
+
+            assert_eq!(restored.selected_table_key(), Some("public.users"));
+            assert_eq!(
+                restored.table_detail_state(),
+                &TableDetailState::NotSelected
+            );
+            assert!(!restored.is_current_table_detail_run(1));
         }
 
         #[test]

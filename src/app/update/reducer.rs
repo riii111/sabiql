@@ -82,7 +82,7 @@ fn reduce_inner(
         }
         Action::Quit => {
             state.should_quit = true;
-            vec![]
+            vec![Effect::CancelActiveQuery]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -227,14 +227,14 @@ mod tests {
         use rstest::rstest;
 
         #[test]
-        fn quit_sets_should_quit_and_returns_no_effects() {
+        fn quit_sets_should_quit_and_cancels_active_tasks() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
         }
 
         #[test]
@@ -2209,7 +2209,7 @@ mod tests {
                 .open("", "", ConfirmIntent::QuitNoConnection);
             let now = Instant::now();
 
-            reduce(
+            let effects = reduce(
                 &mut state,
                 Action::ConfirmDialogConfirm,
                 now,
@@ -2218,6 +2218,7 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
         }
 
         #[test]

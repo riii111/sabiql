@@ -589,11 +589,11 @@ mod tests {
     fn loading_detail_exposes_loading_state_without_stale_rows() {
         let table = table();
         let model = InspectorViewModel::build_with_detail_state(
-            &EngineFeatureProfile::postgres_like(),
+            &EngineFeatureProfile::mysql_like(),
             InspectorTab::Info,
             Some(&table),
             &TableDetailState::Loading,
-            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
             &TestDdlGenerator,
         );
 
@@ -606,11 +606,11 @@ mod tests {
     fn failed_detail_exposes_error_state_without_stale_rows() {
         let table = table();
         let model = InspectorViewModel::build_with_detail_state(
-            &EngineFeatureProfile::postgres_like(),
+            &EngineFeatureProfile::mysql_like(),
             InspectorTab::Info,
             Some(&table),
             &TableDetailState::Error("permission denied".to_string()),
-            DatabaseType::PostgreSQL,
+            DatabaseType::MySQL,
             &TestDdlGenerator,
         );
 

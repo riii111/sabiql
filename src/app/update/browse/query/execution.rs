@@ -161,7 +161,7 @@ pub fn reduce_execution(
             DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
                     state.should_quit = true;
-                    vec![]
+                    vec![Effect::CancelActiveQuery]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
                     state.ui.help_mut().open(HelpOrigin::CommandLine);
@@ -332,15 +332,17 @@ mod tests {
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("q".to_string());
 
-            dispatch_query(
+            let effects = dispatch_query(
                 &mut state,
                 &Action::CommandLineSubmit,
                 Instant::now(),
                 &AppServices::stub(),
-            );
+            )
+            .unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
+            assert!(matches!(effects.as_slice(), [Effect::CancelActiveQuery]));
         }
 
         #[test]

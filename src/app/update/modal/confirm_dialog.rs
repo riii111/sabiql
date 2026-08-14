@@ -34,7 +34,7 @@ pub(super) fn reduce_confirm_dialog(
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
                     state.should_quit = true;
-                    DispatchResult::handled()
+                    DispatchResult::handled_with(vec![Effect::CancelActiveQuery])
                 }
                 Some(ConfirmIntent::DeleteConnection(id)) => {
                     DispatchResult::handled_with(vec![Effect::DeleteConnection { id }])
