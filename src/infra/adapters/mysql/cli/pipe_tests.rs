@@ -30,7 +30,6 @@ mod pipe_executor_tests {
         assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
     }
 }
-
 #[cfg(all(test, not(unix)))]
 mod export_pipe_tests {
     use super::*;
@@ -75,4 +74,3 @@ mod export_pipe_tests {
         ));
     }
 }
-

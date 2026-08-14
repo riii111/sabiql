@@ -40,7 +40,7 @@ mod xml_tests {
                 QueryValue::Text("0x41".to_string()),
             ]]
         );
-}
+    }
 
     #[test]
     fn parses_numeric_and_binary_values_as_text() {
@@ -61,7 +61,6 @@ mod xml_tests {
         assert_eq!(result.values[0][3].as_str(), Some("0x00FF10"));
     }
 
-
     #[test]
     fn rejects_multiple_resultsets_instead_of_guessing_the_last_one() {
         let xml = br#"<resultset><row><field name="value">1</field></row></resultset>
@@ -73,7 +72,6 @@ mod xml_tests {
                 if details.contains("more than one resultset")
         ));
     }
-
 
     #[test]
     fn accepts_xml_declaration_after_probe_separator_and_empty_resultsets() {
@@ -116,10 +114,6 @@ mod xml_tests {
         );
         assert!(buffer.is_empty());
     }
-
-#[cfg(test)]
-mod resultset_frame_tests {
-    use super::*;
 
     #[test]
     fn extracts_one_frame_when_end_delimiter_crosses_4k_chunk_boundary() {
@@ -236,5 +230,4 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
         ));
         assert_eq!(buffer, b"<resultset><row></row></resultset>");
     }
-}
 }
