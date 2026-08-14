@@ -6,15 +6,15 @@ A fast, driver-less TUI for browsing, querying, and editing PostgreSQL and SQLit
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Why sabiql?
+## Concept
 
-> Vim-first · Safe by design · Inspired by oil.nvim · Fast and lightweight
+> Vim-first · Safe by design · Oil-and-vinegar UI · Fast and lightweight
 
 sabiql brings database browsing, querying, and editing into the terminal without replacing your existing database setup. PostgreSQL connections continue to use your `psql` configuration, `.pgpass`, and SSL settings.
 
-The interface stays out of your way. Inspired by [oil.nvim](https://github.com/stevearc/oil.nvim)'s "oil and vinegar" philosophy, UI elements appear only when needed. Vim-native keybindings such as `j/k`, `dd`, and `/` keep navigation and editing familiar.
+Like [oil.nvim](https://github.com/stevearc/oil.nvim), sabiql keeps its interface out of your way. Following oil.nvim's "oil and vinegar" philosophy, UI elements appear only when needed. Vim-native keybindings such as `j/k`, `dd`, and `/` keep navigation and editing familiar.
 
-Inline edits and row deletions always show a preview before touching your data. Read-only mode (`Ctrl+R`) also blocks writes at the database client level.
+Safety follows a plan-before-apply flow familiar from Terraform: inline edits and row deletions show the SQL and its risk level before you confirm the change. Read-only mode (`Ctrl+R`) also blocks writes at the database client level.
 
 ## Features
 
@@ -63,6 +63,17 @@ cd /usr/ports/databases/sabiql/ && make install clean
 curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 ```
 
+## Database Setup
+
+sabiql uses the CLI for the database you want to open:
+
+- **To use PostgreSQL:** install `psql`
+- **To use SQLite:** install `sqlite3` version 3.41.1 or later
+
+Graphviz is optional and enables ER diagrams for PostgreSQL. Windows support is experimental.
+
+SQLite works with existing, regular database files. See [SQLite support and limitations](docs/sqlite.md) for details.
+
 ## Quick Start
 
 Launch sabiql and enter your connection details:
@@ -78,17 +89,6 @@ sabiql /path/to/app.db
 ```
 
 Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for help, or open Settings with `,` to change the theme and keymap.
-
-## Requirements
-
-Install the CLI for the database you want to open:
-
-- **PostgreSQL:** `psql` (PostgreSQL client)
-- **SQLite:** `sqlite3` (SQLite shell), version 3.41.1 or later
-
-Graphviz is optional and enables ER diagrams for PostgreSQL. Windows support is experimental.
-
-SQLite works with existing, regular database files. See [SQLite support and limitations](docs/sqlite.md) for details.
 
 ## Roadmap
 
