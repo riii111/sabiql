@@ -141,7 +141,7 @@ async fn stream_mysql_resultset_to_csv(
         if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
-        return result;
+        result
     }
 }
 

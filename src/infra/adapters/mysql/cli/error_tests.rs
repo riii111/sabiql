@@ -54,4 +54,3 @@ mod error_tests {
         assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
     }
 }
-

@@ -40,8 +40,7 @@ mod xml_tests {
                 QueryValue::Text("0x41".to_string()),
             ]]
         );
-    }
-
+}
 
     #[test]
     fn parses_numeric_and_binary_values_as_text() {
@@ -86,5 +85,35 @@ mod xml_tests {
         let result = parse_mysql_xml(xml).unwrap();
         assert!(result.columns.is_empty());
         assert!(result.values.is_empty());
+    }
+    #[test]
+    fn frames_one_xml_resultset_and_preserves_following_output() {
+        let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
+            .to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        assert_eq!(
+            scanner.take(&mut buffer),
+            Some(b"<resultset></resultset>".to_vec())
+        );
+        assert_eq!(
+            scanner.take(&mut buffer),
+            None,
+            "an incomplete following frame must remain buffered"
+        );
+        assert!(buffer.starts_with(b"\r\n    -> <?xml"));
+    }
+
+    #[test]
+    fn frames_resultset_after_mysql_cli_text() {
+        let mut buffer =
+            b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        assert_eq!(
+            scanner.take(&mut buffer),
+            Some(b"<resultset></resultset>".to_vec())
+        );
+        assert!(buffer.is_empty());
     }
 }

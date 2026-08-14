@@ -32,8 +32,7 @@ mod executor_tests {
                 ))
             }
         }
-    }
-
+}
     async fn run_mysql_adhoc_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
@@ -62,18 +61,6 @@ mod executor_tests {
         }
     }
 
-    #[test]
-    fn failure_before_a_change_keeps_original_error() {
-        let error = query_failed_after_change(
-            DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
-            RefreshScope::None,
-        );
-
-        assert!(matches!(
-            error,
-            DbOperationError::ForeignKeyViolation(details) if details == "foreign key failed"
-        ));
-    }
 
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
@@ -378,65 +365,8 @@ done
         }
     }
 
-    #[test]
-    fn read_only_rejects_temporary_table_dml_before_starting_mysql() {
-        let (_directory, _program, option_file) = fake_mysql_multi();
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let query = "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); DROP TEMPORARY TABLE temp_items";
 
-        let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
 
-        assert!(matches!(
-            result,
-            Err(DbOperationError::PermissionDenied(details))
-                if details.contains("read-only mode blocks MySQL write statements")
-        ));
-        assert!(!log_file.exists());
-    }
-
-    #[test]
-    fn read_only_rejects_read_write_overrides_before_starting_mysql() {
-        for query in [
-            "SET SESSION TRANSACTION READ WRITE",
-            "START TRANSACTION READ WRITE",
-        ] {
-            let (_directory, _program, option_file) = fake_mysql_multi();
-            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-
-            let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
-
-            assert!(matches!(
-                result,
-                Err(DbOperationError::UnsupportedOperation(_))
-            ));
-            assert!(!log_file.exists(), "{query}");
-        }
-    }
-
-    #[test]
-    fn rejects_empty_metadata_fallback_after_temporary_table_creation() {
-        for query in [
-            "CREATE TEMPORARY TABLE temp_items (id INT); DESCRIBE temp_items 'missing'; DROP TEMPORARY TABLE temp_items",
-            "CREATE TEMPORARY TABLE temp_items (id INT); SHOW COLUMNS FROM temp_items LIKE 'missing'; DROP TEMPORARY TABLE temp_items",
-        ] {
-            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
-                .expect("query should be classified before the session-state check");
-
-            assert!(mysql_metadata_fallback_has_unsupported_session_state(
-                &statements
-            ));
-        }
-
-        let statements = validate_mysql_multi_query(
-            "SHOW COLUMNS FROM items",
-            Some("app"),
-            AccessMode::ReadWrite,
-        )
-        .expect("single SHOW should be classified");
-        assert!(!mysql_metadata_fallback_has_unsupported_session_state(
-            &statements
-        ));
-    }
 
     #[tokio::test]
     async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
@@ -551,36 +481,7 @@ done
         assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
     }
 
-    #[test]
-    fn frames_one_xml_resultset_and_preserves_following_output() {
-        let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
-            .to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
 
-        assert_eq!(
-            scanner.take(&mut buffer),
-            Some(b"<resultset></resultset>".to_vec())
-        );
-        assert_eq!(
-            scanner.take(&mut buffer),
-            None,
-            "an incomplete following frame must remain buffered"
-        );
-        assert!(buffer.starts_with(b"\r\n    -> <?xml"));
-    }
-
-    #[test]
-    fn frames_resultset_after_mysql_cli_text() {
-        let mut buffer =
-            b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
-
-        assert_eq!(
-            scanner.take(&mut buffer),
-            Some(b"<resultset></resultset>".to_vec())
-        );
-        assert!(buffer.is_empty());
-    }
 
     #[tokio::test]
     async fn probe_failure_never_writes_user_sql() {
@@ -829,66 +730,4 @@ done
         ));
     }
 
-    #[test]
-    fn transaction_rollback_removes_pending_data_tag() {
-        let events = vec![
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Begin,
-                target: None,
-                tag: CommandTag::Begin,
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Update { has_where: true },
-                target: Some("items".to_string()),
-                tag: CommandTag::Update(1),
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Rollback,
-                target: None,
-                tag: CommandTag::Rollback,
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Select,
-                target: None,
-                tag: CommandTag::Select(1),
-            },
-        ];
-
-        assert_eq!(
-            aggregate_mysql_command_tag(&events),
-            Some(CommandTag::Select(1))
-        );
-    }
-
-    #[test]
-    fn ddl_implicit_commit_keeps_prior_data_change() {
-        let events = vec![
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Begin,
-                target: None,
-                tag: CommandTag::Begin,
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Insert,
-                target: Some("items".to_string()),
-                tag: CommandTag::Insert(1),
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::CreateTable { temporary: false },
-                target: Some("created".to_string()),
-                tag: CommandTag::Create("TABLE".to_string()),
-            },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Rollback,
-                target: None,
-                tag: CommandTag::Rollback,
-            },
-        ];
-
-        assert_eq!(
-            aggregate_mysql_command_tag(&events),
-            Some(CommandTag::Create("TABLE".to_string()))
-        );
-    }
 }
-

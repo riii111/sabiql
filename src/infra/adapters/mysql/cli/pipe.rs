@@ -84,7 +84,7 @@ where
 
         let filled_before = buffer.filled().len();
         let result = Pin::new(&mut *this.stdout).poll_read(cx, buffer);
-        if let Poll::Ready(Ok(())) = &result {
+        if matches!(&result, Poll::Ready(Ok(()))) {
             let count = buffer.filled().len() - filled_before;
             if count == 0 {
                 this.stdout_closed = true;
@@ -182,7 +182,7 @@ where
                         pending_stderr.extend_from_slice(&stderr_chunk[..count]);
                     }
                 }
-                _ = tokio::task::yield_now() => {}
+                () = tokio::task::yield_now() => {}
             }
         }
         if let Some(frame) =

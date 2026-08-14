@@ -56,7 +56,7 @@ impl MysqlProcess {
             let stderr = child.stderr.take().ok_or_else(|| {
                 DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
             })?;
-            return Ok(Self {
+            Ok(Self {
                 child,
                 stdin,
                 stdout,
@@ -64,7 +64,7 @@ impl MysqlProcess {
                 pending: Vec::new(),
                 pending_stderr: Vec::new(),
                 frame_scanner: MysqlResultsetFrameScanner::default(),
-            });
+            })
         }
     }
 

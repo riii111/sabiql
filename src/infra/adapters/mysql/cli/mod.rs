@@ -27,9 +27,9 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::adapters::csv_export::CsvFileWriter;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use crate::adapters::csv_export::export_to_path;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
     MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,

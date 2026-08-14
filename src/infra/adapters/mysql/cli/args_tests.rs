@@ -23,4 +23,3 @@ mod args_tests {
         assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 }
-
