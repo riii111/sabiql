@@ -1,6 +1,6 @@
 use std::ffi::OsStr;
 use std::io;
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 #[cfg(unix)]
@@ -35,7 +35,9 @@ use super::policy::{
 };
 use super::probe::run_mysql_command;
 #[cfg(unix)]
-use super::pty::{MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all};
+use super::pty::{
+    MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
+};
 #[cfg(unix)]
 use super::xml::trace_mysql_frame;
 use super::xml::{MysqlResultSet, MysqlResultsetFrameScanner, parse_mysql_xml};
@@ -47,6 +49,26 @@ use super::super::option_file::MySqlOptionFile;
 
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
+
+pub(super) async fn stop_mysql_process(
+    process: &mut MysqlProcess,
+) -> Result<(ExitStatus, bool), DbOperationError> {
+    if let Some(status) = process
+        .child
+        .try_wait()
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?
+    {
+        return Ok((status, false));
+    }
+    // Callers drain the PTY first because mysql --binary-mode does not accept quit commands.
+    let _ = process.child.kill().await;
+    let status = process
+        .child
+        .wait()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, true))
+}
 
 pub(in crate::adapters::mysql) struct MysqlProcess {
     pub(super) child: Child,
@@ -209,7 +231,7 @@ impl MysqlMetadataSession {
         #[cfg(unix)]
         let tail = {
             write_mysql_input(&mut self.process, b"\x04").await?;
-            read_pty_all(&mut self.process.pty)
+            read_pty_until_idle(&mut self.process.pty)
                 .await
                 .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
         };
@@ -222,12 +244,7 @@ impl MysqlMetadataSession {
         #[cfg(not(unix))]
         let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
-        let status = self
-            .process
-            .child
-            .wait()
-            .await
-            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        let (status, forcibly_stopped) = stop_mysql_process(&mut self.process).await?;
         #[cfg(unix)]
         let error_bytes = tail.as_slice();
         #[cfg(not(unix))]
@@ -235,7 +252,7 @@ impl MysqlMetadataSession {
         if has_mysql_cli_error(error_bytes) {
             return Err(classify_mysql_query_failure(error_bytes));
         }
-        if !status.success() {
+        if !status.success() && !forcibly_stopped {
             return Err(classify_mysql_query_failure(error_bytes));
         }
         Ok(())
@@ -316,7 +333,7 @@ async fn run_mysql_single_statement_process(
     let (stdout, tail) = {
         let stdout = read_one_mysql_resultset(process).await?;
         write_mysql_input(process, b"\x04").await?;
-        let tail = read_pty_all(&mut process.pty)
+        let tail = read_pty_until_idle(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         (stdout, tail)
@@ -330,16 +347,12 @@ async fn run_mysql_single_statement_process(
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
-    let status = process
-        .child
-        .wait()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
-    if !status.success() {
+    if !status.success() && !forcibly_stopped {
         return Err(classify_mysql_query_failure(error_bytes));
     }
     parse_mysql_xml(&stdout)
@@ -484,7 +497,7 @@ async fn run_mysql_adhoc_process(
     #[cfg(unix)]
     let tail = {
         write_mysql_input(process, b"\x04").await?;
-        let tail = read_pty_all(&mut process.pty)
+        let tail = read_pty_until_idle(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         trace_mysql_frame("discard tail", tail.len());
@@ -498,11 +511,7 @@ async fn run_mysql_adhoc_process(
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
-    let status = process
-        .child
-        .wait()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
 
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
@@ -514,7 +523,7 @@ async fn run_mysql_adhoc_process(
             scope_before_statement,
         ));
     }
-    if !status.success() {
+    if !status.success() && !forcibly_stopped {
         return Err(query_failed_after_change(
             classify_mysql_query_failure(error_bytes),
             refresh_scope,
@@ -847,7 +856,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     let result = async {
         write_mysql_input(&mut process, script.as_bytes()).await?;
         write_mysql_input(&mut process, b"\x04").await?;
-        read_pty_all(&mut process.pty)
+        read_pty_until_idle(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
     }
@@ -855,7 +864,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     if result.is_err() {
         cleanup_mysql_process(&mut process).await;
     } else {
-        let _ = process.child.wait().await;
+        let _ = stop_mysql_process(&mut process).await;
     }
     result
 }
@@ -966,8 +975,10 @@ mod tests {
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 phase=probe
+eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
+  [ "$line" = "$eof" ] && exit 0
   [ "$line" = ";" ] && continue
   if [ "$phase" = probe ]; then
     marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)'.*/\\1/")
@@ -1044,8 +1055,10 @@ option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 printf 'process=%s\n' "$$" >> "$log"
 pending_error=0
+eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
+  [ "$line" = "$eof" ] && exit 0
   case "$line" in
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")

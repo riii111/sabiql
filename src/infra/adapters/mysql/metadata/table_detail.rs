@@ -438,15 +438,13 @@ transcript=$(dirname "$0")/transcript.log
 printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
 mode=$(basename "$0" | sed 's/^mysql-//')
 trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
-platform=$(uname -s)
-if [ "$platform" = "Darwin" ]; then
-  stty -icanon <&0 2>/dev/null || true
-fi
 if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
   while [ ! -e "$(dirname "$0")/allow" ]; do sleep 0.001; done
 fi
+eof=$(printf '\004')
 while IFS= read -r line; do
   printf 'query=%s\n' "$line" >> "$transcript"
+  [ "$line" = "$eof" ] && exit 0
   [ "$line" = ";" ] && continue
   if printf '%s\n' "$line" | grep -q '__sabiql_probe'; then
     if [ "$mode" = "probe-failure" ]; then
@@ -489,15 +487,9 @@ while IFS= read -r line; do
       if [ "$mode" = "view" ]; then
         printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
       fi
-      if [ "$platform" = "Darwin" ]; then
-        stty icanon <&0 2>/dev/null || true
-      fi
       ;;
     *SHOW\ CREATE\ TABLE*)
       printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
-      if [ "$platform" = "Darwin" ]; then
-        stty icanon <&0 2>/dev/null || true
-      fi
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -602,6 +594,33 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_sends_foreign_key_query_over_one_kilobyte() {
+        let (_directory, program, transcript) = fake_metadata_cli("table");
+        fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        let foreign_key_query = transcript_text
+            .lines()
+            .find(|line| line.contains("REFERENTIAL_CONSTRAINTS"))
+            .expect("foreign key metadata query");
+        assert!(
+            foreign_key_query.len() > 1024,
+            "foreign key query was unexpectedly short: {} bytes",
+            foreign_key_query.len()
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]
