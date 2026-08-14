@@ -528,23 +528,24 @@ fn effective_start(tokens: &[Token]) -> usize {
     cte_body_start(tokens).unwrap_or(0)
 }
 
-fn kind_and_target(
-    tokens: &[Token],
-) -> Result<(MysqlStatementKind, Option<String>, Option<String>), MysqlLexError> {
-    let start = effective_start(tokens);
-    let first =
-        word(tokens, start).ok_or_else(|| MysqlLexError("unknown MySQL statement".to_string()))?;
-    let target_after = |index: usize| {
-        identifier_at(tokens, index)
-            .map(|(target, database, _)| (Some(target), database))
-            .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))
-    };
+type MysqlClassification = (MysqlStatementKind, Option<String>, Option<String>);
 
-    let result = match first {
-        "SELECT" => (MysqlStatementKind::Select, None, None),
-        "TABLE" => (MysqlStatementKind::Table, None, None),
-        "SHOW" => (MysqlStatementKind::Show, None, None),
-        "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
+fn target_after(
+    tokens: &[Token],
+    index: usize,
+) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+    identifier_at(tokens, index)
+        .map(|(target, database, _)| (Some(target), database))
+        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))
+}
+
+fn classify_mysql_crud_statement(
+    tokens: &[Token],
+    start: usize,
+    first: &str,
+) -> Result<MysqlClassification, MysqlLexError> {
+    match first {
+        "SELECT" => Ok((MysqlStatementKind::Select, None, None)),
         "INSERT" | "REPLACE" => {
             let index = if first == "INSERT" {
                 skip_mysql_modifiers(
@@ -560,19 +561,19 @@ fn kind_and_target(
             } else {
                 index
             };
-            let (target, database) = target_after(target_index)?;
+            let (target, database) = target_after(tokens, target_index)?;
             let kind = if first == "REPLACE" {
                 MysqlStatementKind::Replace
             } else {
                 MysqlStatementKind::Insert
             };
-            (kind, target, database)
+            Ok((kind, target, database))
         }
         "UPDATE" => {
             let has_where = top_level_word(&tokens[start..], "WHERE");
             let target_index = skip_mysql_modifiers(tokens, start + 1, &["LOW_PRIORITY", "IGNORE"]);
-            let (target, database) = target_after(target_index)?;
-            (MysqlStatementKind::Update { has_where }, target, database)
+            let (target, database) = target_after(tokens, target_index)?;
+            Ok((MysqlStatementKind::Update { has_where }, target, database))
         }
         "DELETE" => {
             let has_where = top_level_word(&tokens[start..], "WHERE");
@@ -583,9 +584,19 @@ fn kind_and_target(
             } else {
                 index
             };
-            let (target, database) = target_after(target_index)?;
-            (MysqlStatementKind::Delete { has_where }, target, database)
+            let (target, database) = target_after(tokens, target_index)?;
+            Ok((MysqlStatementKind::Delete { has_where }, target, database))
         }
+        _ => unreachable!("not a MySQL CRUD statement: {first}"),
+    }
+}
+
+fn classify_mysql_ddl_statement(
+    tokens: &[Token],
+    start: usize,
+    first: &str,
+) -> Result<MysqlClassification, MysqlLexError> {
+    match first {
         "CREATE" => {
             let mut index = start + 1;
             let temporary = word(tokens, index) == Some("TEMPORARY");
@@ -598,42 +609,40 @@ fn kind_and_target(
                     if word(tokens, index) == Some("IF") {
                         index += 3;
                     }
-                    let (target, database) = target_after(index)?;
-                    (
+                    let (target, database) = target_after(tokens, index)?;
+                    Ok((
                         MysqlStatementKind::CreateTable { temporary },
                         target,
                         database,
-                    )
+                    ))
                 }
                 Some("VIEW") => {
-                    let (target, database) = target_after(index + 1)?;
-                    (MysqlStatementKind::CreateView, target, database)
+                    let (target, database) = target_after(tokens, index + 1)?;
+                    Ok((MysqlStatementKind::CreateView, target, database))
                 }
                 Some("UNIQUE") if word(tokens, index + 1) == Some("INDEX") => {
                     let on = find_word(tokens, "ON", index + 2).ok_or_else(|| {
                         MysqlLexError("CREATE INDEX target is ambiguous".to_string())
                     })?;
-                    let (_, database) = target_after(on + 1)?;
+                    let (_, database) = target_after(tokens, on + 1)?;
                     let (index_name, _, _) = identifier_at(tokens, index + 2).ok_or_else(|| {
                         MysqlLexError("CREATE INDEX name is ambiguous".to_string())
                     })?;
-                    (MysqlStatementKind::CreateIndex, Some(index_name), database)
+                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
                 }
                 Some("INDEX" | "KEY") => {
                     let on = find_word(tokens, "ON", index + 1).ok_or_else(|| {
                         MysqlLexError("CREATE INDEX target is ambiguous".to_string())
                     })?;
-                    let (_, database) = target_after(on + 1)?;
+                    let (_, database) = target_after(tokens, on + 1)?;
                     let (index_name, _, _) = identifier_at(tokens, index + 1).ok_or_else(|| {
                         MysqlLexError("CREATE INDEX name is ambiguous".to_string())
                     })?;
-                    (MysqlStatementKind::CreateIndex, Some(index_name), database)
+                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
                 }
-                _ => {
-                    return Err(MysqlLexError(
-                        "unsupported MySQL CREATE statement".to_string(),
-                    ));
-                }
+                _ => Err(MysqlLexError(
+                    "unsupported MySQL CREATE statement".to_string(),
+                )),
             }
         }
         "ALTER" => {
@@ -642,8 +651,8 @@ fn kind_and_target(
                     "unsupported MySQL ALTER statement".to_string(),
                 ));
             }
-            let (target, database) = target_after(start + 2)?;
-            (MysqlStatementKind::AlterTable, target, database)
+            let (target, database) = target_after(tokens, start + 2)?;
+            Ok((MysqlStatementKind::AlterTable, target, database))
         }
         "DROP" => {
             let mut index = start + 1;
@@ -659,11 +668,11 @@ fn kind_and_target(
                         index + 1
                     };
                     let (target, database) = drop_target_after(tokens, target_index)?;
-                    (
+                    Ok((
                         MysqlStatementKind::DropTable { temporary },
                         target,
                         database,
-                    )
+                    ))
                 }
                 Some("VIEW") => {
                     let target_index = if word(tokens, index + 1) == Some("IF") {
@@ -672,13 +681,13 @@ fn kind_and_target(
                         index + 1
                     };
                     let (target, database) = drop_target_after(tokens, target_index)?;
-                    (MysqlStatementKind::DropView, target, database)
+                    Ok((MysqlStatementKind::DropView, target, database))
                 }
                 Some("INDEX" | "KEY") => {
                     let on = find_word(tokens, "ON", index + 1).ok_or_else(|| {
                         MysqlLexError("DROP INDEX target is ambiguous".to_string())
                     })?;
-                    let (_, database) = target_after(on + 1)?;
+                    let (_, database) = target_after(tokens, on + 1)?;
                     let index_name_index = if word(tokens, index + 1) == Some("IF") {
                         index + 3
                     } else {
@@ -686,13 +695,11 @@ fn kind_and_target(
                     };
                     let (index_name, _, _) = identifier_at(tokens, index_name_index)
                         .ok_or_else(|| MysqlLexError("DROP INDEX name is ambiguous".to_string()))?;
-                    (MysqlStatementKind::DropIndex, Some(index_name), database)
+                    Ok((MysqlStatementKind::DropIndex, Some(index_name), database))
                 }
-                _ => {
-                    return Err(MysqlLexError(
-                        "unsupported MySQL DROP statement".to_string(),
-                    ));
-                }
+                _ => Err(MysqlLexError(
+                    "unsupported MySQL DROP statement".to_string(),
+                )),
             }
         }
         "TRUNCATE" => {
@@ -701,16 +708,26 @@ fn kind_and_target(
             } else {
                 start + 1
             };
-            let (target, database) = target_after(target_index)?;
-            (MysqlStatementKind::TruncateTable, target, database)
+            let (target, database) = target_after(tokens, target_index)?;
+            Ok((MysqlStatementKind::TruncateTable, target, database))
         }
+        _ => unreachable!("not a MySQL DDL statement: {first}"),
+    }
+}
+
+fn classify_mysql_transaction_statement(
+    tokens: &[Token],
+    start: usize,
+    first: &str,
+) -> Result<MysqlClassification, MysqlLexError> {
+    match first {
         "BEGIN" => {
             if tokens.len() != start + 1 {
                 return Err(MysqlLexError(
                     "BEGIN modifiers are not supported".to_string(),
                 ));
             }
-            (MysqlStatementKind::Begin, None, None)
+            Ok((MysqlStatementKind::Begin, None, None))
         }
         "START" if word(tokens, start + 1) == Some("TRANSACTION") => {
             if tokens.len() != start + 2 {
@@ -718,7 +735,7 @@ fn kind_and_target(
                     "START TRANSACTION modifiers are not supported".to_string(),
                 ));
             }
-            (MysqlStatementKind::StartTransaction, None, None)
+            Ok((MysqlStatementKind::StartTransaction, None, None))
         }
         "COMMIT" => {
             if tokens.len() != start + 1 {
@@ -726,11 +743,11 @@ fn kind_and_target(
                     "COMMIT modifiers are not supported".to_string(),
                 ));
             }
-            (MysqlStatementKind::Commit, None, None)
+            Ok((MysqlStatementKind::Commit, None, None))
         }
         "ROLLBACK" => {
             if word(tokens, start + 1).is_none() && tokens.len() == start + 1 {
-                (MysqlStatementKind::Rollback, None, None)
+                Ok((MysqlStatementKind::Rollback, None, None))
             } else if word(tokens, start + 1) == Some("TO") {
                 let name_index = if word(tokens, start + 2) == Some("SAVEPOINT") {
                     start + 3
@@ -745,34 +762,61 @@ fn kind_and_target(
                 let (name, database, _) = identifier_at(tokens, name_index).ok_or_else(|| {
                     MysqlLexError("ROLLBACK SAVEPOINT name is ambiguous".to_string())
                 })?;
-                (
+                Ok((
                     MysqlStatementKind::RollbackToSavepoint,
                     Some(name),
                     database,
-                )
+                ))
             } else {
-                return Err(MysqlLexError(
+                Err(MysqlLexError(
                     "ROLLBACK modifiers are not supported".to_string(),
-                ));
+                ))
             }
         }
         "SAVEPOINT" if tokens.len() == start + 2 => {
             let (name, database, _) = identifier_at(tokens, start + 1)
                 .ok_or_else(|| MysqlLexError("SAVEPOINT name is ambiguous".to_string()))?;
-            (MysqlStatementKind::Savepoint, Some(name), database)
+            Ok((MysqlStatementKind::Savepoint, Some(name), database))
         }
         "RELEASE" if word(tokens, start + 1) == Some("SAVEPOINT") && tokens.len() == start + 3 => {
             let (name, database, _) = identifier_at(tokens, start + 2)
                 .ok_or_else(|| MysqlLexError("RELEASE SAVEPOINT name is ambiguous".to_string()))?;
-            (MysqlStatementKind::ReleaseSavepoint, Some(name), database)
+            Ok((MysqlStatementKind::ReleaseSavepoint, Some(name), database))
         }
-        _ => {
-            return Err(MysqlLexError(format!(
-                "unsupported MySQL statement: {first}"
-            )));
+        _ => Err(MysqlLexError(format!(
+            "unsupported MySQL statement: {first}"
+        ))),
+    }
+}
+
+fn classify_mysql_utility_statement(first: &str) -> MysqlClassification {
+    match first {
+        "TABLE" => (MysqlStatementKind::Table, None, None),
+        "SHOW" => (MysqlStatementKind::Show, None, None),
+        "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
+        _ => unreachable!("not a MySQL utility statement: {first}"),
+    }
+}
+
+fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, MysqlLexError> {
+    let start = effective_start(tokens);
+    let first =
+        word(tokens, start).ok_or_else(|| MysqlLexError("unknown MySQL statement".to_string()))?;
+    match first {
+        "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
+            classify_mysql_crud_statement(tokens, start, first)
         }
-    };
-    Ok(result)
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" => {
+            classify_mysql_ddl_statement(tokens, start, first)
+        }
+        "BEGIN" | "START" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE" => {
+            classify_mysql_transaction_statement(tokens, start, first)
+        }
+        "TABLE" | "SHOW" | "DESCRIBE" | "DESC" => Ok(classify_mysql_utility_statement(first)),
+        _ => Err(MysqlLexError(format!(
+            "unsupported MySQL statement: {first}"
+        ))),
+    }
 }
 
 pub fn classify_mysql_statement(sql: &str) -> Result<MysqlStatement, MysqlLexError> {
@@ -942,27 +986,20 @@ pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MysqlLexError>
         {
             return Ok(true);
         }
-        if word_at(&tokens, index) == Some("FOR")
-            && matches!(word_at(&tokens, index + 1), Some("UPDATE" | "SHARE"))
+        if word(&tokens, index) == Some("FOR")
+            && matches!(word(&tokens, index + 1), Some("UPDATE" | "SHARE"))
         {
             return Ok(true);
         }
-        if word_at(&tokens, index) == Some("LOCK")
-            && word_at(&tokens, index + 1) == Some("IN")
-            && word_at(&tokens, index + 2) == Some("SHARE")
-            && word_at(&tokens, index + 3) == Some("MODE")
+        if word(&tokens, index) == Some("LOCK")
+            && word(&tokens, index + 1) == Some("IN")
+            && word(&tokens, index + 2) == Some("SHARE")
+            && word(&tokens, index + 3) == Some("MODE")
         {
             return Ok(true);
         }
     }
     Ok(false)
-}
-
-fn word_at(tokens: &[Token], index: usize) -> Option<&str> {
-    match tokens.get(index)?.kind {
-        TokenKind::Word(ref word) => Some(word),
-        _ => None,
-    }
 }
 
 pub fn has_mysql_version_comment(sql: &str) -> Result<bool, MysqlLexError> {

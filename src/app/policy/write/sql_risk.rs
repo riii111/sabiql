@@ -43,7 +43,10 @@ mod mysql_tests {
 
     #[test]
     fn max_risk_uses_destructive_confirmation() {
-        let decision = mysql("SELECT 'a;#'; UPDATE items SET value = 1");
+        let decision = mysql(
+            r#"SELECT 'a; b', "quoted; identifier", `back;tick` /* block ; comment */;
+                UPDATE items SET value = 1"#,
+        );
         match decision {
             MultiStatementDecision::Allow { risk, statements } => {
                 assert_eq!(statements.len(), 2);
@@ -93,6 +96,7 @@ mod mysql_tests {
             "SHOW TABLES",
             "DESCRIBE items",
             "WITH rows AS (SELECT 1) SELECT * FROM rows",
+            "WITH RECURSIVE rows AS (SELECT 1) SELECT * FROM rows",
         ] {
             let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
                 panic!("{sql}");
@@ -126,6 +130,10 @@ mod mysql_tests {
             "UPDATE items SET value = 1",
             "SELECT * FROM items FOR UPDATE",
             "SELECT * FROM items INTO OUTFILE '/tmp/items'",
+            "SELECT id INTO DUMPFILE '/tmp/items' FROM items",
+            "SELECT id INTO @value FROM items",
+            "TABLE items INTO OUTFILE '/tmp/items'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
             "SELECT 1; SELECT 2",
             "SELECT 1\nsystem echo unsafe",
             "SELECT 1\n\\! echo unsafe",
@@ -159,6 +167,12 @@ mod mysql_tests {
             "CALL do_work()",
             "LOAD DATA INFILE 'x' INTO TABLE items",
             "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
+            "SELECT 1 /*!40101 + 1 */",
+            "DELIMITER //\nSELECT 1//",
+            "charset utf8mb4\nSELECT 1",
+            "source ./script.sql",
+            "system echo unsafe",
+            "\\C /tmp/other.sock\nSELECT 1",
             "SELECT 1\n\\! echo unsafe",
             "SELECT 1\nsystem echo unsafe",
         ] {
