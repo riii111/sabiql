@@ -219,7 +219,6 @@ mod tests {
     use tokio::io::AsyncWriteExt;
     use tokio::process::{Child, Command};
 
-    use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error};
     use super::*;
 
     async fn exited_child() -> Child {
