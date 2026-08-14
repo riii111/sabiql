@@ -532,6 +532,10 @@ impl SqlLexer {
                 }
 
                 LexerState::InDoubleQuoteString => {
+                    if c == '\\' && pos + 1 < end_pos {
+                        pos += 2;
+                        continue;
+                    }
                     // Handle escaped double quotes: ""
                     if c == '"' {
                         if pos + 1 < end_pos && chars[pos + 1] == '"' {

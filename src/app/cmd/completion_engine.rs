@@ -1672,6 +1672,7 @@ mod tests {
                 "# SELECT",
                 "SELECT 'FROM",
                 r#"SELECT "FROM"#,
+                "SELECT \"users.\\\"FROM ",
                 "SELECT `FROM",
                 "SELECT `a``",
             ] {
