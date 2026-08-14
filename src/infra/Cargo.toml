@@ -32,6 +32,9 @@ sabiql-domain.workspace = true
 [target.'cfg(unix)'.dependencies]
 libc.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard.workspace = true
 
