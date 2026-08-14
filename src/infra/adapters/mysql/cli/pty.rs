@@ -2,6 +2,7 @@ use std::io;
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use tokio::fs::File as TokioFile;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -41,8 +42,10 @@ pub(super) fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
     let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
     if unsafe { libc::tcgetattr(slave_file.as_raw_fd(), termios.as_mut_ptr()) } == 0 {
         let mut termios = unsafe { termios.assume_init() };
-        termios.c_lflag &= !(libc::ECHO | libc::ECHONL);
+        termios.c_lflag &= !(libc::ECHO | libc::ECHONL | libc::ICANON);
         termios.c_oflag &= !libc::OPOST;
+        termios.c_cc[libc::VMIN] = 1;
+        termios.c_cc[libc::VTIME] = 0;
         let _ =
             unsafe { libc::tcsetattr(slave_file.as_raw_fd(), libc::TCSANOW, &raw const termios) };
     }
@@ -93,6 +96,24 @@ pub(super) async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
                 return Ok(output);
             }
             Err(error) => return Err(error),
+        }
+    }
+}
+
+pub(super) async fn read_pty_until_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+    let mut output = std::mem::take(&mut pty.pending);
+    pty.frame_scanner.reset();
+    let mut chunk = [0; 4096];
+    loop {
+        let read =
+            tokio::time::timeout(Duration::from_millis(100), pty.output.read(&mut chunk)).await;
+        match read {
+            Err(_) | Ok(Ok(0)) => return Ok(output),
+            Ok(Ok(count)) => output.extend_from_slice(&chunk[..count]),
+            Ok(Err(error)) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
+                return Ok(output);
+            }
+            Ok(Err(error)) => return Err(error),
         }
     }
 }
