@@ -220,6 +220,19 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 return Err(format!("unexpected empty SELECT result: {select:?}"));
             }
 
+            let cte = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CTE SELECT failed: {error:?}"))?;
+            if cte.columns != ["first_alias"] || !cte.values().is_empty() {
+                return Err(format!("unexpected empty CTE result: {cte:?}"));
+            }
+
             let show = db
                 .adapter()
                 .execute_adhoc(
@@ -308,7 +321,7 @@ async fn proves_metadata_only_select_does_not_evaluate_inner_expressions() {
     with_mysql_test_db(|db| Box::pin(async move {
         let output = db
             .run_pty_script(
-                "SET @sabiql_metadata_probe = 0;\nSELECT * FROM ((SELECT @sabiql_metadata_probe := @sabiql_metadata_probe + 1 AS touched, SLEEP(1) AS sleep_value) LIMIT 0) AS __sabiql_metadata;\nSELECT @sabiql_metadata_probe AS touched;\n",
+                "SET @sabiql_metadata_probe = 0;\nWITH __sabiql_source AS (SELECT * FROM ((SELECT @sabiql_metadata_probe := @sabiql_metadata_probe + 1 AS touched, SLEEP(1) AS sleep_value) LIMIT 0) AS __sabiql_inner) SELECT __sabiql_source.* FROM __sabiql_source RIGHT JOIN (SELECT 1 AS __sabiql_marker) AS __sabiql_marker_source ON TRUE;\nSELECT @sabiql_metadata_probe AS touched;\n",
             )
             .await
             .map_err(|error| format!("metadata-only CLI proof failed: {error}"))?;
@@ -1361,6 +1374,22 @@ async fn keeps_temporary_table_state_inside_one_submission() {
             || result.refresh_scope != RefreshScope::Metadata
         {
             return Err(format!("unexpected temporary-table result: {result:?}"));
+        }
+
+        let empty_table = format!("sabiql_sab414_empty_tmp_{suffix}");
+        let empty_result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "CREATE TEMPORARY TABLE {empty_table} (id INT); SELECT id FROM {empty_table} WHERE FALSE; DROP TEMPORARY TABLE {empty_table}"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("empty temporary-table query failed: {error:?}"))?;
+        if empty_result.columns != ["id"] || !empty_result.values().is_empty() {
+            return Err(format!("unexpected empty temporary-table result: {empty_result:?}"));
         }
         Ok(())
     }))

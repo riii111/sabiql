@@ -1206,19 +1206,19 @@ fn mysql_metadata_fallback_kind(kind: &MysqlStatementKind) -> Option<MysqlMetada
     }
 }
 
-fn mysql_metadata_select_query(query: &str) -> Result<String, DbOperationError> {
+fn mysql_metadata_select_query(
+    query: &str,
+    source_alias: &str,
+    marker_alias: &str,
+) -> Result<String, DbOperationError> {
     let query = query.trim().trim_end_matches(';').trim_end();
     if query.is_empty() {
         return Err(DbOperationError::QueryFailed(
             "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
         ));
     }
-    if query
-        .trim_start()
-        .get(..4)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("WITH"))
-        || has_mysql_read_only_side_effect(query)
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+    if has_mysql_read_only_side_effect(query)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL SELECT metadata fallback cannot prove that the query is side-effect free"
@@ -1226,7 +1226,7 @@ fn mysql_metadata_select_query(query: &str) -> Result<String, DbOperationError> 
         ));
     }
     Ok(format!(
-        "SELECT * FROM (({query}) LIMIT 0) AS __sabiql_metadata"
+        "WITH {source_alias} AS (SELECT * FROM (({query}) LIMIT 0) AS __sabiql_metadata_inner) SELECT {source_alias}.* FROM {source_alias} RIGHT JOIN (SELECT 1 AS {marker_alias}) AS __sabiql_metadata_marker ON TRUE"
     ))
 }
 
@@ -1536,6 +1536,7 @@ impl MysqlMetadataSession {
         let kind = classify_mysql_statement(query)
             .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
         fill_mysql_empty_result_columns(
+            &mut self.process,
             result,
             self.program.as_os_str(),
             &self.option_file,
@@ -1700,7 +1701,8 @@ async fn run_mysql_export_process(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )
         })?;
-        let columns = mysql_metadata_columns(program, option_file, query, fallback_kind).await?;
+        let columns =
+            mysql_metadata_columns(process, program, option_file, query, fallback_kind).await?;
         csv_writer.write_record(columns.iter()).await?;
     }
 
@@ -1720,8 +1722,10 @@ async fn run_mysql_export_process(
     };
 
     #[cfg(not(unix))]
-    let (_stdout, stderr) =
+    let (stdout, stderr) =
         tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    #[cfg(not(unix))]
+    let _stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
@@ -2294,6 +2298,20 @@ async fn run_mysql_single_statement_process(
 
     write_mysql_statement(process, query).await?;
 
+    let stdout = read_one_mysql_resultset(process).await?;
+    let result = parse_mysql_xml(&stdout)?;
+    let statement = classify_mysql_statement(query)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let result = fill_mysql_empty_result_columns(
+        process,
+        result,
+        program,
+        option_file,
+        query,
+        &statement.kind,
+    )
+    .await?;
+
     #[cfg(not(unix))]
     process
         .stdin
@@ -2302,20 +2320,18 @@ async fn run_mysql_single_statement_process(
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
 
     #[cfg(unix)]
-    let (stdout, tail) = {
-        let stdout = read_one_mysql_resultset(process).await?;
+    let tail = {
         write_mysql_input(process, b"\x04").await?;
-        let tail = read_pty_all(&mut process.pty)
+        read_pty_all(&mut process.pty)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        (stdout, tail)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     };
 
     #[cfg(not(unix))]
     let (stdout, stderr) =
         tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
     #[cfg(not(unix))]
-    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let _stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
@@ -2331,10 +2347,7 @@ async fn run_mysql_single_statement_process(
     if !status.success() {
         return Err(classify_mysql_query_failure(error_bytes));
     }
-    let result = parse_mysql_xml(&stdout)?;
-    let statement = classify_mysql_statement(query)
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    fill_mysql_empty_result_columns(result, program, option_file, query, &statement.kind).await
+    Ok(result)
 }
 
 async fn run_mysql_adhoc_with_program_and_statements(
@@ -2442,6 +2455,7 @@ async fn run_mysql_adhoc_process(
                 Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
             };
             let user_result = fill_mysql_empty_result_columns(
+                process,
                 first_result,
                 program,
                 option_file,
@@ -3164,19 +3178,58 @@ fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
 }
 
 async fn mysql_metadata_columns(
+    process: &mut MysqlProcess,
     program: &OsStr,
     option_file: &std::path::Path,
     query: &str,
     kind: MysqlMetadataFallbackKind,
 ) -> Result<Vec<String>, DbOperationError> {
     let query = match kind {
-        MysqlMetadataFallbackKind::Select => mysql_metadata_select_query(query)?,
+        MysqlMetadataFallbackKind::Select => {
+            return mysql_metadata_select_columns(process, query).await;
+        }
         MysqlMetadataFallbackKind::Show | MysqlMetadataFallbackKind::Describe => {
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
+    mysql_metadata_columns_external(program, option_file, &query).await
+}
+
+async fn mysql_metadata_select_columns(
+    process: &mut MysqlProcess,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    let suffix = Uuid::new_v4().simple().to_string();
+    let source_alias = format!("__sabiql_metadata_source_{suffix}");
+    let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
+    let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
+    write_mysql_statement(process, &query).await?;
+    let xml = read_one_mysql_resultset(process).await?;
+    let result = parse_mysql_xml(&xml)?;
+    let row = result.values.first().ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL SELECT metadata fallback returned no synthetic row".to_string(),
+        )
+    })?;
+    if result.values.len() != 1
+        || result.columns.is_empty()
+        || row.len() != result.columns.len()
+        || row.iter().any(|value| !matches!(value, QueryValue::Null))
+    {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL SELECT metadata fallback returned an invalid synthetic row".to_string(),
+        ));
+    }
+    Ok(result.columns)
+}
+
+async fn mysql_metadata_columns_external(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
     let mut process = MysqlProcess::spawn_with_metadata_program(program, option_file)?;
-    write_mysql_statement(&mut process, &query).await?;
+    write_mysql_statement(&mut process, query).await?;
 
     #[cfg(unix)]
     let output = {
@@ -3220,7 +3273,7 @@ async fn mysql_metadata_columns(
     let output = output.as_slice();
     #[cfg(not(unix))]
     let output = stdout.as_slice();
-    parse_mysql_metadata_header(output, &query)
+    parse_mysql_metadata_header(output, query)
 }
 
 fn parse_mysql_metadata_header(
@@ -3268,6 +3321,7 @@ fn parse_mysql_metadata_header(
 }
 
 async fn fill_mysql_empty_result_columns(
+    process: &mut MysqlProcess,
     mut result: MysqlResultSet,
     program: &OsStr,
     option_file: &std::path::Path,
@@ -3282,7 +3336,8 @@ async fn fill_mysql_empty_result_columns(
             "MySQL empty result has no supported metadata fallback".to_string(),
         )
     })?;
-    result.columns = mysql_metadata_columns(program, option_file, query, fallback_kind).await?;
+    result.columns =
+        mysql_metadata_columns(process, program, option_file, query, fallback_kind).await?;
     Ok(result)
 }
 
@@ -3942,10 +3997,18 @@ mod probe_tests {
             "SELECT value FROM items FOR UPDATE",
             "SELECT GET_LOCK('sabiql', 0)",
             "SELECT @value := 1",
-            "WITH rows AS (SELECT 1) SELECT * FROM rows",
         ] {
-            assert!(mysql_metadata_select_query(query).is_err(), "{query}");
+            assert!(
+                mysql_metadata_select_query(query, "__source", "__marker").is_err(),
+                "{query}"
+            );
         }
+        assert!(mysql_metadata_select_query(
+            "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
+            "__source",
+            "__marker"
+        )
+        .is_ok());
     }
 
     #[test]
