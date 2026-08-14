@@ -26,11 +26,6 @@ pub fn dispatch_explain(
 }
 
 #[cfg(test)]
-fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
-    dispatch_explain(state, action, now, &AppServices::stub())
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
@@ -45,6 +40,10 @@ mod tests {
     use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
     use std::time::Instant;
+
+    fn reduce_explain(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+        dispatch_explain(state, action, now, &AppServices::stub())
+    }
 
     fn sql_modal_state() -> AppState {
         let mut state = AppState::new("test".to_string());

@@ -6,6 +6,8 @@ DEFAULT_PATHS = [
   "src",
   "tests",
 ].freeze
+TEST_ONLY_ITEM_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*(?:async\s+)?(fn|struct|impl|const|type|static)\b/
+MODULE_PATTERN = /\A(?:(?:pub(?:\([^)]*\))?|unsafe)\s+)*mod\s+([a-zA-Z0-9_]+)\s*\{/
 
 # This lint only checks mechanically detectable anti-patterns.
 # Category-specific naming still relies on local rules and review.
@@ -150,6 +152,15 @@ def normalized_mod_name(name)
   normalized
 end
 
+def cfg_test_attribute?(stripped)
+  stripped.delete(" \t") == "#[cfg(test)]"
+end
+
+def test_only_item_kind(stripped)
+  match = stripped.match(TEST_ONLY_ITEM_PATTERN)
+  match && match[1]
+end
+
 paths = ARGV.empty? ? DEFAULT_PATHS : ARGV
 errors = []
 
@@ -168,6 +179,7 @@ rust_files(paths).each do |file|
   }
   mod_stack = []
   pending_test_attr = false
+  pending_cfg_test_attr = false
   seen_test_names = {}
 
   lines.each_with_index do |line, idx|
@@ -178,8 +190,32 @@ rust_files(paths).each do |file|
       mod_stack.pop
     end
 
-    if (match = stripped.match(/^mod\s+([a-zA-Z0-9_]+)\s*\{/))
-      mod_stack << { name: match[1], depth: brace_depth + 1 }
+    module_match = stripped.match(MODULE_PATTERN)
+    item_kind = test_only_item_kind(stripped)
+    cfg_test_module = pending_cfg_test_attr
+    module_depth = mod_stack.last&.dig(:depth) || 0
+    at_module_scope = brace_depth == module_depth
+    inside_test_module = mod_stack.any? { |entry| entry[:test_module] }
+
+    if stripped.start_with?("#[")
+      pending_cfg_test_attr ||= cfg_test_attribute?(stripped)
+    elsif pending_cfg_test_attr && (item_kind || module_match)
+      if item_kind && at_module_scope && !inside_test_module
+        errors << "#{rel}:#{line_no} test-only item must be inside a cfg(test) module: #{item_kind}"
+      end
+
+      pending_cfg_test_attr = false
+    elsif pending_cfg_test_attr && !stripped.empty? && !stripped.start_with?("//")
+      pending_cfg_test_attr = false
+    end
+
+    if module_match
+      mod_stack << {
+        name: module_match[1],
+        depth: brace_depth + 1,
+        test_module: cfg_test_module,
+      }
+      pending_cfg_test_attr = false
     end
 
     if stripped.match?(/^#\[(?:test|rstest|tokio::test)\b/) || (pending_test_attr && stripped.start_with?("#["))

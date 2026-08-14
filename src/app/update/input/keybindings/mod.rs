@@ -166,7 +166,7 @@ pub fn global_action_for_with_policy(
 // Action has payload variants without PartialEq, so tests compare by
 // discriminant — except modal actions, where several bindings differ only by
 // ModalKind and the kind must participate in equality.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
     match (actual, expected) {
         (Action::OpenModal(a), Action::OpenModal(b))
