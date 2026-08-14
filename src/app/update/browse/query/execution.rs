@@ -15,53 +15,6 @@ use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
-fn refresh_effects_for_scope(
-    state: &mut AppState,
-    refresh_scope: RefreshScope,
-    now: Instant,
-) -> Vec<Effect> {
-    if refresh_scope == RefreshScope::None {
-        return vec![];
-    }
-    let Some(dsn) = state.session.dsn().map(String::from) else {
-        return vec![];
-    };
-
-    let mut effects = vec![];
-
-    if refresh_scope == RefreshScope::Metadata {
-        state.sql_modal.reset_prefetch();
-        state.session.set_table_detail_raw(None);
-        let run_id = state.session.begin_metadata_refresh();
-
-        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
-        effects.push(Effect::ClearCompletionEngineCache);
-        effects.push(Effect::FetchMetadata { dsn, run_id });
-    } else if !state.query.pagination.table().is_empty() {
-        let page = state.query.pagination.current_page();
-        let generation = state.session.selection_generation();
-        effects.extend(preview_effect_for_current_table(
-            state, now, page, generation,
-        ));
-    }
-
-    effects
-}
-
-fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
-    if result.source != QuerySource::Adhoc || result.is_error() {
-        return vec![];
-    }
-    refresh_effects_for_scope(state, result.refresh_scope, now)
-}
-
-fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
-    state.result_interaction.reset_view();
-    state
-        .query
-        .set_result_highlight(now + Duration::from_millis(500));
-}
-
 pub fn reduce_execution(
     state: &mut AppState,
     action: &Action,
@@ -298,6 +251,53 @@ pub fn reduce_execution(
 
         _ => DispatchResult::pass(),
     }
+}
+
+fn refresh_effects_for_scope(
+    state: &mut AppState,
+    refresh_scope: RefreshScope,
+    now: Instant,
+) -> Vec<Effect> {
+    if refresh_scope == RefreshScope::None {
+        return vec![];
+    }
+    let Some(dsn) = state.session.dsn().map(String::from) else {
+        return vec![];
+    };
+
+    let mut effects = vec![];
+
+    if refresh_scope == RefreshScope::Metadata {
+        state.sql_modal.reset_prefetch();
+        state.session.set_table_detail_raw(None);
+        let run_id = state.session.begin_metadata_refresh();
+
+        effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
+        effects.push(Effect::ClearCompletionEngineCache);
+        effects.push(Effect::FetchMetadata { dsn, run_id });
+    } else if !state.query.pagination.table().is_empty() {
+        let page = state.query.pagination.current_page();
+        let generation = state.session.selection_generation();
+        effects.extend(preview_effect_for_current_table(
+            state, now, page, generation,
+        ));
+    }
+
+    effects
+}
+
+fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -> Vec<Effect> {
+    if result.source != QuerySource::Adhoc || result.is_error() {
+        return vec![];
+    }
+    refresh_effects_for_scope(state, result.refresh_scope, now)
+}
+
+fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
+    state.result_interaction.reset_view();
+    state
+        .query
+        .set_result_highlight(now + Duration::from_millis(500));
 }
 
 #[cfg(test)]
@@ -729,7 +729,9 @@ mod tests {
             let action = query_failed_action(
                 &mut state,
                 DbOperationError::QueryFailedAfterChange {
-                    details: "later statement failed".to_string(),
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "later statement failed".to_string(),
+                    )),
                     refresh_scope: RefreshScope::Data,
                 },
                 0,
@@ -757,7 +759,9 @@ mod tests {
             let action = query_failed_action(
                 &mut state,
                 DbOperationError::QueryFailedAfterChange {
-                    details: "later DDL failed".to_string(),
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "later DDL failed".to_string(),
+                    )),
                     refresh_scope: RefreshScope::Metadata,
                 },
                 0,
