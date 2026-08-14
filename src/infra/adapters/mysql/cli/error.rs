@@ -16,7 +16,10 @@ pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
             {
                 line = &line[1..];
             }
-            line.starts_with(b"ERROR ") || line == b"ERROR"
+            line.starts_with(b"ERROR ")
+                && line
+                    .get(6..10)
+                    .is_some_and(|code| code.iter().all(u8::is_ascii_digit))
         })
 }
 
@@ -202,6 +205,13 @@ mod tests {
         ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
+    }
+
+    #[test]
+    fn waits_for_a_mysql_error_code_before_matching_a_partial_stderr_line() {
+        assert!(!has_mysql_cli_error(b"ERROR"));
+        assert!(!has_mysql_cli_error(b"ERROR 1"));
+        assert!(has_mysql_cli_error(b"ERROR 1054"));
     }
 
     #[test]
