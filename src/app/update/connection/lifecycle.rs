@@ -272,6 +272,9 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state.session.mark_connection_failed(error.user_message());
             }
+            if state.session.selected_table_key().is_some() {
+                state.session.clear_table_selection(&mut state.query);
+            }
             state.connection_error.set_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
             );
@@ -291,6 +294,7 @@ mod tests {
     use crate::domain::connection::DatabaseType;
     use crate::domain::query_history::{QueryHistoryEntry, QueryResultStatus};
     use crate::domain::{ConnectionId, DatabaseMetadata, MetadataState};
+    use crate::model::browse::session::TableDetailState;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::error::ConnectionErrorKind;
     use crate::model::connection::state::ConnectionState;
@@ -1074,6 +1078,67 @@ mod tests {
 
             assert!(state.session.connection_state().is_connected());
             assert!(!state.session.is_reloading());
+        }
+
+        #[test]
+        fn mysql_probe_failure_clears_table_selection_after_switch() {
+            let mut state = AppState::new("test".to_string());
+            let first = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-a"),
+                dsn: "mysql://user@localhost:3306/a?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-a".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("a".to_string()),
+            };
+            state.session.activate_connection_with_target(
+                &first.id,
+                &first.name,
+                first.database_type,
+                &first.dsn,
+                first.database.as_deref(),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let detail_run_id = state.session.begin_table_detail_run();
+
+            let second = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let effects = reduce(&mut state, &Action::SwitchConnection(second.clone())).unwrap();
+            let probe_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: second,
+                    run_id: probe_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            assert!(state.session.connection_state().is_connected());
+            assert!(state.session.selected_table_key().is_none());
+            assert!(state.session.table_detail().is_none());
+            assert_eq!(
+                state.session.table_detail_state(),
+                &TableDetailState::NotSelected
+            );
+            assert_ne!(state.session.selection_generation(), generation);
+            assert!(!state.session.is_current_table_detail_run(detail_run_id));
         }
 
         #[test]
