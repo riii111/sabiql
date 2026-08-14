@@ -11,8 +11,13 @@ use crate::domain::{
 };
 
 use super::{
-    MYSQL_QUERY_TIMEOUT, MySqlAdapter, MySqlOptionFile, MysqlMetadataSession, MysqlResultSet,
-    parse_mysql_dsn, run_mysql_adhoc, validate_mysql_values,
+    adapter::MySqlAdapter,
+    cli::{
+        MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet, run_mysql_adhoc,
+        validate_mysql_multi_query,
+    },
+    dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values},
+    option_file::MySqlOptionFile,
 };
 
 const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_SCHEMA, TABLE_NAME";
@@ -351,7 +356,7 @@ async fn fetch_table_detail_in_session_with_program(
 ) -> Result<Table, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
-    super::validate_mysql_tls_files(&target)?;
+    validate_mysql_tls_files(&target)?;
     let database = target.database.as_deref().ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
@@ -520,12 +525,9 @@ async fn execute_metadata_query(
 ) -> Result<MysqlResultSet, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
-    super::validate_mysql_tls_files(&target)?;
-    let statements = super::validate_mysql_multi_query(
-        query,
-        target.database.as_deref(),
-        AccessMode::ReadWrite,
-    )?;
+    validate_mysql_tls_files(&target)?;
+    let statements =
+        validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let result =
         run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadWrite).await;
