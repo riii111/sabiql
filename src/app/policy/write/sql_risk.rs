@@ -122,18 +122,7 @@ mod mysql_tests {
     }
 
     #[test]
-    fn explain_target_policy_separates_nonexecuting_explain_from_analyze() {
-        for sql in [
-            "SELECT 1",
-            "TABLE items",
-            "SELECT * FROM items FOR UPDATE",
-            "UPDATE items SET value = 1 WHERE id = 1",
-        ] {
-            assert!(evaluate_mysql_explain_target(sql, false).is_some(), "{sql}");
-        }
-        for sql in ["SHOW TABLES", "DESCRIBE items"] {
-            assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
-        }
+    fn explain_analyze_target_rejects_side_effects() {
         for sql in [
             "UPDATE items SET value = 1",
             "SELECT * FROM items FOR UPDATE",
@@ -142,20 +131,19 @@ mod mysql_tests {
             "SELECT id INTO @value FROM items",
             "TABLE items INTO OUTFILE '/tmp/items'",
             "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
-        ] {
-            assert!(evaluate_mysql_explain_target(sql, false).is_some(), "{sql}");
-            assert!(evaluate_mysql_explain_target(sql, true).is_none(), "{sql}");
-        }
-        for sql in [
+            "SHOW TABLES",
+            "DESCRIBE items",
             "SELECT 1; SELECT 2",
             "SELECT 1\nsystem echo unsafe",
             "SELECT 1\n\\! echo unsafe",
         ] {
-            assert!(evaluate_mysql_explain_target(sql, false).is_none(), "{sql}");
-            assert!(evaluate_mysql_explain_target(sql, true).is_none(), "{sql}");
+            assert!(
+                evaluate_mysql_explain_analyze_target(sql).is_none(),
+                "{sql}"
+            );
         }
         for (sql, label) in [("SELECT 1", "SELECT"), ("TABLE items", "TABLE")] {
-            let risk = evaluate_mysql_explain_target(sql, true).expect(sql);
+            let risk = evaluate_mysql_explain_analyze_target(sql).expect(sql);
             assert_eq!(risk.risk_level, RiskLevel::Low);
             assert!(risk.read_only_allowed);
             assert_eq!(
@@ -166,7 +154,7 @@ mod mysql_tests {
                 }
             );
         }
-        assert!(evaluate_mysql_explain_target("SHOW TABLES", true).is_none());
+        assert!(evaluate_mysql_explain_analyze_target("SHOW TABLES").is_none());
     }
 
     #[test]
@@ -574,13 +562,11 @@ fn mysql_validate_submission_state(
                 };
                 temporary_tables.remove(index);
             }
-            kind if mysql_statement_is_persistent_schema_change(kind) => {
-                if transaction_open {
-                    return Err(
-                        "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
-                            .to_string(),
-                    );
-                }
+            kind if transaction_open && mysql_statement_is_persistent_schema_change(kind) => {
+                return Err(
+                    "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
+                        .to_string(),
+                );
             }
             _ => {}
         }
@@ -990,7 +976,7 @@ fn evaluate_mysql_statement_risk(sql: &str) -> SqlRiskDecision {
     }
 }
 
-pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRiskDecision> {
+pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecision> {
     if statement_contains_unsupported_mysql_control(sql) {
         return None;
     }
@@ -999,36 +985,21 @@ pub fn evaluate_mysql_explain_target(sql: &str, analyze: bool) -> Option<SqlRisk
         return None;
     }
     let statement = classify_mysql_statement(&statements[0]).ok()?;
-    let allowed_kind = if analyze {
-        matches!(
-            statement.kind,
-            MysqlStatementKind::Select | MysqlStatementKind::Table
-        )
-    } else {
-        matches!(
-            statement.kind,
-            MysqlStatementKind::Select
-                | MysqlStatementKind::Table
-                | MysqlStatementKind::Insert
-                | MysqlStatementKind::Replace
-                | MysqlStatementKind::Update { .. }
-                | MysqlStatementKind::Delete { .. }
-        )
-    };
-    if !allowed_kind {
+    if !matches!(
+        statement.kind,
+        MysqlStatementKind::Select | MysqlStatementKind::Table
+    ) {
         return None;
     }
 
     let mut risk = mysql_statement_risk(&statement);
-    if analyze {
-        if !risk.read_only_allowed {
-            return None;
-        }
-        risk.confirmation = ConfirmationType::Acknowledge {
-            reason: AcknowledgeReason::AnalyzeExecution,
-            label: mysql_statement_label(&statement.kind).to_string(),
-        };
+    if !risk.read_only_allowed {
+        return None;
     }
+    risk.confirmation = ConfirmationType::Acknowledge {
+        reason: AcknowledgeReason::AnalyzeExecution,
+        label: mysql_statement_label(&statement.kind).to_string(),
+    };
     Some(risk)
 }
 
