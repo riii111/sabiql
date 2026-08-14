@@ -1,5 +1,9 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+#[cfg(windows)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
+#[cfg(windows)]
+use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 
 use uuid::Uuid;
@@ -39,6 +43,7 @@ impl MySqlOptionFile {
                 "Unable to create MySQL option file: {error}"
             ))
         })?;
+        #[cfg(windows)]
         if let Err(error) = set_file_permissions(&file) {
             drop(file);
             let _ = fs::remove_file(&path);
@@ -55,11 +60,6 @@ impl MySqlOptionFile {
         }
         Ok(Self { path })
     }
-}
-
-#[cfg(unix)]
-fn set_file_permissions(_file: &File) -> io::Result<()> {
-    Ok(())
 }
 
 #[cfg(windows)]
@@ -171,11 +171,6 @@ fn current_user_sid(token: windows_sys::Win32::Foundation::HANDLE) -> io::Result
         return Err(io::Error::last_os_error());
     }
     Ok(sid)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn set_file_permissions(_file: &File) -> io::Result<()> {
-    Ok(())
 }
 
 impl Drop for MySqlOptionFile {
