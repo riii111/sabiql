@@ -39,8 +39,8 @@ use crate::app::policy::write::sql_risk::{
     mysql_statement_is_schema_modifying,
 };
 use crate::app::ports::outbound::{
-    AccessMode, DatabaseCli, DbOperationError, MYSQL_SERVER_VERSION_REQUIRED_MARKER,
-    MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    AccessMode, DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
 };
 use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
@@ -55,6 +55,34 @@ pub(super) const MYSQL_EXPORT_TIMEOUT: Duration =
 pub(super) const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 pub(super) const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
+
+pub(super) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
+    let output = run_mysql_command(["--version"], None).await?;
+    let version_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
+        return Err(DbOperationError::UnsupportedOperation(format!(
+            "{MYSQL_CLI_VERSION_REQUIRED_MARKER}: {}",
+            version_output.trim()
+        )));
+    }
+    Ok(())
+}
+
+pub(super) async fn probe_mysql_server(option_file: &PathBuf) -> Result<(), DbOperationError> {
+    let output = run_mysql_command(mysql_probe_args(option_file), Some(option_file)).await?;
+    if !output.status.success() {
+        return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
+    }
+
+    let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
+    let _ = (&response.database, &response.user);
+    validate_server_version(&response.version)?;
+    validate_sql_mode(&response.sql_mode)
+}
 
 include!("probe.rs");
 include!("args.rs");

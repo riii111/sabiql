@@ -1,34 +1,25 @@
-use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-#[cfg(feature = "test-support")]
-use crate::adapters::csv_export::export_to_path;
 use crate::app::policy::sql::mysql_statement::mysql_tree_explain_query_kind;
 use crate::app::ports::outbound::{
-    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder,
-    MYSQL_CLI_VERSION_REQUIRED_MARKER, QueryExecutor, SqlDialect,
+    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder, QueryExecutor,
+    SqlDialect,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{QueryResult, QuerySource, QueryValue, Table, WriteExecutionResult};
 use async_trait::async_trait;
 
-mod cli;
-mod dsn;
-mod metadata;
-mod option_file;
-mod sql;
-
-use cli::{
-    MYSQL_QUERY_TIMEOUT, MySqlProbeResponse, MysqlMetadataSession, MysqlResultSet,
-    classify_mysql_probe_failure, clean_stderr, export_mysql_csv_to_file,
-    is_oracle_mysql_cli_84_version, mysql_probe_args, run_mysql_adhoc, run_mysql_command,
-    run_mysql_single_statement, validate_mysql_export_query, validate_mysql_multi_query,
-    validate_server_version, validate_sql_mode,
+use super::cli::{
+    check_mysql_cli_version, export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
+    validate_mysql_export_query, validate_mysql_multi_query,
 };
 
-use dsn::{build_mysql_dsn, parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
-use option_file::MySqlOptionFile;
+use super::dsn::{
+    build_mysql_dsn, parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values,
+};
+use super::option_file::MySqlOptionFile;
+use super::{metadata, sql};
 
 pub struct MySqlAdapter;
 
@@ -44,32 +35,43 @@ impl Default for MySqlAdapter {
     }
 }
 
-#[cfg(all(unix, feature = "test-support"))]
-#[doc(hidden)]
-pub async fn run_mysql_cli_script_for_test(
-    dsn: &str,
-    script: &str,
-) -> Result<Vec<u8>, DbOperationError> {
-    cli::run_mysql_cli_script_for_test(dsn, script).await
-}
-
 #[cfg(feature = "test-support")]
-#[doc(hidden)]
-/// Runs the export process without client-side query policy validation so integration tests can
-/// verify that the MySQL read-only session rejects a side effect at the server boundary.
-pub async fn export_mysql_csv_to_path_for_test(
-    dsn: &str,
-    query: &str,
-    path: PathBuf,
-) -> Result<PathBuf, DbOperationError> {
-    let target = parse_mysql_dsn(dsn)?;
-    validate_mysql_values(&target)?;
-    validate_mysql_tls_files(&target)?;
-    let query = query.to_string();
-    export_to_path(path, move |temporary_path| async move {
-        export_mysql_csv_to_file(target, &query, temporary_path).await
-    })
-    .await
+pub(super) mod test_support {
+    use std::path::PathBuf;
+
+    use crate::adapters::csv_export::export_to_path;
+    use crate::app::ports::outbound::DbOperationError;
+
+    use super::{
+        export_mysql_csv_to_file, parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values,
+    };
+
+    #[cfg(unix)]
+    #[doc(hidden)]
+    pub async fn run_mysql_cli_script_for_test(
+        dsn: &str,
+        script: &str,
+    ) -> Result<Vec<u8>, DbOperationError> {
+        super::super::cli::run_mysql_cli_script_for_test(dsn, script).await
+    }
+
+    #[doc(hidden)]
+    /// Runs the export process without client-side query policy validation so integration tests can
+    /// verify that the MySQL read-only session rejects a side effect at the server boundary.
+    pub async fn export_mysql_csv_to_path_for_test(
+        dsn: &str,
+        query: &str,
+        path: PathBuf,
+    ) -> Result<PathBuf, DbOperationError> {
+        let target = parse_mysql_dsn(dsn)?;
+        validate_mysql_values(&target)?;
+        validate_mysql_tls_files(&target)?;
+        let query = query.to_string();
+        export_to_path(path, move |temporary_path| async move {
+            export_mysql_csv_to_file(target, &query, temporary_path).await
+        })
+        .await
+    }
 }
 
 #[async_trait]
@@ -362,19 +364,9 @@ impl ConnectionProbe for MySqlAdapter {
         self.check_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = self.run_probe(&option_file.path).await;
+        let result = super::cli::probe_mysql_server(&option_file.path).await;
         drop(option_file);
-        let output = result?;
-
-        if !output.status.success() {
-            return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
-        }
-
-        let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
-        let _ = (&response.database, &response.user);
-        validate_server_version(&response.version)?;
-        validate_sql_mode(&response.sql_mode)?;
-        Ok(())
+        result
     }
 
     async fn fetch_databases(&self, dsn: &str) -> Result<Vec<String>, DbOperationError> {
@@ -394,43 +386,20 @@ impl ConnectionProbe for MySqlAdapter {
         .await;
         drop(option_file);
         result.map(|execution| {
-            execution
-                .result_set
-                .unwrap_or(MysqlResultSet {
-                    columns: Vec::new(),
-                    values: Vec::new(),
-                })
-                .values
-                .into_iter()
-                .filter_map(|mut row| row.drain(..).next())
-                .filter_map(|value| value.as_str().map(str::to_string))
-                .collect()
+            execution.result_set.map_or_else(Vec::new, |result_set| {
+                result_set
+                    .values
+                    .into_iter()
+                    .filter_map(|mut row| row.drain(..).next())
+                    .filter_map(|value| value.as_str().map(str::to_string))
+                    .collect()
+            })
         })
     }
 }
 
 impl MySqlAdapter {
     async fn check_cli_version(&self) -> Result<(), DbOperationError> {
-        let output = run_mysql_command(["--version"], None).await?;
-        let version_output = format!(
-            "{}\n{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        );
-        if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
-            return Err(DbOperationError::UnsupportedOperation(format!(
-                "{MYSQL_CLI_VERSION_REQUIRED_MARKER}: {}",
-                version_output.trim()
-            )));
-        }
-        Ok(())
-    }
-
-    async fn run_probe(
-        &self,
-        option_file: &PathBuf,
-    ) -> Result<std::process::Output, DbOperationError> {
-        let args = mysql_probe_args(option_file);
-        run_mysql_command(args, Some(option_file)).await
+        check_mysql_cli_version().await
     }
 }
