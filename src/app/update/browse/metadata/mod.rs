@@ -59,8 +59,10 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, Table};
     use crate::model::app_state::AppState;
+    use crate::model::browse::session::TableDetailState;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
-    use crate::update::action::Action;
+    use crate::ports::outbound::DbOperationError;
+    use crate::update::action::{Action, TableTarget};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -136,6 +138,88 @@ mod tests {
             );
 
             assert!(state.session.table_detail().is_none());
+        }
+
+        #[test]
+        fn current_table_detail_failure_updates_inspector_and_footer() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let run_id = state.session.begin_table_detail_run();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    generation,
+                },
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(_)
+            ));
+            assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn table_detail_load_without_connection_ends_loading_state() {
+            let mut state = AppState::new("test".to_string());
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+
+            dispatch_metadata(
+                &mut state,
+                &Action::LoadTableDetail(TableTarget {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation,
+                }),
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(message) if message == "No active connection"
+            ));
+            assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn stale_table_detail_failure_does_not_update_current_inspector() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let _ = state.session.begin_table_detail_run();
+            let current_generation =
+                state
+                    .session
+                    .select_table("public", "orders", &mut state.query);
+            let current_run_id = state.session.begin_table_detail_run();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: current_run_id,
+                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    generation: stale_generation,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.session.selection_generation(), current_generation);
+            assert_eq!(
+                state.session.table_detail_state(),
+                &TableDetailState::Loading
+            );
+            assert!(state.messages.last_error().is_none());
         }
 
         #[test]
@@ -447,7 +531,6 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn increments_retry_count() {

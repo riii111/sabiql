@@ -3,38 +3,41 @@ use std::sync::Mutex;
 use tokio::task::AbortHandle;
 
 #[derive(Default)]
-pub struct QueryTaskRegistry {
+pub struct TaskRegistry {
     active: Mutex<Option<AbortHandle>>,
 }
 
-impl QueryTaskRegistry {
-    /// Starts a task after cancelling any currently active query task.
+impl TaskRegistry {
+    /// Starts a task after cancelling any currently active task.
     ///
-    /// The registry is shared by query effects, so it intentionally permits
-    /// only one active task at a time.
+    /// Each registry instance intentionally permits only one active task at a
+    /// time; separate instances are used for queries and table details.
     pub fn spawn<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        self.cancel();
+        let mut active = self.active.lock().expect("task registry lock poisoned");
+        if let Some(handle) = active.take() {
+            handle.abort();
+        }
         let handle = tokio::spawn(task);
-        *self
-            .active
-            .lock()
-            .expect("query task registry lock poisoned") = Some(handle.abort_handle());
+        *active = Some(handle.abort_handle());
     }
 
     pub fn cancel(&self) {
         let handle = self
             .active
             .lock()
-            .expect("query task registry lock poisoned")
+            .expect("task registry lock poisoned")
             .take();
         if let Some(handle) = handle {
             handle.abort();
         }
     }
 }
+
+pub type QueryTaskRegistry = TaskRegistry;
+pub type TableDetailTaskRegistry = TaskRegistry;
 
 #[cfg(test)]
 mod tests {
@@ -76,5 +79,30 @@ mod tests {
         })
         .await
         .expect("cancelled query task should be dropped");
+    }
+
+    #[tokio::test]
+    async fn cancel_drops_active_table_detail_task() {
+        let registry = TableDetailTaskRegistry::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = oneshot::channel();
+        let guard = DropSignal(Arc::clone(&dropped));
+
+        registry.spawn(async move {
+            let _guard = guard;
+            started_tx.send(()).ok();
+            std::future::pending::<()>().await;
+        });
+
+        started_rx.await.expect("table detail task should start");
+        registry.cancel();
+
+        timeout(Duration::from_secs(1), async {
+            while !dropped.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cancelled table detail task should be dropped");
     }
 }

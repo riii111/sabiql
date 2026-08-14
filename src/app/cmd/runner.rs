@@ -14,7 +14,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
-use crate::cmd::query_task::QueryTaskRegistry;
+use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
 use crate::cmd::sql_editor::query_history as cmd_query_history;
@@ -71,6 +71,7 @@ pub struct EffectRunner {
     metadata_cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     query_tasks: QueryTaskRegistry,
+    table_detail_tasks: TableDetailTaskRegistry,
 }
 
 impl EffectRunner {
@@ -94,11 +95,17 @@ impl EffectRunner {
             metadata_cache,
             action_tx,
             query_tasks: QueryTaskRegistry::default(),
+            table_detail_tasks: TableDetailTaskRegistry::default(),
         }
     }
 
     pub fn action_tx(&self) -> &mpsc::Sender<Action> {
         &self.action_tx
+    }
+
+    fn cancel_active_tasks(&self) {
+        self.query_tasks.cancel();
+        self.table_detail_tasks.cancel();
     }
 
     pub async fn run<T: Renderer>(
@@ -176,6 +183,9 @@ impl EffectRunner {
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
+                if matches!(&e, Effect::ProbeConnection { .. }) {
+                    self.table_detail_tasks.cancel();
+                }
                 cmd_connection::run(
                     e,
                     &self.action_tx,
@@ -201,6 +211,7 @@ impl EffectRunner {
                     &self.metadata_provider,
                     &self.metadata_cache,
                     &self.connection.sqlite_path_validator,
+                    &self.table_detail_tasks,
                     state,
                     completion_engine,
                 )
@@ -208,11 +219,20 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
+            Effect::CancelActiveQuery => {
+                self.query_tasks.cancel();
+                Ok(vec![])
+            }
+
+            Effect::CancelActiveTasks => {
+                self.cancel_active_tasks();
+                Ok(vec![])
+            }
+
             e @ (Effect::ExecutePreview { .. }
             | Effect::ExecuteAdhoc { .. }
             | Effect::ExecuteExplain { .. }
             | Effect::ExecuteWrite { .. }
-            | Effect::CancelActiveQuery
             | Effect::CountRowsForExport { .. }
             | Effect::ExportCsv { .. }
             | Effect::ExportCsvFromCache { .. }) => {
@@ -522,7 +542,7 @@ mod tests {
 
         use super::*;
         use crate::domain::connection::{ConnectionId, DatabaseType};
-        use crate::domain::{QueryResult, WriteExecutionResult};
+        use crate::domain::{QueryResult, Table, TableSignature, WriteExecutionResult};
         use crate::model::connection::cache::ConnectionCache;
         use crate::ports::outbound::{AccessMode, DbOperationError};
         use crate::update::action::ConnectionTarget;
@@ -595,6 +615,54 @@ mod tests {
                 _file_name: &str,
             ) -> Result<PathBuf, DbOperationError> {
                 unreachable!("test only starts a preview")
+            }
+        }
+
+        struct PendingTableDetailProvider {
+            started: Mutex<Option<oneshot::Sender<()>>>,
+            dropped: Arc<AtomicBool>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingTableDetailProvider {
+            async fn fetch_metadata(
+                &self,
+                _dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                unreachable!("test only starts table detail")
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .lock()
+                    .expect("started signal lock poisoned")
+                    .take()
+                    .expect("table detail should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts table detail")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<Vec<TableSignature>, DbOperationError> {
+                unreachable!("test only starts table detail")
             }
         }
 
@@ -685,6 +753,74 @@ mod tests {
             .await
             .expect("context termination should drop the pending query task");
             assert!(!state.query.is_current_run(run_id));
+        }
+
+        #[tokio::test]
+        async fn cancelling_context_drops_pending_table_detail_task() {
+            let (started_tx, started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicBool::new(false));
+            let provider = PendingTableDetailProvider {
+                started: Mutex::new(Some(started_tx)),
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchTableDetail {
+                        dsn: "postgres://localhost/current".to_string(),
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx)
+                .await
+                .expect("pending table detail should start")
+                .expect("started signal should be sent");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            timeout(Duration::from_secs(1), async {
+                while !dropped.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("context cancellation should drop the pending table detail task");
         }
     }
 }

@@ -1,4 +1,5 @@
 use crate::domain::{DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table};
+use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
@@ -7,9 +8,18 @@ use crate::ports::outbound::DdlGenerator;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
     active_tab: InspectorTab,
+    load_state: InspectorLoadState,
     section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InspectorLoadState {
+    NoTableSelected,
+    Loading,
+    Success,
+    Error(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,15 +133,57 @@ impl InspectorViewModel {
         database_type: DatabaseType,
         ddl_generator: &dyn DdlGenerator,
     ) -> Self {
+        let table_detail_state = if table.is_some() {
+            TableDetailState::Loaded
+        } else {
+            TableDetailState::NotSelected
+        };
+        Self::build_with_detail_state(
+            profile,
+            selected_tab,
+            table,
+            &table_detail_state,
+            database_type,
+            ddl_generator,
+        )
+    }
+
+    pub fn build_with_detail_state(
+        profile: &EngineFeatureProfile,
+        selected_tab: InspectorTab,
+        table: Option<&Table>,
+        table_detail_state: &TableDetailState,
+        database_type: DatabaseType,
+        ddl_generator: &dyn DdlGenerator,
+    ) -> Self {
         let active_tab = profile.normalize_inspector_tab(selected_tab);
+        let load_state = match table_detail_state {
+            TableDetailState::NotSelected => InspectorLoadState::NoTableSelected,
+            TableDetailState::Loading => InspectorLoadState::Loading,
+            TableDetailState::Loaded => InspectorLoadState::Success,
+            TableDetailState::Error(error) => InspectorLoadState::Error(error.clone()),
+        };
         let Some(table) = table else {
+            let empty_state = matches!(&load_state, InspectorLoadState::NoTableSelected)
+                .then_some(InspectorEmptyState::NoTableSelected);
             return Self {
                 active_tab,
+                load_state,
                 section: None,
-                empty_state: Some(InspectorEmptyState::NoTableSelected),
+                empty_state,
                 unavailable_reason: None,
             };
         };
+
+        if !matches!(&load_state, InspectorLoadState::Success) {
+            return Self {
+                active_tab,
+                load_state,
+                section: None,
+                empty_state: None,
+                unavailable_reason: None,
+            };
+        }
 
         let (section, empty_state, unavailable_reason) = match active_tab {
             InspectorTab::Info => (
@@ -276,6 +328,7 @@ impl InspectorViewModel {
 
         Self {
             active_tab,
+            load_state,
             section: Some(section),
             empty_state,
             unavailable_reason,
@@ -284,6 +337,10 @@ impl InspectorViewModel {
 
     pub fn active_tab(&self) -> InspectorTab {
         self.active_tab
+    }
+
+    pub fn load_state(&self) -> &InspectorLoadState {
+        &self.load_state
     }
 
     pub fn section(&self) -> Option<&InspectorSection> {
@@ -526,6 +583,42 @@ mod tests {
             Some(InspectorEmptyState::NoTableSelected)
         );
         assert_eq!(model.unavailable_reason(), None);
+    }
+
+    #[test]
+    fn loading_detail_exposes_loading_state_without_stale_rows() {
+        let table = table();
+        let model = InspectorViewModel::build_with_detail_state(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            Some(&table),
+            &TableDetailState::Loading,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(model.load_state(), &InspectorLoadState::Loading);
+        assert_eq!(model.section(), None);
+        assert_eq!(model.empty_state(), None);
+    }
+
+    #[test]
+    fn failed_detail_exposes_error_state_without_stale_rows() {
+        let table = table();
+        let model = InspectorViewModel::build_with_detail_state(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            Some(&table),
+            &TableDetailState::Error("permission denied".to_string()),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(
+            model.load_state(),
+            &InspectorLoadState::Error("permission denied".to_string())
+        );
+        assert_eq!(model.section(), None);
     }
 
     #[test]

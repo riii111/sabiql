@@ -9,7 +9,8 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
     InspectorColumnRow, InspectorEmptyState, InspectorForeignKeyRow, InspectorIndexRow,
-    InspectorInfoRow, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
+    InspectorInfoRow, InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow,
+    InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -104,6 +105,34 @@ impl Inspector {
         let block = panel_block(" [2] Inspector ", is_focused, theme);
         let inner = block.inner(area);
         frame.render_widget(block, area);
+
+        match view_model.load_state() {
+            InspectorLoadState::NoTableSelected => {
+                frame.render_widget(
+                    Paragraph::new("(select a table)")
+                        .style(Style::default().fg(theme.semantic.text.placeholder)),
+                    inner,
+                );
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Loading => {
+                frame.render_widget(
+                    Paragraph::new("Loading inspector...")
+                        .style(Style::default().fg(theme.semantic.status.pending)),
+                    inner,
+                );
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Error(error) => {
+                frame.render_widget(
+                    Paragraph::new(format!("Error: {error}"))
+                        .style(Style::default().fg(theme.semantic.status.error)),
+                    inner,
+                );
+                return ViewportPlan::default();
+            }
+            InspectorLoadState::Success => {}
+        }
 
         if let Some(empty_state) = view_model.empty_state() {
             let style = if matches!(empty_state, InspectorEmptyState::NoTableSelected) {

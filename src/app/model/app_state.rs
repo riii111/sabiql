@@ -246,13 +246,24 @@ impl AppState {
     }
 
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
-        InspectorViewModel::build(
-            self.session.active_engine_feature_profile(),
-            self.ui.inspector_tab(),
-            self.session.table_detail(),
-            self.session.active_database_type_or_default(),
-            ddl_generator,
-        )
+        if self.session.active_database_type() == Some(DatabaseType::MySQL) {
+            InspectorViewModel::build_with_detail_state(
+                self.session.active_engine_feature_profile(),
+                self.ui.inspector_tab(),
+                self.session.table_detail(),
+                self.session.table_detail_state(),
+                DatabaseType::MySQL,
+                ddl_generator,
+            )
+        } else {
+            InspectorViewModel::build(
+                self.session.active_engine_feature_profile(),
+                self.ui.inspector_tab(),
+                self.session.table_detail(),
+                self.session.active_database_type_or_default(),
+                ddl_generator,
+            )
+        }
     }
 
     pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
@@ -480,6 +491,7 @@ mod tests {
         ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource,
         QueryValue, Table, TableKind, TableKindInfo,
     };
+    use crate::model::browse::inspector_view_model::{InspectorEmptyState, InspectorLoadState};
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
@@ -488,6 +500,7 @@ mod tests {
     };
     use crate::model::shared::viewport::ViewportPlan;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
+    use crate::services::AppServices;
     use crate::update::action::Action;
     use crate::update::dispatch_metadata;
     use rstest::rstest;
@@ -526,6 +539,27 @@ mod tests {
             name: "users".to_string(),
             ..test_support::table::minimal("", "")
         }
+    }
+
+    #[test]
+    fn non_mysql_inspector_keeps_legacy_no_table_state() {
+        let mut state = make_state();
+        activate_postgres_connection(&mut state, "postgres://localhost/test");
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(
+            view_model.load_state(),
+            &InspectorLoadState::NoTableSelected
+        );
+        assert_eq!(
+            view_model.empty_state(),
+            Some(InspectorEmptyState::NoTableSelected)
+        );
     }
 
     #[test]
