@@ -289,6 +289,7 @@ async fn preserves_empty_result_columns_for_select_show_describe_and_table() {
             for (query, expected_column) in [
                 ("SELECT CONCAT('a', 'b') AS concatenated WHERE FALSE", "concatenated"),
                 ("SELECT CAST(1 AS CHAR) AS cast_value WHERE FALSE", "cast_value"),
+                ("SELECT @sabiql_metadata_value AS read_value WHERE FALSE", "read_value"),
             ] {
                 let result = db
                     .adapter()
@@ -337,7 +338,6 @@ async fn preserves_empty_result_columns_for_select_show_describe_and_table() {
 
             for query in [
                 "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
-                "SELECT @sabiql_metadata_value AS read_value WHERE FALSE",
                 "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
                 "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
             ] {
