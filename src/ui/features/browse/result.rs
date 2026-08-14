@@ -396,17 +396,6 @@ impl ResultPane {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
-    use unicode_width::UnicodeWidthStr;
-
-    calculate_ideal_widths_with(headers, rows.len(), |row_idx, col_idx| {
-        rows.get(row_idx)
-            .and_then(|row| row.get(col_idx))
-            .map(|cell| UnicodeWidthStr::width(cell.lines().next().unwrap_or(cell)))
-    })
-}
-
 fn calculate_result_ideal_widths(result: &QueryResult) -> Vec<u16> {
     calculate_ideal_widths_with(
         &result.columns,
@@ -484,6 +473,15 @@ mod tests {
     use super::*;
     use crate::domain::QueryValue;
     use rstest::rstest;
+    use unicode_width::UnicodeWidthStr;
+
+    fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
+        calculate_ideal_widths_with(headers, rows.len(), |row_idx, col_idx| {
+            rows.get(row_idx)
+                .and_then(|row| row.get(col_idx))
+                .map(|cell| UnicodeWidthStr::width(cell.lines().next().unwrap_or(cell)))
+        })
+    }
 
     mod calculate_ideal_widths_tests {
         use super::*;

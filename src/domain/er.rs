@@ -134,24 +134,6 @@ pub fn fk_reachable_tables(
         .collect()
 }
 
-#[cfg(test)]
-fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
-    ErTableInfo {
-        qualified_name: format!("{schema}.{name}"),
-        name: name.to_string(),
-        schema: schema.to_string(),
-        foreign_keys: fks
-            .into_iter()
-            .enumerate()
-            .map(|(i, (from, to))| ErFkInfo {
-                name: format!("fk_{i}"),
-                from_qualified: from.to_string(),
-                to_qualified: to.to_string(),
-            })
-            .collect(),
-    }
-}
-
 impl ErTableInfo {
     pub fn from_table(qualified_name: &str, table: &Table) -> Self {
         Self {
@@ -175,6 +157,23 @@ impl ErTableInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
+        ErTableInfo {
+            qualified_name: format!("{schema}.{name}"),
+            name: name.to_string(),
+            schema: schema.to_string(),
+            foreign_keys: fks
+                .into_iter()
+                .enumerate()
+                .map(|(i, (from, to))| ErFkInfo {
+                    name: format!("fk_{i}"),
+                    from_qualified: from.to_string(),
+                    to_qualified: to.to_string(),
+                })
+                .collect(),
+        }
+    }
 
     mod from_table {
         use super::*;

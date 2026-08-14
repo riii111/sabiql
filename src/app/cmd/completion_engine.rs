@@ -1218,20 +1218,19 @@ impl CompletionEngine {
 }
 
 #[cfg(test)]
-impl CompletionEngine {
-    fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
-        let tokens = self.lexer.tokenize(content, cursor_pos);
-        let sql_context = SqlContext::default();
-        self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use crate::test_support;
 
     use super::*;
     pub use crate::domain::Column;
+
+    impl CompletionEngine {
+        fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
+            let tokens = self.lexer.tokenize(content, cursor_pos);
+            let sql_context = SqlContext::default();
+            self.analyze_with_context(content, cursor_pos, &sql_context, &tokens)
+        }
+    }
 
     fn engine() -> CompletionEngine {
         CompletionEngine::new()
