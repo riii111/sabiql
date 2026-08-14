@@ -48,7 +48,8 @@ pub struct SqlContext {
 enum LexerState {
     Normal,
     InSingleQuote,
-    InDoubleQuote,
+    InDoubleQuoteIdentifier,
+    InDoubleQuoteString,
     InBacktickIdentifier,
     InDollarQuote,
     InLineComment,
@@ -380,10 +381,14 @@ impl SqlLexer {
                         continue;
                     }
 
-                    // Double-quoted identifier: "..."
+                    // MySQL treats double quotes as strings; PostgreSQL treats them as identifiers.
                     if c == '"' {
                         token_start = pos;
-                        state = LexerState::InDoubleQuote;
+                        state = if self.is_mysql() {
+                            LexerState::InDoubleQuoteString
+                        } else {
+                            LexerState::InDoubleQuoteIdentifier
+                        };
                         pos += 1;
                         continue;
                     }
@@ -504,7 +509,7 @@ impl SqlLexer {
                     pos += 1;
                 }
 
-                LexerState::InDoubleQuote => {
+                LexerState::InDoubleQuoteIdentifier => {
                     // Handle escaped double quotes: ""
                     if c == '"' {
                         if pos + 1 < end_pos && chars[pos + 1] == '"' {
@@ -516,6 +521,26 @@ impl SqlLexer {
                         tokens.push(Token {
                             kind: TokenKind::Identifier(text.clone()),
                             text,
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InDoubleQuoteString => {
+                    // Handle escaped double quotes: ""
+                    if c == '"' {
+                        if pos + 1 < end_pos && chars[pos + 1] == '"' {
+                            pos += 2;
+                            continue;
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::StringLiteral,
+                            text: chars[token_start..=pos].iter().collect(),
                             start: token_start,
                             end: pos + 1,
                         });
@@ -635,9 +660,10 @@ impl SqlLexer {
             let text: String = chars[token_start..end_pos].iter().collect();
             let kind = match state {
                 LexerState::InSingleQuote
+                | LexerState::InDoubleQuoteString
                 | LexerState::InDollarQuote
                 | LexerState::InEscapeString => TokenKind::StringLiteral,
-                LexerState::InDoubleQuote => TokenKind::Identifier(text.clone()),
+                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(text.clone()),
                 LexerState::InBacktickIdentifier => {
                     TokenKind::BacktickIdentifier(text[1..].to_string())
                 }
@@ -1533,6 +1559,22 @@ mod tests {
             assert!(l.is_in_string_or_comment("SELECT `a``", 11));
             assert!(l.is_in_string_or_comment("SELECT `a``b`", 10));
             assert!(!l.is_in_string_or_comment("SELECT `SEL`", 12));
+        }
+
+        #[test]
+        fn double_quoted_mysql_string_is_not_an_identifier_context() {
+            let l = mysql_lexer();
+            let sql = r#"SELECT "users.""#;
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::StringLiteral if token.text == r#""users.""#
+                )
+            }));
+            assert!(l.is_in_string_or_comment(sql, sql.chars().count()));
+            assert!(!l.is_in_string_or_comment(r#"SELECT "users." FROM "#, 20));
         }
 
         #[test]
