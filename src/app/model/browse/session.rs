@@ -196,6 +196,18 @@ impl BrowseSession {
         }
     }
 
+    pub fn mark_table_detail_probe_failed(&mut self, error: String) -> bool {
+        if self.selected_table_key.is_some()
+            && self.table_detail.is_none()
+            && self.table_detail_state == TableDetailState::Loading
+        {
+            self.table_detail_state = TableDetailState::Error(error);
+            true
+        } else {
+            false
+        }
+    }
+
     // ── Connection lifecycle ─────────────────────────────────────────
 
     pub fn mark_connecting(&mut self) {
