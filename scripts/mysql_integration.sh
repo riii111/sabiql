@@ -15,11 +15,37 @@ readonly mysql_port="${SABIQL_MYSQL_TEST_PORT:-3306}"
 readonly mysql_database="${SABIQL_MYSQL_TEST_DATABASE:-sabiql_test}"
 readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
+readonly mysql_client_label_key='com.sabiql.mysql.integration'
 
 mysql_option_file=''
 mysql_bin_dir=''
+mysql_client_label=''
+
+create_client_container_label() {
+    local label_file
+    label_file="$(mktemp "$temp_dir/mysql-client-label.XXXXXX")"
+    printf '%s=run-%s\n' "$mysql_client_label_key" "$(basename "$label_file")"
+}
+
+cleanup_client_containers() {
+    if [[ -z "$mysql_client_label" ]]; then
+        return
+    fi
+
+    local container_id
+    while IFS= read -r container_id; do
+        if [[ -n "$container_id" ]]; then
+            docker rm --force "$container_id" >/dev/null 2>&1 || true
+        fi
+    done < <(
+        docker ps --all --quiet --filter "label=$mysql_client_label" 2>/dev/null || true
+    )
+}
 
 cleanup() {
+    local status="$1"
+
+    cleanup_client_containers
     if [[ -n "$mysql_option_file" ]]; then
         rm -f -- "$mysql_option_file"
     fi
@@ -28,9 +54,21 @@ cleanup() {
     fi
     rm -rf -- "$temp_dir"
     docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
+    return "$status"
 }
 
-trap cleanup EXIT
+handle_signal() {
+    local status="$1"
+
+    trap - EXIT HUP INT TERM
+    cleanup "$status"
+    exit "$status"
+}
+
+trap 'cleanup "$?"' EXIT
+trap 'handle_signal 129' HUP
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
 
 quote_option_value() {
     local value="$1"
@@ -137,6 +175,8 @@ case "${1:-test}" in
     test)
         mkdir -p -- "$temp_dir"
         export TMPDIR="$temp_dir"
+        mysql_client_label="$(create_client_container_label)"
+        export SABIQL_MYSQL_CONTAINER_LABEL="$mysql_client_label"
         docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
         create_tls_material
         docker compose --file "$compose_file" --file "$tls_compose_file" up --detach --wait mysql

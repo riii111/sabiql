@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 lints=(
   "$SCRIPT_DIR/lint_test_names.sh"
   "$SCRIPT_DIR/test_lint_test_names.sh"
+  "$SCRIPT_DIR/test_mysql_docker_cleanup.sh"
   "$SCRIPT_DIR/test_nix_dev_env.sh"
 )
 

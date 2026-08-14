@@ -22,6 +22,9 @@ if [[ -n "${SABIQL_MYSQL_TEST_TLS_DIR:-}" ]]; then
 fi
 
 docker_args=(--rm --interactive)
+if [[ -n "${SABIQL_MYSQL_CONTAINER_LABEL:-}" ]]; then
+    docker_args+=(--label "$SABIQL_MYSQL_CONTAINER_LABEL")
+fi
 if [[ -t 0 && -t 1 ]]; then
     docker_args+=(--tty)
 fi
