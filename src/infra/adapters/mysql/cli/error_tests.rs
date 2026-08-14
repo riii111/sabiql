@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod error_tests {
-    use super::*;
+    use super::super::*;
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 
     #[test]

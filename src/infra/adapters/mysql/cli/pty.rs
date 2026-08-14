@@ -1,13 +1,26 @@
-#[cfg(unix)]
-struct MysqlPty {
-    input: TokioFile,
-    output: TokioFile,
-    pending: Vec<u8>,
-    frame_scanner: MysqlResultsetFrameScanner,
+use std::io;
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use tokio::fs::File as TokioFile;
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+
+use crate::app::ports::outbound::DbOperationError;
+
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error};
+use super::xml::{
+    MysqlResultsetFrameScanner, find_bytes, take_mysql_pty_resultset_frame, trace_mysql_frame,
+};
+
+pub(super) struct MysqlPty {
+    pub(super) input: TokioFile,
+    pub(super) output: TokioFile,
+    pub(super) pending: Vec<u8>,
+    pub(super) frame_scanner: MysqlResultsetFrameScanner,
 }
 
-#[cfg(unix)]
-fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
+pub(super) fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
     let mut master = -1;
     let mut slave = -1;
     let result = unsafe {
@@ -36,8 +49,9 @@ fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
     Ok((master_file, slave_file))
 }
 
-#[cfg(unix)]
-async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperationError> {
+pub(super) async fn read_one_pty_resultset(
+    pty: &mut MysqlPty,
+) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
         if let Some(frame) =
@@ -67,8 +81,7 @@ async fn read_one_pty_resultset(pty: &mut MysqlPty) -> Result<Vec<u8>, DbOperati
     }
 }
 
-#[cfg(unix)]
-async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+pub(super) async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     let mut output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
     let mut chunk = [0; 4096];
@@ -84,15 +97,13 @@ async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     }
 }
 
-#[cfg(unix)]
-struct MysqlExportPtySource<'a> {
-    pty: &'a mut MysqlPty,
-    error_output: Vec<u8>,
-    pending: Vec<u8>,
-    started: bool,
+pub(super) struct MysqlExportPtySource<'a> {
+    pub(super) pty: &'a mut MysqlPty,
+    pub(super) error_output: Vec<u8>,
+    pub(super) pending: Vec<u8>,
+    pub(super) started: bool,
 }
 
-#[cfg(unix)]
 impl MysqlExportPtySource<'_> {
     fn capture_error(&mut self, bytes: &[u8]) {
         if self.error_output.is_empty() && has_mysql_cli_error(bytes) {
@@ -114,7 +125,6 @@ impl MysqlExportPtySource<'_> {
     }
 }
 
-#[cfg(unix)]
 impl AsyncRead for MysqlExportPtySource<'_> {
     fn poll_read(
         self: Pin<&mut Self>,

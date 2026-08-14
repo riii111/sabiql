@@ -1,9 +1,57 @@
+use std::ffi::OsStr;
+use std::io;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::time::Duration;
+
+use serde::Deserialize;
+use tokio::process::Command;
+use tokio::time::timeout;
+
+use crate::app::ports::outbound::{
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+};
+
+const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
+const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
+
 #[derive(Debug, Deserialize)]
-pub(super) struct MySqlProbeResponse {
-    pub(super) database: Option<String>,
-    pub(super) user: String,
-    pub(super) version: String,
-    pub(super) sql_mode: String,
+struct MySqlProbeResponse {
+    database: Option<String>,
+    user: String,
+    version: String,
+    sql_mode: String,
+}
+
+pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
+    let output = run_mysql_command(["--version"], None).await?;
+    let version_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
+        return Err(DbOperationError::UnsupportedOperation(format!(
+            "{MYSQL_CLI_VERSION_REQUIRED_MARKER}: {}",
+            version_output.trim()
+        )));
+    }
+    Ok(())
+}
+
+pub(in crate::adapters::mysql) async fn probe_mysql_server(
+    option_file: &PathBuf,
+) -> Result<(), DbOperationError> {
+    let output = run_mysql_command(mysql_probe_args(option_file), Some(option_file)).await?;
+    if !output.status.success() {
+        return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
+    }
+
+    let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
+    let _ = (&response.database, &response.user);
+    validate_server_version(&response.version)?;
+    validate_sql_mode(&response.sql_mode)
 }
 
 fn contains_unsupported_mysql_product(value: &str) -> bool {
@@ -13,18 +61,18 @@ fn contains_unsupported_mysql_product(value: &str) -> bool {
         .any(|product| lower.contains(product))
 }
 
-pub(super) fn is_oracle_mysql_cli_84_version(value: &str) -> bool {
+fn is_oracle_mysql_cli_84_version(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.contains("mysql")
         && !contains_unsupported_mysql_product(value)
         && version_major_minor(value) == Some((8, 4))
 }
 
-pub(super) fn is_oracle_mysql_server_84_version(value: &str) -> bool {
+fn is_oracle_mysql_server_84_version(value: &str) -> bool {
     !contains_unsupported_mysql_product(value) && version_major_minor(value) == Some((8, 4))
 }
 
-pub(super) fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
+fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
     if is_oracle_mysql_server_84_version(version) {
         Ok(())
     } else {
@@ -56,7 +104,7 @@ fn version_major_minor(value: &str) -> Option<(u32, u32)> {
     Some((numbers.next()?, numbers.next()?))
 }
 
-pub(super) fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
+fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
@@ -105,7 +153,7 @@ where
     }
 }
 
-pub(super) fn clean_stderr(stderr: &[u8]) -> String {
+fn clean_stderr(stderr: &[u8]) -> String {
     let text = String::from_utf8_lossy(stderr).trim().to_string();
     if text.is_empty() {
         "mysql probe failed".to_string()
@@ -114,7 +162,7 @@ pub(super) fn clean_stderr(stderr: &[u8]) -> String {
     }
 }
 
-pub(super) fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
+fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
     if is_mysql_connect_timeout_message(&stderr) {
         DbOperationError::Timeout(stderr)
     } else {
@@ -122,7 +170,7 @@ pub(super) fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
     }
 }
 
-fn is_mysql_connect_timeout_message(value: &str) -> bool {
+pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.contains("can't connect to mysql server")
         && (lower.contains("(110)") || lower.contains("(10060)"))

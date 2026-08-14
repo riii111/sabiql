@@ -1,15 +1,25 @@
-#[cfg(not(unix))]
-struct MysqlExportPipeSource<'a, O, E> {
-    stdout: &'a mut O,
-    stderr: &'a mut E,
-    pending: &'a mut Vec<u8>,
-    error_output: Vec<u8>,
-    stderr_buffer: [u8; 4096],
-    stderr_closed: bool,
-    stdout_closed: bool,
+use std::io;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+
+use crate::app::ports::outbound::DbOperationError;
+
+use super::xml::{
+    MysqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check, trace_mysql_frame,
+};
+
+pub(super) struct MysqlExportPipeSource<'a, O, E> {
+    pub(super) stdout: &'a mut O,
+    pub(super) stderr: &'a mut E,
+    pub(super) pending: &'a mut Vec<u8>,
+    pub(super) error_output: Vec<u8>,
+    pub(super) stderr_buffer: [u8; 4096],
+    pub(super) stderr_closed: bool,
+    pub(super) stdout_closed: bool,
 }
 
-#[cfg(not(unix))]
 impl<O, E> MysqlExportPipeSource<'_, O, E>
 where
     O: AsyncRead + Unpin,
@@ -50,7 +60,6 @@ where
     }
 }
 
-#[cfg(not(unix))]
 impl<O, E> AsyncRead for MysqlExportPipeSource<'_, O, E>
 where
     O: AsyncRead + Unpin,
@@ -100,8 +109,7 @@ where
     }
 }
 
-#[cfg(not(unix))]
-async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
+pub(super) async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {
@@ -110,8 +118,7 @@ where
     Ok(output)
 }
 
-#[cfg(not(unix))]
-async fn read_one_mysql_resultset_from_pipes<R, E>(
+pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     reader: &mut R,
     stderr: &mut E,
     pending: &mut Vec<u8>,
@@ -180,3 +187,7 @@ where
         }
     }
 }
+
+#[cfg(test)]
+#[path = "pipe_tests.rs"]
+mod tests;

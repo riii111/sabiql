@@ -1,14 +1,26 @@
+use quick_xml::Reader;
+use quick_xml::escape::unescape;
+use quick_xml::events::{BytesRef, Event};
+
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::QueryValue;
+
+use super::error::{
+    classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error,
+    write_mysql_transcript_line,
+};
+
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct MysqlResultSet {
-    pub(super) columns: Vec<String>,
-    pub(super) values: Vec<Vec<QueryValue>>,
+pub(in crate::adapters::mysql) struct MysqlResultSet {
+    pub(in crate::adapters::mysql) columns: Vec<String>,
+    pub(in crate::adapters::mysql) values: Vec<Vec<QueryValue>>,
 }
 const MYSQL_RESULTSET_START: &[u8] = b"<resultset";
 
 const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
 
 #[derive(Debug, Default)]
-struct MysqlResultsetFrameScanner {
+pub(super) struct MysqlResultsetFrameScanner {
     resultset_start: Option<usize>,
     resultset_end: Option<usize>,
     resultset_start_cursor: usize,
@@ -16,7 +28,7 @@ struct MysqlResultsetFrameScanner {
 }
 
 impl MysqlResultsetFrameScanner {
-    fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
+    pub(super) fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
         if self.resultset_start_cursor > buffer.len() {
             self.resultset_start_cursor = 0;
         }
@@ -77,13 +89,13 @@ impl MysqlResultsetFrameScanner {
     }
 
     #[cfg(unix)]
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         *self = Self::default();
     }
 }
 
 #[cfg(any(unix, test))]
-fn take_mysql_pty_resultset_frame(
+pub(super) fn take_mysql_pty_resultset_frame(
     buffer: &mut Vec<u8>,
     scanner: &mut MysqlResultsetFrameScanner,
 ) -> Result<Option<Vec<u8>>, DbOperationError> {
@@ -97,7 +109,7 @@ fn take_mysql_pty_resultset_frame(
 }
 
 #[cfg(any(not(unix), test))]
-fn take_mysql_resultset_frame_after_error_check(
+pub(super) fn take_mysql_resultset_frame_after_error_check(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
     scanner: &mut MysqlResultsetFrameScanner,
@@ -110,7 +122,7 @@ fn take_mysql_resultset_frame_after_error_check(
 }
 
 #[cfg(unix)]
-fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+pub(super) fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     find_bytes_from(haystack, needle, 0)
 }
 
@@ -122,13 +134,15 @@ fn find_bytes_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize
         .map(|offset| start + offset)
 }
 
-fn trace_mysql_frame(kind: &str, bytes: usize) {
+pub(super) fn trace_mysql_frame(kind: &str, bytes: usize) {
     if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() {
         write_mysql_transcript_line(&format!("sabiql mysql frame: {kind}, bytes={bytes}"));
     }
 }
 
-fn decode_mysql_xml_reference(reference: &BytesRef<'_>) -> Result<String, DbOperationError> {
+pub(super) fn decode_mysql_xml_reference(
+    reference: &BytesRef<'_>,
+) -> Result<String, DbOperationError> {
     let reference = reference.decode().map_err(|error| {
         DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
     })?;
@@ -137,7 +151,7 @@ fn decode_mysql_xml_reference(reference: &BytesRef<'_>) -> Result<String, DbOper
         .map_err(|error| DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}")))
 }
 
-fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
+pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
     let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -293,9 +307,9 @@ fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
     })
 }
 
-struct MysqlField {
+pub(super) struct MysqlField {
     name: String,
-    value: String,
+    pub(super) value: String,
     is_null: bool,
 }
 
@@ -309,7 +323,7 @@ impl MysqlField {
         (self.name, value)
     }
 
-    fn finish_raw(self) -> (String, String) {
+    pub(super) fn finish_raw(self) -> (String, String) {
         let value = if self.is_null {
             String::new()
         } else {
@@ -319,7 +333,7 @@ impl MysqlField {
     }
 }
 
-fn parse_mysql_field(
+pub(super) fn parse_mysql_field(
     element: &quick_xml::events::BytesStart<'_>,
 ) -> Result<MysqlField, DbOperationError> {
     let mut name = None;
@@ -345,3 +359,7 @@ fn parse_mysql_field(
         is_null,
     })
 }
+
+#[cfg(test)]
+#[path = "xml_tests.rs"]
+mod tests;
