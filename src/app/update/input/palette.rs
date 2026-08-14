@@ -206,4 +206,20 @@ mod tests {
                 .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::SqliteDiagnostics)))
         );
     }
+
+    #[test]
+    fn database_picker_palette_command_is_mysql_only() {
+        for (profile, expected_visible) in [
+            (EngineFeatureProfile::postgres_like(), false),
+            (EngineFeatureProfile::sqlite_like(), false),
+            (EngineFeatureProfile::mysql_like(), true),
+        ] {
+            let commands = palette_commands(KeymapPreset::Default, &profile).collect::<Vec<_>>();
+            let visible = commands
+                .iter()
+                .any(|kb| matches!(kb.action, Action::OpenModal(ModalKind::DatabasePicker)));
+
+            assert_eq!(visible, expected_visible);
+        }
+    }
 }

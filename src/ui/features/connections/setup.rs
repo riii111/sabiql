@@ -10,8 +10,7 @@ use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
 use crate::domain::connection::{
-    ConnectionConfig, ConnectionId, ConnectionProfile, DatabaseType, MySqlConnectionConfig,
-    MySqlSslMode, PostgresConnectionConfig, SslMode,
+    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, SslMode,
 };
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -495,39 +494,12 @@ fn focused_placeholder_spans(
 }
 
 fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
-    let port = state
+    state
         .field_value(ConnectionField::Port)
         .trim()
-        .parse()
-        .unwrap_or_else(|_| {
-            if state.database_type() == DatabaseType::MySQL {
-                3306
-            } else {
-                5432
-            }
-        });
-    let config = match state.database_type() {
-        DatabaseType::MySQL => ConnectionConfig::MySQL(MySqlConnectionConfig::new(
-            state.field_value(ConnectionField::Host).trim(),
-            port,
-            match state.field_value(ConnectionField::Database).trim() {
-                "" => None,
-                database => Some(database.to_string()),
-            },
-            state.field_value(ConnectionField::User).trim(),
-            state.field_value(ConnectionField::Password),
-            state.mysql_ssl_mode(),
-        )),
-        DatabaseType::PostgreSQL => ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
-            state.field_value(ConnectionField::Host).trim(),
-            port,
-            state.field_value(ConnectionField::Database).trim(),
-            state.field_value(ConnectionField::User).trim(),
-            state.field_value(ConnectionField::Password),
-            state.ssl_mode(),
-        )),
-        DatabaseType::SQLite => unreachable!("SQLite has no DSN preview"),
-    };
+        .parse::<u16>()
+        .ok()?;
+    let config = state.to_connection_config().ok()?;
     ConnectionProfile::with_id_and_config(ConnectionId::from_string("preview"), "preview", config)
         .ok()
 }
@@ -590,6 +562,7 @@ fn preview_prefix(prefix: &'static str, width: usize) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::model::shared::settings::KeymapPreset;
+    use crate::domain::connection::ConnectionConfig;
 
     fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
         while state.focused_field() != field {
@@ -686,6 +659,53 @@ mod tests {
             .set_content("db example".to_string());
 
         assert!(preview_profile(&form_state).is_none());
+    }
+
+    #[test]
+    fn invalid_port_does_not_panic_during_preview() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state
+            .input_mut(ConnectionField::Port)
+            .unwrap()
+            .set_content("invalid".to_string());
+
+        assert!(preview_profile(&form_state).is_none());
+    }
+
+    #[test]
+    fn mysql_preview_profile_includes_saved_tls_paths() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state.set_database_type(DatabaseType::MySQL);
+        while form_state.focused_field() != ConnectionField::SslMode {
+            form_state.focus_next_field();
+        }
+        form_state.toggle_focused_dropdown();
+        for _ in 0..4 {
+            form_state.dropdown_next();
+        }
+        form_state.confirm_dropdown();
+        form_state
+            .input_mut(ConnectionField::SslCa)
+            .unwrap()
+            .set_content("/etc/mysql/ca.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("/etc/mysql/client.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("/etc/mysql/client-key.pem".to_string());
+
+        let profile = preview_profile(&form_state).unwrap();
+
+        let ConnectionConfig::MySQL(config) = profile.config else {
+            panic!("preview profile must be MySQL");
+        };
+        assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
+        assert_eq!(config.ssl_ca.as_deref(), Some("/etc/mysql/ca.pem"));
+        assert_eq!(config.ssl_cert.as_deref(), Some("/etc/mysql/client.pem"));
+        assert_eq!(config.ssl_key.as_deref(), Some("/etc/mysql/client-key.pem"));
     }
 
     #[test]
