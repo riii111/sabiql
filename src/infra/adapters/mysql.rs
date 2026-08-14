@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -2138,7 +2139,6 @@ async fn run_mysql_adhoc_process(
     for statement in statements {
         let marker = Uuid::new_v4().simple().to_string();
         let statement_scope = mysql_refresh_scope(&statement.kind);
-        refresh_scope = refresh_scope.merge(statement_scope);
         if let Err(error) = write_mysql_statement(process, &statement.sql).await {
             return Err(query_failed_after_change(error, refresh_scope));
         }
@@ -2181,6 +2181,7 @@ async fn run_mysql_adhoc_process(
             target: statement.target.clone(),
             tag,
         });
+        refresh_scope = refresh_scope.merge(statement_scope);
     }
 
     #[cfg(not(unix))]
@@ -2286,7 +2287,7 @@ fn query_failed_after_change(
         error
     } else {
         DbOperationError::QueryFailedAfterChange {
-            details: error.masked_details(),
+            source: Arc::new(error),
             refresh_scope,
         }
     }
@@ -2871,6 +2872,10 @@ fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
         DbOperationError::ConnectionLost(details)
     } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
         DbOperationError::LockTimeout(details)
+    } else if matches!(error_code, Some(1215 | 1216 | 1217 | 1451 | 1452))
+        || lower.contains("foreign key constraint")
+    {
+        DbOperationError::ForeignKeyViolation(details)
     } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
         DbOperationError::ObjectMissing(details)
     } else if lower.contains("duplicate entry") {
@@ -4163,6 +4168,12 @@ line2]]></field>
             classify_mysql_query_failure(b"ERROR 1205 (HY000): Lock wait timeout exceeded"),
             DbOperationError::LockTimeout(_)
         ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails"
+            ),
+            DbOperationError::ForeignKeyViolation(_)
+        ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
     }
@@ -4188,6 +4199,19 @@ mod executor_tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn failure_before_a_change_keeps_original_error() {
+        let error = query_failed_after_change(
+            DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
+            RefreshScope::None,
+        );
+
+        assert!(matches!(
+            error,
+            DbOperationError::ForeignKeyViolation(details) if details == "foreign key failed"
+        ));
+    }
 
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
@@ -4710,9 +4734,10 @@ done
         assert!(matches!(
             result,
             Err(DbOperationError::QueryFailedAfterChange {
+                source,
                 refresh_scope: RefreshScope::Data,
                 ..
-            })
+            }) if matches!(&*source, DbOperationError::QueryFailed(_))
         ));
     }
 
