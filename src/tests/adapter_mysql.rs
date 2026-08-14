@@ -12,6 +12,7 @@ use sabiql_domain::{
     CommandTag, DatabaseType, FkAction, IndexType, QueryValue, RefreshScope, TableKind,
     TriggerEvent, TriggerTiming,
 };
+use std::time::Duration;
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
 use sabiql_domain::connection::{
@@ -83,7 +84,7 @@ async fn connects_to_oracle_mysql_84_fixture() {
 #[tokio::test]
 #[cfg(unix)]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-async fn mysql_cli_does_not_execute_shell_commands() {
+async fn batch_mysql_cli_does_not_execute_shell_commands() {
     with_mysql_test_db(|db| {
         Box::pin(async move {
             let marker = NamedTempFile::new().map_err(|error| error.to_string())?;
@@ -236,6 +237,57 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 .map_err(|error| format!("empty CTE SELECT failed: {error:?}"))?;
             if cte.columns != ["first_alias"] || !cte.values().is_empty() {
                 return Err(format!("unexpected empty CTE result: {cte:?}"));
+            }
+
+            let non_evaluated = tokio::time::timeout(
+                Duration::from_secs(2),
+                db.adapter().execute_adhoc(
+                    db.dsn(),
+                    "SELECT SLEEP(5) AS sleep_value WHERE FALSE",
+                    AccessMode::ReadWrite,
+                ),
+            )
+            .await
+            .map_err(|_| "empty SELECT metadata fallback evaluated SLEEP".to_string())?
+            .map_err(|error| format!("empty SELECT non-evaluation proof failed: {error:?}"))?;
+            if non_evaluated.columns != ["sleep_value"] || !non_evaluated.values().is_empty() {
+                return Err(format!(
+                    "unexpected non-evaluation proof result: {non_evaluated:?}"
+                ));
+            }
+
+            let duplicate_aliases = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await;
+            if !matches!(
+                duplicate_aliases,
+                Err(DbOperationError::UnsupportedOperation(ref details))
+                    if details.contains("duplicate column names")
+            ) {
+                return Err(format!(
+                    "duplicate aliases were not rejected safely: {duplicate_aliases:?}"
+                ));
+            }
+
+            for query in [
+                "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
+                "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
+                "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
+            ] {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), query, AccessMode::ReadWrite)
+                    .await;
+                if !matches!(result, Err(DbOperationError::UnsupportedOperation(_))) {
+                    return Err(format!(
+                        "unsafe empty SELECT was not rejected: {query}: {result:?}"
+                    ));
+                }
             }
 
             let show = db

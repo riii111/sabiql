@@ -1420,20 +1420,16 @@ impl MysqlProcess {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_query_args(option_file))
-    }
-
-    fn spawn_with_args(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
         #[cfg(unix)]
         {
-            Self::spawn_with_pty(program, args)
+            Self::spawn_with_pty(program, option_file)
         }
 
         #[cfg(not(unix))]
         {
             let mut command = Command::new(program);
             command
-                .args(args)
+                .args(mysql_query_args(option_file))
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -1472,13 +1468,16 @@ impl MysqlProcess {
     }
 
     #[cfg(unix)]
-    fn spawn_with_pty(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
+    fn spawn_with_pty(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
         let (master, slave) = create_mysql_pty().map_err(|error| {
             DbOperationError::ConnectionFailed(format!("Unable to create MySQL PTY: {error}"))
         })?;
         let mut command = Command::new(program);
         command
-            .args(args)
+            .args(mysql_query_args(option_file))
             .stdin(Stdio::from(slave.try_clone().map_err(|error| {
                 DbOperationError::ConnectionFailed(error.to_string())
             })?))
@@ -3170,7 +3169,19 @@ async fn mysql_metadata_select_columns(
     let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
     let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
     write_mysql_statement(process, &query).await?;
-    let xml = read_one_mysql_resultset(process).await?;
+    let xml = match read_one_mysql_resultset(process).await {
+        Err(DbOperationError::QueryFailed(details))
+            if details
+                .to_ascii_lowercase()
+                .contains("duplicate column name") =>
+        {
+            return Err(DbOperationError::UnsupportedOperation(
+                "MySQL SELECT metadata fallback does not support duplicate column names"
+                    .to_string(),
+            ));
+        }
+        result => result?,
+    };
     let result = parse_mysql_xml(&xml)?;
     let row = result.values.first().ok_or_else(|| {
         DbOperationError::QueryFailed(
@@ -4811,9 +4822,6 @@ while IFS= read -r line; do
       ;;
     *UPDATE*)
       {update_response}
-      ;;
-    *SHOW\ CREATE*)
-      printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
