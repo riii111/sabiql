@@ -1,23 +1,12 @@
-use super::super::parser::lexer::{
+use super::super::sqlite3::{
     is_create_view_prefix, is_create_virtual_table_prefix, virtual_table_module_name,
 };
 use crate::domain::{TableKind, TableKindInfo};
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub(super) struct RawTableKindInfo {
-    #[serde(rename = "type", default)]
-    r#type: String,
-    #[serde(default)]
-    wr: i64,
-    #[serde(default)]
-    strict: i64,
-    sql: Option<String>,
-}
+use super::super::sqlite3::metadata::RawTableKindInfo;
 
-impl RawTableKindInfo {
-    pub(super) fn into_table_kind_info(self) -> TableKindInfo {
-        table_kind_info_from_pragma(&self.r#type, self.wr, self.strict, self.sql.as_deref())
-    }
+pub(super) fn table_kind_info_from_raw(raw: &RawTableKindInfo) -> TableKindInfo {
+    table_kind_info_from_pragma(&raw.r#type, raw.wr, raw.strict, raw.sql.as_deref())
 }
 
 pub(super) fn table_kind_info_from_pragma(
@@ -72,6 +61,13 @@ fn parse_table_tail_options(sql: &str) -> (bool, bool) {
         return parse_option_tokens(&upper);
     };
     parse_option_tokens(&upper[paren_end + 1..])
+}
+
+fn normalize_ddl_whitespace(sql: &str) -> String {
+    strip_sql_comments(sql)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn strip_sql_comments(sql: &str) -> String {
@@ -133,13 +129,6 @@ fn strip_sql_comments(sql: &str) -> String {
         }
     }
     out
-}
-
-fn normalize_ddl_whitespace(sql: &str) -> String {
-    strip_sql_comments(sql)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn parse_option_tokens(tail: &str) -> (bool, bool) {
