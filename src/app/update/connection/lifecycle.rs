@@ -274,6 +274,19 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             let message = error.user_message();
+            let table_detail_retry = if state.session.dsn_matches(&target.dsn) {
+                None
+            } else {
+                state.session.retry_table_detail_after_probe_failure().map(
+                    |(dsn, generation, run_id)| Effect::FetchTableDetail {
+                        dsn,
+                        schema: state.query.pagination.schema().to_string(),
+                        table: state.query.pagination.table().to_string(),
+                        generation,
+                        run_id,
+                    },
+                )
+            };
             if state.session.dsn_matches(&target.dsn) {
                 state
                     .session
@@ -284,7 +297,7 @@ pub fn reduce_connection_lifecycle(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
             );
             state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::handled()
+            DispatchResult::handled_with(table_detail_retry.into_iter().collect())
         }
 
         _ => DispatchResult::pass(),
@@ -314,7 +327,6 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
-    use crate::update::action::TableTarget;
     use crate::update::reducer::reduce as reduce_app;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -1130,14 +1142,15 @@ mod tests {
                 })
                 .unwrap();
 
-            reduce(
+            let retry_effects = reduce(
                 &mut state,
                 &Action::ConnectionProbeFailed {
                     target: second,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
-            );
+            )
+            .unwrap();
 
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
@@ -1148,30 +1161,27 @@ mod tests {
             );
             assert_eq!(state.session.selection_generation(), generation);
             assert!(!state.session.is_current_table_detail_run(detail_run_id));
-
-            let retry_effects = reduce_app(
-                &mut state,
-                Action::LoadTableDetail(TableTarget {
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    generation,
-                }),
-                std::time::Instant::now(),
-                &AppServices::stub(),
-            );
-            assert!(retry_effects.iter().any(|effect| matches!(
-                effect,
-                Effect::FetchTableDetail {
-                    dsn,
-                    schema,
-                    table,
-                    generation: effect_generation,
-                    ..
-                } if dsn == &first.dsn
-                    && schema == "public"
-                    && table == "users"
-                    && *effect_generation == generation
-            )));
+            let retry_run_id = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchTableDetail {
+                        dsn,
+                        schema,
+                        table,
+                        generation: effect_generation,
+                        run_id,
+                    } if dsn == &first.dsn
+                        && schema == "public"
+                        && table == "users"
+                        && *effect_generation == generation =>
+                    {
+                        Some(*run_id)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_ne!(retry_run_id, detail_run_id);
+            assert!(state.session.is_current_table_detail_run(retry_run_id));
         }
 
         #[test]

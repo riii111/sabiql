@@ -227,6 +227,25 @@ impl BrowseSession {
         }
     }
 
+    pub fn retry_table_detail_after_probe_failure(&mut self) -> Option<(String, u64, u64)> {
+        let pending = self.pending_connection_probe.as_ref()?;
+        let dsn = pending.table_detail_dsn.clone()?;
+        let generation = pending.table_detail_generation;
+        let run_id = pending.table_detail_run_id?;
+        if run_id != self.table_detail_run.last_id()
+            || generation != self.selection_generation
+            || !self.dsn_matches(&dsn)
+            || self.selected_table_key.is_none()
+            || self.table_detail.is_some()
+            || self.table_detail_state != TableDetailState::Loading
+        {
+            return None;
+        }
+
+        let retry_run_id = self.begin_table_detail_run();
+        Some((dsn, generation, retry_run_id))
+    }
+
     // ── Connection lifecycle ─────────────────────────────────────────
 
     pub fn mark_connecting(&mut self) {
