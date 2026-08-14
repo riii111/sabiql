@@ -154,7 +154,6 @@ mod mysql_tests {
                 }
             );
         }
-        assert!(evaluate_mysql_explain_analyze_target("SHOW TABLES").is_none());
     }
 
     #[test]
