@@ -240,10 +240,10 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
             }
 
             let non_evaluated = tokio::time::timeout(
-                Duration::from_secs(2),
+                Duration::from_secs(5),
                 db.adapter().execute_adhoc(
                     db.dsn(),
-                    "SELECT SLEEP(5) AS sleep_value WHERE FALSE",
+                    "SELECT SLEEP(10) AS sleep_value WHERE FALSE",
                     AccessMode::ReadWrite,
                 ),
             )
@@ -278,6 +278,7 @@ async fn preserves_empty_result_columns_for_select_show_and_describe() {
                 "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
                 "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
                 "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
+                "SELECT CONCAT('a', 'b') AS unproven_function_value WHERE FALSE",
             ] {
                 let result = db
                     .adapter()

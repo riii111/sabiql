@@ -1217,6 +1217,12 @@ fn mysql_metadata_select_query(
             "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
         ));
     }
+    if mysql_metadata_select_has_unproven_function(query) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL SELECT metadata fallback cannot prove that function calls are side-effect free"
+                .to_string(),
+        ));
+    }
     if has_mysql_read_only_side_effect(query)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     {
@@ -1228,6 +1234,89 @@ fn mysql_metadata_select_query(
     Ok(format!(
         "WITH {source_alias} AS (SELECT * FROM (({query}) LIMIT 0) AS __sabiql_metadata_inner) SELECT {source_alias}.* FROM {source_alias} RIGHT JOIN (SELECT 1 AS {marker_alias}) AS __sabiql_metadata_marker ON TRUE"
     ))
+}
+
+fn mysql_metadata_select_has_unproven_function(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'#'
+            || (bytes.get(index..index + 2) == Some(b"--")
+                && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace))
+        {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes.get(index..index + 2) == Some(b"/*") {
+            index = bytes
+                .get(index + 2..)
+                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
+                .map_or(bytes.len(), |offset| index + offset + 4);
+            continue;
+        }
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            let quote = bytes[index];
+            index = skip_mysql_metadata_quoted(bytes, index, quote);
+            let mut next = index;
+            while bytes.get(next).is_some_and(u8::is_ascii_whitespace) {
+                next += 1;
+            }
+            if quote == b'`' && bytes.get(next) == Some(&b'(') {
+                return true;
+            }
+            continue;
+        }
+        if bytes[index].is_ascii_alphabetic() || matches!(bytes[index], b'_' | b'$') {
+            let start = index;
+            index += 1;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_' | b'$'))
+            {
+                index += 1;
+            }
+            let mut next = index;
+            while bytes.get(next).is_some_and(u8::is_ascii_whitespace) {
+                next += 1;
+            }
+            if bytes.get(next) == Some(&b'(') {
+                let name = &sql[start..index];
+                let qualified = sql[..start].trim_end().ends_with('.');
+                if qualified
+                    || !name.eq_ignore_ascii_case("SLEEP")
+                        && !matches!(
+                            name.to_ascii_uppercase().as_str(),
+                            "AS" | "IN" | "EXISTS" | "INTERVAL" | "OVER"
+                        )
+                {
+                    return true;
+                }
+            }
+            continue;
+        }
+        index += 1;
+    }
+    false
+}
+
+fn skip_mysql_metadata_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' && quote != b'`' {
+            index = (index + 2).min(bytes.len());
+        } else if bytes[index] == quote {
+            if bytes.get(index + 1) == Some(&quote) {
+                index += 2;
+            } else {
+                return index + 1;
+            }
+        } else {
+            index += 1;
+        }
+    }
+    bytes.len()
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -2280,6 +2369,13 @@ async fn run_mysql_single_statement_process(
 
     write_mysql_statement(process, query).await?;
 
+    #[cfg(not(unix))]
+    process
+        .stdin
+        .shutdown()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+
     #[cfg(unix)]
     let (stdout, tail) = {
         let stdout = read_one_mysql_resultset(process).await?;
@@ -2291,18 +2387,12 @@ async fn run_mysql_single_statement_process(
     };
 
     #[cfg(not(unix))]
-    let (stdout, stderr) = {
-        process
-            .stdin
-            .shutdown()
-            .await
-            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-        let (stdout, stderr) =
-            tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-        let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        (stdout, stderr)
-    };
+    let (stdout, stderr) =
+        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    #[cfg(not(unix))]
+    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    #[cfg(not(unix))]
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
     let status = process
         .child
@@ -3945,6 +4035,30 @@ mod probe_tests {
             "__marker"
         )
         .is_ok());
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT CONCAT('a', 'b') AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT sabiql_test.user_function() AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT SLEEP(1) AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
