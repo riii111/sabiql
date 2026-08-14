@@ -2170,7 +2170,10 @@ transcript=$(dirname "$0")/transcript.log
 printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
 mode=$(basename "$0" | sed 's/^mysql-//')
 trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
-stty -icanon min 1 time 0 <&0 2>/dev/null || true
+platform=$(uname -s)
+if [ "$platform" = "Darwin" ]; then
+  stty -icanon <&0 2>/dev/null || true
+fi
 if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
   while [ ! -e "$(dirname "$0")/allow" ]; do sleep 0.001; done
 fi
@@ -2218,11 +2221,15 @@ while IFS= read -r line; do
       if [ "$mode" = "view" ]; then
         printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
       fi
-      stty icanon min 1 time 0 <&0 2>/dev/null || true
+      if [ "$platform" = "Darwin" ]; then
+        stty icanon <&0 2>/dev/null || true
+      fi
       ;;
     *SHOW\ CREATE\ TABLE*)
       printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
-      stty icanon min 1 time 0 <&0 2>/dev/null || true
+      if [ "$platform" = "Darwin" ]; then
+        stty icanon <&0 2>/dev/null || true
+      fi
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
