@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod xml_tests {
-    use super::*;
+    use super::super::*;
 
     #[test]
     fn parses_mysql_xml_without_collapsing_value_boundaries() {
