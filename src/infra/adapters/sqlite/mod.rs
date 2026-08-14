@@ -1,6 +1,7 @@
 mod adapter;
 mod diagnostics;
 mod dsn;
+mod executor;
 mod path_validation;
 mod schema;
 mod sql;
