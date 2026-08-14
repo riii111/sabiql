@@ -713,6 +713,7 @@ pub(super) async fn read_one_mysql_resultset(
     read_one_mysql_resultset_from_pipes(
         &mut process.stdout,
         &mut process.stderr,
+        &mut process.child,
         &mut process.pending,
         &mut process.pending_stderr,
         &mut process.frame_scanner,
@@ -1617,52 +1618,6 @@ done
             result,
             Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
-        ));
-    }
-}
-
-#[cfg(all(test, not(unix)))]
-mod pipe_process_tests {
-    use std::process::Stdio;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn collects_delayed_stderr_before_accepting_a_successful_child() {
-        let mut child = Command::new("cmd.exe")
-            .args([
-                "/C",
-                "echo result & ping -n 2 127.0.0.1 >NUL & echo ERROR 1054 (42S22): Unknown column 1>&2",
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .expect("spawn cmd.exe");
-        let stdin = child.stdin.take().expect("piped stdin");
-        let stdout = child.stdout.take().expect("piped stdout");
-        let stderr = child.stderr.take().expect("piped stderr");
-        let mut process = MysqlProcess {
-            child,
-            stdin,
-            stdout,
-            stderr,
-            pending: Vec::new(),
-            pending_stderr: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
-        };
-
-        let (status, stdout, stderr) = finish_mysql_pipe_process(&mut process)
-            .await
-            .expect("collect child output");
-
-        assert!(status.success());
-        assert!(stdout.starts_with(b"result"));
-        assert!(has_mysql_cli_error(&stderr));
-        assert!(matches!(
-            classify_mysql_query_failure(&stderr),
-            DbOperationError::ObjectMissing(_)
         ));
     }
 }

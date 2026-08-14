@@ -6,6 +6,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
 
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 use super::xml::{
     MysqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check, trace_mysql_frame,
 };
@@ -121,6 +122,7 @@ where
 pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     reader: &mut R,
     stderr: &mut E,
+    child: &mut tokio::process::Child,
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
     frame_scanner: &mut MysqlResultsetFrameScanner,
@@ -159,9 +161,8 @@ where
                 .await
                 .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
             if count == 0 {
-                return Err(DbOperationError::EmptyResponse(
-                    "mysql mode probe returned no resultset".to_string(),
-                ));
+                finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
+                return Err(mysql_pipe_empty_response_or_error(pending_stderr));
             }
             pending.extend_from_slice(&chunk[..count]);
         } else {
@@ -169,9 +170,8 @@ where
                 result = reader.read(&mut chunk) => {
                     let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
                     if count == 0 {
-                        return Err(DbOperationError::EmptyResponse(
-                            "mysql mode probe returned no resultset".to_string(),
-                        ));
+                        finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
+                        return Err(mysql_pipe_empty_response_or_error(pending_stderr));
                     }
                     pending.extend_from_slice(&chunk[..count]);
                 }
@@ -188,13 +188,49 @@ where
     }
 }
 
+async fn finish_mysql_pipe_after_stdout_eof<E>(
+    stderr: &mut E,
+    child: &mut tokio::process::Child,
+    pending_stderr: &mut Vec<u8>,
+) -> Result<(), DbOperationError>
+where
+    E: AsyncRead + Unpin,
+{
+    let (stderr, status) = tokio::join!(read_all(stderr), child.wait());
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    pending_stderr.extend_from_slice(&stderr);
+    Ok(())
+}
+
+fn mysql_pipe_empty_response_or_error(pending_stderr: &[u8]) -> DbOperationError {
+    if has_mysql_cli_error(pending_stderr) {
+        classify_mysql_query_failure(pending_stderr)
+    } else {
+        DbOperationError::EmptyResponse("mysql mode probe returned no resultset".to_string())
+    }
+}
+
 #[cfg(test)]
 #[cfg(not(unix))]
 mod tests {
+    use std::process::Stdio;
+
     use tokio::io::AsyncWriteExt;
+    use tokio::process::{Child, Command};
 
     use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error};
     use super::*;
+
+    async fn exited_child() -> Child {
+        Command::new("cmd.exe")
+            .args(["/C", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn cmd.exe")
+    }
 
     #[tokio::test]
     async fn pipe_errors_are_checked_before_resultset_frames() {
@@ -211,10 +247,12 @@ mod tests {
         drop(stdout_writer);
         drop(stderr_writer);
         let mut frame_scanner = MysqlResultsetFrameScanner::default();
+        let mut child = exited_child().await;
 
         let result = read_one_mysql_resultset_from_pipes(
             &mut stdout_reader,
             &mut stderr_reader,
+            &mut child,
             &mut Vec::new(),
             &mut Vec::new(),
             &mut frame_scanner,
@@ -222,6 +260,41 @@ mod tests {
         .await;
 
         assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
+    }
+
+    #[tokio::test]
+    async fn drains_delayed_stderr_after_stdout_eof_before_classifying() {
+        let mut child = Command::new("pwsh.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "$stream = [Console]::OpenStandardOutput(); $stream.Write([Text.Encoding]::UTF8.GetBytes('result')); $stream.Close(); Start-Sleep -Milliseconds 100; [Console]::Error.WriteLine('ERROR 1054 (42S22): Unknown column missing_column')",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn pwsh.exe");
+        let mut stdout = child.stdout.take().expect("piped stdout");
+        let mut stderr = child.stderr.take().expect("piped stderr");
+        let mut pending = Vec::new();
+        let mut pending_stderr = Vec::new();
+        let mut frame_scanner = MysqlResultsetFrameScanner::default();
+
+        let result = read_one_mysql_resultset_from_pipes(
+            &mut stdout,
+            &mut stderr,
+            &mut child,
+            &mut pending,
+            &mut pending_stderr,
+            &mut frame_scanner,
+        )
+        .await;
+
+        assert!(
+            matches!(result, Err(DbOperationError::ObjectMissing(details)) if details.contains("missing_column"))
+        );
     }
 
     #[tokio::test]
