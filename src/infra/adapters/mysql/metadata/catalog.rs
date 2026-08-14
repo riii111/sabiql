@@ -695,8 +695,23 @@ mod tests {
 
     #[test]
     fn targeted_metadata_queries_escape_schema_and_table_literals() {
-        let schema = "app\\\n'";
-        let table = "items\\\t'";
+        let schema = "app\\\n\r\t\u{0008}\u{001a}'";
+        let table = "items\\\n\r\t\u{0008}\u{001a}'";
+
+        assert_eq!(
+            quote_string(schema),
+            format!(
+                "'app{}{}{}{}{}{}{}'",
+                r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
+            )
+        );
+        assert_eq!(
+            quote_string(table),
+            format!(
+                "'items{}{}{}{}{}{}{}'",
+                r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
+            )
+        );
 
         for query in [
             table_query(schema, table),
@@ -705,7 +720,6 @@ mod tests {
         ] {
             assert!(query.contains(&quote_string(schema)));
             assert!(query.contains(&quote_string(table)));
-            assert!(!query.contains("''"));
         }
     }
 
