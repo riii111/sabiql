@@ -34,6 +34,8 @@ use super::policy::{
     validate_mysql_session_marker,
 };
 use super::probe::run_mysql_command_with_timeout;
+#[cfg(all(unix, feature = "test-support"))]
+use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
 use super::pty::{
     MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
@@ -878,7 +880,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
         trace_mysql_statement(script);
         write_mysql_input(&mut process, script.as_bytes()).await?;
         write_mysql_input(&mut process, b"\x04").await?;
-        let output = read_pty_until_idle(&mut process.pty)
+        let output = read_pty_until_first_byte_then_idle(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         trace_mysql_frame("receive script output", output.len());
