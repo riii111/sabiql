@@ -5,4 +5,5 @@ mod grid_write;
 mod literal;
 mod metadata;
 
+pub(super) use literal::{quote_identifier, quote_string};
 pub(super) use metadata::build_metadata_select_query;

@@ -8,6 +8,7 @@ use super::super::{
     cli::{MysqlResultSet, run_mysql_adhoc, validate_mysql_multi_query},
     dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values},
     option_file::MySqlOptionFile,
+    sql::quote_string,
 };
 
 pub(super) const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_SCHEMA, TABLE_NAME";
@@ -63,13 +64,14 @@ pub(super) async fn fetch_metadata_snapshot(
     metadata_snapshot_from_result(&database, None, &result)
 }
 
-pub(super) async fn fetch_metadata_snapshot_for_schema(
+pub(super) async fn fetch_table_metadata(
     dsn: &str,
     schema: &str,
+    table: &str,
 ) -> Result<MysqlMetadataSnapshot, DbOperationError> {
     let database = selected_database(dsn)?;
     validate_selected_schema_name(&database, schema)?;
-    let result = execute_metadata_query(dsn, TABLES_QUERY).await?;
+    let result = execute_metadata_query(dsn, &table_query(schema, table)).await?;
     metadata_snapshot_from_result(&database, Some(schema), &result)
 }
 
@@ -79,7 +81,7 @@ pub(super) async fn fetch_columns(
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &columns_query(table)).await?;
+    let result = execute_metadata_query(dsn, &columns_query(schema, table)).await?;
     let columns = parse_columns_for_table(&result, schema, table)?;
     Ok(columns)
 }
@@ -91,7 +93,7 @@ pub(super) async fn fetch_foreign_keys(
     summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &foreign_keys_query(table)).await?;
+    let result = execute_metadata_query(dsn, &foreign_keys_query(schema, table)).await?;
     let raw = parse_foreign_key_metadata(&result)?;
     foreign_keys_from_metadata(raw, summaries)
 }
@@ -110,10 +112,26 @@ pub(super) fn find_table(
         })
 }
 
-pub(super) fn columns_query(table: &str) -> String {
+pub(super) fn table_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
-        quote_string(table)
+        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND (t.TABLE_NAME = {} OR EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {} AND tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.REFERENCED_TABLE_SCHEMA = t.TABLE_SCHEMA AND kcu.REFERENCED_TABLE_NAME = t.TABLE_NAME)) UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {}) ORDER BY TABLE_SCHEMA, TABLE_NAME",
+        quote_string(schema),
+        quote_string(table),
+        quote_string(schema),
+        quote_string(schema),
+        quote_string(table),
+        quote_string(schema),
+        quote_string(table),
+    )
+}
+
+pub(super) fn columns_query(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = {} AND TABLE_NAME = {}) ORDER BY ORDINAL_POSITION",
+        quote_string(schema),
+        quote_string(table),
+        quote_string(schema),
+        quote_string(table),
     )
 }
 
@@ -124,8 +142,8 @@ pub(super) fn parse_columns_for_table(
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
-        return Err(DbOperationError::MetadataParseFailed(format!(
-            "MySQL object has no column metadata: {schema}.{table}"
+        return Err(DbOperationError::ObjectMissing(format!(
+            "MySQL table not found: {schema}.{table}"
         )));
     }
     Ok(columns)
@@ -250,10 +268,14 @@ fn parse_table_metadata(
     Ok(tables.into_iter().flatten().collect())
 }
 
-pub(super) fn foreign_keys_query(table: &str) -> String {
+pub(super) fn foreign_keys_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {} AND tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = {} AND TABLE_SCHEMA = {} AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        quote_string(schema),
+        quote_string(schema),
         quote_string(table),
+        quote_string(schema),
+        quote_string(schema),
         quote_string(table),
     )
 }
@@ -277,8 +299,17 @@ fn parse_column_metadata(
     result
         .values
         .iter()
-        .map(|row| parse_column_metadata_row(row, "COLUMNS row"))
-        .collect()
+        .map(|row| {
+            if row.len() != 8 {
+                return Err(metadata_shape_error("COLUMNS row"));
+            }
+            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
+                return Ok(None);
+            }
+            Ok(Some(parse_column_metadata_row(row, "COLUMNS row")?))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(|rows| rows.into_iter().flatten().collect())
 }
 
 pub(super) fn parse_column_metadata_row(
@@ -462,7 +493,9 @@ fn table_summary(table: MysqlTableMetadata) -> TableSummary {
     TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
         TableKindInfo {
             kind: table.kind,
-            ..TableKindInfo::default()
+            is_strict: false,
+            without_rowid: false,
+            virtual_module: None,
         },
     )
 }
@@ -519,14 +552,6 @@ fn parse_positive_i32_text(value: &str, field: &str) -> Result<i32, DbOperationE
 
 pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
     DbOperationError::MetadataParseFailed(format!("unexpected MySQL metadata shape: {field}"))
-}
-
-pub(super) fn quote_identifier(value: &str) -> String {
-    format!("`{}`", value.replace('`', "``"))
-}
-
-pub(super) fn quote_string(value: &str) -> String {
-    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
 }
 
 #[cfg(test)]
@@ -637,6 +662,51 @@ mod tests {
             [1, 2, 3]
         );
         assert!(column_from_metadata(&parsed[2]).is_generated());
+    }
+
+    #[test]
+    fn empty_columns_sentinel_maps_to_missing_table() {
+        let result = result(
+            &[
+                "COLUMN_NAME",
+                "COLUMN_TYPE",
+                "IS_NULLABLE",
+                "COLUMN_DEFAULT",
+                "EXTRA",
+                "COLUMN_COMMENT",
+                "ORDINAL_POSITION",
+                "PRIMARY_KEY_POSITION",
+            ],
+            vec![vec![
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        );
+
+        let error = parse_columns_for_table(&result, "app", "missing").unwrap_err();
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+    }
+
+    #[test]
+    fn targeted_metadata_queries_escape_schema_and_table_literals() {
+        let schema = "app\\\n'";
+        let table = "items\\\t'";
+
+        for query in [
+            table_query(schema, table),
+            columns_query(schema, table),
+            foreign_keys_query(schema, table),
+        ] {
+            assert!(query.contains(&quote_string(schema)));
+            assert!(query.contains(&quote_string(table)));
+            assert!(!query.contains("''"));
+        }
     }
 
     #[test]

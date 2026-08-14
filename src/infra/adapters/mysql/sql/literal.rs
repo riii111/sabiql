@@ -2,7 +2,7 @@ use std::fmt::Write as _;
 
 use crate::domain::QueryValue;
 
-pub(super) fn quote_identifier(value: &str) -> String {
+pub(in crate::adapters::mysql) fn quote_identifier(value: &str) -> String {
     format!("`{}`", value.replace('`', "``"))
 }
 
@@ -29,7 +29,7 @@ pub(super) fn equality_predicate(column: &str, value: &QueryValue) -> String {
     }
 }
 
-fn quote_string(value: &str) -> String {
+pub(in crate::adapters::mysql) fn quote_string(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for character in value.chars() {
         match character {

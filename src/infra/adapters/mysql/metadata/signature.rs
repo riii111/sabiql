@@ -151,7 +151,9 @@ fn table_signatures_from_metadata(
                 source_ddl: None,
                 kind_info: TableKindInfo {
                     kind: table.kind,
-                    ..TableKindInfo::default()
+                    is_strict: false,
+                    without_rowid: false,
+                    virtual_module: None,
                 },
             };
             Ok(TableSignature {
@@ -189,7 +191,9 @@ mod tests {
         TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
             TableKindInfo {
                 kind: table.kind,
-                ..TableKindInfo::default()
+                is_strict: false,
+                without_rowid: false,
+                virtual_module: None,
             },
         )
     }
