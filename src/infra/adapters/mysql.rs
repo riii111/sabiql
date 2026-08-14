@@ -2798,11 +2798,6 @@ fn has_mysql_cli_error(output: &[u8]) -> bool {
         })
 }
 
-#[cfg(test)]
-fn take_mysql_resultset_frame(buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
-    MysqlResultsetFrameScanner::default().take(buffer)
-}
-
 #[cfg(any(unix, test))]
 fn take_mysql_pty_resultset_frame(
     buffer: &mut Vec<u8>,
@@ -4760,13 +4755,14 @@ done
     fn frames_one_xml_resultset_and_preserves_following_output() {
         let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
             .to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             Some(b"<resultset></resultset>".to_vec())
         );
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             None,
             "an incomplete following frame must remain buffered"
         );
@@ -4777,9 +4773,10 @@ done
     fn frames_resultset_after_mysql_cli_text() {
         let mut buffer =
             b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
 
         assert_eq!(
-            take_mysql_resultset_frame(&mut buffer),
+            scanner.take(&mut buffer),
             Some(b"<resultset></resultset>".to_vec())
         );
         assert!(buffer.is_empty());
