@@ -297,8 +297,8 @@ mod tests {
                 .contains("<resultset>")
         );
 
-        source.read(&mut output).await.unwrap();
-        source.read(&mut output).await.unwrap();
+        assert!(source.read(&mut output).await.unwrap() > 0);
+        assert!(source.read(&mut output).await.unwrap() > 0);
         producer.await.unwrap();
 
         assert!(matches!(
