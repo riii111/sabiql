@@ -9,8 +9,8 @@ use crate::domain::{
 };
 
 use super::{
-    MySqlAdapter, MySqlOptionFile, MysqlResultSet, parse_mysql_dsn, run_mysql_adhoc,
-    validate_mysql_values,
+    MYSQL_QUERY_TIMEOUT, MySqlAdapter, MySqlOptionFile, MysqlMetadataSession, MysqlResultSet,
+    parse_mysql_dsn, run_mysql_adhoc, validate_mysql_values,
 };
 
 const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')) ORDER BY TABLE_SCHEMA, TABLE_NAME";
@@ -117,15 +117,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
-        fetch_table(
-            dsn,
-            schema,
-            table,
-            &snapshot.tables,
-            &snapshot.table_summaries,
-        )
-        .await
+        fetch_table_detail_in_session(dsn, schema, table).await
     }
 
     async fn fetch_table_columns_and_fks(
@@ -333,26 +325,84 @@ fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
     QueryValue::Text(value.clone())
 }
 
-async fn fetch_table(
+async fn fetch_table_detail_in_session(
     dsn: &str,
     schema: &str,
     table: &str,
-    tables: &[MysqlTableMetadata],
-    summaries: &[TableSummary],
 ) -> Result<Table, DbOperationError> {
-    let table_metadata = find_table(schema, table, tables)?;
-    let columns = fetch_columns(dsn, schema, table).await?;
-    let indexes = fetch_indexes(dsn, schema, table).await?;
-    let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
-    let triggers = fetch_triggers(dsn, schema, table).await?;
-    let source_ddl = fetch_source_ddl(dsn, table, table_metadata.kind).await?;
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    super::validate_mysql_tls_files(&target)?;
+    let database = target.database.as_deref().ok_or_else(|| {
+        DbOperationError::UnsupportedOperation(
+            "MySQL metadata requires a selected database".to_string(),
+        )
+    })?;
+    validate_selected_schema_name(database, schema)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut session = MysqlMetadataSession::spawn(&option_file.path)?;
+    let result = tokio::time::timeout(
+        MYSQL_QUERY_TIMEOUT,
+        fetch_table_detail_with_session(&mut session, database, schema, table),
+    )
+    .await;
+    let result = match result {
+        Ok(Ok(table)) => Ok(table),
+        Ok(Err(error)) => {
+            session.cleanup().await;
+            Err(error)
+        }
+        Err(_) => {
+            session.cleanup().await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    };
+    drop(option_file);
+    result
+}
+
+async fn fetch_table_detail_with_session(
+    session: &mut MysqlMetadataSession,
+    database: &str,
+    schema: &str,
+    table: &str,
+) -> Result<Table, DbOperationError> {
+    session.probe().await?;
+    let tables_result = session.execute(TABLES_QUERY).await?;
+    let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
+    let table_metadata = find_table(schema, table, &snapshot.tables)?;
+
+    let columns = parse_columns_for_table(
+        &session.execute(&columns_query(table)).await?,
+        schema,
+        table,
+    )?;
+    let indexes = indexes_from_metadata(parse_index_metadata(
+        &session.execute(&indexes_query(table)).await?,
+    )?);
+    let foreign_keys = foreign_keys_from_metadata(
+        parse_foreign_key_metadata(&session.execute(&foreign_keys_query(table)).await?)?,
+        &snapshot.table_summaries,
+    )?;
+    let triggers = triggers_from_metadata(parse_trigger_metadata(
+        &session.execute(&triggers_query(table)).await?,
+    )?)?;
+    let source_ddl = parse_source_ddl(
+        &session
+            .execute(&show_create_query(table, table_metadata.kind))
+            .await?,
+        table_metadata.kind,
+    )?;
+    session.finish().await?;
+
     let primary_key = primary_key_names(&columns);
-    let columns = columns.iter().map(column_from_metadata).collect::<Vec<_>>();
     Ok(Table {
         schema: table_metadata.schema,
         name: table_metadata.name,
         owner: None,
-        columns,
+        columns: columns.iter().map(column_from_metadata).collect(),
         primary_key: (!primary_key.is_empty()).then_some(primary_key),
         foreign_keys,
         indexes,
@@ -419,12 +469,24 @@ async fn fetch_columns(
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let query = format!(
+    let result = execute_metadata_query(dsn, &columns_query(table)).await?;
+    let columns = parse_columns_for_table(&result, schema, table)?;
+    Ok(columns)
+}
+
+fn columns_query(table: &str) -> String {
+    format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = {} ORDER BY c.ORDINAL_POSITION",
         quote_string(table)
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
-    let columns = parse_column_metadata(&result)?;
+    )
+}
+
+fn parse_columns_for_table(
+    result: &MysqlResultSet,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+    let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
             "MySQL object has no column metadata: {schema}.{table}"
@@ -568,20 +630,12 @@ fn parse_table_metadata(
     Ok(tables.into_iter().flatten().collect())
 }
 
-async fn fetch_indexes(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<Index>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let query = format!(
+fn indexes_query(table: &str) -> String {
+    format!(
         "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(table),
         quote_string(table),
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
-    let raw = parse_index_metadata(&result)?;
-    Ok(indexes_from_metadata(raw))
+    )
 }
 
 async fn fetch_foreign_keys(
@@ -591,33 +645,17 @@ async fn fetch_foreign_keys(
     summaries: &[TableSummary],
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let query = format!(
-        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
-        quote_string(table),
-        quote_string(table),
-    );
-    let result = execute_metadata_query(dsn, &query).await?;
+    let result = execute_metadata_query(dsn, &foreign_keys_query(table)).await?;
     let raw = parse_foreign_key_metadata(&result)?;
     foreign_keys_from_metadata(raw, summaries)
 }
 
-async fn fetch_triggers(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<Trigger>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &triggers_query(table)).await?;
-    triggers_from_metadata(parse_trigger_metadata(&result)?)
-}
-
-async fn fetch_source_ddl(
-    dsn: &str,
-    table: &str,
-    kind: TableKind,
-) -> Result<String, DbOperationError> {
-    let result = execute_metadata_query(dsn, &show_create_query(table, kind)).await?;
-    parse_source_ddl(&result, kind)
+fn foreign_keys_query(table: &str) -> String {
+    format!(
+        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {} AND CONSTRAINT_TYPE = 'FOREIGN KEY') ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+        quote_string(table),
+        quote_string(table),
+    )
 }
 
 fn triggers_query(table: &str) -> String {
