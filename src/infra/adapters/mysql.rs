@@ -3709,6 +3709,7 @@ mod probe_tests {
     #[test]
     fn option_file_names_are_unique_uuid_v4_paths_under_concurrency() {
         use std::collections::HashSet;
+        use std::sync::{Arc, Barrier};
 
         fn target() -> MySqlDsn {
             MySqlDsn {
@@ -3724,13 +3725,18 @@ mod probe_tests {
             }
         }
 
-        let files = (0..16)
-            .map(|_| {
-                std::thread::spawn(|| {
-                    let target = target();
-                    MySqlOptionFile::create(&target).unwrap()
-                })
-            })
+        let barrier = Arc::new(Barrier::new(16));
+        let mut handles = Vec::with_capacity(16);
+        for _ in 0..16 {
+            let barrier = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                let target = target();
+                MySqlOptionFile::create(&target).unwrap()
+            }));
+        }
+        let files = handles
+            .into_iter()
             .map(|handle| handle.join().unwrap())
             .collect::<Vec<_>>();
         let paths = files
