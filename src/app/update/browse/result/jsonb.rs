@@ -1,6 +1,4 @@
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::domain::{QuerySource, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::browse::jsonb_detail::{JsonbDetailMode, JsonbDetailState};
@@ -396,11 +394,12 @@ fn apply_pending_edit_as_draft(state: &mut AppState) {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::Column;
+    use crate::domain::ColumnAttributes;
     use crate::test_support;
     use crate::update::test_fixtures;
 
     use super::*;
-    pub use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource, Table};
     use crate::services::AppServices;

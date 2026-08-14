@@ -18,8 +18,10 @@ pub(super) use process::{
 };
 pub(super) use xml::MysqlResultSet;
 
-#[cfg(test)]
-pub(super) use process::MysqlProcess;
-
 #[cfg(all(unix, feature = "test-support"))]
 pub(super) use process::run_mysql_cli_script_for_test;
+
+#[cfg(test)]
+pub(super) mod test_support {
+    pub(in crate::adapters::mysql) use super::process::MysqlProcess;
+}

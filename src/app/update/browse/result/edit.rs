@@ -1,8 +1,6 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-#[cfg(test)]
-use crate::domain::ColumnAttributes;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ModalKind};
@@ -159,8 +157,10 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::Column;
+    use crate::domain::ColumnAttributes;
+
     use super::*;
-    pub use crate::domain::Column;
     use crate::domain::connection::ConnectionId;
     use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue, Table};
     use crate::update::action::{CursorMove, TextKillDirection};

@@ -96,6 +96,7 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Barrier};
 
+    use super::super::cli::test_support::MysqlProcess;
     use crate::domain::connection::MySqlSslMode;
 
     use super::*;
@@ -231,7 +232,7 @@ mod tests {
         let (result, path) = {
             let option_file = MySqlOptionFile::create(&target()).unwrap();
             let path = option_file.path.clone();
-            let result = super::super::cli::MysqlProcess::spawn_with_program(
+            let result = MysqlProcess::spawn_with_program(
                 std::ffi::OsStr::new("__sabiql_missing_mysql_binary__"),
                 &path,
             );

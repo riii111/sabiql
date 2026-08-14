@@ -4,9 +4,6 @@ use sabiql_app::ports::outbound::{CachedResultExporter, DbOperationError};
 
 use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 
-#[cfg(test)]
-use crate::adapters::csv_export::CSV_FLUSH_THRESHOLD;
-
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CsvCachedResultExporter;
 
@@ -55,6 +52,8 @@ async fn write_cached_result_csv(
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::csv_export::CSV_FLUSH_THRESHOLD;
+
     use super::*;
     use tempfile::tempdir;
 

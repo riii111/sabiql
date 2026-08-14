@@ -20,8 +20,6 @@ pub mod write_result;
 
 pub use column::{Column, ColumnAttributes};
 pub use command_tag::CommandTag;
-#[cfg(test)]
-pub use er::ErFkInfo;
 pub use er::ErTableInfo;
 pub use explain_plan::{
     mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
