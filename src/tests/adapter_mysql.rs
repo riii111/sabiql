@@ -12,6 +12,7 @@ use sabiql_domain::{
     CommandTag, DatabaseType, FkAction, IndexType, QueryValue, RefreshScope, TableKind,
     TriggerEvent, TriggerTiming,
 };
+use std::time::Duration;
 
 use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
 use sabiql_domain::connection::{
@@ -177,7 +178,7 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             .execute_adhoc(
                 db.dsn(),
                 &format!(
-                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4) FROM {MYSQL_FIXTURE_TABLE}"
+                    "SELECT nullable_text, empty_text, unicode_text, JSON_EXTRACT(json_value, '$.array'), JSON_EXTRACT(json_value, '$.text'), blob_value, CONVERT(CONCAT('line one', CHAR(10), 'ERROR 1146 (42S02): not a CLI error') USING utf8mb4), 'x|y', 'first\\nmiddle\\nlast', 'tail\\t ', CAST(NULL AS CHAR(8)), 'NULL' FROM {MYSQL_FIXTURE_TABLE}"
                 ),
                 AccessMode::ReadWrite,
             )
@@ -191,12 +192,190 @@ async fn preserves_xml_value_boundaries_for_real_mysql_results() {
             QueryValue::Text("\"空文字ではない\"".to_string()),
             QueryValue::Text("0x00FF10".to_string()),
             QueryValue::Text("line one\r\nERROR 1146 (42S02): not a CLI error".to_string()),
+            QueryValue::Text("x|y".to_string()),
+            QueryValue::Text("first\r\nmiddle\r\nlast".to_string()),
+            QueryValue::Text("tail\t ".to_string()),
+            QueryValue::Null,
+            QueryValue::Text("NULL".to_string()),
         ];
         if result.values() != [expected] {
             return Err(format!("unexpected XML values: {:?}", result.values()));
         }
         Ok(())
     }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn preserves_empty_result_columns_for_select_show_and_describe() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let select = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                "SELECT 1 AS first_alias, '' AS empty_alias, '日本語' AS unicode_alias WHERE FALSE",
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("empty SELECT failed: {error:?}"))?;
+            if select.columns != ["first_alias", "empty_alias", "unicode_alias"]
+                || !select.values().is_empty()
+            {
+                return Err(format!("unexpected empty SELECT result: {select:?}"));
+            }
+
+            let cte = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CTE SELECT failed: {error:?}"))?;
+            if cte.columns != ["first_alias"] || !cte.values().is_empty() {
+                return Err(format!("unexpected empty CTE result: {cte:?}"));
+            }
+
+            let cte_with_columns = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CTE column-list SELECT failed: {error:?}"))?;
+            if cte_with_columns.columns != ["first_alias"]
+                || !cte_with_columns.values().is_empty()
+            {
+                return Err(format!(
+                    "unexpected empty CTE column-list result: {cte_with_columns:?}"
+                ));
+            }
+
+            let trailing_comment = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT 1 AS value WHERE FALSE -- trailing comment",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty SELECT with trailing comment failed: {error:?}"))?;
+            if trailing_comment.columns != ["value"] || !trailing_comment.values().is_empty() {
+                return Err(format!(
+                    "unexpected empty SELECT with trailing comment: {trailing_comment:?}"
+                ));
+            }
+
+            let case_expression = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty CASE SELECT failed: {error:?}"))?;
+            if case_expression.columns != ["value"] || !case_expression.values().is_empty() {
+                return Err(format!(
+                    "unexpected empty CASE SELECT result: {case_expression:?}"
+                ));
+            }
+
+            let non_evaluated = tokio::time::timeout(
+                Duration::from_secs(5),
+                db.adapter().execute_adhoc(
+                    db.dsn(),
+                    "SELECT SLEEP(10) AS sleep_value WHERE FALSE",
+                    AccessMode::ReadWrite,
+                ),
+            )
+            .await
+            .map_err(|_| "empty SELECT metadata fallback evaluated SLEEP".to_string())?
+            .map_err(|error| format!("empty SELECT non-evaluation proof failed: {error:?}"))?;
+            if non_evaluated.columns != ["sleep_value"] || !non_evaluated.values().is_empty() {
+                return Err(format!(
+                    "unexpected non-evaluation proof result: {non_evaluated:?}"
+                ));
+            }
+
+            let duplicate_aliases = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE",
+                    AccessMode::ReadWrite,
+                )
+                .await;
+            if !matches!(
+                duplicate_aliases,
+                Err(DbOperationError::UnsupportedOperation(ref details))
+                    if details.contains("duplicate column names")
+            ) {
+                return Err(format!(
+                    "duplicate aliases were not rejected safely: {duplicate_aliases:?}"
+                ));
+            }
+
+            for query in [
+                "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
+                "SELECT @sabiql_metadata_value AS read_value WHERE FALSE",
+                "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
+                "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
+                "SELECT CONCAT('a', 'b') AS unproven_function_value WHERE FALSE",
+                "SELECT CONCAT/**/('a', 'b') AS commented_function_value WHERE FALSE",
+                "SELECT INTERVAL(10, 1, 5) AS unproven_interval_value WHERE FALSE",
+                "SELECT CAST(1 AS CHAR) AS unproven_cast_value WHERE FALSE",
+                "SELECT CONVERT(1, CHAR) AS unproven_convert_value WHERE FALSE",
+                "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS unproven_extract_value WHERE FALSE",
+            ] {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), query, AccessMode::ReadWrite)
+                    .await;
+                if !matches!(result, Err(DbOperationError::UnsupportedOperation(_))) {
+                    return Err(format!(
+                        "unsafe empty SELECT was not rejected: {query}: {result:?}"
+                    ));
+                }
+            }
+
+            let show = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SHOW TABLES LIKE 'sabiql_empty_metadata_missing'",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty SHOW failed: {error:?}"))?;
+            if show.columns != ["Tables_in_sabiql_test (sabiql_empty_metadata_missing)"]
+                || !show.values().is_empty()
+            {
+                return Err(format!("unexpected empty SHOW result: {show:?}"));
+            }
+
+            let describe = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DESCRIBE {MYSQL_EMPTY_TABLE} 'missing_column'"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty DESCRIBE failed: {error:?}"))?;
+            if describe.columns != ["Field", "Type", "Null", "Key", "Default", "Extra"]
+                || !describe.values().is_empty()
+            {
+                return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
+            }
+            Ok(())
+        })
+    })
     .await;
 }
 
@@ -1239,6 +1418,22 @@ async fn keeps_temporary_table_state_inside_one_submission() {
         {
             return Err(format!("unexpected temporary-table result: {result:?}"));
         }
+
+        let empty_table = format!("sabiql_sab414_empty_tmp_{suffix}");
+        let empty_result = db
+            .adapter()
+            .execute_adhoc(
+                db.dsn(),
+                &format!(
+                    "CREATE TEMPORARY TABLE {empty_table} (id INT); SELECT id FROM {empty_table} WHERE FALSE; DROP TEMPORARY TABLE {empty_table}"
+                ),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .map_err(|error| format!("empty temporary-table query failed: {error:?}"))?;
+        if empty_result.columns != ["id"] || !empty_result.values().is_empty() {
+            return Err(format!("unexpected empty temporary-table result: {empty_result:?}"));
+        }
         Ok(())
     }))
     .await;
@@ -1365,6 +1560,30 @@ async fn exports_with_a_read_only_session_and_rejects_writes() {
             }
             if write_path.exists() {
                 return Err("write export created an output file".to_string());
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn exports_a_header_only_csv_for_an_empty_result() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let output_directory = tempdir().map_err(|error| error.to_string())?;
+            let path = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                "SELECT 1 AS first_alias, '' AS empty_alias WHERE FALSE",
+                output_directory.path().join("empty.csv"),
+            )
+            .await
+            .map_err(|error| format!("empty CSV export failed: {error:?}"))?;
+            let csv = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read empty CSV export: {error}"))?;
+            if csv != "first_alias,empty_alias\n" {
+                return Err(format!("unexpected empty CSV export: {csv:?}"));
             }
             Ok(())
         })

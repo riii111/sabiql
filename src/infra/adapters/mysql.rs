@@ -34,8 +34,8 @@ use crate::adapters::csv_export::{CsvFileWriter, export_to_downloads};
 #[cfg(test)]
 use crate::app::policy::sql::mysql_statement::split_mysql_statements;
 use crate::app::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement, mysql_explain_rejection_message,
-    mysql_tree_explain_query_kind,
+    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
+    mysql_explain_rejection_message, mysql_tree_explain_query_kind,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
@@ -1190,6 +1190,299 @@ struct MysqlResultSet {
     values: Vec<Vec<QueryValue>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum MysqlMetadataFallbackKind {
+    Select,
+    Show,
+    Describe,
+}
+
+fn mysql_metadata_fallback_kind(kind: &MysqlStatementKind) -> Option<MysqlMetadataFallbackKind> {
+    match kind {
+        MysqlStatementKind::Select => Some(MysqlMetadataFallbackKind::Select),
+        MysqlStatementKind::Show => Some(MysqlMetadataFallbackKind::Show),
+        MysqlStatementKind::Describe => Some(MysqlMetadataFallbackKind::Describe),
+        _ => None,
+    }
+}
+
+fn mysql_metadata_select_query(
+    query: &str,
+    source_alias: &str,
+    marker_alias: &str,
+) -> Result<String, DbOperationError> {
+    let query = query.trim().trim_end_matches(';').trim_end();
+    if query.is_empty() {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
+        ));
+    }
+    if mysql_metadata_select_has_unproven_function(query) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL SELECT metadata fallback cannot prove that function calls are side-effect free"
+                .to_string(),
+        ));
+    }
+    if has_mysql_read_only_side_effect(query)
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
+    {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL SELECT metadata fallback cannot prove that the query is side-effect free"
+                .to_string(),
+        ));
+    }
+    Ok(format!(
+        "WITH {source_alias} AS (SELECT * FROM (({query}\n) LIMIT 0) AS __sabiql_metadata_inner) SELECT {source_alias}.* FROM {source_alias} RIGHT JOIN (SELECT 1 AS {marker_alias}) AS __sabiql_metadata_marker ON TRUE"
+    ))
+}
+
+fn mysql_metadata_select_has_unproven_function(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'#'
+            || (bytes.get(index..index + 2) == Some(b"--")
+                && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace))
+        {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes.get(index..index + 2) == Some(b"/*") {
+            index = bytes
+                .get(index + 2..)
+                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
+                .map_or(bytes.len(), |offset| index + offset + 4);
+            continue;
+        }
+        if bytes[index] == b'@' {
+            return true;
+        }
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            let quote = bytes[index];
+            index = skip_mysql_metadata_quoted(bytes, index, quote);
+            let next = skip_mysql_metadata_trivia(bytes, index);
+            if quote == b'`' && bytes.get(next) == Some(&b'(') {
+                return true;
+            }
+            continue;
+        }
+        if bytes[index].is_ascii_alphabetic() || matches!(bytes[index], b'_' | b'$') {
+            let start = index;
+            index += 1;
+            while index < bytes.len()
+                && (bytes[index].is_ascii_alphanumeric() || matches!(bytes[index], b'_' | b'$'))
+            {
+                index += 1;
+            }
+            let next = skip_mysql_metadata_trivia(bytes, index);
+            if bytes.get(next) == Some(&b'(') {
+                let name = &sql[start..index];
+                let cte_column_list = mysql_metadata_is_cte_column_list(sql, next);
+                let qualified = mysql_metadata_has_qualifier(bytes, start);
+                if !cte_column_list
+                    && (qualified
+                        || !name.eq_ignore_ascii_case("SLEEP")
+                            && !matches!(
+                                name.to_ascii_uppercase().as_str(),
+                                "AS" | "CASE" | "IN" | "EXISTS" | "OVER"
+                            ))
+                {
+                    return true;
+                }
+            }
+            continue;
+        }
+        index += 1;
+    }
+    false
+}
+
+fn skip_mysql_metadata_trivia(bytes: &[u8], mut index: usize) -> usize {
+    loop {
+        while bytes.get(index).is_some_and(u8::is_ascii_whitespace) {
+            index += 1;
+        }
+        if bytes.get(index) == Some(&b'#')
+            || (bytes.get(index..index + 2) == Some(b"--")
+                && bytes.get(index + 2).is_some_and(u8::is_ascii_whitespace))
+        {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes.get(index..index + 2) == Some(b"/*") {
+            index = bytes
+                .get(index + 2..)
+                .and_then(|rest| rest.windows(2).position(|window| window == b"*/"))
+                .map_or(bytes.len(), |offset| index + offset + 4);
+            continue;
+        }
+        return index;
+    }
+}
+
+fn mysql_metadata_has_qualifier(bytes: &[u8], end: usize) -> bool {
+    let mut index = 0;
+    let mut previous = None;
+    while index < end {
+        if bytes[index] == b'#'
+            || (bytes.get(index..index + 2) == Some(b"--")
+                && bytes.get(index + 2).is_some_and(u8::is_ascii_whitespace))
+            || bytes.get(index..index + 2) == Some(b"/*")
+        {
+            let next = skip_mysql_metadata_trivia(bytes, index);
+            if next == index {
+                index += 1;
+            } else {
+                index = next;
+            }
+            continue;
+        }
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            index = skip_mysql_metadata_quoted(bytes, index, bytes[index]);
+            previous = Some(b'\'');
+        } else if bytes[index].is_ascii_whitespace() {
+            index += 1;
+        } else {
+            previous = Some(bytes[index]);
+            index += 1;
+        }
+    }
+    previous == Some(b'.')
+}
+
+fn mysql_metadata_is_cte_column_list(sql: &str, candidate_open: usize) -> bool {
+    let bytes = sql.as_bytes();
+    let mut index = skip_mysql_metadata_trivia(bytes, 0);
+    let Some(after_with) = mysql_metadata_keyword_end(bytes, index, "WITH") else {
+        return false;
+    };
+    index = skip_mysql_metadata_trivia(bytes, after_with);
+    if let Some(after_recursive) = mysql_metadata_keyword_end(bytes, index, "RECURSIVE") {
+        index = skip_mysql_metadata_trivia(bytes, after_recursive);
+    }
+
+    loop {
+        index = match mysql_metadata_cte_name_end(bytes, index) {
+            Some(end) => skip_mysql_metadata_trivia(bytes, end),
+            None => return false,
+        };
+        let mut column_list = None;
+        if bytes.get(index) == Some(&b'(') {
+            let Some(end) = mysql_metadata_parenthesized_end(bytes, index) else {
+                return false;
+            };
+            column_list = Some(index);
+            index = skip_mysql_metadata_trivia(bytes, end);
+        }
+        let Some(after_as) = mysql_metadata_keyword_end(bytes, index, "AS") else {
+            return false;
+        };
+        index = skip_mysql_metadata_trivia(bytes, after_as);
+        let Some(body_end) = bytes
+            .get(index)
+            .filter(|byte| **byte == b'(')
+            .and_then(|_| mysql_metadata_parenthesized_end(bytes, index))
+        else {
+            return false;
+        };
+        if column_list == Some(candidate_open) {
+            return true;
+        }
+        index = skip_mysql_metadata_trivia(bytes, body_end);
+        if bytes.get(index) != Some(&b',') {
+            return false;
+        }
+        index = skip_mysql_metadata_trivia(bytes, index + 1);
+    }
+}
+
+fn mysql_metadata_cte_name_end(bytes: &[u8], index: usize) -> Option<usize> {
+    if bytes.get(index) == Some(&b'`') {
+        Some(skip_mysql_metadata_quoted(bytes, index, b'`'))
+    } else if bytes
+        .get(index)
+        .is_some_and(|byte| byte.is_ascii_alphabetic() || matches!(byte, b'_' | b'$'))
+    {
+        Some(
+            index
+                + 1
+                + bytes[index + 1..]
+                    .iter()
+                    .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
+                    .count(),
+        )
+    } else {
+        None
+    }
+}
+
+fn mysql_metadata_keyword_end(bytes: &[u8], index: usize, keyword: &str) -> Option<usize> {
+    let end = index.checked_add(keyword.len())?;
+    if bytes
+        .get(index..end)?
+        .eq_ignore_ascii_case(keyword.as_bytes())
+        && !bytes
+            .get(end)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$'))
+    {
+        Some(end)
+    } else {
+        None
+    }
+}
+
+fn mysql_metadata_parenthesized_end(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0;
+    let mut index = open;
+    while index < bytes.len() {
+        if matches!(bytes[index], b'\'' | b'"' | b'`') {
+            index = skip_mysql_metadata_quoted(bytes, index, bytes[index]);
+            continue;
+        }
+        let next = skip_mysql_metadata_trivia(bytes, index);
+        if next != index {
+            index = next;
+            continue;
+        }
+        match bytes[index] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(index + 1);
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+fn skip_mysql_metadata_quoted(bytes: &[u8], start: usize, quote: u8) -> usize {
+    let mut index = start + 1;
+    while index < bytes.len() {
+        if bytes[index] == b'\\' && quote != b'`' {
+            index = (index + 2).min(bytes.len());
+        } else if bytes[index] == quote {
+            if bytes.get(index + 1) == Some(&quote) {
+                index += 2;
+            } else {
+                return index + 1;
+            }
+        } else {
+            index += 1;
+        }
+    }
+    bytes.len()
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct MysqlExecutionResult {
     result_set: Option<MysqlResultSet>,
@@ -1227,6 +1520,27 @@ fn validate_mysql_multi_query(
                 .map_err(|error| DbOperationError::UnsupportedOperation(error.to_string()))
         })
         .collect()
+}
+
+fn mysql_metadata_fallback_has_unsupported_session_state(statements: &[MysqlStatement]) -> bool {
+    let mut temporary_table_created = false;
+    for statement in statements {
+        if temporary_table_created
+            && matches!(
+                statement.kind,
+                MysqlStatementKind::Show | MysqlStatementKind::Describe
+            )
+        {
+            return true;
+        }
+        if matches!(
+            statement.kind,
+            MysqlStatementKind::CreateTable { temporary: true }
+        ) {
+            temporary_table_created = true;
+        }
+    }
+    false
 }
 
 fn validate_mysql_export_query(
@@ -1587,7 +1901,7 @@ async fn export_mysql_csv_to_file(
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = timeout(
         MYSQL_EXPORT_TIMEOUT,
-        run_mysql_export_process(&mut process, query, path),
+        run_mysql_export_process(&mut process, &option_file.path, query, path),
     )
     .await;
     match result {
@@ -1607,6 +1921,7 @@ async fn export_mysql_csv_to_file(
 
 async fn run_mysql_export_process(
     process: &mut MysqlProcess,
+    option_file: &std::path::Path,
     query: &str,
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
@@ -1621,7 +1936,18 @@ async fn run_mysql_export_process(
 
     write_mysql_statement(process, query).await?;
     let mut csv_writer = CsvFileWriter::create(path).await?;
-    stream_mysql_resultset_to_csv(process, &mut csv_writer).await?;
+    let columns = stream_mysql_resultset_to_csv(process, &mut csv_writer).await?;
+    if columns.is_none() {
+        let statement = classify_mysql_statement(query)
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let fallback_kind = mysql_metadata_fallback_kind(&statement.kind).ok_or_else(|| {
+            DbOperationError::QueryFailed(
+                "MySQL empty CSV result has no supported metadata fallback".to_string(),
+            )
+        })?;
+        let columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
+        csv_writer.write_record(columns.iter()).await?;
+    }
 
     #[cfg(not(unix))]
     process
@@ -1639,8 +1965,10 @@ async fn run_mysql_export_process(
     };
 
     #[cfg(not(unix))]
-    let (_stdout, stderr) =
+    let (stdout, stderr) =
         tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    #[cfg(not(unix))]
+    let _stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
@@ -1663,7 +1991,7 @@ async fn run_mysql_export_process(
 async fn stream_mysql_resultset_to_csv(
     process: &mut MysqlProcess,
     csv_writer: &mut CsvFileWriter,
-) -> Result<(), DbOperationError> {
+) -> Result<Option<Vec<String>>, DbOperationError> {
     #[cfg(unix)]
     {
         let source = MysqlExportPtySource {
@@ -1714,7 +2042,7 @@ async fn stream_mysql_resultset_to_csv(
 async fn stream_mysql_xml_to_csv<R>(
     reader: &mut Reader<BufReader<R>>,
     csv_writer: &mut CsvFileWriter,
-) -> Result<(), DbOperationError>
+) -> Result<Option<Vec<String>>, DbOperationError>
 where
     R: AsyncRead + Unpin,
 {
@@ -1843,7 +2171,7 @@ where
                             "malformed MySQL XML resultset".to_string(),
                         ));
                     }
-                    return Ok(());
+                    return Ok(columns);
                 }
                 _ => {
                     return Err(DbOperationError::QueryFailed(
@@ -1867,7 +2195,7 @@ where
             "MySQL XML result did not contain one complete resultset".to_string(),
         ));
     }
-    Ok(())
+    Ok(columns)
 }
 
 #[cfg(unix)]
@@ -2116,7 +2444,7 @@ async fn export_mysql_csv_with_program(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_export_process(&mut process, query, path),
+        run_mysql_export_process(&mut process, option_file, query, path),
     )
     .await;
     match result {
@@ -2253,10 +2581,16 @@ async fn run_mysql_adhoc_with_program_and_statements(
     access_mode: AccessMode,
     execution_timeout: Duration,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
+    if mysql_metadata_fallback_has_unsupported_session_state(statements) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL empty SHOW/DESCRIBE metadata fallback cannot preserve temporary-table session state"
+                .to_string(),
+        ));
+    }
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, query, statements, access_mode),
+        run_mysql_adhoc_process(&mut process, option_file, query, statements, access_mode),
     )
     .await;
 
@@ -2277,6 +2611,7 @@ async fn run_mysql_adhoc_with_program_and_statements(
 
 async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
+    option_file: &std::path::Path,
     _query: &str,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
@@ -2340,7 +2675,16 @@ async fn run_mysql_adhoc_process(
                 Ok(result) => result,
                 Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
             };
-            (Some(first_result), marker_result)
+            let user_result = fill_mysql_empty_result_columns(
+                process,
+                first_result,
+                option_file,
+                &statement.sql,
+                &statement.kind,
+            )
+            .await
+            .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
+            (Some(user_result), marker_result)
         };
         let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
             Ok(rows) => rows,
@@ -2874,6 +3218,10 @@ fn has_mysql_cli_error(output: &[u8]) -> bool {
         })
 }
 
+fn is_mysql_batch_diagnostic(line: &[u8]) -> bool {
+    line.starts_with(b"mysql: ") || line.starts_with(b"Warning: ")
+}
+
 #[cfg(any(unix, test))]
 fn take_mysql_pty_resultset_frame(
     buffer: &mut Vec<u8>,
@@ -3029,6 +3377,158 @@ fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
         "--silent".to_string(),
         "--prompt=".to_string(),
     ]
+}
+
+fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
+    vec![
+        format!("--defaults-file={}", option_file.display()),
+        "--no-login-paths".to_string(),
+        "--protocol=TCP".to_string(),
+        "--connect-timeout=10".to_string(),
+        "--batch".to_string(),
+        "--column-names".to_string(),
+        "--column-type-info".to_string(),
+        "--binary-as-hex".to_string(),
+        "--binary-mode".to_string(),
+        "--unbuffered".to_string(),
+        "--skip-reconnect".to_string(),
+        "--default-character-set=utf8mb4".to_string(),
+        "--prompt=".to_string(),
+    ]
+}
+
+async fn mysql_metadata_columns(
+    process: &mut MysqlProcess,
+    option_file: &std::path::Path,
+    query: &str,
+    kind: MysqlMetadataFallbackKind,
+) -> Result<Vec<String>, DbOperationError> {
+    let query = match kind {
+        MysqlMetadataFallbackKind::Select => {
+            return mysql_metadata_select_columns(process, query).await;
+        }
+        MysqlMetadataFallbackKind::Show | MysqlMetadataFallbackKind::Describe => {
+            query.trim().trim_end_matches(';').trim_end().to_string()
+        }
+    };
+    mysql_metadata_columns_external(option_file, &query).await
+}
+
+async fn mysql_metadata_select_columns(
+    process: &mut MysqlProcess,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    let suffix = Uuid::new_v4().simple().to_string();
+    let source_alias = format!("__sabiql_metadata_source_{suffix}");
+    let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
+    let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
+    write_mysql_statement(process, &query).await?;
+    let xml = match read_one_mysql_resultset(process).await {
+        Err(DbOperationError::QueryFailed(details))
+            if details
+                .to_ascii_lowercase()
+                .contains("duplicate column name") =>
+        {
+            return Err(DbOperationError::UnsupportedOperation(
+                "MySQL SELECT metadata fallback does not support duplicate column names"
+                    .to_string(),
+            ));
+        }
+        result => result?,
+    };
+    let result = parse_mysql_xml(&xml)?;
+    let row = result.values.first().ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL SELECT metadata fallback returned no synthetic row".to_string(),
+        )
+    })?;
+    if result.values.len() != 1
+        || result.columns.is_empty()
+        || row.len() != result.columns.len()
+        || row.iter().any(|value| !matches!(value, QueryValue::Null))
+    {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL SELECT metadata fallback returned an invalid synthetic row".to_string(),
+        ));
+    }
+    Ok(result.columns)
+}
+
+async fn mysql_metadata_columns_external(
+    option_file: &std::path::Path,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    let mut args = mysql_metadata_args(option_file);
+    args.push(format!("--execute={query}"));
+    let option_file = option_file.to_path_buf();
+    let output = run_mysql_command(args, Some(&option_file)).await?;
+    if !output.status.success() {
+        return Err(classify_mysql_query_failure(&output.stderr));
+    }
+    parse_mysql_metadata_header(&output.stdout, query)
+}
+
+fn parse_mysql_metadata_header(
+    output: &[u8],
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    let query = query.trim_end();
+    let query_with_semicolon = format!("{query};");
+    let lines = output
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .filter(|line| {
+            !line.is_empty()
+                && !is_mysql_batch_diagnostic(line)
+                && *line != query.as_bytes()
+                && *line != query_with_semicolon.as_bytes()
+        })
+        .collect::<Vec<_>>();
+    let header = lines.first().ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned no column header".to_string(),
+        )
+    })?;
+    let columns = header
+        .split(|byte| *byte == b'\t')
+        .map(|column| {
+            String::from_utf8(column.to_vec()).map_err(|error| {
+                DbOperationError::QueryFailed(format!(
+                    "invalid MySQL metadata fallback column name: {error}"
+                ))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if columns.is_empty() || columns.iter().any(String::is_empty) {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned an invalid column header".to_string(),
+        ));
+    }
+    if lines.len() != 1 {
+        return Err(DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned data instead of a header".to_string(),
+        ));
+    }
+    Ok(columns)
+}
+
+async fn fill_mysql_empty_result_columns(
+    process: &mut MysqlProcess,
+    mut result: MysqlResultSet,
+    option_file: &std::path::Path,
+    query: &str,
+    kind: &MysqlStatementKind,
+) -> Result<MysqlResultSet, DbOperationError> {
+    if !result.columns.is_empty() || !result.values.is_empty() {
+        return Ok(result);
+    }
+    let fallback_kind = mysql_metadata_fallback_kind(kind).ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL empty result has no supported metadata fallback".to_string(),
+        )
+    })?;
+    result.columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
+    Ok(result)
 }
 
 fn validate_mode_probe(result: &MysqlResultSet, marker: &str) -> Result<(), DbOperationError> {
@@ -3680,6 +4180,116 @@ mod probe_tests {
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 
     use super::*;
+
+    #[test]
+    fn metadata_only_select_rejects_known_side_effects() {
+        for query in [
+            "SELECT value FROM items FOR UPDATE",
+            "SELECT GET_LOCK('sabiql', 0)",
+            "SELECT @value := 1",
+        ] {
+            assert!(
+                mysql_metadata_select_query(query, "__source", "__marker").is_err(),
+                "{query}"
+            );
+        }
+        assert!(mysql_metadata_select_query(
+            "WITH cte_rows AS (SELECT 1 AS first_alias) SELECT first_alias FROM cte_rows WHERE FALSE",
+            "__source",
+            "__marker"
+        )
+        .is_ok());
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT CONCAT('a', 'b') AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT CONCAT/**/('a', 'b') AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT sabiql_test.user_function() AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT sabiql_test/**/.user_function() AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT `user_function`/**/() AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT @session_value AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT INTERVAL(10, 1, 5) AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_err()
+        );
+        assert!(
+            mysql_metadata_select_query(
+            "WITH cte_rows(first_alias) AS (SELECT 1) SELECT first_alias FROM cte_rows WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_ok()
+        );
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT CASE (1) WHEN 1 THEN 'x' ELSE 'y' END AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_ok()
+        );
+        for query in [
+            "SELECT CAST(1 AS CHAR) AS value WHERE FALSE",
+            "SELECT CONVERT(1, CHAR) AS value WHERE FALSE",
+            "SELECT EXTRACT(YEAR FROM CURRENT_DATE) AS value WHERE FALSE",
+        ] {
+            assert!(
+                mysql_metadata_select_query(query, "__source", "__marker").is_err(),
+                "{query}"
+            );
+        }
+        assert!(
+            mysql_metadata_select_query(
+                "SELECT SLEEP(1) AS value WHERE FALSE",
+                "__source",
+                "__marker"
+            )
+            .is_ok()
+        );
+    }
 
     #[test]
     fn builds_and_parses_mysql_dsn_with_encoded_components() {
@@ -4755,6 +5365,31 @@ done
             ));
             assert!(!log_file.exists(), "{query}");
         }
+    }
+
+    #[test]
+    fn rejects_empty_metadata_fallback_after_temporary_table_creation() {
+        for query in [
+            "CREATE TEMPORARY TABLE temp_items (id INT); DESCRIBE temp_items 'missing'; DROP TEMPORARY TABLE temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); SHOW COLUMNS FROM temp_items LIKE 'missing'; DROP TEMPORARY TABLE temp_items",
+        ] {
+            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
+                .expect("query should be classified before the session-state check");
+
+            assert!(mysql_metadata_fallback_has_unsupported_session_state(
+                &statements
+            ));
+        }
+
+        let statements = validate_mysql_multi_query(
+            "SHOW COLUMNS FROM items",
+            Some("app"),
+            AccessMode::ReadWrite,
+        )
+        .expect("single SHOW should be classified");
+        assert!(!mysql_metadata_fallback_has_unsupported_session_state(
+            &statements
+        ));
     }
 
     #[tokio::test]
