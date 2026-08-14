@@ -71,3 +71,4 @@ include!("export_tests.rs");
 include!("policy_tests.rs");
 include!("args_tests.rs");
 include!("error_tests.rs");
+include!("pipe_tests.rs");

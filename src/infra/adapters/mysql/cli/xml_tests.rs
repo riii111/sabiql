@@ -116,4 +116,125 @@ mod xml_tests {
         );
         assert!(buffer.is_empty());
     }
+
+#[cfg(test)]
+mod resultset_frame_tests {
+    use super::*;
+
+    #[test]
+    fn extracts_one_frame_when_end_delimiter_crosses_4k_chunk_boundary() {
+        let delimiter_start = 4096 - 3;
+        let mut expected = MYSQL_RESULTSET_START.to_vec();
+        expected.resize(delimiter_start, b'x');
+        expected.extend_from_slice(MYSQL_RESULTSET_END);
+
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+        for chunk in expected.chunks(4096) {
+            buffer.extend_from_slice(chunk);
+            if let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![expected]);
+        assert!(buffer.is_empty());
+        assert_eq!(scanner.take(&mut buffer), None);
+    }
+
+    #[test]
+    fn extracts_large_resultset_from_small_chunks() {
+        let mut expected = MYSQL_RESULTSET_START.to_vec();
+        expected.extend_from_slice(b"<row><field name=\"value\">");
+        expected.extend(vec![b'x'; 128 * 1024]);
+        expected.extend_from_slice(b"</field></row>");
+        expected.extend_from_slice(MYSQL_RESULTSET_END);
+
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+        for chunk in expected.chunks(37) {
+            buffer.extend_from_slice(chunk);
+            if let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![expected]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn drains_frames_in_order_without_skipping_the_following_frame() {
+        let first = b"<resultset><row><field name=\"value\">one</field></row></resultset>";
+        let second = b"noise<resultset><row><field name=\"value\">two</field></row></resultset>";
+        let mut input = first.to_vec();
+        input.extend_from_slice(second);
+        let mut buffer = Vec::new();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut frames = Vec::new();
+
+        for chunk in input.chunks(11) {
+            buffer.extend_from_slice(chunk);
+            while let Some(frame) = scanner.take(&mut buffer) {
+                frames.push(frame);
+            }
+        }
+
+        assert_eq!(frames, vec![first.to_vec(), second[5..].to_vec()]);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn delimiter_prefix_in_field_text_does_not_end_the_frame() {
+        let expected = b"<resultset><row><field name=\"value\">literal </resultset prefix</field></row></resultset>";
+        let mut buffer = expected.to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        assert_eq!(scanner.take(&mut buffer), Some(expected.to_vec()));
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn resultset_field_error_text_is_not_classified_as_cli_error() {
+        let mut buffer = br#"<resultset><row><field name="message">line 1
+ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
+            .to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        let frame = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner).unwrap();
+
+        assert!(frame.is_some());
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn cli_error_before_resultset_frame_is_still_rejected() {
+        let mut buffer =
+            b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        let result = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner);
+
+        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        assert_eq!(
+            buffer,
+            b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>"
+        );
+    }
+
+    #[test]
+    fn error_before_resultset_frame_is_not_accepted() {
+        let mut buffer = b"<resultset><row></row></resultset>".to_vec();
+        let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
+        let mut scanner = MysqlResultsetFrameScanner::default();
+
+        assert!(matches!(
+            take_mysql_resultset_frame_after_error_check(&mut buffer, error, &mut scanner),
+            Err(DbOperationError::QueryFailed(_))
+        ));
+        assert_eq!(buffer, b"<resultset><row></row></resultset>");
+    }
+}
 }
