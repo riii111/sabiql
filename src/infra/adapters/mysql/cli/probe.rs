@@ -134,7 +134,6 @@ mod probe_tests {
 
     use super::*;
 
-
     #[test]
     fn validates_supported_versions_and_sql_modes() {
         assert!(is_oracle_mysql_cli_84_version("mysql  Ver 8.4.3 for macos"));

@@ -2,7 +2,6 @@
 mod args_tests {
     use super::*;
 
-
     #[test]
     fn arguments_keep_credentials_out_of_argv() {
         let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));

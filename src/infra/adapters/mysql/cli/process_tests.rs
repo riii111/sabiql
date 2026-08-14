@@ -32,7 +32,7 @@ mod executor_tests {
                 ))
             }
         }
-}
+    }
     async fn run_mysql_adhoc_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
@@ -60,7 +60,6 @@ mod executor_tests {
             }
         }
     }
-
 
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
@@ -365,9 +364,6 @@ done
         }
     }
 
-
-
-
     #[tokio::test]
     async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
         let (_directory, program, option_file) = fake_mysql_multi();
@@ -480,8 +476,6 @@ done
         assert!(!final_path.exists());
         assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
     }
-
-
 
     #[tokio::test]
     async fn probe_failure_never_writes_user_sql() {
@@ -729,5 +723,4 @@ done
                 if details.contains("missing_column")
         ));
     }
-
 }

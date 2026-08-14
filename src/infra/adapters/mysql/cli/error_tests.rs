@@ -3,7 +3,6 @@ mod error_tests {
     use super::*;
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 
-
     #[test]
     fn classifies_mysql_query_failures_by_server_error() {
         assert!(matches!(
@@ -39,7 +38,6 @@ mod error_tests {
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
     }
-
 
     #[test]
     fn classifies_mysql_tls_query_failures_as_connection_errors() {

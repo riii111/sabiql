@@ -3,7 +3,6 @@ mod export_tests {
     use super::*;
     use tempfile::tempdir;
 
-
     #[tokio::test]
     async fn streams_mysql_xml_rows_into_csv_without_binary_type_inference() {
         let xml = r#"<?xml version="1.0" encoding="utf-8"?>

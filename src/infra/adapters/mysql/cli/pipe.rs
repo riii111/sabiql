@@ -100,7 +100,6 @@ where
     }
 }
 
-
 #[cfg(not(unix))]
 async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
 where

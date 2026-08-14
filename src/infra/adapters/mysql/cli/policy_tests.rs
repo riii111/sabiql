@@ -2,7 +2,6 @@
 mod policy_tests {
     use super::*;
 
-
     #[test]
     fn csv_export_accepts_one_read_only_result_query() {
         assert!(validate_mysql_export_query("SELECT 1", Some("app")).is_ok());
@@ -21,7 +20,7 @@ mod policy_tests {
             Err(DbOperationError::UnsupportedOperation(details))
                 if details.contains("single read-only result")
         ));
-}
+    }
 
     #[test]
     fn mode_probe_requires_marker_and_allowed_mode_before_user_sql() {

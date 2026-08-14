@@ -139,7 +139,10 @@ impl MysqlMetadataSession {
         validate_mode_probe(&result, &marker)
     }
 
-    pub(super) async fn execute(&mut self, query: &str) -> Result<MysqlResultSet, DbOperationError> {
+    pub(super) async fn execute(
+        &mut self,
+        query: &str,
+    ) -> Result<MysqlResultSet, DbOperationError> {
         write_mysql_statement(&mut self.process, query).await?;
         let xml = read_one_mysql_resultset(&mut self.process).await?;
         parse_mysql_xml(&xml)
