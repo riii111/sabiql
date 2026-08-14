@@ -201,7 +201,12 @@ impl AsyncRead for MysqlExportPtySource<'_> {
             }
 
             {
-                return Pin::new(&mut this.pty.output).poll_read(cx, buffer);
+                let filled_before = buffer.filled().len();
+                let result = Pin::new(&mut this.pty.output).poll_read(cx, buffer);
+                if matches!(&result, Poll::Ready(Ok(()))) {
+                    this.capture_error(&buffer.filled()[filled_before..]);
+                }
+                return result;
             }
         }
     }
@@ -249,6 +254,53 @@ mod tests {
                 .unwrap()
                 .contains("<resultset>")
         );
+        assert!(matches!(
+            classify_mysql_query_failure(&source.error_output),
+            DbOperationError::ObjectMissing(details) if details.contains("missing_column")
+        ));
+    }
+
+    #[tokio::test]
+    async fn captures_mysql_error_split_after_resultset_start() {
+        let (master, slave) = create_mysql_pty().expect("create test PTY");
+        let output = TokioFile::from_std(master.try_clone().expect("clone PTY master"));
+        let input = TokioFile::from_std(master);
+        let mut pty = MysqlPty {
+            input,
+            output,
+            pending: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+        };
+        let mut writer = TokioFile::from_std(slave);
+        let producer = tokio::spawn(async move {
+            writer.write_all(b"<resultset></resultset>").await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            writer.write_all(b"ERROR 1").await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            writer
+                .write_all(b"054 (42S22): Unknown column missing_column")
+                .await
+                .unwrap();
+        });
+        let mut source = MysqlExportPtySource {
+            pty: &mut pty,
+            error_output: Vec::new(),
+            error_buffer: Vec::new(),
+            pending: Vec::new(),
+            started: false,
+        };
+        let mut output = vec![0; 1024];
+        let count = source.read(&mut output).await.unwrap();
+        assert!(
+            std::str::from_utf8(&output[..count])
+                .unwrap()
+                .contains("<resultset>")
+        );
+
+        source.read(&mut output).await.unwrap();
+        source.read(&mut output).await.unwrap();
+        producer.await.unwrap();
+
         assert!(matches!(
             classify_mysql_query_failure(&source.error_output),
             DbOperationError::ObjectMissing(details) if details.contains("missing_column")
