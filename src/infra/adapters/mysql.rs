@@ -4847,9 +4847,8 @@ done
                 Duration::from_secs(5),
             )
             .await;
-            let error = match result {
-                Ok(_) => panic!("expected the fake MySQL statement to fail"),
-                Err(error) => error,
+            let Err(error) = result else {
+                panic!("expected the fake MySQL statement to fail");
             };
 
             assert_eq!(error.summary(), summary);
