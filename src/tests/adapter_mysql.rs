@@ -1683,6 +1683,33 @@ async fn exports_with_a_read_only_session_and_rejects_writes() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
+#[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+async fn exports_resultset_field_error_text_verbatim_through_real_mysql_cli() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let output_directory = tempdir().map_err(|error| error.to_string())?;
+            let path = export_mysql_csv_to_path_for_test(
+                db.dsn(),
+                "SELECT CONVERT(CONCAT('line 1', CHAR(10), 'ERROR 1146 (42S02): this is a cell value') USING utf8mb4) AS message",
+                output_directory.path().join("field-error.csv"),
+            )
+            .await
+            .map_err(|error| format!("field-error CSV export failed: {error:?}"))?;
+            let csv = std::fs::read_to_string(&path)
+                .map_err(|error| format!("failed to read field-error CSV export: {error}"))?;
+            let expected =
+                "message\n\"line 1\r\nERROR 1146 (42S02): this is a cell value\"\n";
+            if csv != expected {
+                return Err(format!("unexpected field-error CSV export: {csv:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
 async fn exports_a_header_only_csv_for_an_empty_result() {
     with_mysql_test_db(|db| {
