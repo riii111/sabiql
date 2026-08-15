@@ -38,7 +38,7 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let database_type = state.session.active_database_type_or_default();
-            if is_multi_statement(database_type, &content) {
+            if database_type != DatabaseType::MySQL && is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(
                     state,
                     "EXPLAIN ANALYZE does not support multiple statements",

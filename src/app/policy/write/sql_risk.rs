@@ -1,8 +1,8 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
-    has_top_level_into_clause, split_mysql_statements,
+    MysqlLexError, MysqlStatement, MysqlStatementKind, classify_mysql_statement,
+    has_mysql_read_only_side_effect, has_top_level_into_clause, split_mysql_statements,
     statement_contains_unsupported_mysql_control, target_is_selected_database,
 };
 use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
@@ -36,6 +36,7 @@ pub enum AcknowledgeReason {
 #[cfg(test)]
 mod mysql_tests {
     use super::*;
+    use rstest::rstest;
 
     fn mysql(sql: &str) -> MultiStatementDecision {
         evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
@@ -268,6 +269,31 @@ mod mysql_tests {
             mysql("WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows"),
             MultiStatementDecision::Allow { .. }
         ));
+    }
+
+    #[rstest]
+    #[case::unterminated_quote("SELECT 'unfinished")]
+    #[case::unterminated_comment("SELECT 1 /* unfinished")]
+    #[case::unsupported_statement("MERGE INTO items USING source ON items.id = source.id")]
+    #[case::replace("REPLACE INTO items VALUES (1)")]
+    #[case::begin_work("BEGIN WORK")]
+    fn invalid_mysql_scripts_are_blocked_before_execution(#[case] sql: &str) {
+        assert!(
+            matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+            "{sql}"
+        );
+        assert!(
+            evaluate_mysql_explain_analyze_target(sql).is_none(),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn preserves_mysql_split_errors_for_callers() {
+        assert!(split_statements_for_database(DatabaseType::MySQL, "SELECT 'unfinished").is_err());
+        assert!(
+            split_statements_for_database(DatabaseType::MySQL, "SELECT 1 /* unfinished").is_err()
+        );
     }
 
     #[test]
@@ -884,22 +910,26 @@ fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
 
 pub fn split_statements(sql: &str) -> Vec<String> {
     split_statements_for_database(DatabaseType::PostgreSQL, sql)
+        .expect("PostgreSQL statement splitting is infallible")
 }
 
-pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
+pub fn split_statements_for_database(
+    database_type: DatabaseType,
+    sql: &str,
+) -> Result<Vec<String>, MysqlLexError> {
     if database_type == DatabaseType::MySQL {
-        return split_mysql_statements(sql).unwrap_or_default();
+        return split_mysql_statements(sql);
     }
     if database_type == DatabaseType::SQLite {
-        return split_sqlite_statements(sql)
+        return Ok(split_sqlite_statements(sql)
             .statements()
             .iter()
             .filter(|statement| !is_comment_only(statement))
             .map(|statement| (*statement).to_string())
-            .collect();
+            .collect());
     }
 
-    split_postgres_statements(sql)
+    Ok(split_postgres_statements(sql))
 }
 
 fn split_postgres_statements(sql: &str) -> Vec<String> {
@@ -1022,9 +1052,6 @@ pub fn evaluate_sql_risk_for_database(
     kind: &StatementKind,
     sql: &str,
 ) -> SqlRiskDecision {
-    if database_type == DatabaseType::MySQL {
-        return evaluate_mysql_statement_risk(sql);
-    }
     if database_type == DatabaseType::SQLite
         && let Some(decision) = evaluate_sqlite_specific_risk(sql)
     {
@@ -1092,21 +1119,6 @@ pub fn evaluate_sql_risk_for_database(
     }
 }
 
-fn evaluate_mysql_statement_risk(sql: &str) -> SqlRiskDecision {
-    if let Ok(statement) = classify_mysql_statement(sql) {
-        return mysql_statement_risk(&statement);
-    }
-
-    SqlRiskDecision {
-        risk_level: RiskLevel::Low,
-        confirmation: ConfirmationType::Acknowledge {
-            reason: AcknowledgeReason::UnknownRisk,
-            label: first_keyword(sql).unwrap_or_else(|| "SQL".to_string()),
-        },
-        read_only_allowed: false,
-    }
-}
-
 pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecision> {
     if statement_contains_unsupported_mysql_control(sql) {
         return None;
@@ -1168,7 +1180,14 @@ pub fn evaluate_multi_statement_for_database_with_context(
         };
     }
 
-    let statements = split_statements_for_database(database_type, sql);
+    let statements = match split_statements_for_database(database_type, sql) {
+        Ok(statements) => statements,
+        Err(error) => {
+            return MultiStatementDecision::Block {
+                reason: error.to_string(),
+            };
+        }
+    };
 
     if statements.is_empty() {
         return MultiStatementDecision::Block {
@@ -1403,7 +1422,10 @@ pub fn adhoc_label_for_table_name_confirmation(
                 .then(|| mysql_statement_label(&statement.kind))
             });
     }
-    for stmt in split_statements_for_database(database_type, sql) {
+    let Ok(statements) = split_statements_for_database(database_type, sql) else {
+        return None;
+    };
+    for stmt in statements {
         let kind = classify(&stmt);
         let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);
         if matches!(

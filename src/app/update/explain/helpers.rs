@@ -75,7 +75,8 @@ pub(super) fn finish_explain_unsupported_analyze(state: &mut AppState) {
 }
 
 pub(super) fn is_multi_statement(database_type: DatabaseType, content: &str) -> bool {
-    split_statements_for_database(database_type, content).len() > 1
+    split_statements_for_database(database_type, content)
+        .is_ok_and(|statements| statements.len() > 1)
 }
 
 pub(super) fn mark_explain_unavailable(state: &mut AppState) {
