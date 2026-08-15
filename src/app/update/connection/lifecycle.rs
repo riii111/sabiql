@@ -67,6 +67,7 @@ pub fn reduce_connection_lifecycle(
         }
 
         Action::SwitchConnection(target) => {
+            state.connection_error.clear();
             let ConnectionTarget {
                 id,
                 dsn,
@@ -1403,6 +1404,90 @@ mod tests {
             assert_eq!(retry_target.dsn, target.dsn);
             assert_eq!(retry_target.id, target.id);
             assert_ne!(retry_run_id, first_run_id);
+        }
+
+        #[test]
+        fn switching_after_mysql_probe_failure_replaces_error_and_retry_target() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("mysql-a");
+            state.session.activate_connection_with_target(
+                &current_id,
+                "mysql-a",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+                Some("a"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+
+            let failed_target = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let failed_effects =
+                reduce(&mut state, &Action::SwitchConnection(failed_target.clone())).unwrap();
+            let failed_run_id = failed_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: failed_target,
+                    run_id: failed_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            let retry_target = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-c"),
+                dsn: "mysql://user@localhost:3306/c?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-c".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("c".to_string()),
+            };
+            let retry_effects =
+                reduce(&mut state, &Action::SwitchConnection(retry_target.clone())).unwrap();
+            let retry_run_id = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            assert!(state.connection_error.error_info().is_none());
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: retry_target.clone(),
+                    run_id: retry_run_id,
+                    error: DbOperationError::ConnectionFailed("refused again".to_string()),
+                },
+            );
+            let retry_effects = reduce_connection_error(
+                &mut state,
+                &Action::RetryConnection,
+                std::time::Instant::now(),
+            )
+            .into_effects()
+            .unwrap();
+            let actual_target = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { target, .. } => Some(target),
+                    _ => None,
+                })
+                .unwrap();
+            assert_eq!(actual_target.id, retry_target.id);
+            assert_eq!(actual_target.dsn, retry_target.dsn);
         }
 
         #[test]
