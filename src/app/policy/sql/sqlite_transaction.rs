@@ -255,7 +255,8 @@ mod tests {
     use crate::policy::write::sql_risk::split_statements_for_database;
 
     fn policy_for(sql: &str) -> SqliteTransactionPolicy {
-        let statements = split_statements_for_database(DatabaseType::SQLite, sql);
+        let statements = split_statements_for_database(DatabaseType::SQLite, sql)
+            .expect("SQLite statement splitting does not produce MySQL lexer errors");
         sqlite_transaction_policy(&statements)
     }
 

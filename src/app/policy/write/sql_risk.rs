@@ -1,8 +1,8 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
-    has_top_level_into_clause, split_mysql_statements,
+    MysqlLexError, MysqlStatement, MysqlStatementKind, classify_mysql_statement,
+    has_mysql_read_only_side_effect, has_top_level_into_clause, split_mysql_statements,
     statement_contains_unsupported_mysql_control, target_is_selected_database,
 };
 use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
@@ -36,6 +36,7 @@ pub enum AcknowledgeReason {
 #[cfg(test)]
 mod mysql_tests {
     use super::*;
+    use rstest::rstest;
 
     fn mysql(sql: &str) -> MultiStatementDecision {
         evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
@@ -268,6 +269,31 @@ mod mysql_tests {
             mysql("WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows"),
             MultiStatementDecision::Allow { .. }
         ));
+    }
+
+    #[rstest]
+    #[case::unterminated_quote("SELECT 'unfinished")]
+    #[case::unterminated_comment("SELECT 1 /* unfinished")]
+    #[case::unsupported_statement("MERGE INTO items USING source ON items.id = source.id")]
+    #[case::replace("REPLACE INTO items VALUES (1)")]
+    #[case::begin_work("BEGIN WORK")]
+    fn invalid_mysql_scripts_are_blocked_before_execution(#[case] sql: &str) {
+        assert!(
+            matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+            "{sql}"
+        );
+        assert!(
+            evaluate_mysql_explain_analyze_target(sql).is_none(),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn preserves_mysql_split_errors_for_callers() {
+        assert!(split_statements_for_database(DatabaseType::MySQL, "SELECT 'unfinished").is_err());
+        assert!(
+            split_statements_for_database(DatabaseType::MySQL, "SELECT 1 /* unfinished").is_err()
+        );
     }
 
     #[test]
@@ -884,22 +910,26 @@ fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
 
 pub fn split_statements(sql: &str) -> Vec<String> {
     split_statements_for_database(DatabaseType::PostgreSQL, sql)
+        .expect("PostgreSQL statement splitting is infallible")
 }
 
-pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
+pub fn split_statements_for_database(
+    database_type: DatabaseType,
+    sql: &str,
+) -> Result<Vec<String>, MysqlLexError> {
     if database_type == DatabaseType::MySQL {
-        return split_mysql_statements(sql).unwrap_or_default();
+        return split_mysql_statements(sql);
     }
     if database_type == DatabaseType::SQLite {
-        return split_sqlite_statements(sql)
+        return Ok(split_sqlite_statements(sql)
             .statements()
             .iter()
             .filter(|statement| !is_comment_only(statement))
             .map(|statement| (*statement).to_string())
-            .collect();
+            .collect());
     }
 
-    split_postgres_statements(sql)
+    Ok(split_postgres_statements(sql))
 }
 
 fn split_postgres_statements(sql: &str) -> Vec<String> {
@@ -1015,23 +1045,24 @@ fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
 
 pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
     evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
+        .expect("PostgreSQL SQL risk evaluation is supported")
 }
 
 pub fn evaluate_sql_risk_for_database(
     database_type: DatabaseType,
     kind: &StatementKind,
     sql: &str,
-) -> SqlRiskDecision {
+) -> Option<SqlRiskDecision> {
     if database_type == DatabaseType::MySQL {
-        return evaluate_mysql_statement_risk(sql);
+        return None;
     }
     if database_type == DatabaseType::SQLite
         && let Some(decision) = evaluate_sqlite_specific_risk(sql)
     {
-        return decision;
+        return Some(decision);
     }
 
-    match kind {
+    Some(match kind {
         StatementKind::Select | StatementKind::Transaction => low_immediate(),
         StatementKind::Insert | StatementKind::Create => SqlRiskDecision {
             risk_level: RiskLevel::Low,
@@ -1042,7 +1073,7 @@ pub fn evaluate_sql_risk_for_database(
             // Empty / comment-only input has nothing to execute; gating it
             // would show a confirm dialog for a no-op.
             if sql.trim().is_empty() || is_comment_only(sql) {
-                return low_immediate();
+                return Some(low_immediate());
             }
             SqlRiskDecision {
                 risk_level: RiskLevel::Low,
@@ -1089,22 +1120,7 @@ pub fn evaluate_sql_risk_for_database(
             },
             None => high_acknowledge(kind),
         },
-    }
-}
-
-fn evaluate_mysql_statement_risk(sql: &str) -> SqlRiskDecision {
-    if let Ok(statement) = classify_mysql_statement(sql) {
-        return mysql_statement_risk(&statement);
-    }
-
-    SqlRiskDecision {
-        risk_level: RiskLevel::Low,
-        confirmation: ConfirmationType::Acknowledge {
-            reason: AcknowledgeReason::UnknownRisk,
-            label: first_keyword(sql).unwrap_or_else(|| "SQL".to_string()),
-        },
-        read_only_allowed: false,
-    }
+    })
 }
 
 pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecision> {
@@ -1168,7 +1184,14 @@ pub fn evaluate_multi_statement_for_database_with_context(
         };
     }
 
-    let statements = split_statements_for_database(database_type, sql);
+    let statements = match split_statements_for_database(database_type, sql) {
+        Ok(statements) => statements,
+        Err(error) => {
+            return MultiStatementDecision::Block {
+                reason: error.to_string(),
+            };
+        }
+    };
 
     if statements.is_empty() {
         return MultiStatementDecision::Block {
@@ -1180,7 +1203,11 @@ pub fn evaluate_multi_statement_for_database_with_context(
 
     for stmt in &statements {
         let kind = classify(stmt);
-        let decision = evaluate_sql_risk_for_database(database_type, &kind, stmt);
+        let Some(decision) = evaluate_sql_risk_for_database(database_type, &kind, stmt) else {
+            return MultiStatementDecision::Block {
+                reason: "SQL risk evaluation is not supported for this database".to_string(),
+            };
+        };
         decisions.push((stmt.clone(), kind, decision));
     }
 
@@ -1403,9 +1430,12 @@ pub fn adhoc_label_for_table_name_confirmation(
                 .then(|| mysql_statement_label(&statement.kind))
             });
     }
-    for stmt in split_statements_for_database(database_type, sql) {
+    let Ok(statements) = split_statements_for_database(database_type, sql) else {
+        return None;
+    };
+    for stmt in statements {
         let kind = classify(&stmt);
-        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);
+        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt)?;
         if matches!(
             decision.confirmation,
             ConfirmationType::TableNameInput { .. }
@@ -1833,7 +1863,8 @@ mod tests {
             fn sqlite_read_only_pragma_returns_low_immediate() {
                 let sql = "PRAGMA table_info(users)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(result.read_only_allowed);
@@ -1844,7 +1875,8 @@ mod tests {
             fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
                 let sql = "PRAGMA index_info(users_name_idx)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(result.read_only_allowed);
@@ -1866,7 +1898,8 @@ mod tests {
             #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
             fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1883,7 +1916,8 @@ mod tests {
             fn sqlite_non_dangerous_pragma_assignment_is_medium_write() {
                 let sql = "PRAGMA user_version = 3";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(!result.read_only_allowed);
@@ -1894,7 +1928,8 @@ mod tests {
             fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
                 let sql = "PRAGMA user_version(3)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(!result.read_only_allowed);
@@ -1913,7 +1948,8 @@ mod tests {
             #[case::analyze("ANALYZE users", "ANALYZE")]
             fn requires_acknowledgment(#[case] sql: &str, #[case] expected_label: &str) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1975,7 +2011,8 @@ mod tests {
                 #[case] expected_target: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -2035,7 +2072,8 @@ mod tests {
                 #[case] expected_target: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -2052,7 +2090,8 @@ mod tests {
                 #[case] sql: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
@@ -2062,7 +2101,8 @@ mod tests {
             fn sqlite_drop_multiple_index_requires_acknowledgment() {
                 let sql = "DROP INDEX a, b";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -2658,6 +2698,20 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn rejects_mysql_single_statement_risk_entry() {
+        for sql in [
+            "BEGIN WORK",
+            "REPLACE INTO items VALUES (1)",
+            "MERGE INTO items USING source ON items.id = source.id",
+        ] {
+            assert!(
+                evaluate_sql_risk_for_database(DatabaseType::MySQL, &classify(sql), sql).is_none(),
+                "{sql}"
+            );
         }
     }
 }
