@@ -28,15 +28,15 @@ use super::pty::{
 use super::xml::trace_mysql_frame;
 use super::xml::{MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
-pub(super) mod session;
+mod session;
 pub(in crate::adapters::mysql) use session::MysqlMetadataSession;
-pub(super) mod adhoc;
+mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::{
     run_mysql_adhoc, run_mysql_adhoc_with_expected_columns,
 };
-pub(super) mod single;
+mod single;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
-pub(super) mod metadata;
+mod metadata;
 pub(in crate::adapters::mysql) use metadata::mysql_metadata_columns;
 
 #[cfg(all(unix, feature = "test-support"))]
@@ -167,7 +167,7 @@ impl MysqlProcess {
 }
 
 #[cfg(unix)]
-pub(super) async fn stop_mysql_process(
+async fn stop_mysql_process(
     process: &mut MysqlProcess,
 ) -> Result<(ExitStatus, bool), DbOperationError> {
     if let Some(status) = process
@@ -195,9 +195,7 @@ pub(super) struct MysqlSessionResult {
     pub(super) error_bytes: Vec<u8>,
 }
 
-pub(super) async fn shutdown_mysql_input(
-    process: &mut MysqlProcess,
-) -> Result<(), DbOperationError> {
+async fn shutdown_mysql_input(process: &mut MysqlProcess) -> Result<(), DbOperationError> {
     #[cfg(unix)]
     {
         write_mysql_input(process, b"\x04").await
@@ -213,7 +211,7 @@ pub(super) async fn shutdown_mysql_input(
     }
 }
 
-pub(super) async fn finish_mysql_session(
+pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
     process: &mut MysqlProcess,
 ) -> Result<MysqlSessionResult, DbOperationError> {
     shutdown_mysql_input(process).await?;
@@ -1479,7 +1477,7 @@ mod windows_tests {
         let mut child = Command::new("cmd.exe")
             .args([
                 "/C",
-                "echo ERROR 1054 (42S22): missing_column 1>&2 & exit /B 0",
+                "more >nul & echo ERROR 1054 (42S22): missing_column 1>&2 & exit /B 0",
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -1499,9 +1497,11 @@ mod windows_tests {
             frame_scanner: MysqlResultsetFrameScanner::default(),
         };
 
-        let result = finish_mysql_session(&mut process)
-            .await
-            .expect("finish pipe process");
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), finish_mysql_session(&mut process))
+                .await
+                .expect("finish pipe process timed out waiting for stdin EOF")
+                .expect("finish pipe process");
 
         assert_eq!(result.status.code(), Some(0));
         assert!(!result.forcibly_stopped);
