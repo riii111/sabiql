@@ -934,6 +934,29 @@ impl MysqlMetadataProcess {
     }
 }
 
+async fn finish_mysql_metadata_process(
+    process: &mut MysqlMetadataProcess,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let (stdout_result, stderr_result, status_result) = tokio::join!(
+        process.stdout.read_to_end(&mut stdout),
+        process.stderr.read_to_end(&mut stderr),
+        process.child.wait(),
+    );
+    stdout_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    stderr_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status =
+        status_result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, stdout, stderr))
+}
+
+async fn cleanup_mysql_metadata_process(process: &mut MysqlMetadataProcess) {
+    drop(process.stdin.take());
+    let _ = process.child.kill().await;
+    let _ = finish_mysql_metadata_process(process).await;
+}
+
 async fn run_mysql_metadata_query_with_read_only_session(
     program: &OsStr,
     option_file: &std::path::Path,
@@ -954,25 +977,31 @@ async fn run_mysql_metadata_query_with_read_only_session_with_timeout(
     query: &str,
     execution_timeout: Duration,
 ) -> Result<Vec<String>, DbOperationError> {
+    let mut process = MysqlMetadataProcess::spawn(program, option_file)?;
     match timeout(
         execution_timeout,
-        run_mysql_metadata_query_with_read_only_session_process(program, option_file, query),
+        run_mysql_metadata_query_with_read_only_session_process(&mut process, query),
     )
     .await
     {
-        Ok(result) => result,
-        Err(_) => Err(DbOperationError::Timeout(
-            "mysql query exceeded the execution timeout".to_string(),
-        )),
+        Ok(Ok(columns)) => Ok(columns),
+        Ok(Err(error)) => {
+            cleanup_mysql_metadata_process(&mut process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_metadata_process(&mut process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
     }
 }
 
 async fn run_mysql_metadata_query_with_read_only_session_process(
-    program: &OsStr,
-    option_file: &std::path::Path,
+    process: &mut MysqlMetadataProcess,
     query: &str,
 ) -> Result<Vec<String>, DbOperationError> {
-    let mut process = MysqlMetadataProcess::spawn(program, option_file)?;
     let probe_marker = Uuid::new_v4().simple().to_string();
     let probe_query = format!(
         "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
@@ -1001,17 +1030,7 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
     drop(stdin);
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let (stdout_result, stderr_result, status_result) = tokio::join!(
-        process.stdout.read_to_end(&mut stdout),
-        process.stderr.read_to_end(&mut stderr),
-        process.child.wait(),
-    );
-    stdout_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    stderr_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let status =
-        status_result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    let (status, stdout, stderr) = finish_mysql_metadata_process(process).await?;
     if has_mysql_cli_error(&stderr) {
         return Err(classify_mysql_query_failure(&stderr));
     }
@@ -1329,6 +1348,13 @@ done
     }
 
     fn fake_mysql_metadata_columns(fail_read_only: bool) -> (TempDir, PathBuf, PathBuf) {
+        fake_mysql_metadata_columns_with_hanging_query(fail_read_only, false)
+    }
+
+    fn fake_mysql_metadata_columns_with_hanging_query(
+        fail_read_only: bool,
+        hang_after_query: bool,
+    ) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
         fs::write(&option_file, "[client]\n").unwrap();
@@ -1338,10 +1364,16 @@ done
         } else {
             ""
         };
+        let query_tail = if hang_after_query {
+            "while :; do :; done"
+        } else {
+            ""
+        };
         let script = format!(
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
+printf 'process=%s\n' "$$" >> "$log"
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   case "$line" in
@@ -1360,6 +1392,7 @@ while IFS= read -r line; do
       ;;
     *"SHOW DATABASES"*)
       printf '%s\n' 'Database'
+      {query_tail}
       ;;
   esac
 done
@@ -1676,6 +1709,32 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
         assert!(!log.contains("SHOW DATABASES"), "{log}");
+    }
+
+    #[tokio::test]
+    async fn external_metadata_timeout_kills_and_reaps_the_process() {
+        let (_directory, program, option_file) =
+            fake_mysql_metadata_columns_with_hanging_query(false, true);
+        let result = run_mysql_metadata_query_with_read_only_session_with_timeout(
+            OsStr::new(&program),
+            &option_file,
+            "SHOW DATABASES",
+            Duration::from_secs(10),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        let pid = log
+            .lines()
+            .find_map(|line| line.strip_prefix("process=")?.parse::<i32>().ok())
+            .expect("metadata process pid");
+        let status = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("check metadata process");
+        assert!(!status.success(), "metadata process {pid} is still running");
     }
 
     #[tokio::test]
