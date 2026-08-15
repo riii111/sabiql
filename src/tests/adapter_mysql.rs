@@ -5,16 +5,8 @@
 
 mod shared {
     pub(super) const MYSQL_COMPOSITE_TABLE: &str = "mysql_preview_composite";
-    pub(super) const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
-    pub(super) const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
-    pub(super) const MYSQL_GIPK_TABLE: &str = "mysql_edit_gipk";
-    pub(super) const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
     pub(super) const MYSQL_EMPTY_TABLE: &str = "mysql_preview_empty";
     pub(super) const MYSQL_VIEW: &str = "mysql_preview_view";
-    pub(super) const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
-    pub(super) const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
-    pub(super) const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
-    pub(super) const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
 }
 
 mod connection {
@@ -155,7 +147,10 @@ mod connection {
 
 mod metadata_fetch {
 
-    use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_FK_CHILD, MYSQL_FK_PARENT, MYSQL_VIEW};
+    const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
+    const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
+
+    use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::{DdlGenerator, MetadataProvider};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
@@ -407,10 +402,10 @@ mod metadata_fetch {
 
 mod query_preview {
 
-    use super::shared::{
-        MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_NO_PK_TABLE, MYSQL_SPATIAL_TABLE,
-        MYSQL_VIEW,
-    };
+    const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
+    const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
+
+    use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
     use sabiql_domain::QueryValue;
@@ -592,10 +587,11 @@ mod query_preview {
 
 mod write_operations {
 
-    use super::shared::{
-        MYSQL_FUNCTIONAL_INDEX, MYSQL_GIPK_TABLE, MYSQL_INVISIBLE_COMPOSITE_TABLE,
-        MYSQL_INVISIBLE_PK_TABLE,
-    };
+    const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
+    const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
+    const MYSQL_GIPK_TABLE: &str = "mysql_edit_gipk";
+    const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
+
     use crate::tests::harness::mysql::with_mysql_test_db;
     use sabiql_app::ports::outbound::{AccessMode, MetadataProvider, QueryExecutor, SqlDialect};
     use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
