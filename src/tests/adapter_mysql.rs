@@ -85,6 +85,130 @@ async fn connects_to_oracle_mysql_84_fixture() {
 }
 
 #[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn executes_supported_mysql_ddl_forms_on_oracle_mysql_84() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("system clock error: {error}"))?
+                .as_nanos();
+            let table = format!("sabiql_ddl_{suffix}");
+            let renamed_table = format!("sabiql_ddl_renamed_{suffix}");
+            let view = format!("sabiql_ddl_view_{suffix}");
+            let result: Result<(), String> = async {
+                let create = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE TABLE {table} (id INT PRIMARY KEY, body TEXT NOT NULL) /*!40100 DEFAULT CHARSET=utf8mb4 */"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create version-comment table: {error:?}"))?;
+                if create.command_tag != Some(CommandTag::Create("TABLE".to_string())) {
+                    return Err(format!("unexpected CREATE TABLE result: {create:?}"));
+                }
+
+                let rename = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("RENAME TABLE {table} TO {renamed_table}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to rename table: {error:?}"))?;
+                if rename.command_tag != Some(CommandTag::Alter("TABLE".to_string())) {
+                    return Err(format!("unexpected RENAME TABLE result: {rename:?}"));
+                }
+
+                let create_view = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE OR REPLACE VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create or replace view: {error:?}"))?;
+                if create_view.command_tag != Some(CommandTag::Create("VIEW".to_string())) {
+                    return Err(format!(
+                        "unexpected CREATE OR REPLACE VIEW result: {create_view:?}"
+                    ));
+                }
+
+                let alter_view = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "ALTER VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to alter view: {error:?}"))?;
+                if alter_view.command_tag != Some(CommandTag::Alter("VIEW".to_string())) {
+                    return Err(format!("unexpected ALTER VIEW result: {alter_view:?}"));
+                }
+
+                let create_fulltext = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE FULLTEXT INDEX {view}_body ON {renamed_table} (body)"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create fulltext index: {error:?}"))?;
+                if create_fulltext.command_tag != Some(CommandTag::Create("INDEX".to_string())) {
+                    return Err(format!(
+                        "unexpected CREATE FULLTEXT INDEX result: {create_fulltext:?}"
+                    ));
+                }
+
+                let view_result = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("SELECT id, body FROM {view}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to query altered view: {error:?}"))?;
+                if view_result.columns != ["id", "body"] || !view_result.values().is_empty() {
+                    return Err(format!("unexpected DDL view result: {view_result:?}"));
+                }
+                Ok(())
+            }
+            .await;
+
+            let cleanup = db
+                .run_cli_script(&format!(
+                    "DROP VIEW IF EXISTS {view}; DROP TABLE IF EXISTS {renamed_table}; DROP TABLE IF EXISTS {table}"
+                ))
+                .await;
+            match (result, cleanup) {
+                (Ok(()), Ok(_)) => Ok(()),
+                (Err(error), Ok(_)) => Err(error),
+                (Ok(()), Err(error)) => Err(format!("DDL cleanup failed: {error}")),
+                (Err(error), Err(cleanup_error)) => {
+                    Err(format!("{error}; DDL cleanup failed: {cleanup_error}"))
+                }
+            }
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
 #[cfg(unix)]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn batch_mysql_cli_does_not_execute_shell_commands() {

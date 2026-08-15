@@ -14,7 +14,7 @@ pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, M
         "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
             classify_mysql_crud_statement(tokens, start, first)
         }
-        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" => {
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME" => {
             classify_mysql_ddl_statement(tokens, start, first)
         }
         "BEGIN" | "START" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE" => {
@@ -143,6 +143,11 @@ fn classify_mysql_ddl_statement(
     match first {
         "CREATE" => {
             let mut index = start + 1;
+            if target::word(tokens, index) == Some("OR")
+                && target::word(tokens, index + 1) == Some("REPLACE")
+            {
+                index += 2;
+            }
             let temporary = target::word(tokens, index) == Some("TEMPORARY");
             if temporary {
                 index += 1;
@@ -163,6 +168,19 @@ fn classify_mysql_ddl_statement(
                 Some("VIEW") => {
                     let (target, database) = target::target_after(tokens, index + 1)?;
                     Ok((MysqlStatementKind::CreateView, target, database))
+                }
+                Some("FULLTEXT") if target::word(tokens, index + 1) == Some("INDEX") => {
+                    let (index_name, _, index_end) = target::identifier_at(tokens, index + 2)
+                        .ok_or_else(|| {
+                            MysqlLexError("CREATE INDEX name is ambiguous".to_string())
+                        })?;
+                    if target::word(tokens, index_end) != Some("ON") {
+                        return Err(MysqlLexError(
+                            "CREATE INDEX target is ambiguous".to_string(),
+                        ));
+                    }
+                    let (_, database) = target::target_after(tokens, index_end + 1)?;
+                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
                 }
                 Some("UNIQUE") if target::word(tokens, index + 1) == Some("INDEX") => {
                     let on = target::find_word(tokens, "ON", index + 2).ok_or_else(|| {
@@ -191,14 +209,45 @@ fn classify_mysql_ddl_statement(
                 )),
             }
         }
-        "ALTER" => {
+        "ALTER" => match target::word(tokens, start + 1) {
+            Some("TABLE") => {
+                let (target, database) = target::target_after(tokens, start + 2)?;
+                Ok((MysqlStatementKind::AlterTable, target, database))
+            }
+            Some("VIEW") => {
+                let (target, database) = target::target_after(tokens, start + 2)?;
+                Ok((MysqlStatementKind::AlterView, target, database))
+            }
+            _ => Err(MysqlLexError(
+                "unsupported MySQL ALTER statement".to_string(),
+            )),
+        },
+        "RENAME" => {
             if target::word(tokens, start + 1) != Some("TABLE") {
                 return Err(MysqlLexError(
-                    "unsupported MySQL ALTER statement".to_string(),
+                    "unsupported MySQL RENAME statement".to_string(),
                 ));
             }
-            let (target, database) = target::target_after(tokens, start + 2)?;
-            Ok((MysqlStatementKind::AlterTable, target, database))
+            let (target, database, next) = target::identifier_at(tokens, start + 2)
+                .ok_or_else(|| MysqlLexError("RENAME TABLE source is ambiguous".to_string()))?;
+            if target::word(tokens, next) != Some("TO") {
+                return Err(MysqlLexError(
+                    "RENAME TABLE requires one source and destination".to_string(),
+                ));
+            }
+            let (_, _, end) = target::identifier_at(tokens, next + 1).ok_or_else(|| {
+                MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
+            })?;
+            if tokens[end..]
+                .iter()
+                .any(|token| !matches!(token.kind, TokenKind::Symbol(';')))
+            {
+                return Err(MysqlLexError(
+                    "MySQL RENAME TABLE statements must have one source and destination"
+                        .to_string(),
+                ));
+            }
+            Ok((MysqlStatementKind::RenameTable, Some(target), database))
         }
         "DROP" => {
             let mut index = start + 1;

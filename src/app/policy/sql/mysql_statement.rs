@@ -20,9 +20,11 @@ pub enum MysqlStatementKind {
     Delete { has_where: bool },
     CreateTable { temporary: bool },
     AlterTable,
+    RenameTable,
     DropTable { temporary: bool },
     TruncateTable,
     CreateView,
+    AlterView,
     DropView,
     CreateIndex,
     DropIndex,
@@ -115,22 +117,17 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
     }
 
     let Ok(statement) = classify_mysql_statement(&statements[0]) else {
-        return Some(
-            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
-        );
+        return Some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements");
     };
     (!matches!(
         statement.kind,
         MysqlStatementKind::Select
             | MysqlStatementKind::Table
             | MysqlStatementKind::Insert
-            | MysqlStatementKind::Replace
             | MysqlStatementKind::Update { .. }
             | MysqlStatementKind::Delete { .. }
     ))
-    .then_some(
-        "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
-    )
+    .then_some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements")
 }
 
 pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
@@ -254,6 +251,85 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn classifies_documented_mysql_ddl_forms() {
+        let cases = [
+            (
+                "RENAME TABLE app.items TO app.archived_items",
+                MysqlStatementKind::RenameTable,
+                "items",
+                Some("app"),
+            ),
+            (
+                "CREATE OR REPLACE VIEW app.item_view AS SELECT id FROM app.items",
+                MysqlStatementKind::CreateView,
+                "item_view",
+                Some("app"),
+            ),
+            (
+                "ALTER VIEW app.item_view AS SELECT id FROM app.items",
+                MysqlStatementKind::AlterView,
+                "item_view",
+                Some("app"),
+            ),
+            (
+                "CREATE FULLTEXT INDEX item_text ON app.items (body)",
+                MysqlStatementKind::CreateIndex,
+                "item_text",
+                Some("app"),
+            ),
+        ];
+
+        for (sql, expected_kind, expected_target, expected_database) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.kind, expected_kind, "{sql}");
+            assert_eq!(statement.target.as_deref(), Some(expected_target), "{sql}");
+            assert_eq!(
+                statement.target_database.as_deref(),
+                expected_database,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_only_trailing_ddl_version_comments() {
+        let statement = classify_mysql_statement(
+            "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */",
+        )
+        .expect("trailing DDL version comment");
+        assert_eq!(
+            statement.kind,
+            MysqlStatementKind::CreateTable { temporary: false }
+        );
+        assert!(
+            classify_mysql_statement("CREATE TABLE items (id INT) /* ordinary comment */").is_ok()
+        );
+
+        for sql in [
+            "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */ SELECT 1",
+            "CREATE TABLE items (id INT) /*!40100 SET sql_mode='ANSI_QUOTES' */",
+            "CREATE TABLE items (id INT) /*!40100 */",
+            "CREATE TABLE items (id INT) /*! DEFAULT CHARSET=utf8mb4 */",
+            "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4",
+            "SELECT 1 /*!40101 + 1 */",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_or_ambiguous_ddl_forms() {
+        for sql in [
+            "CREATE DATABASE app",
+            "ALTER DATABASE app CHARACTER SET utf8mb4",
+            "RENAME DATABASE app TO archive",
+            "RENAME TABLE old_items TO archived_items, other_items TO other_archive",
+        ] {
+            assert!(classify_mysql_statement(sql).is_err(), "{sql}");
+        }
     }
 
     #[test]

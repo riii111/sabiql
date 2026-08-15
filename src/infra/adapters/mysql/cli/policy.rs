@@ -239,13 +239,16 @@ pub(super) fn mysql_command_tag(
         MysqlStatementKind::CreateTable { temporary: false } => {
             CommandTag::Create("TABLE".to_string())
         }
-        MysqlStatementKind::AlterTable => CommandTag::Alter("TABLE".to_string()),
+        MysqlStatementKind::AlterTable | MysqlStatementKind::RenameTable => {
+            CommandTag::Alter("TABLE".to_string())
+        }
         MysqlStatementKind::DropTable { temporary: true } => {
             CommandTag::Other("DROP TEMPORARY TABLE".to_string())
         }
         MysqlStatementKind::DropTable { temporary: false } => CommandTag::Drop("TABLE".to_string()),
         MysqlStatementKind::TruncateTable => CommandTag::Truncate,
         MysqlStatementKind::CreateView => CommandTag::Create("VIEW".to_string()),
+        MysqlStatementKind::AlterView => CommandTag::Alter("VIEW".to_string()),
         MysqlStatementKind::DropView => CommandTag::Drop("VIEW".to_string()),
         MysqlStatementKind::CreateIndex => CommandTag::Create("INDEX".to_string()),
         MysqlStatementKind::DropIndex => CommandTag::Drop("INDEX".to_string()),

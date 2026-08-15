@@ -117,6 +117,72 @@ mod mysql_tests {
     }
 
     #[test]
+    fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
+        let cases = [
+            (
+                "RENAME TABLE items TO archived_items",
+                MysqlStatementKind::RenameTable,
+                RiskLevel::Medium,
+                "RENAME TABLE",
+            ),
+            (
+                "CREATE OR REPLACE VIEW item_view AS SELECT 1",
+                MysqlStatementKind::CreateView,
+                RiskLevel::Low,
+                "CREATE VIEW",
+            ),
+            (
+                "ALTER VIEW item_view AS SELECT 1",
+                MysqlStatementKind::AlterView,
+                RiskLevel::Medium,
+                "ALTER VIEW",
+            ),
+            (
+                "CREATE FULLTEXT INDEX item_text ON items (body)",
+                MysqlStatementKind::CreateIndex,
+                RiskLevel::Low,
+                "CREATE INDEX",
+            ),
+        ];
+
+        for (sql, expected_kind, expected_risk, expected_label) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.kind, expected_kind, "{sql}");
+            assert_eq!(
+                mysql_statement_label(&statement.kind),
+                expected_label,
+                "{sql}"
+            );
+            assert!(
+                mysql_statement_is_schema_modifying(&statement.kind),
+                "{sql}"
+            );
+            assert_eq!(
+                mysql_statement_risk(&statement).risk_level,
+                expected_risk,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn replace_remains_blocked_and_has_destructive_risk() {
+        let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
+        let risk = mysql_statement_risk(&statement);
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target } if target == "items"
+        ));
+        assert!(matches!(
+            mysql("REPLACE INTO items VALUES (1)"),
+            MultiStatementDecision::Block { ref reason }
+                if reason == "MySQL REPLACE execution is not supported"
+        ));
+    }
+
+    #[test]
     fn read_only_allows_only_side_effect_free_mysql_reads() {
         for sql in [
             "SELECT 1",
@@ -422,15 +488,17 @@ fn mysql_statement_risk(statement: &MysqlStatement) -> SqlRiskDecision {
         | MysqlStatementKind::CreateTable { .. }
         | MysqlStatementKind::CreateView
         | MysqlStatementKind::CreateIndex => mysql_low(false),
-        MysqlStatementKind::Replace
-        | MysqlStatementKind::Update { has_where: true }
+        MysqlStatementKind::Update { has_where: true }
         | MysqlStatementKind::Delete { has_where: true }
-        | MysqlStatementKind::AlterTable => SqlRiskDecision {
+        | MysqlStatementKind::AlterTable
+        | MysqlStatementKind::RenameTable
+        | MysqlStatementKind::AlterView => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Immediate,
             read_only_allowed: false,
         },
-        MysqlStatementKind::Update { has_where: false }
+        MysqlStatementKind::Replace
+        | MysqlStatementKind::Update { has_where: false }
         | MysqlStatementKind::Delete { has_where: false }
         | MysqlStatementKind::DropTable { .. }
         | MysqlStatementKind::DropView
@@ -454,10 +522,12 @@ pub fn mysql_statement_label(kind: &MysqlStatementKind) -> &'static str {
         MysqlStatementKind::CreateTable { temporary: true } => "CREATE TEMPORARY TABLE",
         MysqlStatementKind::CreateTable { temporary: false } => "CREATE TABLE",
         MysqlStatementKind::AlterTable => "ALTER TABLE",
+        MysqlStatementKind::RenameTable => "RENAME TABLE",
         MysqlStatementKind::DropTable { temporary: true } => "DROP TEMPORARY TABLE",
         MysqlStatementKind::DropTable { temporary: false } => "DROP TABLE",
         MysqlStatementKind::TruncateTable => "TRUNCATE TABLE",
         MysqlStatementKind::CreateView => "CREATE VIEW",
+        MysqlStatementKind::AlterView => "ALTER VIEW",
         MysqlStatementKind::DropView => "DROP VIEW",
         MysqlStatementKind::CreateIndex => "CREATE INDEX",
         MysqlStatementKind::DropIndex => "DROP INDEX",
@@ -476,9 +546,11 @@ pub fn mysql_statement_is_schema_modifying(kind: &MysqlStatementKind) -> bool {
         kind,
         MysqlStatementKind::CreateTable { .. }
             | MysqlStatementKind::AlterTable
+            | MysqlStatementKind::RenameTable
             | MysqlStatementKind::DropTable { .. }
             | MysqlStatementKind::TruncateTable
             | MysqlStatementKind::CreateView
+            | MysqlStatementKind::AlterView
             | MysqlStatementKind::DropView
             | MysqlStatementKind::CreateIndex
             | MysqlStatementKind::DropIndex

@@ -56,9 +56,28 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
                 let contains_statement_separator = inner
                     .iter()
                     .any(|token| matches!(token.kind, TokenKind::Symbol(';')));
+                let trailing_ddl_clause = !tokens.is_empty()
+                    && tokens.first().is_some_and(|token: &Token| {
+                        matches!(
+                            &token.kind,
+                            TokenKind::Word(word)
+                                if matches!(word.as_str(), "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME")
+                        )
+                    })
+                    && bytes[end..].iter().all(u8::is_ascii_whitespace)
+                    && !contains_statement_separator
+                    && !inner.iter().any(|token| {
+                        matches!(
+                            &token.kind,
+                            TokenKind::Word(word) if word == "UNSUPPORTED_VERSION_COMMENT"
+                        )
+                    });
                 if tokens.is_empty() && executable_statement && !contains_statement_separator {
                     tokens.extend(inner);
                     leading_executable_version_comment = true;
+                } else if trailing_ddl_clause && !executable_statement {
+                    // MySQL uses trailing executable comments for versioned DDL clauses such
+                    // as DEFAULT CHARSET. Keep the clause out of statement classification.
                 } else if !inner.is_empty() {
                     tokens.push(Token {
                         kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
@@ -291,6 +310,7 @@ fn is_mysql_statement_keyword(word: &str) -> bool {
             | "DELETE"
             | "CREATE"
             | "ALTER"
+            | "RENAME"
             | "DROP"
             | "TRUNCATE"
             | "BEGIN"
