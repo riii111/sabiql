@@ -38,7 +38,7 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let database_type = state.session.active_database_type_or_default();
-            if is_multi_statement(database_type, &content) {
+            if database_type != DatabaseType::MySQL && is_multi_statement(database_type, &content) {
                 show_explain_error_on_plan(
                     state,
                     "EXPLAIN ANALYZE does not support multiple statements",
@@ -56,7 +56,15 @@ pub(super) fn reduce_analyze(
                 risk
             } else {
                 let kind = statement_classifier::classify(&content);
-                evaluate_sql_risk_for_database(database_type, &kind, &content)
+                let Some(risk) = evaluate_sql_risk_for_database(database_type, &kind, &content)
+                else {
+                    show_explain_error_on_plan(
+                        state,
+                        "EXPLAIN ANALYZE risk evaluation is not supported for this database",
+                    );
+                    return DispatchResult::handled();
+                };
+                risk
             };
 
             if state.session.is_read_only() && !risk.read_only_allowed {
