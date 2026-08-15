@@ -210,6 +210,16 @@ mod tests {
         }
     }
 
+    fn assert_contains_in_order(query: &str, fragments: &[&str]) {
+        let mut remaining = query;
+        for fragment in fragments {
+            let Some(index) = remaining.find(fragment) else {
+                panic!("missing SQL fragment {fragment:?} in {query:?}");
+            };
+            remaining = &remaining[index + fragment.len()..];
+        }
+    }
+
     #[test]
     fn builds_metadata_select_query_without_changing_the_fallback_sql() {
         assert_eq!(
@@ -238,27 +248,217 @@ mod tests {
             )
         );
 
-        assert!(!TABLES_QUERY.contains("UNION ALL SELECT NULL"));
-        for query in [
-            table_query(schema, table),
-            columns_query(schema, table),
-            unique_columns_query(schema, table),
-            foreign_keys_query(schema, table),
-            indexes_query(table),
-            triggers_query(table),
-        ] {
-            assert!(query.contains(&quote_string(table)));
-            assert!(!query.contains("UNION ALL SELECT NULL"));
-        }
-        assert!(table_query(schema, table).contains(&quote_string(schema)));
-        assert!(!table_query(schema, table).contains("KEY_COLUMN_USAGE"));
-        assert!(unique_columns_query(schema, table).contains("HAVING COUNT(*) = 1"));
-        assert!(
-            SIGNATURE_COLUMNS_QUERY.contains("ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION")
+        let quoted_schema = quote_string(schema);
+        let quoted_table = quote_string(table);
+
+        let table_query = table_query(schema, table);
+        assert_contains_in_order(
+            &table_query,
+            &[
+                "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT",
+                "FROM INFORMATION_SCHEMA.TABLES AS t",
+                &format!("WHERE t.TABLE_SCHEMA = {quoted_schema}"),
+                "AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')",
+                &format!("AND t.TABLE_NAME = {quoted_table}"),
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME",
+            ],
         );
-        assert!(
-            SIGNATURE_FOREIGN_KEYS_QUERY
-                .contains("ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION")
+
+        let columns_query = columns_query(schema, table);
+        assert_contains_in_order(
+            &columns_query,
+            &[
+                "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION",
+                "FROM INFORMATION_SCHEMA.COLUMNS AS c",
+                "LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'",
+                "LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME",
+                &format!("WHERE c.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND c.TABLE_NAME = {quoted_table}"),
+                "ORDER BY ORDINAL_POSITION",
+            ],
+        );
+
+        let unique_columns_query = unique_columns_query(schema, table);
+        assert_contains_in_order(
+            &unique_columns_query,
+            &[
+                "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                &format!("WHERE s.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND s.TABLE_NAME = {quoted_table}"),
+                "AND s.NON_UNIQUE = 0",
+                "AND s.INDEX_NAME <> 'PRIMARY'",
+                "GROUP BY s.INDEX_NAME",
+                "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
+                "ORDER BY s.INDEX_NAME",
+            ],
+        );
+
+        let foreign_keys_query = foreign_keys_query(schema, table);
+        assert_contains_in_order(
+            &foreign_keys_query,
+            &[
+                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE",
+                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
+                "INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME",
+                "INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME",
+                &format!("WHERE tc.CONSTRAINT_SCHEMA = {quoted_schema}"),
+                &format!("AND tc.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND tc.TABLE_NAME = {quoted_table}"),
+                "AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'",
+                "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+            ],
+        );
+
+        let indexes_query = indexes_query(table);
+        assert_contains_in_order(
+            &indexes_query,
+            &[
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                "LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME",
+                "WHERE s.TABLE_SCHEMA = DATABASE()",
+                &format!("AND s.TABLE_NAME = {quoted_table}"),
+                "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+            ],
+        );
+
+        let triggers_query = triggers_query(table);
+        assert_contains_in_order(
+            &triggers_query,
+            &[
+                "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER",
+                "FROM INFORMATION_SCHEMA.TRIGGERS",
+                "WHERE TRIGGER_SCHEMA = DATABASE()",
+                "AND EVENT_OBJECT_SCHEMA = DATABASE()",
+                &format!("AND EVENT_OBJECT_TABLE = {quoted_table}"),
+                "ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+            ],
+        );
+
+        assert_contains_in_order(
+            TABLES_QUERY,
+            &[
+                "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT",
+                "FROM INFORMATION_SCHEMA.TABLES",
+                "WHERE TABLE_SCHEMA = DATABASE()",
+                "AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME",
+            ],
+        );
+        assert_contains_in_order(
+            SIGNATURE_COLUMNS_QUERY,
+            &[
+                "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION",
+                "FROM INFORMATION_SCHEMA.COLUMNS AS c",
+                "WHERE c.TABLE_SCHEMA = DATABASE()",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION",
+            ],
+        );
+        assert_contains_in_order(
+            SIGNATURE_UNIQUE_COLUMNS_QUERY,
+            &[
+                "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                "WHERE s.TABLE_SCHEMA = DATABASE()",
+                "AND s.NON_UNIQUE = 0",
+                "AND s.INDEX_NAME <> 'PRIMARY'",
+                "GROUP BY s.TABLE_NAME, s.INDEX_NAME",
+                "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
+                "ORDER BY s.TABLE_NAME, s.INDEX_NAME",
+            ],
+        );
+        assert_contains_in_order(
+            SIGNATURE_FOREIGN_KEYS_QUERY,
+            &[
+                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE",
+                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
+                "WHERE tc.CONSTRAINT_SCHEMA = DATABASE()",
+                "AND tc.TABLE_SCHEMA = DATABASE()",
+                "AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
+            ],
+        );
+
+        assert_eq!(
+            TABLES_RESULT_COLUMNS,
+            &[
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "TABLE_TYPE",
+                "TABLE_ROWS",
+                "TABLE_COMMENT"
+            ]
+        );
+        assert_eq!(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            &[
+                "COLUMN_NAME",
+                "COLUMN_TYPE",
+                "IS_NULLABLE",
+                "COLUMN_DEFAULT",
+                "EXTRA",
+                "COLUMN_COMMENT",
+                "ORDINAL_POSITION",
+                "PRIMARY_KEY_POSITION",
+            ]
+        );
+        assert_eq!(UNIQUE_COLUMN_RESULT_COLUMNS, &["COLUMN_NAME"]);
+        assert_eq!(
+            FOREIGN_KEY_RESULT_COLUMNS,
+            &[
+                "CONSTRAINT_NAME",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "REFERENCED_TABLE_SCHEMA",
+                "REFERENCED_TABLE_NAME",
+                "REFERENCED_COLUMN_NAME",
+                "ORDINAL_POSITION",
+                "UPDATE_RULE",
+                "DELETE_RULE",
+            ]
+        );
+        assert_eq!(
+            SIGNATURE_COLUMNS_RESULT_COLUMNS,
+            &[
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "COLUMN_TYPE",
+                "IS_NULLABLE",
+                "COLUMN_DEFAULT",
+                "EXTRA",
+                "COLUMN_COMMENT",
+                "ORDINAL_POSITION",
+                "PRIMARY_KEY_POSITION",
+            ]
+        );
+        assert_eq!(
+            SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS,
+            &["TABLE_NAME", "COLUMN_NAME"]
+        );
+        assert_eq!(
+            INDEX_RESULT_COLUMNS,
+            &[
+                "INDEX_NAME",
+                "NON_UNIQUE",
+                "INDEX_TYPE",
+                "SEQ_IN_INDEX",
+                "COLUMN_NAME",
+                "EXPRESSION",
+                "IS_PRIMARY",
+            ]
+        );
+        assert_eq!(
+            TRIGGER_RESULT_COLUMNS,
+            &[
+                "TRIGGER_NAME",
+                "ACTION_TIMING",
+                "EVENT_MANIPULATION",
+                "ACTION_STATEMENT",
+                "DEFINER",
+            ]
         );
     }
 
