@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use crate::app::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, classify_mysql_statement, has_mysql_read_only_side_effect,
+    MysqlStatement, MysqlStatementKind, has_mysql_read_only_side_effect,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
-    mysql_statement_is_schema_modifying,
+    mysql_statement_is_persistent_schema_change, mysql_statement_is_schema_modifying,
 };
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{CommandTag, QueryValue, RefreshScope};
@@ -53,13 +53,7 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
             "read-only mode blocks MySQL write statements".to_string(),
         ));
     }
-    statements
-        .iter()
-        .map(|statement| {
-            classify_mysql_statement(statement)
-                .map_err(|error| DbOperationError::UnsupportedOperation(error.to_string()))
-        })
-        .collect()
+    Ok(statements)
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_export_query(
@@ -273,15 +267,6 @@ pub(super) fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
     } else {
         RefreshScope::None
     }
-}
-
-fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
-    mysql_statement_is_schema_modifying(kind)
-        && !matches!(
-            kind,
-            MysqlStatementKind::CreateTable { temporary: true }
-                | MysqlStatementKind::DropTable { temporary: true }
-        )
 }
 
 #[derive(Default)]

@@ -287,14 +287,12 @@ impl MysqlMetadataSession {
 
 pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     option_file: &std::path::Path,
-    query: &str,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     run_mysql_adhoc_with_program_and_statements(
         OsStr::new("mysql"),
         option_file,
-        query,
         statements,
         access_mode,
         MYSQL_QUERY_TIMEOUT,
@@ -383,7 +381,6 @@ async fn run_mysql_single_statement_process(
 async fn run_mysql_adhoc_with_program_and_statements(
     program: &OsStr,
     option_file: &std::path::Path,
-    query: &str,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
     execution_timeout: Duration,
@@ -397,7 +394,7 @@ async fn run_mysql_adhoc_with_program_and_statements(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, option_file, query, statements, access_mode),
+        run_mysql_adhoc_process(&mut process, option_file, statements, access_mode),
     )
     .await;
 
@@ -416,10 +413,93 @@ async fn run_mysql_adhoc_with_program_and_statements(
     }
 }
 
+struct MysqlStatementExecution {
+    result_set: Option<MysqlResultSet>,
+    command_event: MysqlCommandEvent,
+    refresh_scope: RefreshScope,
+}
+
+async fn run_mysql_statement(
+    process: &mut MysqlProcess,
+    option_file: &std::path::Path,
+    statement: &MysqlStatement,
+    access_mode: AccessMode,
+    refresh_scope: RefreshScope,
+) -> Result<MysqlStatementExecution, DbOperationError> {
+    let marker = Uuid::new_v4().simple().to_string();
+    let statement_scope = mysql_refresh_scope(&statement.kind);
+    let possible_refresh_scope = refresh_scope.merge(statement_scope);
+    if let Err(error) = write_mysql_statement(process, &statement.sql).await {
+        return Err(query_failed_after_change(error, refresh_scope));
+    }
+    let marker_query =
+        format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows");
+    if let Err(error) = write_mysql_statement(process, &marker_query).await {
+        return Err(query_failed_after_change(error, possible_refresh_scope));
+    }
+    let first_xml = match read_one_mysql_resultset(process).await {
+        Ok(xml) => xml,
+        Err(error) => {
+            return Err(query_failed_after_mysql_statement(
+                error,
+                refresh_scope,
+                possible_refresh_scope,
+            ));
+        }
+    };
+    let first_result = match parse_mysql_xml(&first_xml) {
+        Ok(result) => result,
+        Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
+    };
+    let (user_result, marker_result) = if is_mysql_row_count_marker(&first_result, &marker) {
+        (None, first_result)
+    } else {
+        let xml = match read_one_mysql_resultset(process).await {
+            Ok(xml) => xml,
+            Err(error) => {
+                return Err(query_failed_after_mysql_statement(
+                    error,
+                    refresh_scope,
+                    possible_refresh_scope,
+                ));
+            }
+        };
+        let marker_result = match parse_mysql_xml(&xml) {
+            Ok(result) => result,
+            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
+        };
+        let user_result = fill_mysql_empty_result_columns(
+            process,
+            first_result,
+            option_file,
+            &statement.sql,
+            &statement.kind,
+            access_mode,
+        )
+        .await
+        .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
+        (Some(user_result), marker_result)
+    };
+    let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
+        Ok(rows) => rows,
+        Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
+    };
+    let tag = mysql_command_tag(&statement.kind, affected_rows, user_result.as_ref());
+
+    Ok(MysqlStatementExecution {
+        result_set: user_result,
+        command_event: MysqlCommandEvent {
+            kind: statement.kind.clone(),
+            target: statement.target.clone(),
+            tag,
+        },
+        refresh_scope: possible_refresh_scope,
+    })
+}
+
 async fn run_mysql_adhoc_process(
     process: &mut MysqlProcess,
     option_file: &std::path::Path,
-    _query: &str,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
@@ -438,74 +518,14 @@ async fn run_mysql_adhoc_process(
     let mut refresh_scope = RefreshScope::None;
 
     for statement in statements {
-        let marker = Uuid::new_v4().simple().to_string();
-        let statement_scope = mysql_refresh_scope(&statement.kind);
-        let possible_refresh_scope = refresh_scope.merge(statement_scope);
-        if let Err(error) = write_mysql_statement(process, &statement.sql).await {
-            return Err(query_failed_after_change(error, refresh_scope));
-        }
-        let marker_query =
-            format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows");
-        if let Err(error) = write_mysql_statement(process, &marker_query).await {
-            return Err(query_failed_after_change(error, possible_refresh_scope));
-        }
-        let first_xml = match read_one_mysql_resultset(process).await {
-            Ok(xml) => xml,
-            Err(error) => {
-                return Err(query_failed_after_mysql_statement(
-                    error,
-                    refresh_scope,
-                    possible_refresh_scope,
-                ));
-            }
-        };
-        let first_result = match parse_mysql_xml(&first_xml) {
-            Ok(result) => result,
-            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-        };
-        let (user_result, marker_result) = if is_mysql_row_count_marker(&first_result, &marker) {
-            (None, first_result)
-        } else {
-            let xml = match read_one_mysql_resultset(process).await {
-                Ok(xml) => xml,
-                Err(error) => {
-                    return Err(query_failed_after_mysql_statement(
-                        error,
-                        refresh_scope,
-                        possible_refresh_scope,
-                    ));
-                }
-            };
-            let marker_result = match parse_mysql_xml(&xml) {
-                Ok(result) => result,
-                Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-            };
-            let user_result = fill_mysql_empty_result_columns(
-                process,
-                first_result,
-                option_file,
-                &statement.sql,
-                &statement.kind,
-                access_mode,
-            )
-            .await
-            .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
-            (Some(user_result), marker_result)
-        };
-        let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
-            Ok(rows) => rows,
-            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-        };
-        if let Some(result) = user_result {
+        let execution =
+            run_mysql_statement(process, option_file, statement, access_mode, refresh_scope)
+                .await?;
+        if let Some(result) = execution.result_set {
             last_result_set = Some(result);
         }
-        let tag = mysql_command_tag(&statement.kind, affected_rows, last_result_set.as_ref());
-        command_tags.push(MysqlCommandEvent {
-            kind: statement.kind.clone(),
-            target: statement.target.clone(),
-            tag,
-        });
-        refresh_scope = possible_refresh_scope;
+        command_tags.push(execution.command_event);
+        refresh_scope = execution.refresh_scope;
     }
 
     #[cfg(not(unix))]
@@ -1488,7 +1508,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            "SELECT 2",
             &statements,
             AccessMode::ReadOnly,
             Duration::from_secs(5),
@@ -1596,7 +1615,6 @@ done
             run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
-                query,
                 &statements,
                 AccessMode::ReadOnly,
                 Duration::from_secs(5),
@@ -1885,7 +1903,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            "UPDATE items SET value = 1; SELECT 2",
             &statements,
             AccessMode::ReadWrite,
             Duration::from_secs(5),
@@ -1920,7 +1937,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            query,
             &statements,
             AccessMode::ReadWrite,
             Duration::from_secs(5),
@@ -1949,7 +1965,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            "UPDATE items SET value = 1",
             &statements,
             AccessMode::ReadWrite,
             Duration::from_secs(5),
@@ -1997,7 +2012,6 @@ done
             let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
-                "UPDATE items SET value = 1",
                 &statements,
                 AccessMode::ReadWrite,
                 Duration::from_secs(5),
@@ -2028,7 +2042,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            "UPDATE items SET value = 1; SELECT missing_column FROM items",
             &statements,
             AccessMode::ReadWrite,
             Duration::from_secs(5),
@@ -2057,7 +2070,6 @@ done
         let result = run_mysql_adhoc_with_program_and_statements(
             OsStr::new(&program),
             &option_file,
-            "SELECT missing_column FROM items",
             &statements,
             AccessMode::ReadWrite,
             Duration::from_secs(5),

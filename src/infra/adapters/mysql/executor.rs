@@ -88,8 +88,7 @@ impl QueryExecutor for MySqlAdapter {
         let statements =
             validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadOnly)?;
         let option_file = MySqlOptionFile::create(&target)?;
-        let result =
-            run_mysql_adhoc(&option_file.path, &query, &statements, AccessMode::ReadOnly).await;
+        let result = run_mysql_adhoc(&option_file.path, &statements, AccessMode::ReadOnly).await;
         drop(option_file);
         let result_set = result?.result_set.ok_or_else(|| {
             DbOperationError::MetadataParseFailed(
@@ -163,7 +162,7 @@ impl QueryExecutor for MySqlAdapter {
         )]
         let start = Instant::now();
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, query, &statements, access_mode).await;
+        let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
         drop(option_file);
         let execution = result?;
         let elapsed = start.elapsed().as_millis() as u64;
@@ -205,7 +204,7 @@ impl QueryExecutor for MySqlAdapter {
         )]
         let start = Instant::now();
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, query, &statements, access_mode).await;
+        let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
         drop(option_file);
         let execution = result?;
         let affected_rows = execution

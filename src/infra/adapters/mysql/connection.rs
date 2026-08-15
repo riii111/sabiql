@@ -25,13 +25,7 @@ impl ConnectionProbe for MySqlAdapter {
 
         let option_file = MySqlOptionFile::create(&target)?;
         let statements = validate_mysql_multi_query("SHOW DATABASES", None, AccessMode::ReadOnly)?;
-        let result = run_mysql_adhoc(
-            &option_file.path,
-            "SHOW DATABASES",
-            &statements,
-            AccessMode::ReadOnly,
-        )
-        .await;
+        let result = run_mysql_adhoc(&option_file.path, &statements, AccessMode::ReadOnly).await;
         drop(option_file);
         result.map(|execution| {
             execution.result_set.map_or_else(Vec::new, |result_set| {
