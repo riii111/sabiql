@@ -1,16 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{
-    FkAction, QueryValue, Table, TableKind, TableKindInfo, TableSignature, TableSummary,
-};
+use crate::domain::{FkAction, QueryValue, Table, TableKind, TableKindInfo, TableSignature};
 
 use super::super::cli::MysqlResultSet;
 use super::catalog::{
-    MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata, column_from_metadata,
-    execute_metadata_query, expect_columns, fetch_metadata_snapshot, foreign_keys_from_metadata,
-    metadata_shape_error, parse_column_metadata_row, parse_foreign_key_metadata, primary_key_names,
-    required_text,
+    MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata, TABLES_QUERY,
+    column_from_metadata, execute_metadata_queries_in_session, expect_columns,
+    foreign_keys_from_metadata, metadata_shape_error, metadata_snapshot_from_result,
+    parse_column_metadata_row, parse_foreign_key_metadata, primary_key_names, required_text,
+    selected_database,
 };
 
 #[derive(Debug, Clone)]
@@ -23,14 +22,22 @@ struct MysqlSignatureColumnMetadata {
 pub(super) async fn fetch_table_signatures(
     dsn: &str,
 ) -> Result<Vec<TableSignature>, DbOperationError> {
-    let snapshot = fetch_metadata_snapshot(dsn).await?;
-    let columns = execute_metadata_query(dsn, SIGNATURE_COLUMNS_QUERY).await?;
-    let foreign_keys = execute_metadata_query(dsn, SIGNATURE_FOREIGN_KEYS_QUERY).await?;
+    let database = selected_database(dsn)?;
+    let results = execute_metadata_queries_in_session(
+        dsn,
+        &[
+            TABLES_QUERY,
+            SIGNATURE_COLUMNS_QUERY,
+            SIGNATURE_FOREIGN_KEYS_QUERY,
+        ],
+    )
+    .await?;
+    let snapshot = metadata_snapshot_from_result(&database, None, &results[0])?;
     table_signatures_from_metadata(
         &snapshot.tables,
-        &snapshot.table_summaries,
-        parse_signature_column_metadata(&columns)?,
-        parse_foreign_key_metadata(&foreign_keys)?,
+        &database,
+        parse_signature_column_metadata(&results[1])?,
+        parse_foreign_key_metadata(&results[2])?,
     )
 }
 
@@ -74,7 +81,7 @@ fn parse_signature_column_metadata(
 
 fn table_signatures_from_metadata(
     tables: &[MysqlTableMetadata],
-    summaries: &[TableSummary],
+    database: &str,
     columns: Vec<MysqlSignatureColumnMetadata>,
     foreign_keys: Vec<MysqlForeignKeyMetadata>,
 ) -> Result<Vec<TableSignature>, DbOperationError> {
@@ -136,7 +143,7 @@ fn table_signatures_from_metadata(
             let primary_key = primary_key_names(&columns);
             let foreign_keys = foreign_keys_from_metadata(
                 foreign_keys_by_table.remove(&key).unwrap_or_default(),
-                summaries,
+                database,
             )?;
             let detail = Table {
                 schema: table.schema.clone(),
@@ -313,17 +320,6 @@ mod tests {
         }
     }
 
-    fn table_summary(table: MysqlTableMetadata) -> TableSummary {
-        TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
-            TableKindInfo {
-                kind: table.kind,
-                is_strict: false,
-                without_rowid: false,
-                virtual_module: None,
-            },
-        )
-    }
-
     fn signature_table() -> Table {
         Table {
             schema: "app".to_string(),
@@ -466,11 +462,6 @@ mod tests {
                 comment: None,
             },
         ];
-        let summaries = tables
-            .iter()
-            .cloned()
-            .map(table_summary)
-            .collect::<Vec<_>>();
         let columns = parse_signature_column_metadata(&result(
             &[
                 "TABLE_SCHEMA",
@@ -553,7 +544,7 @@ mod tests {
         .unwrap();
 
         let signatures =
-            table_signatures_from_metadata(&tables, &summaries, columns, foreign_keys).unwrap();
+            table_signatures_from_metadata(&tables, "App", columns, foreign_keys).unwrap();
 
         assert_eq!(signatures.len(), 2);
         assert_eq!(signatures[0].qualified_name(), "App.child");
@@ -570,14 +561,8 @@ mod tests {
             row_count_estimate: None,
             comment: None,
         }];
-        let summaries = tables
-            .iter()
-            .cloned()
-            .map(table_summary)
-            .collect::<Vec<_>>();
-
-        let error = table_signatures_from_metadata(&tables, &summaries, Vec::new(), Vec::new())
-            .unwrap_err();
+        let error =
+            table_signatures_from_metadata(&tables, "app", Vec::new(), Vec::new()).unwrap_err();
 
         assert!(matches!(
             error,

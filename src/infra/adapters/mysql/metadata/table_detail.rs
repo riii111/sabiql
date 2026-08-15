@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
-    Index, IndexAttributes, IndexType, QueryValue, Table, TableKind, TableKindInfo, TableSummary,
+    ForeignKey, Index, IndexAttributes, IndexType, QueryValue, Table, TableKind, TableKindInfo,
     Trigger, TriggerEvent, TriggerTiming,
 };
 
@@ -14,11 +14,12 @@ use super::super::{
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MysqlTableMetadata, column_from_metadata, columns_query, expect_columns, fetch_columns,
-    fetch_foreign_keys, fetch_table_metadata, find_table, foreign_keys_from_metadata,
+    MysqlColumnMetadata, MysqlTableMetadata, column_from_metadata, columns_query,
+    execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
     foreign_keys_query, metadata_shape_error, metadata_snapshot_from_result, optional_text,
     parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
-    primary_key_names, required_text, table_query, validate_selected_schema_name,
+    primary_key_names, required_text, selected_database, table_query,
+    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -61,15 +62,26 @@ pub(super) async fn fetch_table_columns_and_fks(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    let snapshot = fetch_table_metadata(dsn, schema, table).await?;
-    fetch_table_columns_and_fks_with_summaries(
+    let database = selected_database(dsn)?;
+    validate_selected_schema_name(&database, schema)?;
+    let table_query = table_query(schema, table);
+    let columns_query = columns_query(schema, table);
+    let foreign_keys_query = foreign_keys_query(schema, table);
+    let results = execute_metadata_queries_in_session(
         dsn,
-        schema,
-        table,
-        &snapshot.tables,
-        &snapshot.table_summaries,
+        &[&table_query, &columns_query, &foreign_keys_query],
     )
-    .await
+    .await?;
+    let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
+    let table_metadata = find_table(schema, table, &snapshot.tables)?;
+    let columns = parse_columns_for_table(&results[1], schema, table)?;
+    let foreign_keys =
+        foreign_keys_from_metadata(parse_foreign_key_metadata(&results[2])?, &database)?;
+    Ok(table_from_columns_and_foreign_keys(
+        table_metadata,
+        columns,
+        foreign_keys,
+    ))
 }
 
 async fn fetch_table_detail_in_session_with_program(
@@ -132,7 +144,7 @@ async fn fetch_table_detail_with_session(
     )?);
     let foreign_keys = foreign_keys_from_metadata(
         parse_foreign_key_metadata(&session.execute(&foreign_keys_query(schema, table)).await?)?,
-        &snapshot.table_summaries,
+        database,
     )?;
     let triggers = triggers_from_metadata(parse_trigger_metadata(
         &session.execute(&triggers_query(table)).await?,
@@ -168,18 +180,13 @@ async fn fetch_table_detail_with_session(
     })
 }
 
-async fn fetch_table_columns_and_fks_with_summaries(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-    tables: &[MysqlTableMetadata],
-    summaries: &[TableSummary],
-) -> Result<Table, DbOperationError> {
-    let table_metadata = find_table(schema, table, tables)?;
-    let columns = fetch_columns(dsn, schema, table).await?;
-    let foreign_keys = fetch_foreign_keys(dsn, schema, table, summaries).await?;
+fn table_from_columns_and_foreign_keys(
+    table_metadata: MysqlTableMetadata,
+    columns: Vec<MysqlColumnMetadata>,
+    foreign_keys: Vec<ForeignKey>,
+) -> Table {
     let primary_key = primary_key_names(&columns);
-    Ok(Table {
+    Table {
         schema: table_metadata.schema,
         name: table_metadata.name,
         owner: None,
@@ -198,7 +205,7 @@ async fn fetch_table_columns_and_fks_with_summaries(
             without_rowid: false,
             virtual_module: None,
         },
-    })
+    }
 }
 
 fn indexes_query(table: &str) -> String {
