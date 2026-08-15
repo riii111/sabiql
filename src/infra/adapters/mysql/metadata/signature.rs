@@ -7,7 +7,7 @@ use super::super::cli::MysqlResultSet;
 use super::catalog::{
     FOREIGN_KEY_RESULT_COLUMNS, MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata,
     TABLES_QUERY, TABLES_RESULT_COLUMNS, column_from_metadata, execute_metadata_queries_in_session,
-    expect_columns, foreign_keys_from_metadata, metadata_shape_error,
+    expect_columns, foreign_keys_from_metadata, mark_single_column_unique, metadata_shape_error,
     metadata_snapshot_from_result, parse_column_metadata_row, parse_foreign_key_metadata,
     primary_key_names, required_text, selected_database,
 };
@@ -29,6 +29,10 @@ pub(super) async fn fetch_table_signatures(
             (TABLES_QUERY, TABLES_RESULT_COLUMNS),
             (SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS),
             (SIGNATURE_FOREIGN_KEYS_QUERY, FOREIGN_KEY_RESULT_COLUMNS),
+            (
+                SIGNATURE_UNIQUE_COLUMNS_QUERY,
+                SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS,
+            ),
         ],
     )
     .await?;
@@ -38,6 +42,7 @@ pub(super) async fn fetch_table_signatures(
         &database,
         parse_signature_column_metadata(&results[1])?,
         parse_foreign_key_metadata(&results[2])?,
+        parse_signature_unique_column_metadata(&results[3])?,
     )
 }
 
@@ -66,6 +71,7 @@ fn table_signatures_from_metadata(
     database: &str,
     columns: Vec<MysqlSignatureColumnMetadata>,
     foreign_keys: Vec<MysqlForeignKeyMetadata>,
+    mut unique_columns_by_table: HashMap<String, HashSet<String>>,
 ) -> Result<Vec<TableSignature>, DbOperationError> {
     let known_tables: HashSet<(String, String)> = tables
         .iter()
@@ -105,6 +111,15 @@ fn table_signatures_from_metadata(
             .push(foreign_key);
     }
 
+    if unique_columns_by_table
+        .keys()
+        .any(|name| !tables.iter().any(|table| table.name == *name))
+    {
+        return Err(metadata_shape_error(
+            "signature UNIQUE metadata references unknown table",
+        ));
+    }
+
     tables
         .iter()
         .map(|table| {
@@ -122,6 +137,10 @@ fn table_signatures_from_metadata(
                 )));
             }
             columns.sort_by_key(|column| column.ordinal_position);
+            let unique_columns = unique_columns_by_table
+                .remove(&table.name)
+                .unwrap_or_default();
+            mark_single_column_unique(&mut columns, &unique_columns);
             let primary_key = primary_key_names(&columns);
             let foreign_keys = foreign_keys_from_metadata(
                 foreign_keys_by_table.remove(&key).unwrap_or_default(),
@@ -300,7 +319,26 @@ const SIGNATURE_COLUMNS_RESULT_COLUMNS: &[&str] = &[
     "ORDINAL_POSITION",
     "PRIMARY_KEY_POSITION",
 ];
+const SIGNATURE_UNIQUE_COLUMNS_QUERY: &str = "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = DATABASE() AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.TABLE_NAME, s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.TABLE_NAME, s.INDEX_NAME";
+const SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS: &[&str] = &["TABLE_NAME", "COLUMN_NAME"];
 const SIGNATURE_FOREIGN_KEYS_QUERY: &str = "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION";
+
+fn parse_signature_unique_column_metadata(
+    result: &MysqlResultSet,
+) -> Result<HashMap<String, HashSet<String>>, DbOperationError> {
+    expect_columns(result, SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS)?;
+    let mut unique_columns_by_table = HashMap::new();
+    for row in &result.values {
+        if row.len() != 2 {
+            return Err(metadata_shape_error("signature UNIQUE row"));
+        }
+        unique_columns_by_table
+            .entry(required_text(&row[0], "TABLE_NAME")?.to_string())
+            .or_insert_with(HashSet::new)
+            .insert(required_text(&row[1], "COLUMN_NAME")?.to_string());
+    }
+    Ok(unique_columns_by_table)
+}
 
 #[cfg(test)]
 mod tests {
@@ -537,13 +575,34 @@ mod tests {
         ))
         .unwrap();
 
-        let signatures =
-            table_signatures_from_metadata(&tables, "App", columns, foreign_keys).unwrap();
+        let unique_columns = parse_signature_unique_column_metadata(&result(
+            SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text("child".to_string()),
+                QueryValue::Text("parent_id".to_string()),
+            ]],
+        ))
+        .unwrap();
+        let signatures = table_signatures_from_metadata(
+            &tables,
+            "App",
+            columns.clone(),
+            foreign_keys.clone(),
+            unique_columns,
+        )
+        .unwrap();
+        let signatures_without_unique =
+            table_signatures_from_metadata(&tables, "App", columns, foreign_keys, HashMap::new())
+                .unwrap();
 
         assert_eq!(signatures.len(), 2);
         assert_eq!(signatures[0].qualified_name(), "App.child");
         assert!(signatures[0].signature.contains("id"));
         assert!(signatures[0].signature.contains("fk_child_parent"));
+        assert_ne!(
+            signatures[0].signature,
+            signatures_without_unique[0].signature
+        );
     }
 
     #[test]
@@ -556,7 +615,8 @@ mod tests {
             comment: None,
         }];
         let error =
-            table_signatures_from_metadata(&tables, "app", Vec::new(), Vec::new()).unwrap_err();
+            table_signatures_from_metadata(&tables, "app", Vec::new(), Vec::new(), HashMap::new())
+                .unwrap_err();
 
         assert!(matches!(
             error,

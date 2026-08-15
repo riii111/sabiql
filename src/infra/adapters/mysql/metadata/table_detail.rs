@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::time::Duration;
 
@@ -15,12 +16,13 @@ use super::super::{
 };
 use super::catalog::{
     COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, MysqlColumnMetadata,
-    MysqlTableMetadata, TABLES_RESULT_COLUMNS, column_from_metadata, columns_query,
-    execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
-    foreign_keys_query, metadata_shape_error, metadata_snapshot_from_result, optional_text,
-    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
-    primary_key_names, required_text, selected_database, table_query,
-    validate_selected_schema_name,
+    MysqlTableMetadata, TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, column_from_metadata,
+    columns_query, execute_metadata_queries_in_session, expect_columns, find_table,
+    foreign_keys_from_metadata, foreign_keys_query, mark_single_column_unique,
+    metadata_shape_error, metadata_snapshot_from_result, optional_text, parse_boolean_flag,
+    parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
+    parse_unique_column_metadata, primary_key_names, required_text, selected_database, table_query,
+    unique_columns_query, validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -67,21 +69,24 @@ pub(super) async fn fetch_table_columns_and_fks(
     validate_selected_schema_name(&database, schema)?;
     let table_query = table_query(schema, table);
     let columns_query = columns_query(schema, table);
+    let unique_columns_query = unique_columns_query(schema, table);
     let foreign_keys_query = foreign_keys_query(schema, table);
     let results = execute_metadata_queries_in_session(
         dsn,
         &[
             (table_query.as_str(), TABLES_RESULT_COLUMNS),
             (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
+            (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
             (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
         ],
     )
     .await?;
     let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
     let table_metadata = find_table(schema, table, &snapshot.tables)?;
-    let columns = parse_columns_for_table(&results[1], schema, table)?;
+    let mut columns = parse_columns_for_table(&results[1], schema, table)?;
+    mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[2])?);
     let foreign_keys =
-        foreign_keys_from_metadata(parse_foreign_key_metadata(&results[2])?, &database)?;
+        foreign_keys_from_metadata(parse_foreign_key_metadata(&results[3])?, &database)?;
     Ok(table_from_columns_and_foreign_keys(
         table_metadata,
         columns,
@@ -141,7 +146,7 @@ async fn fetch_table_detail_with_session(
     let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
     let table_metadata = find_table(schema, table, &snapshot.tables)?;
 
-    let columns = parse_columns_for_table(
+    let mut columns = parse_columns_for_table(
         &session
             .execute_with_expected_columns(
                 &columns_query(schema, table),
@@ -151,11 +156,14 @@ async fn fetch_table_detail_with_session(
         schema,
         table,
     )?;
-    let indexes = indexes_from_metadata(parse_index_metadata(
+    let raw_indexes = parse_index_metadata(
         &session
             .execute_with_expected_columns(&indexes_query(table), INDEX_RESULT_COLUMNS)
             .await?,
-    )?);
+    )?;
+    let unique_single_columns = unique_single_columns_from_metadata(&raw_indexes);
+    mark_single_column_unique(&mut columns, &unique_single_columns);
+    let indexes = indexes_from_metadata(raw_indexes);
     let foreign_keys = foreign_keys_from_metadata(
         parse_foreign_key_metadata(
             &session
@@ -452,6 +460,27 @@ fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
     indexes
 }
 
+fn unique_single_columns_from_metadata(raw: &[MysqlIndexMetadata]) -> HashSet<String> {
+    let mut indexes_by_name: HashMap<&str, Vec<&MysqlIndexMetadata>> = HashMap::new();
+    for index in raw
+        .iter()
+        .filter(|index| !index.non_unique && !index.primary)
+    {
+        indexes_by_name
+            .entry(index.name.as_str())
+            .or_default()
+            .push(index);
+    }
+
+    indexes_by_name
+        .into_values()
+        .filter_map(|parts| {
+            let part = parts.first()?;
+            (parts.len() == 1 && part.expression.is_none()).then(|| part.column_name.clone())
+        })
+        .collect()
+}
+
 #[cfg(all(test, unix))]
 mod session_tests {
     use std::os::unix::fs::PermissionsExt;
@@ -516,6 +545,9 @@ while IFS= read -r line; do
       else
         printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
       fi
+      ;;
+    *GROUP\ BY\ s.INDEX_NAME*)
+      printf '%s\n' '<resultset></resultset>'
       ;;
     *STATISTICS*)
       printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
@@ -943,6 +975,76 @@ mod tests {
             IndexType::Other("fulltext".to_string())
         );
         assert!(!indexes[1].is_unique());
+    }
+
+    #[test]
+    fn single_column_unique_indexes_exclude_primary_composite_regular_and_functional_indexes() {
+        let result = result(
+            INDEX_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("uq_email".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_pair".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("first_key".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_pair".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("second_key".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("PRIMARY".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("idx_email".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_expression".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("lower(`email`)".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+            ],
+        );
+
+        let raw = parse_index_metadata(&result).unwrap();
+
+        assert_eq!(
+            unique_single_columns_from_metadata(&raw),
+            HashSet::from(["email".to_string()])
+        );
     }
 
     #[test]
