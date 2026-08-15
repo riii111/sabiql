@@ -91,6 +91,35 @@ mod connection {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn preserves_control_characters_in_real_mysql_pty_input() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let mut script = b"SELECT HEX(_binary '".to_vec();
+                script.extend_from_slice(&[0x03, 0x0d, 0x11, 0x13]);
+                script.extend_from_slice(b"') AS control_bytes;\n");
+                let script = String::from_utf8(script).map_err(|error| error.to_string())?;
+                let output = db
+                    .run_pty_script(&script)
+                    .await
+                    .map_err(|error| format!("failed to run MySQL CLI: {error}"))?;
+                if !output
+                    .windows(b">030D1113</field>".len())
+                    .any(|window| window == b">030D1113</field>")
+                {
+                    return Err(format!(
+                        "MySQL CLI changed control-byte input: {}",
+                        String::from_utf8_lossy(&output)
+                    ));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
         let config = mysql_tls_config();
