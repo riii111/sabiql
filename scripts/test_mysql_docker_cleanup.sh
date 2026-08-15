@@ -48,6 +48,9 @@ case "${1:-}" in
         done <"$state_file"
         ;;
     rm)
+        if [[ "${FAKE_DOCKER_RM_STATUS:-0}" != 0 ]]; then
+            exit "$FAKE_DOCKER_RM_STATUS"
+        fi
         temporary_state="$state_file.tmp"
         : >"$temporary_state"
         while IFS='|' read -r container_id label; do
@@ -245,9 +248,30 @@ if [[ "$same_suffix_labels" != 6 ]]; then
 fi
 assert_only_unrelated_container_remains
 
+cleanup_failure_output="$test_root/cleanup-failure.out"
+cleanup_failure_status=0
+if FAKE_DOCKER_RM_STATUS=1 FAKE_CARGO_MODE=success \
+    PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test \
+    >"$cleanup_failure_output" 2>&1; then
+    cleanup_failure_status=0
+else
+    cleanup_failure_status=$?
+fi
+if [[ "$cleanup_failure_status" != 1 ]] || ! rg -q 'failed to clean up MySQL client containers' "$cleanup_failure_output"; then
+    printf 'cleanup failure exited %s, expected 1\n%s\n' \
+        "$cleanup_failure_status" "$(<"$cleanup_failure_output")" >&2
+    exit 1
+fi
+while IFS='|' read -r container_id label; do
+    if [[ "$label" == com.sabiql.mysql.integration=run-* ]]; then
+        "$fake_bin/docker" rm --force "$container_id"
+    fi
+done <"$state_file"
+assert_only_unrelated_container_remains
+
 unique_run_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$unique_run_labels" != 6 ]]; then
-    printf 'expected six unique run labels, got %s\n%s\n' \
+if [[ "$unique_run_labels" != 7 ]]; then
+    printf 'expected seven unique run labels, got %s\n%s\n' \
         "$unique_run_labels" "$(<"$label_log")" >&2
     exit 1
 fi

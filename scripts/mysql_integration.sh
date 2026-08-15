@@ -24,7 +24,7 @@ mysql_client_label=''
 create_client_container_label() {
     local label_file
     label_file="$(mktemp "$temp_dir/mysql-client-label.XXXXXX")"
-    printf '%s=run-%s-%s\n' "$mysql_client_label_key" "$repo_root" "$(basename "$label_file")"
+    printf '%s=run-%s-%s-%s\n' "$mysql_client_label_key" "$repo_root" "$$" "$(basename "$label_file")"
 }
 
 cleanup_client_containers() {
@@ -70,6 +70,22 @@ cleanup() {
     return "$status"
 }
 
+handle_exit() {
+    local status="$1"
+    local cleanup_status
+
+    trap - EXIT HUP INT TERM
+    if cleanup "$status"; then
+        cleanup_status=0
+    else
+        cleanup_status=$?
+    fi
+    if [[ "$status" == 0 && "$cleanup_status" != 0 ]]; then
+        exit "$cleanup_status"
+    fi
+    exit "$status"
+}
+
 handle_signal() {
     local status="$1"
 
@@ -78,7 +94,7 @@ handle_signal() {
     exit "$status"
 }
 
-trap 'cleanup "$?"' EXIT
+trap 'handle_exit "$?"' EXIT
 trap 'handle_signal 129' HUP
 trap 'handle_signal 130' INT
 trap 'handle_signal 143' TERM
