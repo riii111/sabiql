@@ -12,40 +12,11 @@ use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
-    sql::quote_string,
+    sql::{
+        COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, TABLES_QUERY,
+        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, columns_query, unique_columns_query,
+    },
 };
-
-pub(super) const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') ORDER BY TABLE_SCHEMA, TABLE_NAME";
-pub(super) const TABLES_RESULT_COLUMNS: &[&str] = &[
-    "TABLE_SCHEMA",
-    "TABLE_NAME",
-    "TABLE_TYPE",
-    "TABLE_ROWS",
-    "TABLE_COMMENT",
-];
-pub(super) const COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &[
-    "COLUMN_NAME",
-    "COLUMN_TYPE",
-    "IS_NULLABLE",
-    "COLUMN_DEFAULT",
-    "EXTRA",
-    "COLUMN_COMMENT",
-    "ORDINAL_POSITION",
-    "PRIMARY_KEY_POSITION",
-];
-pub(super) const UNIQUE_COLUMN_RESULT_COLUMNS: &[&str] = &["COLUMN_NAME"];
-pub(super) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
-    "CONSTRAINT_NAME",
-    "TABLE_SCHEMA",
-    "TABLE_NAME",
-    "COLUMN_NAME",
-    "REFERENCED_TABLE_SCHEMA",
-    "REFERENCED_TABLE_NAME",
-    "REFERENCED_COLUMN_NAME",
-    "ORDINAL_POSITION",
-    "UPDATE_RULE",
-    "DELETE_RULE",
-];
 
 #[derive(Debug, Clone)]
 enum MysqlColumnUnique {
@@ -142,30 +113,6 @@ pub(super) fn find_table(
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
         })
-}
-
-pub(super) fn table_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {} ORDER BY TABLE_SCHEMA, TABLE_NAME",
-        quote_string(schema),
-        quote_string(table),
-    )
-}
-
-pub(super) fn columns_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
-        quote_string(schema),
-        quote_string(table),
-    )
-}
-
-pub(super) fn unique_columns_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.INDEX_NAME",
-        quote_string(schema),
-        quote_string(table),
-    )
 }
 
 pub(super) fn parse_columns_for_table(
@@ -336,15 +283,6 @@ fn parse_table_metadata(
             })
         })
         .collect()
-}
-
-pub(super) fn foreign_keys_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {} AND tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
-        quote_string(schema),
-        quote_string(schema),
-        quote_string(table),
-    )
 }
 
 fn parse_column_metadata(
@@ -774,44 +712,6 @@ mod tests {
 
         assert!(!column_from_metadata(&columns[0]).is_unique());
         assert!(column_from_metadata(&columns[1]).is_unique());
-    }
-
-    #[test]
-    fn targeted_metadata_queries_escape_schema_and_table_literals() {
-        let schema = "app\\\n\r\t\u{0008}\u{001a}'";
-        let table = "items\\\n\r\t\u{0008}\u{001a}'";
-
-        assert_eq!(
-            quote_string(schema),
-            format!(
-                "'app{}{}{}{}{}{}{}'",
-                r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
-            )
-        );
-        assert_eq!(
-            quote_string(table),
-            format!(
-                "'items{}{}{}{}{}{}{}'",
-                r"\\", r"\n", r"\r", r"\t", r"\b", r"\Z", r"\'",
-            )
-        );
-
-        assert!(!TABLES_QUERY.contains("UNION ALL SELECT NULL"));
-        for query in [
-            table_query(schema, table),
-            columns_query(schema, table),
-            unique_columns_query(schema, table),
-            foreign_keys_query(schema, table),
-        ] {
-            assert!(query.contains(&quote_string(schema)));
-            assert!(query.contains(&quote_string(table)));
-            assert!(!query.contains("UNION ALL SELECT NULL"));
-        }
-        assert!(!table_query(schema, table).contains("KEY_COLUMN_USAGE"));
-        let unique_query = unique_columns_query(schema, table);
-        assert!(unique_query.contains("INDEX_NAME <> 'PRIMARY'"));
-        assert!(unique_query.contains("HAVING COUNT(*) = 1"));
-        assert!(unique_query.contains("COUNT(s.COLUMN_NAME) = 1"));
     }
 
     #[test]

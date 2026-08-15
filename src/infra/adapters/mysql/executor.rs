@@ -14,6 +14,7 @@ use super::cli::{
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
 use super::option_file::MySqlOptionFile;
+use super::sql;
 
 #[cfg(feature = "test-support")]
 pub(super) mod test_support {
@@ -85,7 +86,7 @@ impl QueryExecutor for MySqlAdapter {
         )]
         let start = Instant::now();
         let preview = metadata::fetch_preview_metadata(dsn, schema, table).await?;
-        let query = metadata::build_preview_query(
+        let query = sql::build_preview_query(
             schema,
             table,
             &preview.order_columns,
@@ -94,7 +95,7 @@ impl QueryExecutor for MySqlAdapter {
             limit,
             offset,
         );
-        let display_query = metadata::build_preview_query(
+        let display_query = sql::build_preview_query(
             schema,
             table,
             &preview.order_columns,
