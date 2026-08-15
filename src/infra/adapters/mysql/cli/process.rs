@@ -5,46 +5,39 @@ use std::time::Duration;
 
 #[cfg(unix)]
 use tokio::fs::File as TokioFile;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::process::{Child, Command};
 #[cfg(not(unix))]
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
-use tokio::time::timeout;
 use uuid::Uuid;
 
-use crate::app::policy::sql::mysql_statement::{MysqlStatement, MysqlStatementKind};
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
-use crate::domain::{QueryValue, RefreshScope};
 
-use super::args::{mysql_metadata_args, mysql_query_args};
-#[cfg(unix)]
-use super::error::trace_mysql_error;
-use super::error::{
-    classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
-    validate_mode_probe,
-};
+use super::args::mysql_query_args;
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
-use super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, MysqlCommandEvent, MysqlExecutionResult,
-    MysqlMetadataFallbackKind, aggregate_mysql_command_tag, is_mysql_row_count_marker,
-    mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
-    mysql_metadata_fallback_kind, mysql_metadata_select_query, mysql_refresh_scope,
-    mysql_row_count_marker, query_failed_after_change, query_failed_after_mysql_statement,
-    validate_mysql_session_marker,
-};
-use super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
+use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
 #[cfg(all(unix, feature = "test-support"))]
 use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
 use super::pty::{
     MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
 };
-#[cfg(unix)]
+#[cfg(all(unix, feature = "test-support"))]
 use super::xml::trace_mysql_frame;
-use super::xml::{
-    MysqlResultSet, MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement,
+use super::xml::{MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
+
+mod session;
+pub(in crate::adapters::mysql) use session::MysqlMetadataSession;
+mod adhoc;
+pub(in crate::adapters::mysql) use adhoc::{
+    run_mysql_adhoc, run_mysql_adhoc_with_expected_columns,
 };
+mod single;
+pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
+mod metadata;
+pub(in crate::adapters::mysql) use metadata::mysql_metadata_columns;
 
 #[cfg(all(unix, feature = "test-support"))]
 use super::super::dsn::parse_and_validate_mysql_dsn;
@@ -54,47 +47,12 @@ use super::super::option_file::MySqlOptionFile;
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
-pub(super) async fn stop_mysql_process(
-    process: &mut MysqlProcess,
-) -> Result<(ExitStatus, bool), DbOperationError> {
-    if let Some(status) = process
-        .child
-        .try_wait()
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?
-    {
-        return Ok((status, false));
-    }
-    // Callers drain the PTY first because mysql --binary-mode does not accept quit commands.
-    let _ = process.child.kill().await;
-    let status = process
-        .child
-        .wait()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, true))
-}
-
-#[cfg(not(unix))]
-async fn finish_mysql_pipe_process(
-    process: &mut MysqlProcess,
-) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
-    let (stdout, stderr, status) = tokio::join!(
-        read_all(&mut process.stdout),
-        read_all(&mut process.stderr),
-        process.child.wait()
-    );
-    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, stdout, stderr))
-}
-
 pub(in crate::adapters::mysql) struct MysqlProcess {
     pub(super) child: Child,
     #[cfg(unix)]
     pub(super) pty: MysqlPty,
     #[cfg(not(unix))]
-    pub(super) stdin: ChildStdin,
+    pub(super) stdin: Option<ChildStdin>,
     #[cfg(not(unix))]
     pub(super) stdout: ChildStdout,
     #[cfg(not(unix))]
@@ -149,7 +107,7 @@ impl MysqlProcess {
             })?;
             Ok(Self {
                 child,
-                stdin,
+                stdin: Some(stdin),
                 stdout,
                 stderr,
                 pending: Vec::new(),
@@ -208,424 +166,85 @@ impl MysqlProcess {
     }
 }
 
-pub(in crate::adapters::mysql) struct MysqlMetadataSession {
-    process: MysqlProcess,
+#[cfg(unix)]
+async fn stop_mysql_process(
+    process: &mut MysqlProcess,
+) -> Result<(ExitStatus, bool), DbOperationError> {
+    if let Some(status) = process
+        .child
+        .try_wait()
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?
+    {
+        return Ok((status, false));
+    }
+    // Normal session completion drains the PTY first because mysql --binary-mode does not accept quit commands.
+    let _ = process.child.kill().await;
+    let status = process
+        .child
+        .wait()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, true))
 }
 
-impl MysqlMetadataSession {
-    pub(in crate::adapters::mysql) fn spawn_with_program(
-        program: &OsStr,
-        option_file: &std::path::Path,
-    ) -> Result<Self, DbOperationError> {
-        Ok(Self {
-            process: MysqlProcess::spawn_with_program(program, option_file)?,
-        })
+pub(super) struct MysqlSessionResult {
+    pub(super) status: ExitStatus,
+    pub(super) forcibly_stopped: bool,
+    #[cfg(not(unix))]
+    pub(super) stdout: Vec<u8>,
+    pub(super) error_bytes: Vec<u8>,
+}
+
+async fn shutdown_mysql_input(process: &mut MysqlProcess) -> Result<(), DbOperationError> {
+    #[cfg(unix)]
+    {
+        write_mysql_input(process, b"\x04").await?;
     }
 
-    pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<(), DbOperationError> {
-        let marker = Uuid::new_v4().simple().to_string();
-        let query =
-            format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
-        let result = self.execute(&query).await?;
-        validate_mode_probe(&result, &marker)
-    }
-
-    pub(in crate::adapters::mysql) async fn prepare_read_only(
-        &mut self,
-    ) -> Result<(), DbOperationError> {
-        configure_mysql_session(&mut self.process, AccessMode::ReadOnly).await
-    }
-
-    pub(in crate::adapters::mysql) async fn execute(
-        &mut self,
-        query: &str,
-    ) -> Result<MysqlResultSet, DbOperationError> {
-        self.execute_with_expected_columns(query, &[]).await
-    }
-
-    pub(in crate::adapters::mysql) async fn execute_with_expected_columns(
-        &mut self,
-        query: &str,
-        expected_columns: &[&str],
-    ) -> Result<MysqlResultSet, DbOperationError> {
-        write_mysql_statement(&mut self.process, query).await?;
-        let xml = read_one_mysql_resultset(&mut self.process).await?;
-        let mut result = parse_mysql_xml(&xml)?;
-        if result.columns.is_empty() && result.values.is_empty() {
-            result.columns = expected_columns
-                .iter()
-                .map(|column| (*column).to_string())
-                .collect();
-        }
-        Ok(result)
-    }
-
-    pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
-        #[cfg(not(unix))]
-        self.process
-            .stdin
+    #[cfg(not(unix))]
+    if let Some(mut stdin) = process.stdin.take() {
+        stdin
             .shutdown()
             .await
             .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
-        #[cfg(unix)]
-        let tail = {
-            write_mysql_input(&mut self.process, b"\x04").await?;
-            read_pty_until_idle(&mut self.process.pty)
-                .await
-                .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
-        };
-
-        #[cfg(not(unix))]
-        let (status, _stdout, stderr) = finish_mysql_pipe_process(&mut self.process).await?;
-        #[cfg(unix)]
-        let (status, forcibly_stopped) = stop_mysql_process(&mut self.process).await?;
-        #[cfg(not(unix))]
-        let forcibly_stopped = false;
-        #[cfg(unix)]
-        let error_bytes = tail.as_slice();
-        #[cfg(not(unix))]
-        let error_bytes = stderr.as_slice();
-        if has_mysql_cli_error(error_bytes) {
-            return Err(classify_mysql_query_failure(error_bytes));
-        }
-        if !status.success() && !forcibly_stopped {
-            return Err(classify_mysql_query_failure(error_bytes));
-        }
-        Ok(())
     }
-
-    pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
-        cleanup_mysql_process(&mut self.process).await;
-    }
+    Ok(())
 }
 
-pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
-    option_file: &std::path::Path,
-    statements: &[MysqlStatement],
-    access_mode: AccessMode,
-) -> Result<MysqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-        OsStr::new("mysql"),
-        option_file,
-        statements,
-        access_mode,
-        None,
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
-pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_expected_columns(
-    option_file: &std::path::Path,
-    statements: &[MysqlStatement],
-    access_mode: AccessMode,
-    expected_columns: &[&str],
-) -> Result<MysqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-        OsStr::new("mysql"),
-        option_file,
-        statements,
-        access_mode,
-        Some(expected_columns),
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
-pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<MysqlResultSet, DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
-    let result = timeout(
-        MYSQL_QUERY_TIMEOUT,
-        run_mysql_single_statement_process(&mut process, query, access_mode),
-    )
-    .await;
-    match result {
-        Ok(Ok(result_set)) => Ok(result_set),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
-}
-
-async fn run_mysql_single_statement_process(
+pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
     process: &mut MysqlProcess,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<MysqlResultSet, DbOperationError> {
-    let marker = Uuid::new_v4().simple().to_string();
-    let probe_query =
-        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
-    write_mysql_statement(process, &probe_query).await?;
-    let probe_xml = read_one_mysql_resultset(process).await?;
-    let probe = parse_mysql_xml(&probe_xml)?;
-    validate_mode_probe(&probe, &marker)?;
-    configure_mysql_session(process, access_mode).await?;
+) -> Result<MysqlSessionResult, DbOperationError> {
+    shutdown_mysql_input(process).await?;
 
-    write_mysql_statement(process, query).await?;
-
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .shutdown()
+    #[cfg(unix)]
+    let error_bytes = read_pty_until_idle(&mut process.pty)
         .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
-    #[cfg(unix)]
-    let (stdout, tail) = {
-        let stdout = read_one_mysql_resultset(process).await?;
-        write_mysql_input(process, b"\x04").await?;
-        let tail = read_pty_until_idle(&mut process.pty)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        (stdout, tail)
-    };
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
     #[cfg(not(unix))]
-    let (status, stdout, stderr) = finish_mysql_pipe_process(process).await?;
-    #[cfg(unix)]
-    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
-    #[cfg(not(unix))]
-    let forcibly_stopped = false;
-    #[cfg(unix)]
-    let error_bytes = tail.as_slice();
-    #[cfg(not(unix))]
-    let error_bytes = stderr.as_slice();
-    if has_mysql_cli_error(error_bytes) {
-        return Err(classify_mysql_query_failure(error_bytes));
-    }
-    if !status.success() && !forcibly_stopped {
-        return Err(classify_mysql_query_failure(error_bytes));
-    }
-    parse_mysql_xml(&stdout)
-}
-
-async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    statements: &[MysqlStatement],
-    access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
-    execution_timeout: Duration,
-) -> Result<MysqlExecutionResult, DbOperationError> {
-    if mysql_metadata_fallback_has_unsupported_session_state(statements) {
-        return Err(DbOperationError::UnsupportedOperation(
-            "MySQL empty SHOW/DESCRIBE metadata fallback cannot preserve temporary-table session state"
-                .to_string(),
-        ));
-    }
-    let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-    let result = timeout(
-        execution_timeout,
-        run_mysql_adhoc_process(
-            &mut process,
-            option_file,
-            statements,
-            access_mode,
-            expected_columns,
-        ),
-    )
-    .await;
-
-    match result {
-        Ok(Ok(result_set)) => Ok(result_set),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
-}
-
-struct MysqlStatementExecution {
-    result_set: Option<MysqlResultSet>,
-    command_event: MysqlCommandEvent,
-    refresh_scope: RefreshScope,
-}
-
-async fn run_mysql_statement(
-    process: &mut MysqlProcess,
-    option_file: &std::path::Path,
-    statement: &MysqlStatement,
-    access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
-    refresh_scope: RefreshScope,
-) -> Result<MysqlStatementExecution, DbOperationError> {
-    let marker = Uuid::new_v4().simple().to_string();
-    let statement_scope = mysql_refresh_scope(&statement.kind);
-    let possible_refresh_scope = refresh_scope.merge(statement_scope);
-    if let Err(error) = write_mysql_statement(process, &statement.sql).await {
-        return Err(query_failed_after_change(error, refresh_scope));
-    }
-    let marker_query =
-        format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows");
-    if let Err(error) = write_mysql_statement(process, &marker_query).await {
-        return Err(query_failed_after_change(error, possible_refresh_scope));
-    }
-    let first_xml = match read_one_mysql_resultset(process).await {
-        Ok(xml) => xml,
-        Err(error) => {
-            return Err(query_failed_after_mysql_statement(
-                error,
-                refresh_scope,
-                possible_refresh_scope,
-            ));
-        }
-    };
-    let first_result = match parse_mysql_xml(&first_xml) {
-        Ok(result) => result,
-        Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-    };
-    let (user_result, marker_result) = if is_mysql_row_count_marker(&first_result, &marker) {
-        (None, first_result)
-    } else {
-        let xml = match read_one_mysql_resultset(process).await {
-            Ok(xml) => xml,
-            Err(error) => {
-                return Err(query_failed_after_mysql_statement(
-                    error,
-                    refresh_scope,
-                    possible_refresh_scope,
-                ));
-            }
-        };
-        let marker_result = match parse_mysql_xml(&xml) {
-            Ok(result) => result,
-            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-        };
-        let user_result = fill_mysql_empty_result_columns(
-            process,
-            first_result,
-            option_file,
-            &statement.sql,
-            &statement.kind,
-            access_mode,
-            expected_columns,
-        )
-        .await
-        .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
-        (Some(user_result), marker_result)
-    };
-    let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
-        Ok(rows) => rows,
-        Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-    };
-    let tag = mysql_command_tag(&statement.kind, affected_rows, user_result.as_ref());
-
-    Ok(MysqlStatementExecution {
-        result_set: user_result,
-        command_event: MysqlCommandEvent {
-            kind: statement.kind.clone(),
-            target: statement.target.clone(),
-            tag,
-        },
-        refresh_scope: possible_refresh_scope,
-    })
-}
-
-async fn run_mysql_adhoc_process(
-    process: &mut MysqlProcess,
-    option_file: &std::path::Path,
-    statements: &[MysqlStatement],
-    access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
-) -> Result<MysqlExecutionResult, DbOperationError> {
-    let probe_marker = Uuid::new_v4().simple().to_string();
-    let probe_query = format!(
-        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
-    );
-    write_mysql_statement(process, &probe_query).await?;
-    let probe_xml = read_one_mysql_resultset(process).await?;
-    let probe = parse_mysql_xml(&probe_xml)?;
-    validate_mode_probe(&probe, &probe_marker)?;
-    configure_mysql_session(process, access_mode).await?;
-
-    let mut last_result_set = None;
-    let mut command_tags = Vec::with_capacity(statements.len());
-    let mut refresh_scope = RefreshScope::None;
-    let expected_columns = (statements.len() == 1)
-        .then_some(expected_columns)
-        .flatten();
-
-    for statement in statements {
-        let execution = run_mysql_statement(
-            process,
-            option_file,
-            statement,
-            access_mode,
-            expected_columns,
-            refresh_scope,
-        )
-        .await?;
-        if let Some(result) = execution.result_set {
-            last_result_set = Some(result);
-        }
-        command_tags.push(execution.command_event);
-        refresh_scope = execution.refresh_scope;
-    }
-
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .shutdown()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
-    #[cfg(unix)]
-    let tail = {
-        write_mysql_input(process, b"\x04").await?;
-        let tail = read_pty_until_idle(&mut process.pty)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        trace_mysql_frame("discard tail", tail.len());
-        trace_mysql_error(&tail);
-        tail
+    let (stdout, error_bytes, status) = {
+        let (stdout, stderr, status) = tokio::join!(
+            read_all(&mut process.stdout),
+            read_all(&mut process.stderr),
+            process.child.wait()
+        );
+        let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        (stdout, stderr, status)
     };
 
-    #[cfg(not(unix))]
-    let (status, _stdout, stderr) = finish_mysql_pipe_process(process).await?;
     #[cfg(unix)]
     let (status, forcibly_stopped) = stop_mysql_process(process).await?;
     #[cfg(not(unix))]
     let forcibly_stopped = false;
 
-    #[cfg(unix)]
-    let error_bytes = tail.as_slice();
-    #[cfg(not(unix))]
-    let error_bytes = stderr.as_slice();
-    if has_mysql_cli_error(error_bytes) {
-        return Err(query_failed_after_change(
-            classify_mysql_query_failure(error_bytes),
-            refresh_scope,
-        ));
-    }
-    if !status.success() && !forcibly_stopped {
-        return Err(query_failed_after_change(
-            classify_mysql_query_failure(error_bytes),
-            refresh_scope,
-        ));
-    }
-
-    Ok(MysqlExecutionResult {
-        result_set: last_result_set,
-        command_tag: aggregate_mysql_command_tag(&command_tags),
-        refresh_scope,
+    Ok(MysqlSessionResult {
+        status,
+        forcibly_stopped,
+        #[cfg(not(unix))]
+        stdout,
+        error_bytes,
     })
 }
 
@@ -748,6 +367,8 @@ pub(super) async fn write_mysql_input(
     #[cfg(not(unix))]
     process
         .stdin
+        .as_mut()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
         .write_all(input)
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -761,6 +382,8 @@ pub(super) async fn write_mysql_input(
     #[cfg(not(unix))]
     process
         .stdin
+        .as_mut()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
         .flush()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -772,7 +395,10 @@ pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     #[cfg(unix)]
     let _ = read_pty_all(&mut process.pty).await;
     #[cfg(not(unix))]
-    let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    {
+        drop(process.stdin.take());
+        let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    }
     let _ = process.child.wait().await;
 }
 
@@ -795,347 +421,6 @@ pub(super) async fn read_one_mysql_resultset(
     .await
 }
 
-pub(super) async fn mysql_metadata_columns(
-    process: &mut MysqlProcess,
-    option_file: &std::path::Path,
-    query: &str,
-    kind: MysqlMetadataFallbackKind,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    let query = match kind {
-        MysqlMetadataFallbackKind::Select | MysqlMetadataFallbackKind::Table => {
-            return mysql_metadata_select_columns(process, query).await;
-        }
-        MysqlMetadataFallbackKind::Show | MysqlMetadataFallbackKind::Describe => {
-            query.trim().trim_end_matches(';').trim_end().to_string()
-        }
-    };
-    mysql_metadata_columns_external(option_file, &query, access_mode).await
-}
-
-async fn mysql_metadata_select_columns(
-    process: &mut MysqlProcess,
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    let suffix = Uuid::new_v4().simple().to_string();
-    let source_alias = format!("__sabiql_metadata_source_{suffix}");
-    let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
-    let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
-    write_mysql_statement(process, &query).await?;
-    let xml = match read_one_mysql_resultset(process).await {
-        Err(DbOperationError::QueryFailed(details))
-            if details
-                .to_ascii_lowercase()
-                .contains("duplicate column name") =>
-        {
-            return Err(DbOperationError::UnsupportedOperation(
-                "MySQL SELECT metadata fallback does not support duplicate column names"
-                    .to_string(),
-            ));
-        }
-        result => result?,
-    };
-    let result = parse_mysql_xml(&xml)?;
-    let row = result.values.first().ok_or_else(|| {
-        DbOperationError::QueryFailed(
-            "MySQL SELECT metadata fallback returned no synthetic row".to_string(),
-        )
-    })?;
-    if result.values.len() != 1
-        || result.columns.is_empty()
-        || row.len() != result.columns.len()
-        || row.iter().any(|value| !matches!(value, QueryValue::Null))
-    {
-        return Err(DbOperationError::QueryFailed(
-            "MySQL SELECT metadata fallback returned an invalid synthetic row".to_string(),
-        ));
-    }
-    Ok(result.columns)
-}
-
-async fn mysql_metadata_columns_external(
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    mysql_metadata_columns_external_with_program(
-        OsStr::new("mysql"),
-        option_file,
-        query,
-        access_mode,
-    )
-    .await
-}
-
-async fn mysql_metadata_columns_external_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    if access_mode.is_read_only() {
-        return run_mysql_metadata_query_with_read_only_session(program, option_file, query).await;
-    }
-
-    let mut args = mysql_metadata_args(option_file);
-    args.push(format!("--execute={query}"));
-    let option_file = option_file.to_path_buf();
-    let output = run_mysql_command_with_timeout(
-        args,
-        Some(&option_file),
-        MYSQL_QUERY_TIMEOUT,
-        "mysql query exceeded the execution timeout",
-    )
-    .await?;
-    if !output.status.success() {
-        return Err(classify_mysql_query_failure(&output.stderr));
-    }
-    parse_mysql_metadata_header(&output.stdout, query)
-}
-
-struct MysqlMetadataProcess {
-    child: Child,
-    stdin: Option<tokio::process::ChildStdin>,
-    stdout: BufReader<tokio::process::ChildStdout>,
-    stderr: BufReader<tokio::process::ChildStderr>,
-}
-
-impl MysqlMetadataProcess {
-    fn spawn(program: &OsStr, option_file: &std::path::Path) -> Result<Self, DbOperationError> {
-        let mut command = Command::new(program);
-        command
-            .args(mysql_metadata_args(option_file))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .env_remove("MYSQL_PWD")
-            .env_remove("MYSQL_PASSWORD")
-            .kill_on_drop(true);
-        let mut child = command.spawn().map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                DbOperationError::CommandNotFound {
-                    command: DatabaseCli::MySql,
-                    details: error.to_string(),
-                }
-            } else {
-                DbOperationError::ConnectionFailed(error.to_string())
-            }
-        })?;
-        let stdin = child.stdin.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
-        })?;
-        let stderr = child.stderr.take().ok_or_else(|| {
-            DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
-        })?;
-        Ok(Self {
-            child,
-            stdin: Some(stdin),
-            stdout: BufReader::new(stdout),
-            stderr: BufReader::new(stderr),
-        })
-    }
-
-    async fn write_statement(&mut self, query: &str) -> Result<(), DbOperationError> {
-        let statement = mysql_statement_input(query);
-        self.stdin
-            .as_mut()
-            .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
-            .write_all(&statement)
-            .await
-            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))
-    }
-
-    async fn read_until_marker(&mut self, marker: &str) -> Result<Vec<u8>, DbOperationError> {
-        let mut output = Vec::new();
-        let mut stdout_closed = false;
-        let mut stderr_closed = false;
-        loop {
-            if stdout_closed && stderr_closed {
-                return Err(DbOperationError::QueryFailed(format!(
-                    "MySQL metadata session marker was not returned: {marker}"
-                )));
-            }
-
-            let mut stdout_line = Vec::new();
-            let mut stderr_line = Vec::new();
-            tokio::select! {
-                result = self.stdout.read_until(b'\n', &mut stdout_line), if !stdout_closed => {
-                    let size = result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-                    if size == 0 {
-                        stdout_closed = true;
-                    } else {
-                        output.extend_from_slice(&stdout_line);
-                        if String::from_utf8_lossy(&stdout_line).contains(marker) {
-                            return Ok(output);
-                        }
-                    }
-                }
-                result = self.stderr.read_until(b'\n', &mut stderr_line), if !stderr_closed => {
-                    let size = result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-                    if size == 0 {
-                        stderr_closed = true;
-                    } else if has_mysql_cli_error(&stderr_line) {
-                        return Err(classify_mysql_query_failure(&stderr_line));
-                    }
-                }
-            }
-        }
-    }
-}
-
-async fn finish_mysql_metadata_process(
-    process: &mut MysqlMetadataProcess,
-) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let (stdout_result, stderr_result, status_result) = tokio::join!(
-        process.stdout.read_to_end(&mut stdout),
-        process.stderr.read_to_end(&mut stderr),
-        process.child.wait(),
-    );
-    stdout_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    stderr_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let status =
-        status_result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, stdout, stderr))
-}
-
-async fn cleanup_mysql_metadata_process(process: &mut MysqlMetadataProcess) {
-    drop(process.stdin.take());
-    let _ = process.child.kill().await;
-    let _ = finish_mysql_metadata_process(process).await;
-}
-
-async fn run_mysql_metadata_query_with_read_only_session(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    run_mysql_metadata_query_with_read_only_session_with_timeout(
-        program,
-        option_file,
-        query,
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
-async fn run_mysql_metadata_query_with_read_only_session_with_timeout(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-    execution_timeout: Duration,
-) -> Result<Vec<String>, DbOperationError> {
-    let mut process = MysqlMetadataProcess::spawn(program, option_file)?;
-    match timeout(
-        execution_timeout,
-        run_mysql_metadata_query_with_read_only_session_process(&mut process, query),
-    )
-    .await
-    {
-        Ok(Ok(columns)) => Ok(columns),
-        Ok(Err(error)) => {
-            cleanup_mysql_metadata_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_metadata_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
-}
-
-async fn run_mysql_metadata_query_with_read_only_session_process(
-    process: &mut MysqlMetadataProcess,
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    let probe_marker = Uuid::new_v4().simple().to_string();
-    let probe_query = format!(
-        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
-    );
-    process.write_statement(&probe_query).await?;
-    let probe_output = process.read_until_marker(&probe_marker).await?;
-    validate_metadata_mode_probe(&probe_output, &probe_marker)?;
-
-    let session_marker = Uuid::new_v4().simple().to_string();
-    process.write_statement(MYSQL_READ_ONLY_STATEMENT).await?;
-    process
-        .write_statement(&format!(
-            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"
-        ))
-        .await?;
-    let session_output = process.read_until_marker(&session_marker).await?;
-    validate_metadata_session_marker(&session_output, &session_marker)?;
-
-    process.write_statement(query).await?;
-    let mut stdin = process
-        .stdin
-        .take()
-        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?;
-    stdin
-        .shutdown()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    drop(stdin);
-    let (status, stdout, stderr) = finish_mysql_metadata_process(process).await?;
-    if has_mysql_cli_error(&stderr) {
-        return Err(classify_mysql_query_failure(&stderr));
-    }
-    if !status.success() {
-        return Err(classify_mysql_query_failure(&stderr));
-    }
-    parse_mysql_metadata_header(&stdout, query)
-}
-
-fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
-    let fields = output
-        .split(|byte| *byte == b'\n')
-        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
-        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
-        .find(|fields| {
-            fields
-                .first()
-                .is_some_and(|field| *field == marker.as_bytes())
-        })
-        .ok_or_else(|| {
-            DbOperationError::QueryFailed(
-                "MySQL metadata fallback returned an invalid mode probe".to_string(),
-            )
-        })?;
-    let sql_mode = fields.get(1).ok_or_else(|| {
-        DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned an incomplete mode probe".to_string(),
-        )
-    })?;
-    let sql_mode = String::from_utf8(sql_mode.to_vec())
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    validate_sql_mode(&sql_mode)
-}
-
-fn validate_metadata_session_marker(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
-    let valid = output
-        .split(|byte| *byte == b'\n')
-        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
-        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
-        .any(|fields| {
-            fields
-                .first()
-                .is_some_and(|field| *field == marker.as_bytes())
-        });
-    if valid {
-        Ok(())
-    } else {
-        Err(DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned an invalid read-only session marker".to_string(),
-        ))
-    }
-}
-
 fn mysql_statement_input(query: &str) -> Vec<u8> {
     let query = query.trim_end();
     let terminator = if query.ends_with(';') {
@@ -1146,79 +431,6 @@ fn mysql_statement_input(query: &str) -> Vec<u8> {
         ";\n"
     };
     [query.as_bytes(), terminator.as_bytes()].concat()
-}
-
-fn parse_mysql_metadata_header(
-    output: &[u8],
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    let query = query.trim_end();
-    let query_with_semicolon = format!("{query};");
-    let lines = output
-        .split(|byte| *byte == b'\n')
-        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
-        .filter(|line| {
-            !line.is_empty()
-                && !is_mysql_batch_diagnostic(line)
-                && *line != query.as_bytes()
-                && *line != query_with_semicolon.as_bytes()
-        })
-        .collect::<Vec<_>>();
-    let header = lines.first().ok_or_else(|| {
-        DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned no column header".to_string(),
-        )
-    })?;
-    let columns = header
-        .split(|byte| *byte == b'\t')
-        .map(|column| {
-            String::from_utf8(column.to_vec()).map_err(|error| {
-                DbOperationError::QueryFailed(format!(
-                    "invalid MySQL metadata fallback column name: {error}"
-                ))
-            })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    if columns.is_empty() || columns.iter().any(String::is_empty) {
-        return Err(DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned an invalid column header".to_string(),
-        ));
-    }
-    if lines.len() != 1 {
-        return Err(DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned data instead of a header".to_string(),
-        ));
-    }
-    Ok(columns)
-}
-
-async fn fill_mysql_empty_result_columns(
-    process: &mut MysqlProcess,
-    mut result: MysqlResultSet,
-    option_file: &std::path::Path,
-    query: &str,
-    kind: &MysqlStatementKind,
-    access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
-) -> Result<MysqlResultSet, DbOperationError> {
-    if !result.columns.is_empty() || !result.values.is_empty() {
-        return Ok(result);
-    }
-    if let Some(expected_columns) = expected_columns {
-        result.columns = expected_columns
-            .iter()
-            .map(|column| (*column).to_string())
-            .collect();
-        return Ok(result);
-    }
-    let fallback_kind = mysql_metadata_fallback_kind(kind).ok_or_else(|| {
-        DbOperationError::QueryFailed(
-            "MySQL empty result has no supported metadata fallback".to_string(),
-        )
-    })?;
-    result.columns =
-        mysql_metadata_columns(process, option_file, query, fallback_kind, access_mode).await?;
-    Ok(result)
 }
 
 #[cfg(all(unix, feature = "test-support"))]
@@ -1261,9 +473,17 @@ mod tests {
     use crate::app::policy::sql::mysql_statement::{
         classify_mysql_statement, split_mysql_statements,
     };
-    use crate::domain::CommandTag;
+    use crate::domain::{CommandTag, QueryValue, RefreshScope};
+    use tokio::time::timeout;
 
     use super::super::export::run_mysql_export_process;
+    use super::super::xml::MysqlResultSet;
+    use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
+    use super::metadata::{
+        mysql_metadata_columns_external_with_program,
+        run_mysql_metadata_query_with_read_only_session_with_timeout,
+    };
+    use super::single::run_mysql_single_statement_process;
     use super::*;
 
     async fn export_mysql_csv_with_program(
@@ -1483,7 +703,7 @@ exit 0
             |error| format!("printf '%s\\n' '{error}' >&2"),
         );
         let tail = if tail_error {
-            "printf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
+            "printf '%s\\n' input_closed >> \"$log\"\nprintf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
         } else {
             "exit 0"
         };
@@ -2089,7 +1309,7 @@ done
     }
 
     #[tokio::test]
-    async fn tail_error_preserves_the_cumulative_refresh_scope() {
+    async fn tail_error_is_classified_after_pty_drain() {
         let (_directory, program, option_file) = fake_mysql_multi_with_tail_failure();
         let query = "UPDATE items SET value = 1; CREATE TABLE created (id INT)";
         let statements = split_mysql_statements(query)
@@ -2116,6 +1336,8 @@ done
                 ..
             }) if matches!(&*source, DbOperationError::ObjectMissing(_))
         ));
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert!(log.lines().any(|line| line == "input_closed"), "{log}");
     }
 
     #[tokio::test]
@@ -2249,6 +1471,51 @@ done
             result,
             Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
+        ));
+    }
+}
+
+#[cfg(all(test, not(unix)))]
+mod windows_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pipe_finish_shuts_down_stdin_before_draining_cli_error() {
+        let mut child = Command::new("cmd.exe")
+            .args([
+                "/C",
+                "findstr /R \"^\" >nul & echo ERROR 1054 (42S22): missing_column 1>&2 & exit /B 0",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cmd.exe");
+        let stdin = child.stdin.take().expect("piped stdin");
+        let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
+        let mut process = MysqlProcess {
+            child,
+            stdin: Some(stdin),
+            stdout,
+            stderr,
+            pending: Vec::new(),
+            pending_stderr: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+        };
+
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), finish_mysql_session(&mut process))
+                .await
+                .expect("finish pipe process timed out waiting for stdin EOF")
+                .expect("finish pipe process");
+
+        assert_eq!(result.status.code(), Some(0));
+        assert!(!result.forcibly_stopped);
+        assert!(has_mysql_cli_error(&result.error_bytes));
+        assert!(matches!(
+            classify_mysql_query_failure(&result.error_bytes),
+            DbOperationError::ObjectMissing(details) if details.contains("missing_column")
         ));
     }
 }
