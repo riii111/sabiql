@@ -141,6 +141,36 @@ fn mysql_explorer_requests_metadata_load() {
 }
 
 #[test]
+fn mysql_header_and_explorer_show_table_names_without_database() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_target(
+        &ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    let mut metadata = DatabaseMetadata::new("app".to_string());
+    metadata.table_summaries = vec![
+        TableSummary::new("app".to_string(), "users".to_string(), None, false),
+        TableSummary::new("app".to_string(), "audit_log".to_string(), None, false),
+    ];
+    state.session.mark_connected(Arc::new(metadata));
+    let generation = state.session.select_table("app", "users", &mut state.query);
+    assert!(
+        state
+            .session
+            .set_table_detail(fixtures::minimal_table("app", "users"), generation)
+    );
+    state.ui.set_explorer_selection(Some(0));
+
+    let mut terminal = create_test_terminal();
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn mysql_explorer_guides_to_database_picker_when_database_is_unselected() {
     let mut state = create_test_state();
     state.session.activate_connection_with_target(

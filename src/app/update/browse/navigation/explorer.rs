@@ -170,7 +170,10 @@ pub fn reduce_explorer(state: &mut AppState, action: &Action) -> DispatchResult 
             direction: ScrollDirection::Right,
             amount: ScrollAmount::Line,
         } => {
-            let max_name_width = max_explorer_table_label_width(state.tables());
+            let max_name_width = max_explorer_table_label_width(
+                state.tables(),
+                state.session.active_database_type_or_default(),
+            );
             let max_offset = scroll_max_offset(max_name_width, state.ui.explorer_content_width());
             if state.ui.explorer_horizontal_offset() < max_offset {
                 state
@@ -675,8 +678,11 @@ mod tests {
             #[case] presses: usize,
         ) {
             let mut state = state_with_named_tables(names, content_width);
-            let expected =
-                explorer_table_label_width(state.tables()[0]).saturating_sub(content_width);
+            let expected = explorer_table_label_width(
+                state.tables()[0],
+                state.session.active_database_type_or_default(),
+            )
+            .saturating_sub(content_width);
 
             for _ in 0..presses {
                 dispatch_navigation(
@@ -698,8 +704,11 @@ mod tests {
         fn right_presses_past_end_do_not_increase_offset() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
             state.ui.set_explorer_horizontal_offset(
-                explorer_table_label_width(state.tables()[0])
-                    .saturating_sub(state.ui.explorer_content_width()),
+                explorer_table_label_width(
+                    state.tables()[0],
+                    state.session.active_database_type_or_default(),
+                )
+                .saturating_sub(state.ui.explorer_content_width()),
             );
 
             for _ in 0..3 {
@@ -717,8 +726,11 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset(),
-                explorer_table_label_width(state.tables()[0])
-                    .saturating_sub(state.ui.explorer_content_width())
+                explorer_table_label_width(
+                    state.tables()[0],
+                    state.session.active_database_type_or_default(),
+                )
+                .saturating_sub(state.ui.explorer_content_width())
             );
         }
 
@@ -726,8 +738,11 @@ mod tests {
         fn left_press_after_end_recovers_one_column() {
             let mut state = state_with_named_tables(&["abcdefghij"], 4);
             state.ui.set_explorer_horizontal_offset(
-                explorer_table_label_width(state.tables()[0])
-                    .saturating_sub(state.ui.explorer_content_width()),
+                explorer_table_label_width(
+                    state.tables()[0],
+                    state.session.active_database_type_or_default(),
+                )
+                .saturating_sub(state.ui.explorer_content_width()),
             );
 
             dispatch_navigation(
@@ -743,9 +758,12 @@ mod tests {
 
             assert_eq!(
                 state.ui.explorer_horizontal_offset(),
-                explorer_table_label_width(state.tables()[0])
-                    .saturating_sub(state.ui.explorer_content_width())
-                    .saturating_sub(1)
+                explorer_table_label_width(
+                    state.tables()[0],
+                    state.session.active_database_type_or_default(),
+                )
+                .saturating_sub(state.ui.explorer_content_width())
+                .saturating_sub(1)
             );
         }
 
@@ -766,7 +784,11 @@ mod tests {
                 metadata
             })));
 
-            let expected = explorer_table_label_width(state.tables()[0]).saturating_sub(10);
+            let expected = explorer_table_label_width(
+                state.tables()[0],
+                state.session.active_database_type_or_default(),
+            )
+            .saturating_sub(10);
             for _ in 0..32 {
                 dispatch_navigation(
                     &mut state,
@@ -782,7 +804,10 @@ mod tests {
 
             assert_eq!(state.ui.explorer_horizontal_offset(), expected);
             assert_eq!(
-                explorer_table_label(state.tables()[0]),
+                explorer_table_label(
+                    state.tables()[0],
+                    state.session.active_database_type_or_default(),
+                ),
                 "main.settings [table+no-rowid]"
             );
         }

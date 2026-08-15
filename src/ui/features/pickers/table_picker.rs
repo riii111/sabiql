@@ -5,6 +5,7 @@ use ratatui::widgets::{List, ListItem, ListState};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::render_output::PickerLayout;
+use crate::app::policy::table_kind::table_display_name;
 use crate::primitives::molecules::{FooterHintBar, render_filter_input_line, render_modal};
 use crate::theme::ThemePalette;
 
@@ -65,7 +66,14 @@ impl TablePicker {
             filtered_tables
                 .iter()
                 .map(|t| {
-                    let content = format!("  {}", t.qualified_name());
+                    let content = format!(
+                        "  {}",
+                        table_display_name(
+                            state.session.active_database_type_or_default(),
+                            &t.schema,
+                            &t.name,
+                        )
+                    );
                     ListItem::new(content).style(Style::default().fg(theme.semantic.text.secondary))
                 })
                 .collect()

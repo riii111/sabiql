@@ -68,7 +68,6 @@ const MYSQL_COMPLETION_KEYWORDS: &[&str] = &[
     "NULLIF",
     "CAST",
     "USING",
-    "FULL",
     "NATURAL",
     "WINDOW",
     "OVER",
@@ -1679,6 +1678,25 @@ mod tests {
                     .any(|candidate| candidate.text == "DESCRIBE")
             );
             assert!(!candidates.iter().any(|candidate| candidate.text == "ILIKE"));
+        }
+
+        #[test]
+        fn mysql_keyword_candidates_omit_unsupported_full_keyword() {
+            let e = engine();
+            let candidates = e.get_candidates_for_database(
+                "FUL",
+                3,
+                None,
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(!candidates.iter().any(|candidate| candidate.text == "FULL"));
         }
 
         #[test]

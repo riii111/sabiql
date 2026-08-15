@@ -175,6 +175,7 @@ impl Inspector {
             Some(InspectorSection::Indexes {
                 rows,
                 show_type,
+                show_partial,
                 show_details,
             }) => {
                 Self::render_indexes(
@@ -182,6 +183,7 @@ impl Inspector {
                     inner,
                     rows,
                     *show_type,
+                    *show_partial,
                     *show_details,
                     state.ui.inspector_scroll_offset(),
                     theme,
@@ -452,21 +454,30 @@ impl Inspector {
         area: Rect,
         rows: &[InspectorIndexRow],
         show_type: bool,
+        show_partial: bool,
         has_details: bool,
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
         let headers_with_type_and_details =
             ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
+        let headers_with_type_and_details_without_partial =
+            ["Name", "Columns", "Type", "Unique", "Detail"];
         let headers_with_type = ["Name", "Columns", "Type", "Unique"];
         let headers_without_type_and_details = ["Name", "Columns", "Unique", "Partial", "Detail"];
+        let headers_without_type_and_details_without_partial =
+            ["Name", "Columns", "Unique", "Detail"];
         let headers_without_type = ["Name", "Columns", "Unique"];
-        let headers = if show_type && has_details {
+        let headers = if show_type && show_partial && has_details {
             &headers_with_type_and_details[..]
+        } else if show_type && has_details {
+            &headers_with_type_and_details_without_partial[..]
         } else if show_type {
             &headers_with_type[..]
-        } else if has_details {
+        } else if show_partial && has_details {
             &headers_without_type_and_details[..]
+        } else if has_details {
+            &headers_without_type_and_details_without_partial[..]
         } else {
             &headers_without_type[..]
         };
@@ -475,7 +486,7 @@ impl Inspector {
         let data_rows: Vec<Vec<String>> = rows
             .iter()
             .take(50)
-            .map(|row| index_row_cells(row, show_type, has_details))
+            .map(|row| index_row_cells(row, show_type, show_partial, has_details))
             .collect();
         let col_widths = calculate_column_widths(headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
@@ -493,7 +504,7 @@ impl Inspector {
             scroll_offset,
             theme,
             |idx| {
-                index_row_cells(&rows[idx], show_type, has_details)
+                index_row_cells(&rows[idx], show_type, show_partial, has_details)
                     .into_iter()
                     .map(Cell::from)
                     .collect()
@@ -754,14 +765,21 @@ fn column_row_cells(row: &InspectorColumnRow, show_read_only: bool) -> Vec<Strin
     cells
 }
 
-fn index_row_cells(row: &InspectorIndexRow, show_type: bool, show_details: bool) -> Vec<String> {
+fn index_row_cells(
+    row: &InspectorIndexRow,
+    show_type: bool,
+    show_partial: bool,
+    show_details: bool,
+) -> Vec<String> {
     let mut cells = vec![row.name.clone(), row.columns.clone()];
     if show_type {
         cells.push(row.index_type.clone().unwrap_or_default());
     }
     cells.push(checkmark(row.unique));
-    if show_details {
+    if show_partial {
         cells.push(checkmark(row.partial));
+    }
+    if show_details {
         cells.push(row.detail.clone().unwrap_or_default());
     }
     cells
