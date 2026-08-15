@@ -444,7 +444,7 @@ mod metadata_fetch {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let composite_index = "uq_mysql_metadata_child_composite";
-                let single_index = "uq_mysql_metadata_child_payload";
+                let single_index = "uq_mysql_metadata_child_parent_first";
                 db.adapter()
                     .execute_adhoc(
                         db.dsn(),
@@ -512,13 +512,15 @@ mod metadata_fetch {
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch single unique metadata: {error:?}"))?;
-                let payload = detail
+                let parent_first = detail
                     .columns
                     .iter()
                     .find(|column| column.name == "parent_first")
                     .ok_or_else(|| "single unique column was not returned".to_string())?;
-                if !payload.is_unique() {
-                    return Err(format!("single unique column was not marked: {payload:?}"));
+                if !parent_first.is_unique() {
+                    return Err(format!(
+                        "single unique column was not marked: {parent_first:?}"
+                    ));
                 }
 
                 let light = db
@@ -526,12 +528,12 @@ mod metadata_fetch {
                     .fetch_table_columns_and_fks(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
                     .await
                     .map_err(|error| format!("failed to fetch light metadata: {error:?}"))?;
-                let light_payload = light
+                let light_parent_first = light
                     .columns
                     .iter()
                     .find(|column| column.name == "parent_first")
                     .ok_or_else(|| "light metadata omitted single unique column".to_string())?;
-                if !light_payload.is_unique() || !light.indexes.is_empty() {
+                if !light_parent_first.is_unique() || !light.indexes.is_empty() {
                     return Err(format!("unexpected light unique metadata: {light:?}"));
                 }
 
