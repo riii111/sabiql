@@ -368,6 +368,7 @@ mod tests {
             "RENAME TABLE app.items TO other.archived_items",
             "CREATE OR REPLACE TABLE items (id INT)",
             "CREATE OR REPLACE INDEX item_index ON items (id)",
+            "CREATE SPATIAL INDEX item_location ON items (location)",
         ] {
             assert!(classify_mysql_statement(sql).is_err(), "{sql}");
         }
