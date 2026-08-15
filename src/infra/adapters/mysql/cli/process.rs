@@ -52,7 +52,7 @@ pub(in crate::adapters::mysql) struct MysqlProcess {
     #[cfg(unix)]
     pub(super) pty: MysqlPty,
     #[cfg(not(unix))]
-    pub(super) stdin: ChildStdin,
+    pub(super) stdin: Option<ChildStdin>,
     #[cfg(not(unix))]
     pub(super) stdout: ChildStdout,
     #[cfg(not(unix))]
@@ -107,7 +107,7 @@ impl MysqlProcess {
             })?;
             Ok(Self {
                 child,
-                stdin,
+                stdin: Some(stdin),
                 stdout,
                 stderr,
                 pending: Vec::new(),
@@ -198,17 +198,17 @@ pub(super) struct MysqlSessionResult {
 async fn shutdown_mysql_input(process: &mut MysqlProcess) -> Result<(), DbOperationError> {
     #[cfg(unix)]
     {
-        write_mysql_input(process, b"\x04").await
+        write_mysql_input(process, b"\x04").await?;
     }
 
     #[cfg(not(unix))]
-    {
-        process
-            .stdin
+    if let Some(mut stdin) = process.stdin.take() {
+        stdin
             .shutdown()
             .await
-            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))
+            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
     }
+    Ok(())
 }
 
 pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
@@ -367,6 +367,8 @@ pub(super) async fn write_mysql_input(
     #[cfg(not(unix))]
     process
         .stdin
+        .as_mut()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
         .write_all(input)
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -380,6 +382,8 @@ pub(super) async fn write_mysql_input(
     #[cfg(not(unix))]
     process
         .stdin
+        .as_mut()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
         .flush()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -391,7 +395,10 @@ pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     #[cfg(unix)]
     let _ = read_pty_all(&mut process.pty).await;
     #[cfg(not(unix))]
-    let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    {
+        drop(process.stdin.take());
+        let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+    }
     let _ = process.child.wait().await;
 }
 
@@ -1489,7 +1496,7 @@ mod windows_tests {
         let stderr = child.stderr.take().expect("piped stderr");
         let mut process = MysqlProcess {
             child,
-            stdin,
+            stdin: Some(stdin),
             stdout,
             stderr,
             pending: Vec::new(),
