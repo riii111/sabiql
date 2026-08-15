@@ -178,7 +178,7 @@ mod metadata_fetch {
 
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{DdlGenerator, MetadataProvider};
+    use sabiql_app::ports::outbound::{AccessMode, DdlGenerator, MetadataProvider, QueryExecutor};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
@@ -368,6 +368,16 @@ mod metadata_fetch {
                         "unexpected MySQL parent unique index: {parent_unique_index:?}"
                     ));
                 }
+                let parent_unique_column = parent
+                    .columns
+                    .iter()
+                    .find(|column| column.name == "unique_code")
+                    .ok_or_else(|| "MySQL unique column was not returned".to_string())?;
+                if !parent_unique_column.is_unique() {
+                    return Err(format!(
+                        "unexpected MySQL unique column attributes: {parent_unique_column:?}"
+                    ));
+                }
 
                 let child = db
                     .adapter()
@@ -421,6 +431,136 @@ mod metadata_fetch {
                     return Err(format!(
                         "unexpected MySQL table signature: {child_signature:?}"
                     ));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn reflects_single_column_unique_metadata_in_columns_and_signatures() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let composite_index = "uq_mysql_metadata_child_composite";
+                let single_index = "uq_mysql_metadata_child_parent_first";
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "ALTER TABLE {MYSQL_FK_CHILD} ADD UNIQUE KEY {composite_index} (payload(10), parent_first)"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to add composite unique index: {error:?}"))?;
+
+                let composite = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .await
+                    .map_err(|error| format!("failed to fetch composite unique metadata: {error:?}"))?;
+                if composite
+                    .columns
+                    .iter()
+                    .filter(|column| {
+                        ["parent_first", "payload"].contains(&column.name.as_str())
+                    })
+                    .any(sabiql_domain::Column::is_unique)
+                {
+                    return Err(format!(
+                        "composite unique index marked a column unique: {composite:?}"
+                    ));
+                }
+                if !composite
+                    .indexes
+                    .iter()
+                    .any(|index| index.name == composite_index && index.is_unique())
+                {
+                    return Err(format!(
+                        "composite unique index was not displayed: {composite:?}"
+                    ));
+                }
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("ALTER TABLE {MYSQL_FK_CHILD} DROP INDEX {composite_index}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to drop composite unique index: {error:?}"))?;
+
+                let before = db
+                    .adapter()
+                    .fetch_table_signatures(db.dsn())
+                    .await
+                    .map_err(|error| format!("failed to fetch baseline signatures: {error:?}"))?;
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "ALTER TABLE {MYSQL_FK_CHILD} ADD UNIQUE KEY {single_index} (parent_first)"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to add single-column unique index: {error:?}"))?;
+
+                let detail = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .await
+                    .map_err(|error| format!("failed to fetch single unique metadata: {error:?}"))?;
+                let parent_first = detail
+                    .columns
+                    .iter()
+                    .find(|column| column.name == "parent_first")
+                    .ok_or_else(|| "single unique column was not returned".to_string())?;
+                if !parent_first.is_unique() {
+                    return Err(format!(
+                        "single unique column was not marked: {parent_first:?}"
+                    ));
+                }
+
+                let light = db
+                    .adapter()
+                    .fetch_table_columns_and_fks(db.dsn(), "sabiql_test", MYSQL_FK_CHILD)
+                    .await
+                    .map_err(|error| format!("failed to fetch light metadata: {error:?}"))?;
+                let light_parent_first = light
+                    .columns
+                    .iter()
+                    .find(|column| column.name == "parent_first")
+                    .ok_or_else(|| "light metadata omitted single unique column".to_string())?;
+                if !light_parent_first.is_unique() || !light.indexes.is_empty() {
+                    return Err(format!("unexpected light unique metadata: {light:?}"));
+                }
+
+                let after_add = db
+                    .adapter()
+                    .fetch_table_signatures(db.dsn())
+                    .await
+                    .map_err(|error| format!("failed to fetch changed signatures: {error:?}"))?;
+                if before == after_add {
+                    return Err("single unique index did not change the table signature".to_string());
+                }
+
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("ALTER TABLE {MYSQL_FK_CHILD} DROP INDEX {single_index}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to drop single-column unique index: {error:?}"))?;
+                let after_drop = db
+                    .adapter()
+                    .fetch_table_signatures(db.dsn())
+                    .await
+                    .map_err(|error| format!("failed to fetch restored signatures: {error:?}"))?;
+                if before != after_drop {
+                    return Err("dropping the single unique index did not restore the signature".to_string());
                 }
                 Ok(())
             })

@@ -608,6 +608,29 @@ fn table_picker_overlay() {
 }
 
 #[test]
+fn mysql_table_picker_shows_table_names_without_database() {
+    let mut state = create_test_state();
+    state.session.activate_connection_with_target(
+        &ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    state
+        .session
+        .mark_connected(Arc::new(fixtures::sample_metadata()));
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::TablePicker);
+    state.ui.table_picker_mut().insert_filter_str("user");
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn command_line_input() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();

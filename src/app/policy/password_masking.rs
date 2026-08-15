@@ -23,7 +23,11 @@ fn mask_url_passwords(text: &str) -> String {
             let authority_start = i + scheme_len;
             if let Some(at) = find_userinfo_terminator(text, authority_start) {
                 let userinfo = text.get(authority_start..at).unwrap_or_default();
-                if let Some(colon) = userinfo.find(':') {
+                if let Some(colon) = userinfo.find(':')
+                    && userinfo
+                        .get(colon + 1..)
+                        .is_some_and(|password| !password.is_empty())
+                {
                     let password_start = authority_start + colon + 1;
                     result.push_str(&text[i..password_start]);
                     result.push_str("****");
@@ -201,6 +205,7 @@ mod tests {
         "postgresql://user:****@/db?host=/var/run/postgresql"
     )]
     #[case("mysql://user:secret@host", "mysql://user:****@host")]
+    #[case("mysql://user:@host", "mysql://user:@host")]
     #[case(
         "mysql://user:p@ss%23word@host:3306/db?ssl-mode=REQUIRED",
         "mysql://user:****@host:3306/db?ssl-mode=REQUIRED"

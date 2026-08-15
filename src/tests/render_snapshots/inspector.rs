@@ -98,6 +98,36 @@ fn inspector_indexes_tab_with_data() {
 }
 
 #[test]
+fn inspector_indexes_tab_for_mysql_hides_unsupported_partial_column() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.indexes = vec![Index {
+        name: "idx_users_email_lower".to_string(),
+        columns: vec!["lower(email)".to_string()],
+        attributes: IndexAttributes::EXPRESSION | IndexAttributes::HAS_AUXILIARY_COLUMNS,
+        index_type: IndexType::BTree,
+        definition: Some(
+            "CREATE INDEX idx_users_email_lower ON users ((lower(`email`)))".to_string(),
+        ),
+    }];
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Indexes);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn inspector_indexes_tab_for_sqlite_hides_unknown_type() {
     let mut state = harness::explorer_selected_state();
     let mut terminal = create_test_terminal();
@@ -359,6 +389,28 @@ fn inspector_info_tab_for_sqlite_hides_postgres_only_fields() {
         "app.db",
         DatabaseType::SQLite,
         "sqlite:///tmp/app.db",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_mysql_hides_schema_field() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let _ = state
+        .session
+        .set_table_detail(fixtures::sample_table_detail(), 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
     );
     state.ui.set_inspector_tab(InspectorTab::Info);
     state.ui.set_focused_pane(FocusedPane::Inspector);

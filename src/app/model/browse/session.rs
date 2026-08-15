@@ -838,6 +838,7 @@ mod tests {
 
     use super::*;
     use crate::domain::QuerySource;
+    use rstest::rstest;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -867,6 +868,30 @@ mod tests {
             10,
             QuerySource::Preview,
         ))
+    }
+
+    mod available_databases {
+        use super::*;
+
+        #[rstest]
+        #[case("information_schema")]
+        #[case("INFORMATION_SCHEMA")]
+        #[case("mysql")]
+        #[case("MYSQL")]
+        #[case("performance_schema")]
+        #[case("PERFORMANCE_SCHEMA")]
+        #[case("sys")]
+        #[case("SYS")]
+        fn hides_mysql_system_databases_case_insensitively(#[case] system_database: &str) {
+            let mut session = BrowseSession::default();
+
+            session.set_available_databases(vec![
+                system_database.to_string(),
+                "application".to_string(),
+            ]);
+
+            assert_eq!(session.available_databases(), &["application".to_string()]);
+        }
     }
 
     // ── select_table ─────────────────────────────────────────────────

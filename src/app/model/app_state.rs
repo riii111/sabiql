@@ -161,7 +161,10 @@ impl AppState {
             .set_explorer_pane_height(layout.explorer.pane_height);
         self.ui
             .set_explorer_content_width(layout.explorer.content_width);
-        let max_name_width = max_explorer_table_label_width(self.tables());
+        let max_name_width = max_explorer_table_label_width(
+            self.tables(),
+            self.session.active_database_type_or_default(),
+        );
         let max_offset = scroll_max_offset(max_name_width, self.ui.explorer_content_width());
         self.ui
             .set_explorer_horizontal_offset(self.ui.explorer_horizontal_offset().min(max_offset));
