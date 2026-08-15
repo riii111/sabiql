@@ -240,9 +240,24 @@ impl MysqlMetadataSession {
         &mut self,
         query: &str,
     ) -> Result<MysqlResultSet, DbOperationError> {
+        self.execute_with_expected_columns(query, &[]).await
+    }
+
+    pub(in crate::adapters::mysql) async fn execute_with_expected_columns(
+        &mut self,
+        query: &str,
+        expected_columns: &[&str],
+    ) -> Result<MysqlResultSet, DbOperationError> {
         write_mysql_statement(&mut self.process, query).await?;
         let xml = read_one_mysql_resultset(&mut self.process).await?;
-        parse_mysql_xml(&xml)
+        let mut result = parse_mysql_xml(&xml)?;
+        if result.columns.is_empty() && result.values.is_empty() {
+            result.columns = expected_columns
+                .iter()
+                .map(|column| (*column).to_string())
+                .collect();
+        }
+        Ok(result)
     }
 
     pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
@@ -290,11 +305,29 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     statements: &[MysqlStatement],
     access_mode: AccessMode,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements(
+    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
         OsStr::new("mysql"),
         option_file,
         statements,
         access_mode,
+        None,
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_expected_columns(
+    option_file: &std::path::Path,
+    statements: &[MysqlStatement],
+    access_mode: AccessMode,
+    expected_columns: &[&str],
+) -> Result<MysqlExecutionResult, DbOperationError> {
+    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+        OsStr::new("mysql"),
+        option_file,
+        statements,
+        access_mode,
+        Some(expected_columns),
         MYSQL_QUERY_TIMEOUT,
     )
     .await
@@ -378,11 +411,12 @@ async fn run_mysql_single_statement_process(
     parse_mysql_xml(&stdout)
 }
 
-async fn run_mysql_adhoc_with_program_and_statements(
+async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
     program: &OsStr,
     option_file: &std::path::Path,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
+    expected_columns: Option<&[&str]>,
     execution_timeout: Duration,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     if mysql_metadata_fallback_has_unsupported_session_state(statements) {
@@ -394,7 +428,13 @@ async fn run_mysql_adhoc_with_program_and_statements(
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
     let result = timeout(
         execution_timeout,
-        run_mysql_adhoc_process(&mut process, option_file, statements, access_mode),
+        run_mysql_adhoc_process(
+            &mut process,
+            option_file,
+            statements,
+            access_mode,
+            expected_columns,
+        ),
     )
     .await;
 
@@ -424,6 +464,7 @@ async fn run_mysql_statement(
     option_file: &std::path::Path,
     statement: &MysqlStatement,
     access_mode: AccessMode,
+    expected_columns: Option<&[&str]>,
     refresh_scope: RefreshScope,
 ) -> Result<MysqlStatementExecution, DbOperationError> {
     let marker = Uuid::new_v4().simple().to_string();
@@ -475,6 +516,7 @@ async fn run_mysql_statement(
             &statement.sql,
             &statement.kind,
             access_mode,
+            expected_columns,
         )
         .await
         .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
@@ -502,6 +544,7 @@ async fn run_mysql_adhoc_process(
     option_file: &std::path::Path,
     statements: &[MysqlStatement],
     access_mode: AccessMode,
+    expected_columns: Option<&[&str]>,
 ) -> Result<MysqlExecutionResult, DbOperationError> {
     let probe_marker = Uuid::new_v4().simple().to_string();
     let probe_query = format!(
@@ -516,11 +559,20 @@ async fn run_mysql_adhoc_process(
     let mut last_result_set = None;
     let mut command_tags = Vec::with_capacity(statements.len());
     let mut refresh_scope = RefreshScope::None;
+    let expected_columns = (statements.len() == 1)
+        .then_some(expected_columns)
+        .flatten();
 
     for statement in statements {
-        let execution =
-            run_mysql_statement(process, option_file, statement, access_mode, refresh_scope)
-                .await?;
+        let execution = run_mysql_statement(
+            process,
+            option_file,
+            statement,
+            access_mode,
+            expected_columns,
+            refresh_scope,
+        )
+        .await?;
         if let Some(result) = execution.result_set {
             last_result_set = Some(result);
         }
@@ -1147,8 +1199,16 @@ async fn fill_mysql_empty_result_columns(
     query: &str,
     kind: &MysqlStatementKind,
     access_mode: AccessMode,
+    expected_columns: Option<&[&str]>,
 ) -> Result<MysqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
+        return Ok(result);
+    }
+    if let Some(expected_columns) = expected_columns {
+        result.columns = expected_columns
+            .iter()
+            .map(|column| (*column).to_string())
+            .collect();
         return Ok(result);
     }
     let fallback_kind = mysql_metadata_fallback_kind(kind).ok_or_else(|| {
@@ -1478,9 +1538,16 @@ while IFS= read -r line; do
       pending_error=1
       ;;
     *SELECT*)
-      value=one
-      case "$line" in *SELECT\ 2*) value=two ;; esac
-      printf '%s\n' '<resultset><row><field name="value">'"$value"'</field></row></resultset>'
+      case "$line" in
+        *WHERE\ FALSE*)
+          printf '%s\n' '<resultset></resultset>'
+          ;;
+        *)
+          value=one
+          case "$line" in *SELECT\ 2*) value=two ;; esac
+          printf '%s\n' '<resultset><row><field name="value">'"$value"'</field></row></resultset>'
+          ;;
+      esac
       ;;
     *UPDATE*)
       last_statement=update
@@ -1538,11 +1605,12 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadOnly,
+            None,
             Duration::from_secs(5),
         )
         .await
@@ -1562,6 +1630,35 @@ done
         let user_index = log.find("SELECT 2").expect("user statement");
         assert!(session_index < user_index, "{log}");
         assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+    }
+
+    #[tokio::test]
+    async fn known_empty_result_uses_expected_columns_without_replaying_query() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let query = "SELECT 1 AS first_alias WHERE FALSE";
+        let statements = split_mysql_statements(query)
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            OsStr::new(&program),
+            &option_file,
+            &statements,
+            AccessMode::ReadOnly,
+            Some(&["first_alias"]),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("known empty result");
+        let result_set = result.result_set.expect("result set");
+        assert_eq!(result_set.columns, ["first_alias"]);
+        assert!(result_set.values.is_empty());
+
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert_eq!(log.matches(query).count(), 1, "{log}");
+        assert!(!log.contains("__sabiql_metadata_inner"));
     }
 
     #[tokio::test]
@@ -1586,6 +1683,12 @@ done
         ] {
             session.execute(query).await.expect("metadata resultset");
         }
+        let empty_result = session
+            .execute_with_expected_columns("EMPTY_RESULT", &["known_column"])
+            .await
+            .expect("empty metadata resultset");
+        assert_eq!(empty_result.columns, ["known_column"]);
+        assert!(empty_result.values.is_empty());
         session.finish().await.expect("finish fake mysql");
 
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
@@ -1645,11 +1748,12 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            run_mysql_adhoc_with_program_and_statements(
+            run_mysql_adhoc_with_program_and_statements_and_expected_columns(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadOnly,
+                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1959,11 +2063,12 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadWrite,
+            None,
             Duration::from_secs(5),
         )
         .await
@@ -1993,11 +2098,12 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadWrite,
+            None,
             Duration::from_secs(5),
         )
         .await;
@@ -2021,11 +2127,12 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadWrite,
+            None,
             Duration::from_secs(5),
         )
         .await;
@@ -2068,11 +2175,12 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements(
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
+                None,
                 Duration::from_secs(5),
             )
             .await;
@@ -2098,11 +2206,12 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadWrite,
+            None,
             Duration::from_secs(5),
         )
         .await;
@@ -2126,11 +2235,12 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements(
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
             OsStr::new(&program),
             &option_file,
             &statements,
             AccessMode::ReadWrite,
+            None,
             Duration::from_secs(5),
         )
         .await;

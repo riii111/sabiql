@@ -118,16 +118,7 @@ pub(in crate::adapters::mysql) fn convert_preview_values(
     columns: &[Column],
     identity_columns: &[Column],
 ) -> Result<ConvertedPreviewValues, DbOperationError> {
-    let expected_columns = columns
-        .iter()
-        .map(|column| column.name.clone())
-        .chain(
-            identity_columns
-                .iter()
-                .enumerate()
-                .map(|(index, _)| preview_identity_alias(index)),
-        )
-        .collect::<Vec<_>>();
+    let expected_columns = preview_result_columns(columns, identity_columns);
     if result.values.is_empty() {
         if result.columns.is_empty() || result.columns == expected_columns {
             return Ok(ConvertedPreviewValues {
@@ -171,6 +162,22 @@ pub(in crate::adapters::mysql) fn convert_preview_values(
         },
     );
     Ok(ConvertedPreviewValues { visible, identity })
+}
+
+pub(in crate::adapters::mysql) fn preview_result_columns(
+    columns: &[Column],
+    identity_columns: &[Column],
+) -> Vec<String> {
+    columns
+        .iter()
+        .map(|column| column.name.clone())
+        .chain(
+            identity_columns
+                .iter()
+                .enumerate()
+                .map(|(index, _)| preview_identity_alias(index)),
+        )
+        .collect()
 }
 
 fn preview_identity_alias(index: usize) -> String {
