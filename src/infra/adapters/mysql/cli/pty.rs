@@ -190,6 +190,7 @@ impl MysqlExportPtySource<'_> {
             let keep = b"<resultset".len().saturating_sub(1);
             let discard = self.pending.len().saturating_sub(keep);
             self.pending.drain(..discard);
+            self.frame_scanner.reset();
         }
     }
 }
@@ -390,6 +391,29 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         producer.await.unwrap();
 
         assert!(source.error_output.is_empty());
+    }
+
+    #[test]
+    fn rescans_resultset_marker_after_draining_large_pty_reads() {
+        let (_output_file, mut pty) = source_with_output(&[]);
+        let mut source = MysqlExportPtySource {
+            pty: &mut pty,
+            error_output: Vec::new(),
+            error_buffer: Vec::new(),
+            pending: Vec::new(),
+            frame_scanner: MysqlResultsetFrameScanner::default(),
+            started: false,
+        };
+        let mut first = vec![b'x'; 4096 - b"<resultse".len()];
+        first.extend_from_slice(b"<resultse");
+        let mut second = vec![b'y'; 4096];
+        second[..b"t></resultset>".len()].copy_from_slice(b"t></resultset>");
+
+        source.append_before_resultset(&first);
+        source.append_before_resultset(&second);
+
+        assert!(source.started);
+        assert!(source.pending.starts_with(b"<resultset>"));
     }
 
     #[tokio::test(start_paused = true)]

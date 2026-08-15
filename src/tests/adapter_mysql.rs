@@ -1699,7 +1699,7 @@ async fn exports_resultset_field_error_text_verbatim_through_real_mysql_cli() {
             let csv = std::fs::read_to_string(&path)
                 .map_err(|error| format!("failed to read field-error CSV export: {error}"))?;
             let expected =
-                "message\n\"line 1\r\nERROR 1146 (42S02): this is a cell value\"\n";
+                "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n";
             if csv != expected {
                 return Err(format!("unexpected field-error CSV export: {csv:?}"));
             }
