@@ -250,6 +250,7 @@ assert_only_unrelated_container_remains
 
 cleanup_failure_output="$test_root/cleanup-failure.out"
 cleanup_failure_status=0
+cleanup_failure_message=''
 if FAKE_DOCKER_RM_STATUS=1 FAKE_CARGO_MODE=success \
     PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test \
     >"$cleanup_failure_output" 2>&1; then
@@ -257,9 +258,11 @@ if FAKE_DOCKER_RM_STATUS=1 FAKE_CARGO_MODE=success \
 else
     cleanup_failure_status=$?
 fi
-if [[ "$cleanup_failure_status" != 1 ]] || ! rg -q 'failed to clean up MySQL client containers' "$cleanup_failure_output"; then
+cleanup_failure_message="$(<"$cleanup_failure_output")"
+if [[ "$cleanup_failure_status" != 1 ]] || \
+    [[ "$cleanup_failure_message" != *'failed to clean up MySQL client containers'* ]]; then
     printf 'cleanup failure exited %s, expected 1\n%s\n' \
-        "$cleanup_failure_status" "$(<"$cleanup_failure_output")" >&2
+        "$cleanup_failure_status" "$cleanup_failure_message" >&2
     exit 1
 fi
 while IFS='|' read -r container_id label; do
