@@ -14,7 +14,7 @@ pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, M
         "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
             classify_mysql_crud_statement(tokens, start, first)
         }
-        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" => {
+        "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME" => {
             classify_mysql_ddl_statement(tokens, start, first)
         }
         "BEGIN" | "START" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE" => {
@@ -135,6 +135,89 @@ fn has_top_level_word(tokens: &[Token], expected: &str, start: usize, end: usize
         })
 }
 
+fn view_statement_start(tokens: &[Token], start: usize, allow_or_replace: bool) -> Option<usize> {
+    let mut index = start + 1;
+    if allow_or_replace
+        && target::word(tokens, index) == Some("OR")
+        && target::word(tokens, index + 1) == Some("REPLACE")
+    {
+        index += 2;
+    }
+    loop {
+        match target::word(tokens, index) {
+            Some("VIEW") => return Some(index),
+            Some("ALGORITHM") => {
+                if !matches!(
+                    tokens.get(index + 1).map(|token| &token.kind),
+                    Some(TokenKind::Symbol('='))
+                ) || !matches!(
+                    target::word(tokens, index + 2),
+                    Some("UNDEFINED" | "MERGE" | "TEMPTABLE")
+                ) {
+                    return None;
+                }
+                index += 3;
+            }
+            Some("DEFINER") => {
+                if !matches!(
+                    tokens.get(index + 1).map(|token| &token.kind),
+                    Some(TokenKind::Symbol('='))
+                ) {
+                    return None;
+                }
+                index = skip_view_definer(tokens, index + 2)?;
+            }
+            Some("SQL") => {
+                if target::word(tokens, index + 1) != Some("SECURITY")
+                    || !matches!(target::word(tokens, index + 2), Some("DEFINER" | "INVOKER"))
+                {
+                    return None;
+                }
+                index += 3;
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn skip_view_definer(tokens: &[Token], mut index: usize) -> Option<usize> {
+    let is_current_user = target::word(tokens, index) == Some("CURRENT_USER");
+    if !matches!(
+        tokens.get(index).map(|token| &token.kind),
+        Some(TokenKind::Word(_) | TokenKind::Identifier(_) | TokenKind::StringLiteral)
+    ) {
+        return None;
+    }
+    index += 1;
+    if is_current_user
+        && matches!(
+            tokens.get(index).map(|token| &token.kind),
+            Some(TokenKind::Symbol('('))
+        )
+    {
+        if !matches!(
+            tokens.get(index + 1).map(|token| &token.kind),
+            Some(TokenKind::Symbol(')'))
+        ) {
+            return None;
+        }
+        index += 2;
+    }
+    if matches!(
+        tokens.get(index).map(|token| &token.kind),
+        Some(TokenKind::Symbol('@'))
+    ) {
+        if !matches!(
+            tokens.get(index + 1).map(|token| &token.kind),
+            Some(TokenKind::Word(_) | TokenKind::Identifier(_) | TokenKind::StringLiteral)
+        ) {
+            return None;
+        }
+        index += 2;
+    }
+    Some(index)
+}
+
 fn classify_mysql_ddl_statement(
     tokens: &[Token],
     start: usize,
@@ -142,6 +225,10 @@ fn classify_mysql_ddl_statement(
 ) -> Result<MysqlClassification, MysqlLexError> {
     match first {
         "CREATE" => {
+            if let Some(view_index) = view_statement_start(tokens, start, true) {
+                let (target, database) = target::target_after(tokens, view_index + 1)?;
+                return Ok((MysqlStatementKind::CreateView, target, database));
+            }
             let mut index = start + 1;
             let temporary = target::word(tokens, index) == Some("TEMPORARY");
             if temporary {
@@ -163,6 +250,19 @@ fn classify_mysql_ddl_statement(
                 Some("VIEW") => {
                     let (target, database) = target::target_after(tokens, index + 1)?;
                     Ok((MysqlStatementKind::CreateView, target, database))
+                }
+                Some("FULLTEXT") if target::word(tokens, index + 1) == Some("INDEX") => {
+                    let (index_name, _, index_end) = target::identifier_at(tokens, index + 2)
+                        .ok_or_else(|| {
+                            MysqlLexError("CREATE INDEX name is ambiguous".to_string())
+                        })?;
+                    if target::word(tokens, index_end) != Some("ON") {
+                        return Err(MysqlLexError(
+                            "CREATE INDEX target is ambiguous".to_string(),
+                        ));
+                    }
+                    let (_, database) = target::target_after(tokens, index_end + 1)?;
+                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
                 }
                 Some("UNIQUE") if target::word(tokens, index + 1) == Some("INDEX") => {
                     let on = target::find_word(tokens, "ON", index + 2).ok_or_else(|| {
@@ -192,13 +292,61 @@ fn classify_mysql_ddl_statement(
             }
         }
         "ALTER" => {
+            if let Some(view_index) = view_statement_start(tokens, start, false) {
+                let (target, database) = target::target_after(tokens, view_index + 1)?;
+                return Ok((MysqlStatementKind::AlterView, target, database));
+            }
+            match target::word(tokens, start + 1) {
+                Some("TABLE") => {
+                    let (target, database) = target::target_after(tokens, start + 2)?;
+                    Ok((MysqlStatementKind::AlterTable, target, database))
+                }
+                _ => Err(MysqlLexError(
+                    "unsupported MySQL ALTER statement".to_string(),
+                )),
+            }
+        }
+        "RENAME" => {
             if target::word(tokens, start + 1) != Some("TABLE") {
                 return Err(MysqlLexError(
-                    "unsupported MySQL ALTER statement".to_string(),
+                    "unsupported MySQL RENAME statement".to_string(),
                 ));
             }
-            let (target, database) = target::target_after(tokens, start + 2)?;
-            Ok((MysqlStatementKind::AlterTable, target, database))
+            let (target, database, next) = target::identifier_at(tokens, start + 2)
+                .ok_or_else(|| MysqlLexError("RENAME TABLE source is ambiguous".to_string()))?;
+            if target::word(tokens, next) != Some("TO") {
+                return Err(MysqlLexError(
+                    "RENAME TABLE requires one source and destination".to_string(),
+                ));
+            }
+            let (_, destination_database, end) = target::identifier_at(tokens, next + 1)
+                .ok_or_else(|| {
+                    MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
+                })?;
+            let effective_database = match (database.as_deref(), destination_database.as_deref()) {
+                (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
+                    return Err(MysqlLexError(
+                        "RENAME TABLE cannot move a table across databases".to_string(),
+                    ));
+                }
+                (Some(source), _) => Some(source.to_string()),
+                (None, Some(destination)) => Some(destination.to_string()),
+                (None, None) => None,
+            };
+            if tokens[end..]
+                .iter()
+                .any(|token| !matches!(token.kind, TokenKind::Symbol(';')))
+            {
+                return Err(MysqlLexError(
+                    "MySQL RENAME TABLE statements must have one source and destination"
+                        .to_string(),
+                ));
+            }
+            Ok((
+                MysqlStatementKind::RenameTable,
+                Some(target),
+                effective_database,
+            ))
         }
         "DROP" => {
             let mut index = start + 1;

@@ -296,9 +296,7 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some(
-                    "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
-                )
+                Some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements",)
             );
         }
 

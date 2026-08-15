@@ -14,7 +14,7 @@ pub(super) fn explain_unsupported_query_message(database_type: DatabaseType) -> 
         }
         DatabaseType::PostgreSQL => "EXPLAIN is unavailable for this statement",
         DatabaseType::MySQL => {
-            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements"
+            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements"
         }
     }
 }

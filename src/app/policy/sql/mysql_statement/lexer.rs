@@ -36,14 +36,10 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
             let end = skip_block_comment(bytes, index)?;
             let body = &sql[index + 2..end - 2];
             if let Some(body) = body.strip_prefix('!') {
-                let body = body.trim_start();
-                let version_len = body.bytes().take_while(u8::is_ascii_digit).count();
-                if version_len == 0 {
-                    return Err(MysqlLexError(
-                        "MySQL version comment has no verifiable version".to_string(),
-                    ));
-                }
-                let content = body[version_len..].trim_start();
+                let Some(content) = mysql_version_comment_content(body)? else {
+                    index = end;
+                    continue;
+                };
                 if content.is_empty() {
                     return Err(MysqlLexError(
                         "MySQL version comment has no executable statement".to_string(),
@@ -56,9 +52,21 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
                 let contains_statement_separator = inner
                     .iter()
                     .any(|token| matches!(token.kind, TokenKind::Symbol(';')));
+                let trailing_ddl_clause = is_safe_trailing_ddl_clause(&tokens, &inner)
+                    && bytes[end..].iter().all(u8::is_ascii_whitespace)
+                    && !contains_statement_separator
+                    && !inner.iter().any(|token| {
+                        matches!(
+                            &token.kind,
+                            TokenKind::Word(word) if word == "UNSUPPORTED_VERSION_COMMENT"
+                        )
+                    });
                 if tokens.is_empty() && executable_statement && !contains_statement_separator {
                     tokens.extend(inner);
                     leading_executable_version_comment = true;
+                } else if trailing_ddl_clause && !executable_statement {
+                    // MySQL uses trailing executable comments for versioned DDL clauses such
+                    // as DEFAULT CHARSET. Keep the clause out of statement classification.
                 } else if !inner.is_empty() {
                     tokens.push(Token {
                         kind: TokenKind::Word("UNSUPPORTED_VERSION_COMMENT".to_string()),
@@ -254,6 +262,85 @@ pub(super) fn skip_block_comment(bytes: &[u8], index: usize) -> Result<usize, My
     ))
 }
 
+fn is_safe_trailing_ddl_clause(tokens: &[Token], inner: &[Token]) -> bool {
+    let statement = tokens.first().and_then(|token| match &token.kind {
+        TokenKind::Word(word) => Some(word.as_str()),
+        _ => None,
+    });
+    if statement == Some("DROP") {
+        return matches!(
+            inner,
+            [Token {
+                kind: TokenKind::Word(word),
+                ..
+            }] if matches!(word.as_str(), "RESTRICT" | "CASCADE")
+        );
+    }
+    if !matches!(statement, Some("CREATE" | "ALTER")) {
+        return false;
+    }
+    let has_safe_clause_start = inner.first().is_some_and(|token| {
+        matches!(
+            &token.kind,
+            TokenKind::Word(word)
+                if matches!(
+                    word.as_str(),
+                    "AUTO_INCREMENT"
+                        | "CHARACTER"
+                        | "CHARSET"
+                        | "COLLATE"
+                        | "COMMENT"
+                        | "COMPRESSION"
+                        | "DEFAULT"
+                        | "DEFINER"
+                        | "ENCRYPTION"
+                        | "ENGINE"
+                        | "KEY_BLOCK_SIZE"
+                        | "PARTITION"
+                        | "ROW_FORMAT"
+                        | "SECONDARY_ENGINE"
+                        | "SQL"
+                        | "STATS_AUTO_RECALC"
+                        | "STATS_PERSISTENT"
+                        | "STATS_SAMPLE_PAGES"
+                        | "TABLESPACE"
+                )
+        )
+    });
+    has_safe_clause_start
+        && !inner.iter().any(|token| {
+            matches!(&token.kind, TokenKind::Word(word) if is_mysql_statement_keyword(word))
+        })
+}
+
+fn mysql_version_comment_content(body: &str) -> Result<Option<&str>, MysqlLexError> {
+    let digit_len = body.bytes().take_while(u8::is_ascii_digit).count();
+    if digit_len == 0 {
+        return Err(MysqlLexError(
+            "MySQL version comment has no verifiable version".to_string(),
+        ));
+    }
+    if digit_len < 5 {
+        return Ok(None);
+    }
+
+    let version_len = if body.as_bytes().get(5).is_none_or(u8::is_ascii_whitespace) {
+        5
+    } else if body.as_bytes().get(6).is_none_or(u8::is_ascii_whitespace) {
+        6
+    } else {
+        5
+    };
+    if !body
+        .as_bytes()
+        .get(version_len)
+        .is_none_or(u8::is_ascii_whitespace)
+    {
+        return Ok(Some(&body[version_len.saturating_sub(1)..]));
+    }
+    Ok(Some(body[version_len..].trim_start()))
+}
+
 fn is_comment_only(sql: &str) -> bool {
     let bytes = sql.as_bytes();
     let mut index = 0;
@@ -291,6 +378,7 @@ fn is_mysql_statement_keyword(word: &str) -> bool {
             | "DELETE"
             | "CREATE"
             | "ALTER"
+            | "RENAME"
             | "DROP"
             | "TRUNCATE"
             | "BEGIN"
