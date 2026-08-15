@@ -2,10 +2,8 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{Column, QueryValue};
 
 use super::super::cli::MysqlResultSet;
-use super::super::sql::quote_identifier;
+use super::super::sql::preview_identity_alias;
 use super::catalog::{column_from_metadata, fetch_columns, primary_key_names};
-
-const PREVIEW_IDENTITY_ALIAS_PREFIX: &str = "__sabiql_row_identity_";
 
 #[derive(Debug, Clone)]
 pub(in crate::adapters::mysql) struct PreviewMetadata {
@@ -69,48 +67,6 @@ pub(in crate::adapters::mysql) async fn fetch_preview_metadata(
         order_columns,
         identity_columns,
     })
-}
-
-pub(in crate::adapters::mysql) fn build_preview_query(
-    schema: &str,
-    table: &str,
-    order_columns: &[String],
-    visible_columns: &[Column],
-    identity_columns: &[Column],
-    limit: usize,
-    offset: usize,
-) -> String {
-    let visible_select = visible_columns
-        .iter()
-        .map(|column| quote_identifier(&column.name))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let identity_select = identity_columns
-        .iter()
-        .enumerate()
-        .map(|(index, column)| {
-            format!(
-                "{} AS {}",
-                quote_identifier(&column.name),
-                quote_identifier(&preview_identity_alias(index)),
-            )
-        })
-        .collect::<Vec<_>>();
-    let columns = std::iter::once(visible_select)
-        .chain(identity_select)
-        .filter(|select| !select.is_empty())
-        .collect::<Vec<_>>()
-        .join(", ");
-    let order_by = order_columns
-        .iter()
-        .map(|column| quote_identifier(column))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!(
-        "SELECT {columns} FROM {}.{} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}",
-        quote_identifier(schema),
-        quote_identifier(table),
-    )
 }
 
 pub(in crate::adapters::mysql) fn convert_preview_values(
@@ -178,10 +134,6 @@ pub(in crate::adapters::mysql) fn preview_result_columns(
                 .map(|(index, _)| preview_identity_alias(index)),
         )
         .collect()
-}
-
-fn preview_identity_alias(index: usize) -> String {
-    format!("{PREVIEW_IDENTITY_ALIAS_PREFIX}{index}")
 }
 
 fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
@@ -410,47 +362,6 @@ mod tests {
         assert!(is_sql_numeric_literal("-1.2e-3"));
         assert!(!is_sql_numeric_literal("1e"));
         assert!(!is_sql_numeric_literal("nan"));
-    }
-
-    #[test]
-    fn preview_query_lists_visible_columns_and_orders_by_primary_key() {
-        let columns = vec![column("id", "int"), column("display", "text")];
-
-        let query = build_preview_query(
-            "app",
-            "items",
-            &["id".to_string()],
-            &columns,
-            &[],
-            500,
-            1000,
-        );
-
-        assert_eq!(
-            query,
-            "SELECT `id`, `display` FROM `app`.`items` ORDER BY `id` LIMIT 500 OFFSET 1000"
-        );
-    }
-
-    #[test]
-    fn preview_query_appends_aliased_hidden_primary_key_columns() {
-        let visible_columns = vec![column("payload", "text")];
-        let identity_columns = vec![column("id", "int")];
-
-        let query = build_preview_query(
-            "app",
-            "items",
-            &["id".to_string()],
-            &visible_columns,
-            &identity_columns,
-            10,
-            0,
-        );
-
-        assert_eq!(
-            query,
-            "SELECT `payload`, `id` AS `__sabiql_row_identity_0` FROM `app`.`items` ORDER BY `id` LIMIT 10 OFFSET 0"
-        );
     }
 
     #[test]

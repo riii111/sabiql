@@ -4,12 +4,17 @@ use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{FkAction, Table, TableKind, TableKindInfo, TableSignature};
 
 use super::super::cli::MysqlResultSet;
+use super::super::sql::{
+    FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
+    SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
+    SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+};
 use super::catalog::{
-    FOREIGN_KEY_RESULT_COLUMNS, MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata,
-    TABLES_QUERY, TABLES_RESULT_COLUMNS, column_from_metadata, execute_metadata_queries_in_session,
-    expect_columns, foreign_keys_from_metadata, mark_single_column_unique, metadata_shape_error,
-    metadata_snapshot_from_result, parse_column_metadata_row, parse_foreign_key_metadata,
-    primary_key_names, required_text, selected_database,
+    MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata, column_from_metadata,
+    execute_metadata_queries_in_session, expect_columns, foreign_keys_from_metadata,
+    mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result,
+    parse_column_metadata_row, parse_foreign_key_metadata, primary_key_names, required_text,
+    selected_database,
 };
 
 #[derive(Debug, Clone)]
@@ -305,23 +310,6 @@ fn foreign_key_action_name(action: &FkAction) -> &'static str {
         FkAction::SetDefault => "set-default",
     }
 }
-
-const SIGNATURE_COLUMNS_QUERY: &str = "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION";
-const SIGNATURE_COLUMNS_RESULT_COLUMNS: &[&str] = &[
-    "TABLE_SCHEMA",
-    "TABLE_NAME",
-    "COLUMN_NAME",
-    "COLUMN_TYPE",
-    "IS_NULLABLE",
-    "COLUMN_DEFAULT",
-    "EXTRA",
-    "COLUMN_COMMENT",
-    "ORDINAL_POSITION",
-    "PRIMARY_KEY_POSITION",
-];
-const SIGNATURE_UNIQUE_COLUMNS_QUERY: &str = "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = DATABASE() AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.TABLE_NAME, s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.TABLE_NAME, s.INDEX_NAME";
-const SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS: &[&str] = &["TABLE_NAME", "COLUMN_NAME"];
-const SIGNATURE_FOREIGN_KEYS_QUERY: &str = "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION";
 
 fn parse_signature_unique_column_metadata(
     result: &MysqlResultSet,

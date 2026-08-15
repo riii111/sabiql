@@ -8,21 +8,24 @@ use crate::domain::{
     TriggerEvent, TriggerTiming,
 };
 
-use super::super::sql::{quote_identifier, quote_string};
+use super::super::sql::{
+    COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, INDEX_RESULT_COLUMNS,
+    TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, columns_query,
+    foreign_keys_query, indexes_query, show_create_query, show_create_result_columns, table_query,
+    triggers_query, unique_columns_query,
+};
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, MysqlColumnMetadata,
-    MysqlTableMetadata, TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, column_from_metadata,
-    columns_query, execute_metadata_queries_in_session, expect_columns, find_table,
-    foreign_keys_from_metadata, foreign_keys_query, mark_single_column_unique,
-    metadata_shape_error, metadata_snapshot_from_result, optional_text, parse_boolean_flag,
-    parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
-    parse_unique_column_metadata, primary_key_names, required_text, selected_database, table_query,
-    unique_columns_query, validate_selected_schema_name,
+    MysqlColumnMetadata, MysqlTableMetadata, column_from_metadata,
+    execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
+    mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result, optional_text,
+    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
+    parse_unique_column_metadata, primary_key_names, required_text, selected_database,
+    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -240,56 +243,6 @@ fn table_from_columns_and_foreign_keys(
             virtual_module: None,
         },
     }
-}
-
-const INDEX_RESULT_COLUMNS: &[&str] = &[
-    "INDEX_NAME",
-    "NON_UNIQUE",
-    "INDEX_TYPE",
-    "SEQ_IN_INDEX",
-    "COLUMN_NAME",
-    "EXPRESSION",
-    "IS_PRIMARY",
-];
-const TRIGGER_RESULT_COLUMNS: &[&str] = &[
-    "TRIGGER_NAME",
-    "ACTION_TIMING",
-    "EVENT_MANIPULATION",
-    "ACTION_STATEMENT",
-    "DEFINER",
-];
-const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
-const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
-
-fn show_create_result_columns(kind: TableKind) -> &'static [&'static str] {
-    if kind == TableKind::View {
-        VIEW_SHOW_CREATE_RESULT_COLUMNS
-    } else {
-        TABLE_SHOW_CREATE_RESULT_COLUMNS
-    }
-}
-
-fn indexes_query(table: &str) -> String {
-    format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
-        quote_string(table),
-    )
-}
-
-fn triggers_query(table: &str) -> String {
-    format!(
-        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
-        quote_string(table),
-    )
-}
-
-fn show_create_query(table: &str, kind: TableKind) -> String {
-    let object_type = if kind == TableKind::View {
-        "VIEW"
-    } else {
-        "TABLE"
-    };
-    format!("SHOW CREATE {object_type} {}", quote_identifier(table))
 }
 
 fn parse_trigger_metadata(
@@ -887,18 +840,6 @@ mod tests {
         let result = result(TRIGGER_RESULT_COLUMNS, Vec::new());
 
         assert!(parse_trigger_metadata(&result).unwrap().is_empty());
-    }
-
-    #[test]
-    fn show_create_query_uses_object_kind_and_identifier_quoting() {
-        assert_eq!(
-            show_create_query("table`name", TableKind::Table),
-            "SHOW CREATE TABLE `table``name`"
-        );
-        assert_eq!(
-            show_create_query("view_name", TableKind::View),
-            "SHOW CREATE VIEW `view_name`"
-        );
     }
 
     #[test]
