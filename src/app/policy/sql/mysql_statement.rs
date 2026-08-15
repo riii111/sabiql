@@ -311,6 +311,8 @@ mod tests {
         for sql in [
             "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */ SELECT 1",
             "CREATE TABLE items (id INT) /*!40100 SET sql_mode='ANSI_QUOTES' */",
+            "CREATE TABLE items (id INT) /*!80000 DEFAULT CHARSET=utf8mb4 DROP TABLE other_items */",
+            "DROP TABLE items /*!80000 , other_items */",
             "CREATE TABLE items (id INT) /*!40100 */",
             "CREATE TABLE items (id INT) /*! DEFAULT CHARSET=utf8mb4 */",
             "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4",
@@ -327,6 +329,10 @@ mod tests {
             "ALTER DATABASE app CHARACTER SET utf8mb4",
             "RENAME DATABASE app TO archive",
             "RENAME TABLE old_items TO archived_items, other_items TO other_archive",
+            "RENAME TABLE app.items TO other.archived_items",
+            "RENAME TABLE items TO app.archived_items",
+            "CREATE OR REPLACE TABLE items (id INT)",
+            "CREATE OR REPLACE INDEX item_index ON items (id)",
         ] {
             assert!(classify_mysql_statement(sql).is_err(), "{sql}");
         }

@@ -56,14 +56,7 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
                 let contains_statement_separator = inner
                     .iter()
                     .any(|token| matches!(token.kind, TokenKind::Symbol(';')));
-                let trailing_ddl_clause = !tokens.is_empty()
-                    && tokens.first().is_some_and(|token: &Token| {
-                        matches!(
-                            &token.kind,
-                            TokenKind::Word(word)
-                                if matches!(word.as_str(), "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME")
-                        )
-                    })
+                let trailing_ddl_clause = is_safe_trailing_ddl_clause(&tokens, &inner)
                     && bytes[end..].iter().all(u8::is_ascii_whitespace)
                     && !contains_statement_separator
                     && !inner.iter().any(|token| {
@@ -271,6 +264,48 @@ pub(super) fn skip_block_comment(bytes: &[u8], index: usize) -> Result<usize, My
     Err(MysqlLexError(
         "unterminated MySQL block comment".to_string(),
     ))
+}
+
+fn is_safe_trailing_ddl_clause(tokens: &[Token], inner: &[Token]) -> bool {
+    let is_create_or_alter = tokens.first().is_some_and(|token: &Token| {
+        matches!(
+            &token.kind,
+            TokenKind::Word(word) if matches!(word.as_str(), "CREATE" | "ALTER")
+        )
+    });
+    let has_safe_clause_start = inner.first().is_some_and(|token| {
+        matches!(
+            &token.kind,
+            TokenKind::Word(word)
+                if matches!(
+                    word.as_str(),
+                    "AUTO_INCREMENT"
+                        | "CHARACTER"
+                        | "CHARSET"
+                        | "COLLATE"
+                        | "COMMENT"
+                        | "COMPRESSION"
+                        | "DEFAULT"
+                        | "DEFINER"
+                        | "ENCRYPTION"
+                        | "ENGINE"
+                        | "KEY_BLOCK_SIZE"
+                        | "PARTITION"
+                        | "ROW_FORMAT"
+                        | "SECONDARY_ENGINE"
+                        | "SQL"
+                        | "STATS_AUTO_RECALC"
+                        | "STATS_PERSISTENT"
+                        | "STATS_SAMPLE_PAGES"
+                        | "TABLESPACE"
+                )
+        )
+    });
+    is_create_or_alter
+        && has_safe_clause_start
+        && !inner.iter().any(|token| {
+            matches!(&token.kind, TokenKind::Word(word) if is_mysql_statement_keyword(word))
+        })
 }
 
 fn is_comment_only(sql: &str) -> bool {

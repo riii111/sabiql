@@ -145,6 +145,7 @@ fn classify_mysql_ddl_statement(
             let mut index = start + 1;
             if target::word(tokens, index) == Some("OR")
                 && target::word(tokens, index + 1) == Some("REPLACE")
+                && target::word(tokens, index + 2) == Some("VIEW")
             {
                 index += 2;
             }
@@ -235,9 +236,17 @@ fn classify_mysql_ddl_statement(
                     "RENAME TABLE requires one source and destination".to_string(),
                 ));
             }
-            let (_, _, end) = target::identifier_at(tokens, next + 1).ok_or_else(|| {
-                MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
-            })?;
+            let (_, destination_database, end) = target::identifier_at(tokens, next + 1)
+                .ok_or_else(|| {
+                    MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
+                })?;
+            if destination_database.is_some()
+                && (database.is_none() || database.as_deref() != destination_database.as_deref())
+            {
+                return Err(MysqlLexError(
+                    "RENAME TABLE cannot move a table across databases".to_string(),
+                ));
+            }
             if tokens[end..]
                 .iter()
                 .any(|token| !matches!(token.kind, TokenKind::Symbol(';')))
