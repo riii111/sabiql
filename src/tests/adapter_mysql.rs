@@ -2014,7 +2014,7 @@ mod csv_export {
 
     use super::shared::MYSQL_EMPTY_TABLE;
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::DbOperationError;
+    use sabiql_app::ports::outbound::{DbOperationError, QueryExecutor};
     use sabiql_infra::adapters::mysql::export_mysql_csv_to_path_for_test;
     use tempfile::tempdir;
 
@@ -2054,6 +2054,76 @@ mod csv_export {
                 }
                 if write_path.exists() {
                     return Err("write export created an output file".to_string());
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn exports_each_supported_mysql_result_statement() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let output_directory = tempdir().map_err(|error| error.to_string())?;
+                for (name, query) in [
+                    ("select", format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}")),
+                    ("table", format!("TABLE {MYSQL_EMPTY_TABLE}")),
+                    ("show", format!("SHOW TABLES LIKE '{MYSQL_FIXTURE_TABLE}'")),
+                    ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
+                ] {
+                    let path = export_mysql_csv_to_path_for_test(
+                        db.dsn(),
+                        &query,
+                        output_directory.path().join(format!("{name}.csv")),
+                    )
+                    .await
+                    .map_err(|error| format!("{name} CSV export failed: {error:?}"))?;
+                    let csv = std::fs::read_to_string(&path)
+                        .map_err(|error| format!("failed to read {name} CSV export: {error}"))?;
+                    if csv.trim().is_empty() {
+                        return Err(format!("{name} CSV export was empty"));
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn count_query_rows_rejects_empty_and_non_integer_results() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let empty = db
+                    .adapter()
+                    .count_query_rows(
+                        db.dsn(),
+                        &format!("SELECT id FROM {MYSQL_EMPTY_TABLE} WHERE FALSE"),
+                    )
+                    .await;
+                if !matches!(
+                    empty,
+                    Err(DbOperationError::QueryFailed(ref details))
+                        if details.contains("invalid result")
+                ) {
+                    return Err(format!("empty count result was accepted: {empty:?}"));
+                }
+
+                let non_integer = db
+                    .adapter()
+                    .count_query_rows(db.dsn(), "SELECT 'not-a-count'")
+                    .await;
+                if !matches!(
+                    non_integer,
+                    Err(DbOperationError::QueryFailed(ref details))
+                        if details.contains("not an integer")
+                ) {
+                    return Err(format!(
+                        "non-integer count result was accepted: {non_integer:?}"
+                    ));
                 }
                 Ok(())
             })
