@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fmt, fs};
 
 use url::Url;
 
@@ -7,7 +7,6 @@ use crate::domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlS
 
 use super::adapter::MySqlAdapter;
 
-#[derive(Debug)]
 pub(super) struct MySqlDsn {
     pub(super) host: String,
     pub(super) port: u16,
@@ -18,6 +17,23 @@ pub(super) struct MySqlDsn {
     pub(super) ssl_ca: Option<String>,
     pub(super) ssl_cert: Option<String>,
     pub(super) ssl_key: Option<String>,
+}
+
+impl fmt::Debug for MySqlDsn {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MySqlDsn")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("database", &self.database)
+            .field("username", &self.username)
+            .field("password", &"****")
+            .field("ssl_mode", &self.ssl_mode)
+            .field("ssl_ca", &self.ssl_ca)
+            .field("ssl_cert", &self.ssl_cert)
+            .field("ssl_key", &self.ssl_key)
+            .finish()
+    }
 }
 
 pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
@@ -266,6 +282,33 @@ mod tests {
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
+    }
+
+    #[test]
+    fn debug_redacts_mysql_passwords_and_preserves_connection_fields() {
+        let cases = [
+            ("mysql://user:secret@localhost:3306/app", "secret"),
+            (
+                "mysql://user:p%40ss%23word@db.example:3307/analytics",
+                "p@ss#word",
+            ),
+            (
+                r"mysql://user:p%20a%23ss%3B%3D%22%5Cword@db.example:3308/reporting",
+                r#"p a#ss;="\word"#,
+            ),
+        ];
+
+        for (dsn, password) in cases {
+            let target = parse_mysql_dsn(dsn).unwrap();
+            let debug = format!("{target:?}");
+            let rendered_password = format!("{password:?}");
+
+            assert!(!debug.contains(&rendered_password), "{debug}");
+            assert!(debug.contains("host: \""));
+            assert!(debug.contains("port: "));
+            assert!(debug.contains("database: Some("));
+            assert!(debug.contains("password: \"****\""));
+        }
     }
 
     #[test]
