@@ -715,6 +715,26 @@ mod tests {
                 Some((7, "users".to_string()))
             );
         }
+
+        #[test]
+        fn accepting_quoted_identifier_updates_cursor_after_replacement() {
+            let mut ctx = SqlModalContext::default();
+            ctx.editor.set_content("SELECT * FROM order".to_string());
+            ctx.apply_completion_update(
+                &[CompletionCandidate {
+                    text: "`order``items`".to_string(),
+                    kind: CompletionKind::Table,
+                    score: 1,
+                }],
+                14,
+                true,
+            );
+
+            ctx.accept_selected_completion(10);
+
+            assert_eq!(ctx.editor.content(), "SELECT * FROM `order``items`");
+            assert_eq!(ctx.editor.cursor(), 28);
+        }
     }
 
     mod adhoc_status {
