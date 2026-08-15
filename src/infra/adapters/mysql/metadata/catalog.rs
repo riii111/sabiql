@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::time::Duration;
 
@@ -32,6 +33,7 @@ pub(super) const COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &[
     "ORDINAL_POSITION",
     "PRIMARY_KEY_POSITION",
 ];
+pub(super) const UNIQUE_COLUMN_RESULT_COLUMNS: &[&str] = &["COLUMN_NAME"];
 pub(super) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
     "CONSTRAINT_NAME",
     "TABLE_SCHEMA",
@@ -46,6 +48,12 @@ pub(super) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
 ];
 
 #[derive(Debug, Clone)]
+enum MysqlColumnUnique {
+    None,
+    SingleColumnIndex,
+}
+
+#[derive(Debug, Clone)]
 pub(super) struct MysqlColumnMetadata {
     name: String,
     data_type: String,
@@ -54,6 +62,7 @@ pub(super) struct MysqlColumnMetadata {
     comment: Option<String>,
     pub(super) ordinal_position: i32,
     primary_key_position: Option<i32>,
+    unique: MysqlColumnUnique,
     invisible: bool,
     generated: bool,
 }
@@ -102,13 +111,23 @@ pub(super) async fn fetch_columns(
     table: &str,
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(
+    let results = execute_metadata_queries_in_session(
         dsn,
-        &columns_query(schema, table),
-        COLUMN_METADATA_RESULT_COLUMNS,
+        &[
+            (
+                &columns_query(schema, table),
+                COLUMN_METADATA_RESULT_COLUMNS,
+            ),
+            (
+                &unique_columns_query(schema, table),
+                UNIQUE_COLUMN_RESULT_COLUMNS,
+            ),
+        ],
     )
     .await?;
-    parse_columns_for_table(&result, schema, table)
+    let mut columns = parse_columns_for_table(&results[0], schema, table)?;
+    mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[1])?);
+    Ok(columns)
 }
 
 pub(super) fn find_table(
@@ -136,6 +155,14 @@ pub(super) fn table_query(schema: &str, table: &str) -> String {
 pub(super) fn columns_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
+        quote_string(schema),
+        quote_string(table),
+    )
+}
+
+pub(super) fn unique_columns_query(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.INDEX_NAME",
         quote_string(schema),
         quote_string(table),
     )
@@ -356,6 +383,7 @@ pub(super) fn parse_column_metadata_row(
         primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
             .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
             .transpose()?,
+        unique: MysqlColumnUnique::None,
         invisible: extra
             .split_ascii_whitespace()
             .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
@@ -440,17 +468,19 @@ pub(super) fn foreign_keys_from_metadata(
 
 pub(super) fn column_from_metadata(metadata: &MysqlColumnMetadata) -> Column {
     let primary_key = metadata.primary_key_position.is_some();
-    let attributes = ColumnAttributes::from_parts(metadata.nullable, primary_key, false)
-        | if metadata.invisible {
-            ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
-        } else {
-            ColumnAttributes::empty()
-        }
-        | if metadata.generated {
-            ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
-        } else {
-            ColumnAttributes::empty()
-        };
+    let attributes = ColumnAttributes::from_parts(
+        metadata.nullable,
+        primary_key,
+        matches!(metadata.unique, MysqlColumnUnique::SingleColumnIndex),
+    ) | if metadata.invisible {
+        ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
+    } else {
+        ColumnAttributes::empty()
+    } | if metadata.generated {
+        ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
+    } else {
+        ColumnAttributes::empty()
+    };
     Column {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
@@ -458,6 +488,35 @@ pub(super) fn column_from_metadata(metadata: &MysqlColumnMetadata) -> Column {
         attributes,
         comment: metadata.comment.clone(),
         ordinal_position: metadata.ordinal_position,
+    }
+}
+
+pub(super) fn parse_unique_column_metadata(
+    result: &MysqlResultSet,
+) -> Result<HashSet<String>, DbOperationError> {
+    expect_columns(result, UNIQUE_COLUMN_RESULT_COLUMNS)?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != 1 {
+                return Err(metadata_shape_error("single-column UNIQUE row"));
+            }
+            Ok(required_text(&row[0], "COLUMN_NAME")?.to_string())
+        })
+        .collect()
+}
+
+pub(super) fn mark_single_column_unique(
+    columns: &mut [MysqlColumnMetadata],
+    unique_columns: &HashSet<String>,
+) {
+    for column in columns {
+        column.unique = if unique_columns.contains(&column.name) {
+            MysqlColumnUnique::SingleColumnIndex
+        } else {
+            MysqlColumnUnique::None
+        };
     }
 }
 
@@ -677,6 +736,47 @@ mod tests {
     }
 
     #[test]
+    fn single_column_unique_metadata_sets_only_matching_column_attribute() {
+        let columns = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("1".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Text("varchar(255)".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                ],
+            ],
+        ))
+        .unwrap();
+        let unique_columns = parse_unique_column_metadata(&result(
+            UNIQUE_COLUMN_RESULT_COLUMNS,
+            vec![vec![QueryValue::Text("email".to_string())]],
+        ))
+        .unwrap();
+        let mut columns = columns;
+
+        mark_single_column_unique(&mut columns, &unique_columns);
+
+        assert!(!column_from_metadata(&columns[0]).is_unique());
+        assert!(column_from_metadata(&columns[1]).is_unique());
+    }
+
+    #[test]
     fn targeted_metadata_queries_escape_schema_and_table_literals() {
         let schema = "app\\\n\r\t\u{0008}\u{001a}'";
         let table = "items\\\n\r\t\u{0008}\u{001a}'";
@@ -700,6 +800,7 @@ mod tests {
         for query in [
             table_query(schema, table),
             columns_query(schema, table),
+            unique_columns_query(schema, table),
             foreign_keys_query(schema, table),
         ] {
             assert!(query.contains(&quote_string(schema)));
@@ -707,6 +808,10 @@ mod tests {
             assert!(!query.contains("UNION ALL SELECT NULL"));
         }
         assert!(!table_query(schema, table).contains("KEY_COLUMN_USAGE"));
+        let unique_query = unique_columns_query(schema, table);
+        assert!(unique_query.contains("INDEX_NAME <> 'PRIMARY'"));
+        assert!(unique_query.contains("HAVING COUNT(*) = 1"));
+        assert!(unique_query.contains("COUNT(s.COLUMN_NAME) = 1"));
     }
 
     #[test]
