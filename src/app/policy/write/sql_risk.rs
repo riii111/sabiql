@@ -64,6 +64,34 @@ mod mysql_tests {
     }
 
     #[test]
+    fn retains_classified_mysql_statements_for_execution() {
+        let MultiStatementDecision::Allow { statements, .. } =
+            evaluate_mysql_multi_statement("UPDATE items SET value = 1; SELECT 2", Some("app"))
+        else {
+            panic!("unexpected block");
+        };
+
+        assert!(matches!(
+            statements[0].kind,
+            MysqlStatementKind::Update { has_where: false }
+        ));
+        assert_eq!(statements[1].sql, "SELECT 2");
+    }
+
+    #[test]
+    fn distinguishes_persistent_mysql_schema_changes_from_temporary_tables() {
+        assert!(mysql_statement_is_persistent_schema_change(
+            &MysqlStatementKind::CreateTable { temporary: false }
+        ));
+        assert!(!mysql_statement_is_persistent_schema_change(
+            &MysqlStatementKind::CreateTable { temporary: true }
+        ));
+        assert!(!mysql_statement_is_persistent_schema_change(
+            &MysqlStatementKind::DropTable { temporary: true }
+        ));
+    }
+
+    #[test]
     fn confirmation_target_preserves_input_case() {
         let MultiStatementDecision::Allow { risk, .. } =
             mysql("UPDATE CustomerOrders SET value = 1")
@@ -321,9 +349,9 @@ pub struct SqlRiskDecision {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MultiStatementDecision {
+pub enum MultiStatementDecision<Statement = String> {
     Allow {
-        statements: Vec<String>,
+        statements: Vec<Statement>,
         risk: SqlRiskDecision,
     },
     Block {
@@ -451,7 +479,7 @@ pub fn mysql_statement_is_data_modifying(kind: &MysqlStatementKind) -> bool {
     )
 }
 
-fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
+pub fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
     mysql_statement_is_schema_modifying(kind)
         && !matches!(
             kind,
@@ -580,7 +608,7 @@ fn mysql_validate_submission_state(
 pub fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
-) -> MultiStatementDecision {
+) -> MultiStatementDecision<MysqlStatement> {
     if statement_contains_unsupported_mysql_control(sql) {
         return MultiStatementDecision::Block {
             reason: "unsupported MySQL session or table-lock statement".to_string(),
@@ -665,8 +693,8 @@ pub fn evaluate_mysql_multi_statement(
         .iter()
         .all(|(_, decision)| decision.read_only_allowed);
     let statements = planned
-        .iter()
-        .map(|(statement, _)| statement.sql.clone())
+        .into_iter()
+        .map(|(statement, _)| statement)
         .collect();
     MultiStatementDecision::Allow {
         statements,
@@ -1019,7 +1047,16 @@ pub fn evaluate_multi_statement_for_database_with_context(
     sql: &str,
 ) -> MultiStatementDecision {
     if database_type == DatabaseType::MySQL {
-        return evaluate_mysql_multi_statement(sql, selected_database);
+        return match evaluate_mysql_multi_statement(sql, selected_database) {
+            MultiStatementDecision::Allow { statements, risk } => MultiStatementDecision::Allow {
+                statements: statements
+                    .into_iter()
+                    .map(|statement| statement.sql)
+                    .collect(),
+                risk,
+            },
+            MultiStatementDecision::Block { reason } => MultiStatementDecision::Block { reason },
+        };
     }
     if contains_cli_meta_command(database_type, sql) {
         return MultiStatementDecision::Block {
