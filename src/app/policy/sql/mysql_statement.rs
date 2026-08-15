@@ -290,6 +290,7 @@ mod tests {
             "UPDATE items SET value = (SELECT MAX(value) FROM prices JOIN currencies ON prices.currency_id = currencies.id) WHERE id = 1",
             "DELETE FROM items WHERE id IN (SELECT item_id FROM prices JOIN currencies ON prices.currency_id = currencies.id)",
             "UPDATE items PARTITION (p0, p1) SET value = 1 WHERE id = 1",
+            "UPDATE items USE INDEX FOR JOIN (idx_items) SET value = 1 WHERE id = 1",
             "DELETE FROM items PARTITION (p0, p1) WHERE id = 1",
         ] {
             assert!(classify_mysql_statement(sql).is_ok(), "{sql}");

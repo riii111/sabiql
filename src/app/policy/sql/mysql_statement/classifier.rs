@@ -103,16 +103,26 @@ fn classify_mysql_crud_statement(
 fn has_multi_table_reference(tokens: &[Token], start: usize, end: usize) -> bool {
     tokens
         .iter()
+        .enumerate()
         .skip(start)
         .take(end.saturating_sub(start))
-        .any(|token| {
+        .any(|(index, token)| {
             token.depth == 0
                 && match &token.kind {
                     TokenKind::Symbol(',') => true,
-                    TokenKind::Word(word) => matches!(word.as_str(), "JOIN" | "STRAIGHT_JOIN"),
+                    TokenKind::Word(word) => {
+                        matches!(word.as_str(), "JOIN" | "STRAIGHT_JOIN")
+                            && !is_mysql_index_hint_join(tokens, index)
+                    }
                     _ => false,
                 }
         })
+}
+
+fn is_mysql_index_hint_join(tokens: &[Token], index: usize) -> bool {
+    index >= 2
+        && target::word(tokens, index - 1) == Some("FOR")
+        && matches!(target::word(tokens, index - 2), Some("INDEX" | "KEY"))
 }
 
 fn has_top_level_word(tokens: &[Token], expected: &str, start: usize, end: usize) -> bool {
