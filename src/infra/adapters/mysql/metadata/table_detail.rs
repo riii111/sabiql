@@ -10,7 +10,7 @@ use crate::domain::{
 use super::super::sql::{quote_identifier, quote_string};
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
-    dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values},
+    dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
@@ -79,9 +79,7 @@ async fn fetch_table_detail_in_session_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
-    let target = parse_mysql_dsn(dsn)?;
-    validate_mysql_values(&target)?;
-    validate_mysql_tls_files(&target)?;
+    let target = parse_and_validate_mysql_dsn(dsn)?;
     let database = target.database.as_deref().ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
@@ -119,6 +117,7 @@ async fn fetch_table_detail_with_session(
     table: &str,
 ) -> Result<Table, DbOperationError> {
     session.probe().await?;
+    session.prepare_read_only().await?;
     let tables_result = session.execute(&table_query(schema, table)).await?;
     let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
     let table_metadata = find_table(schema, table, &snapshot.tables)?;
@@ -460,6 +459,16 @@ while IFS= read -r line; do
     continue
   fi
   case "$line" in
+    *"SET SESSION TRANSACTION READ ONLY")
+      ;;
+    *__sabiql_session_marker*)
+      if [ "$mode" = "read-only-failure" ]; then
+        printf '%s\n' 'ERROR 1227 (42000): access denied to validate read-only session' >&2
+        exit 1
+      fi
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
     *TABLES*)
       if [ "$mode" = "empty" ]; then
         printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA" xsi:nil="true"/><field name="TABLE_NAME" xsi:nil="true"/><field name="TABLE_TYPE" xsi:nil="true"/><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT" xsi:nil="true"/></row></resultset>'
@@ -572,6 +581,8 @@ done
             let labels = if mode == "view" {
                 [
                     "__sabiql_probe",
+                    "SET SESSION TRANSACTION READ ONLY",
+                    "__sabiql_session_marker",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",
                     "INFORMATION_SCHEMA.STATISTICS",
@@ -582,6 +593,8 @@ done
             } else {
                 [
                     "__sabiql_probe",
+                    "SET SESSION TRANSACTION READ ONLY",
+                    "__sabiql_session_marker",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",
                     "INFORMATION_SCHEMA.STATISTICS",
@@ -598,6 +611,26 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_read_only_setup_failure_never_sends_metadata_sql() {
+        let (_directory, program, transcript) = fake_metadata_cli("read-only-failure");
+        let result = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await;
+
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        assert!(result.is_err(), "result={result:?}\n{transcript_text}");
+        assert!(transcript_text.contains("SET SESSION TRANSACTION READ ONLY"));
+        assert!(!transcript_text.contains("INFORMATION_SCHEMA.TABLES"));
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]

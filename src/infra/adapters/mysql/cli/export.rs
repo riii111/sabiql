@@ -85,7 +85,14 @@ pub(super) async fn run_mysql_export_process(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )
         })?;
-        let columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
+        let columns = mysql_metadata_columns(
+            process,
+            option_file,
+            query,
+            fallback_kind,
+            AccessMode::ReadOnly,
+        )
+        .await?;
         csv_writer.write_record(columns.iter()).await?;
     }
 

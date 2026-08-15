@@ -104,6 +104,7 @@ pub(super) async fn read_pty_until_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8
     read_pty_until_idle_from(&mut pty.output, output, false).await
 }
 
+#[cfg(all(unix, feature = "test-support"))]
 pub(super) async fn read_pty_until_first_byte_then_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();

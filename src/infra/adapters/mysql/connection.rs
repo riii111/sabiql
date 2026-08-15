@@ -3,15 +3,13 @@ use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{check_mysql_cli_version, run_mysql_adhoc, validate_mysql_multi_query};
-use super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
+use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
 
 #[async_trait]
 impl ConnectionProbe for MySqlAdapter {
     async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         self.check_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
@@ -21,18 +19,17 @@ impl ConnectionProbe for MySqlAdapter {
     }
 
     async fn fetch_databases(&self, dsn: &str) -> Result<Vec<String>, DbOperationError> {
-        let mut target = parse_mysql_dsn(dsn)?;
+        let mut target = parse_and_validate_mysql_dsn(dsn)?;
         target.database = None;
-        validate_mysql_values(&target)?;
         self.check_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
-        let statements = validate_mysql_multi_query("SHOW DATABASES", None, AccessMode::ReadWrite)?;
+        let statements = validate_mysql_multi_query("SHOW DATABASES", None, AccessMode::ReadOnly)?;
         let result = run_mysql_adhoc(
             &option_file.path,
             "SHOW DATABASES",
             &statements,
-            AccessMode::ReadWrite,
+            AccessMode::ReadOnly,
         )
         .await;
         drop(option_file);

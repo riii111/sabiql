@@ -113,6 +113,13 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     })
 }
 
+pub(super) fn parse_and_validate_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
+    let target = parse_mysql_dsn(dsn)?;
+    validate_mysql_values(&target)?;
+    validate_mysql_tls_files(&target)?;
+    Ok(target)
+}
+
 pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperationError> {
     let values = [
         Some(target.host.as_str()),
