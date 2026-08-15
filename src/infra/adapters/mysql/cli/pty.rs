@@ -1,5 +1,5 @@
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -37,17 +37,23 @@ pub(super) fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
 
     let slave_file = unsafe { std::fs::File::from_raw_fd(slave) };
     let master_file = unsafe { std::fs::File::from_raw_fd(master) };
-    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
-    if unsafe { libc::tcgetattr(slave_file.as_raw_fd(), termios.as_mut_ptr()) } == 0 {
-        let mut termios = unsafe { termios.assume_init() };
-        termios.c_lflag &= !(libc::ECHO | libc::ECHONL | libc::ICANON);
-        termios.c_oflag &= !libc::OPOST;
-        termios.c_cc[libc::VMIN] = 1;
-        termios.c_cc[libc::VTIME] = 0;
-        let _ =
-            unsafe { libc::tcsetattr(slave_file.as_raw_fd(), libc::TCSANOW, &raw const termios) };
-    }
+    configure_mysql_pty(slave_file.as_raw_fd())?;
     Ok((master_file, slave_file))
+}
+
+fn configure_mysql_pty(fd: RawFd) -> io::Result<()> {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if unsafe { libc::tcgetattr(fd, termios.as_mut_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut termios = unsafe { termios.assume_init() };
+    unsafe { libc::cfmakeraw(&raw mut termios) };
+    termios.c_cc[libc::VMIN] = 1;
+    termios.c_cc[libc::VTIME] = 0;
+    if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw const termios) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 pub(super) async fn read_one_pty_resultset(
@@ -264,6 +270,40 @@ mod tests {
             frame_scanner: MysqlResultsetFrameScanner::default(),
         };
         (output_file, pty)
+    }
+
+    #[test]
+    fn configures_mysql_pty_as_raw_with_single_byte_reads() {
+        let (_master, slave) = create_mysql_pty().expect("create test PTY");
+        let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+
+        assert_eq!(
+            unsafe { libc::tcgetattr(slave.as_raw_fd(), termios.as_mut_ptr()) },
+            0
+        );
+        let termios = unsafe { termios.assume_init() };
+
+        assert_eq!(
+            termios.c_iflag
+                & (libc::BRKINT | libc::ICRNL | libc::INPCK | libc::ISTRIP | libc::IXON),
+            0
+        );
+        assert_eq!(termios.c_oflag & libc::OPOST, 0);
+        assert_eq!(
+            termios.c_lflag
+                & (libc::ECHO | libc::ECHONL | libc::ICANON | libc::IEXTEN | libc::ISIG),
+            0
+        );
+        assert_eq!(termios.c_cflag & libc::CS8, libc::CS8);
+        assert_eq!(termios.c_cc[libc::VMIN], 1);
+        assert_eq!(termios.c_cc[libc::VTIME], 0);
+    }
+
+    #[test]
+    fn reports_termios_get_failure() {
+        let error = configure_mysql_pty(-1).expect_err("invalid fd must fail");
+
+        assert_eq!(error.raw_os_error(), Some(libc::EBADF));
     }
 
     #[tokio::test]
