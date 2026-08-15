@@ -1477,7 +1477,7 @@ mod windows_tests {
         let mut child = Command::new("cmd.exe")
             .args([
                 "/C",
-                "more >nul & echo ERROR 1054 (42S22): missing_column 1>&2 & exit /B 0",
+                "findstr /R \"^\" >nul & echo ERROR 1054 (42S22): missing_column 1>&2 & exit /B 0",
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
