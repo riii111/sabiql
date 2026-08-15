@@ -18,7 +18,10 @@ use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_m
 use sabiql_domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,
 };
-use sabiql_infra::adapters::mysql::{MySqlAdapter, export_mysql_csv_to_path_for_test};
+use sabiql_infra::adapters::mysql::{
+    MySqlAdapter, execute_mysql_adhoc_with_read_only_session_for_test,
+    export_mysql_csv_to_path_for_test,
+};
 #[cfg(unix)]
 use tempfile::NamedTempFile;
 use tempfile::tempdir;
@@ -1720,6 +1723,65 @@ async fn times_out_real_cli_query_and_discards_output() {
                 .await;
             if !matches!(result, Err(DbOperationError::Timeout(_))) {
                 return Err(format!("expected a query timeout: {result:?}"));
+            }
+            Ok(())
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn applies_read_only_session_before_adhoc_sql_and_preserves_fixture() {
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT @@SESSION.transaction_read_only AS transaction_read_only, id, empty_text FROM {MYSQL_FIXTURE_TABLE}"
+                    ),
+                    AccessMode::ReadOnly,
+                )
+                .await
+                .map_err(|error| format!("read-only adhoc query failed: {error:?}"))?;
+            if result.columns != ["transaction_read_only", "id", "empty_text"]
+                || result.values()
+                    != [[
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text(String::new()),
+                    ]]
+            {
+                return Err(format!("unexpected read-only adhoc result: {result:?}"));
+            }
+
+            let write = execute_mysql_adhoc_with_read_only_session_for_test(
+                db.dsn(),
+                &format!(
+                    "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'read-only mutation' WHERE id = 1"
+                ),
+            )
+                .await;
+            if !matches!(write, Err(DbOperationError::QueryFailed(ref details)) if details.contains("READ ONLY"))
+            {
+                return Err(format!("read-only adhoc write was not rejected: {write:?}"));
+            }
+
+            let fixture = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT id, empty_text FROM {MYSQL_FIXTURE_TABLE}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("fixture verification failed: {error:?}"))?;
+            if fixture.values()
+                != [[QueryValue::Text("1".to_string()), QueryValue::Text(String::new())]]
+            {
+                return Err(format!("read-only write changed the fixture: {fixture:?}"));
             }
             Ok(())
         })

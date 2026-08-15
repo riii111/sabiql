@@ -13,4 +13,6 @@ pub use adapter::MySqlAdapter;
 pub use executor::test_support::run_mysql_cli_script_for_test;
 
 #[cfg(feature = "test-support")]
-pub use executor::test_support::export_mysql_csv_to_path_for_test;
+pub use executor::test_support::{
+    execute_mysql_adhoc_with_read_only_session_for_test, export_mysql_csv_to_path_for_test,
+};
