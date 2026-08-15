@@ -20,9 +20,14 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::CloseConnectionError => {
-            state.connection_error.details_expanded = false;
-            state.connection_error.scroll_offset = 0;
-            state.connection_error.clear_copied_feedback();
+            if state.session.has_pending_connection_switch() {
+                state.session.clear_connection_probe();
+                state.connection_error.clear();
+            } else {
+                state.connection_error.details_expanded = false;
+                state.connection_error.scroll_offset = 0;
+                state.connection_error.clear_copied_feedback();
+            }
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -149,12 +154,13 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
+    use crate::model::connection::error::ConnectionErrorInfo;
     use crate::model::connection::state::ConnectionState;
     use crate::update::test_fixtures;
 
     mod scroll_down {
         use super::*;
-        use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+        use crate::model::connection::error::ConnectionErrorKind;
 
         fn scroll_down_action() -> Action {
             Action::Scroll {
@@ -266,5 +272,45 @@ mod tests {
                 .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
         );
         assert!(state.session.connection_state().is_connecting());
+    }
+
+    #[test]
+    fn close_after_mysql_switch_failure_clears_failed_probe_context() {
+        let mut state = AppState::new("test".to_string());
+        let current_id = ConnectionId::from_string("mysql-a");
+        let target_id = ConnectionId::from_string("mysql-b");
+        state.session.activate_connection_with_target(
+            &current_id,
+            "mysql-a",
+            DatabaseType::MySQL,
+            "mysql://user@localhost:3306/a?ssl-mode=PREFERRED",
+            Some("a"),
+        );
+        state
+            .session
+            .set_connection_state(ConnectionState::Connected);
+
+        let _ = state.session.begin_connection_probe(
+            &target_id,
+            "mysql-b",
+            DatabaseType::MySQL,
+            "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
+            Some("b"),
+        );
+        state
+            .connection_error
+            .set_error(ConnectionErrorInfo::new("connection refused"));
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
+
+        assert!(state.session.pending_connection_probe().is_none());
+        assert!(state.connection_error.error_info().is_none());
+        assert_eq!(state.input_mode(), InputMode::Normal);
+        assert!(state.session.connection_state().is_connected());
+        assert_eq!(
+            state.session.dsn(),
+            Some("mysql://user@localhost:3306/a?ssl-mode=PREFERRED")
+        );
     }
 }

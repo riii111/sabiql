@@ -172,12 +172,14 @@ impl ConnectionError {
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if state.session.can_reenter_connection_setup() {
-            spans.push(key_chip("e", theme));
-            spans.push(Span::raw(" Re-enter  "));
-        } else {
+        if state.session.has_pending_connection_switch()
+            || !state.session.can_reenter_connection_setup()
+        {
             spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));
+        } else {
+            spans.push(key_chip("e", theme));
+            spans.push(Span::raw(" Re-enter  "));
         }
 
         spans.extend([
