@@ -107,6 +107,17 @@ pub(super) fn reduce_connection_error(
                     run_id,
                 }]);
             }
+            if state
+                .session
+                .active_database_type()
+                .is_some_and(|database_type| database_type == DatabaseType::MySQL)
+                && state
+                    .connection_error
+                    .error_info()
+                    .is_some_and(|info| !info.is_retryable())
+            {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 state.connection_error.clear();
                 if state.session.active_database_type() == Some(DatabaseType::MySQL) {

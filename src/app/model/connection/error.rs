@@ -1,8 +1,7 @@
 use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
-    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
+    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
 };
 use sabiql_domain::connection::MySqlSslMode;
 use url::Url;
@@ -184,6 +183,13 @@ impl ConnectionErrorKind {
             Self::Unknown => "See details for more information",
         }
     }
+
+    pub const fn is_retryable(self) -> bool {
+        matches!(
+            self,
+            Self::HostUnreachable | Self::ConnectionLost | Self::Timeout | Self::ConnectionRefused
+        )
+    }
 }
 
 fn is_mysql_connect_timeout_message(value: &str) -> bool {
@@ -223,12 +229,6 @@ fn is_mysql_ca_verification_error(value: &str) -> bool {
         || value.contains("self-signed certificate")
         || value.contains("unknown ca")
         || value.contains("certificate signature failure")
-}
-
-fn is_mysql_ambiguous_certificate_verification_error(value: &str) -> bool {
-    value
-        .to_ascii_lowercase()
-        .contains("error:0a000086:ssl routines::certificate verify failed")
 }
 
 fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
@@ -302,27 +302,38 @@ impl ConnectionErrorInfo {
             DbOperationError::CommandNotFound { .. } => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
-            DbOperationError::UnsupportedOperation(details)
-                if details.contains(MYSQL_CLI_VERSION_REQUIRED_MARKER) =>
-            {
-                ConnectionErrorKind::MySqlCliVersionUnsupported
-            }
-            DbOperationError::UnsupportedOperation(details)
-                if details.contains(MYSQL_SERVER_VERSION_REQUIRED_MARKER) =>
-            {
-                ConnectionErrorKind::MySqlServerVersionUnsupported
-            }
-            DbOperationError::UnsupportedOperation(details)
-                if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER) =>
-            {
-                ConnectionErrorKind::MySqlSqlModeUnsupported
-            }
+            DbOperationError::UnsupportedOperationWithKind { kind, .. } => match kind {
+                UnsupportedOperationKind::ClientVersion => {
+                    ConnectionErrorKind::MySqlCliVersionUnsupported
+                }
+                UnsupportedOperationKind::ServerVersion => {
+                    ConnectionErrorKind::MySqlServerVersionUnsupported
+                }
+                UnsupportedOperationKind::SessionMode => {
+                    ConnectionErrorKind::MySqlSqlModeUnsupported
+                }
+            },
             DbOperationError::UnsupportedOperation(details)
                 if details.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER)
                     || details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER) =>
             {
                 ConnectionErrorKind::SqliteVersionTooOld
             }
+            DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCertificateVerification => {
+                    ConnectionErrorKind::MySqlTlsHandshakeFailed
+                }
+                ConnectionFailureKind::TlsCaVerification => {
+                    ConnectionErrorKind::MySqlCaVerificationFailed
+                }
+                ConnectionFailureKind::TlsHostnameVerification => {
+                    ConnectionErrorKind::MySqlHostnameVerificationFailed
+                }
+                ConnectionFailureKind::TlsClientCertificateRejected => {
+                    ConnectionErrorKind::MySqlClientCertificateRejected
+                }
+            },
             DbOperationError::ConnectionFailed(details) => {
                 classify_sqlite_path_connection_error(details)
                     .unwrap_or_else(|| ConnectionErrorKind::classify(&raw_details))
@@ -336,16 +347,20 @@ impl ConnectionErrorInfo {
         let raw_details = error.raw_details().into_owned();
         let kind = mysql_ssl_mode_from_dsn(dsn)
             .and_then(|ssl_mode| match (ssl_mode, error) {
-                (MySqlSslMode::VerifyCa, DbOperationError::ConnectionFailed(_))
-                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
-                {
-                    Some(ConnectionErrorKind::MySqlCaVerificationFailed)
-                }
-                (MySqlSslMode::VerifyIdentity, DbOperationError::ConnectionFailed(_))
-                    if is_mysql_ambiguous_certificate_verification_error(&raw_details) =>
-                {
-                    Some(ConnectionErrorKind::MySqlHostnameVerificationFailed)
-                }
+                (
+                    MySqlSslMode::VerifyCa,
+                    DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::TlsCertificateVerification,
+                        ..
+                    },
+                ) => Some(ConnectionErrorKind::MySqlCaVerificationFailed),
+                (
+                    MySqlSslMode::VerifyIdentity,
+                    DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::TlsCertificateVerification,
+                        ..
+                    },
+                ) => Some(ConnectionErrorKind::MySqlHostnameVerificationFailed),
                 _ => None,
             })
             .unwrap_or_else(|| Self::from_db_operation_error(error).kind);
@@ -363,6 +378,19 @@ impl ConnectionErrorInfo {
 
     pub fn masked_details(&self) -> &str {
         &self.masked_details
+    }
+
+    pub fn user_message(&self) -> String {
+        let details = self.masked_details.trim();
+        if details.is_empty() {
+            format!("{}. {}.", self.summary(), self.hint())
+        } else {
+            format!("{}: {}. {}.", self.summary(), details, self.hint())
+        }
+    }
+
+    pub const fn is_retryable(&self) -> bool {
+        self.kind.is_retryable()
     }
 }
 
@@ -585,10 +613,10 @@ mod tests {
 
         #[test]
         fn from_db_operation_error_with_dsn_uses_mysql_tls_mode_for_ambiguous_verification() {
-            let error = DbOperationError::ConnectionFailed(
-                "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
-                    .to_string(),
-            );
+            let error = DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsCertificateVerification,
+                details: "certificate verification failed".to_string(),
+            };
             let ca = ConnectionErrorInfo::from_db_operation_error_with_dsn(
                 &error,
                 "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_CA",
@@ -661,25 +689,87 @@ mod tests {
 
         #[rstest]
         #[case(
-            MYSQL_CLI_VERSION_REQUIRED_MARKER,
+            UnsupportedOperationKind::ClientVersion,
             ConnectionErrorKind::MySqlCliVersionUnsupported
         )]
         #[case(
-            MYSQL_SERVER_VERSION_REQUIRED_MARKER,
+            UnsupportedOperationKind::ServerVersion,
             ConnectionErrorKind::MySqlServerVersionUnsupported
         )]
         #[case(
-            MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+            UnsupportedOperationKind::SessionMode,
             ConnectionErrorKind::MySqlSqlModeUnsupported
         )]
         fn from_db_operation_error_classifies_mysql_requirements(
-            #[case] marker: &str,
+            #[case] kind: UnsupportedOperationKind,
             #[case] expected_kind: ConnectionErrorKind,
         ) {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperation(marker.to_string()),
+                &DbOperationError::UnsupportedOperationWithKind {
+                    kind,
+                    details: "provider details".to_string(),
+                },
             );
+
+            assert_eq!(info.summary(), expected_kind.summary());
+            assert_eq!(info.hint(), expected_kind.hint());
+            assert_eq!(
+                info.user_message(),
+                format!("{}: provider details. {}.", info.summary(), info.hint())
+            );
+            assert!(!info.is_retryable());
             assert_eq!(info.kind, expected_kind);
+        }
+
+        #[rstest]
+        #[case(
+            ConnectionFailureKind::TlsHandshake,
+            ConnectionErrorKind::MySqlTlsHandshakeFailed
+        )]
+        #[case(
+            ConnectionFailureKind::TlsCaVerification,
+            ConnectionErrorKind::MySqlCaVerificationFailed
+        )]
+        #[case(
+            ConnectionFailureKind::TlsHostnameVerification,
+            ConnectionErrorKind::MySqlHostnameVerificationFailed
+        )]
+        #[case(
+            ConnectionFailureKind::TlsClientCertificateRejected,
+            ConnectionErrorKind::MySqlClientCertificateRejected
+        )]
+        fn from_db_operation_error_classifies_typed_mysql_tls(
+            #[case] kind: ConnectionFailureKind,
+            #[case] expected_kind: ConnectionErrorKind,
+        ) {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailedWithKind {
+                    kind,
+                    details: "tls details".to_string(),
+                },
+            );
+
+            assert_eq!(info.kind, expected_kind);
+            assert_eq!(info.summary(), expected_kind.summary());
+            assert_eq!(info.hint(), expected_kind.hint());
+            assert_eq!(
+                info.user_message(),
+                format!("{}: tls details. {}.", info.summary(), info.hint())
+            );
+            assert!(!info.is_retryable());
+        }
+
+        #[test]
+        fn unknown_connection_error_fails_closed_without_leaking_details() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                    "password=secret unexpected provider failure".to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
+            assert!(!info.masked_details().contains("secret"));
+            assert!(!info.user_message().contains("secret"));
+            assert!(!info.is_retryable());
         }
 
         #[rstest]

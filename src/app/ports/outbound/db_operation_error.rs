@@ -7,9 +7,6 @@ use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
-pub const MYSQL_CLI_VERSION_REQUIRED_MARKER: &str = "MYSQL_CLI_VERSION_REQUIRED";
-pub const MYSQL_SERVER_VERSION_REQUIRED_MARKER: &str = "MYSQL_SERVER_VERSION_REQUIRED";
-pub const MYSQL_SQL_MODE_UNSUPPORTED_MARKER: &str = "MYSQL_SQL_MODE_UNSUPPORTED";
 pub const MYSQL_CONNECT_TIMEOUT_ERRNOS: &[&str] = &["(60)", "(110)", "(10060)"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +32,22 @@ impl DatabaseCli {
             Self::MySql => "Install the Oracle MySQL 8.4 client and add it to PATH",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedOperationKind {
+    ClientVersion,
+    ServerVersion,
+    SessionMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionFailureKind {
+    TlsHandshake,
+    TlsCaVerification,
+    TlsHostnameVerification,
+    TlsClientCertificateRejected,
+    TlsCertificateVerification,
 }
 
 #[derive(Clone, thiserror::Error)]
@@ -64,6 +77,16 @@ pub enum DbOperationError {
     },
     #[error("Unsupported operation")]
     UnsupportedOperation(String),
+    #[error("Unsupported operation")]
+    UnsupportedOperationWithKind {
+        kind: UnsupportedOperationKind,
+        details: String,
+    },
+    #[error("Connection failed")]
+    ConnectionFailedWithKind {
+        kind: ConnectionFailureKind,
+        details: String,
+    },
     #[error("Metadata parse failed")]
     MetadataParseFailed(String),
     #[error("Invalid JSON")]
@@ -98,6 +121,24 @@ impl DbOperationError {
             Self::QueryFailed(_) => "Query failed",
             Self::QueryFailedAfterChange { source, .. } => source.summary(),
             Self::UnsupportedOperation(_) => "Unsupported operation",
+            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
+                UnsupportedOperationKind::ClientVersion => "Unsupported MySQL CLI version",
+                UnsupportedOperationKind::ServerVersion => "Unsupported MySQL server version",
+                UnsupportedOperationKind::SessionMode => "Unsupported MySQL sql_mode",
+            },
+            Self::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCertificateVerification => "MySQL TLS handshake failed",
+                ConnectionFailureKind::TlsCaVerification => {
+                    "MySQL server certificate could not be verified"
+                }
+                ConnectionFailureKind::TlsHostnameVerification => {
+                    "MySQL server hostname could not be verified"
+                }
+                ConnectionFailureKind::TlsClientCertificateRejected => {
+                    "MySQL client certificate was rejected"
+                }
+            },
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
             Self::EmptyResponse(_) => "Database returned an empty response",
@@ -125,6 +166,28 @@ impl DbOperationError {
             Self::QueryFailed(_) => "Review the database error details and SQL",
             Self::QueryFailedAfterChange { source, .. } => source.hint(),
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
+            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
+                UnsupportedOperationKind::ClientVersion => "Install the Oracle MySQL 8.4 client",
+                UnsupportedOperationKind::ServerVersion => "Connect to an Oracle MySQL 8.4 server",
+                UnsupportedOperationKind::SessionMode => {
+                    "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
+                }
+            },
+            Self::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCertificateVerification => {
+                    "Check that the server and client support the selected TLS settings"
+                }
+                ConnectionFailureKind::TlsCaVerification => {
+                    "Check the CA certificate path and server certificate"
+                }
+                ConnectionFailureKind::TlsHostnameVerification => {
+                    "Use the hostname covered by the server certificate"
+                }
+                ConnectionFailureKind::TlsClientCertificateRejected => {
+                    "Check the client certificate, key, and server account requirements"
+                }
+            },
             Self::MetadataParseFailed(_) => {
                 "Check whether the metadata output format changed unexpectedly"
             }
@@ -195,6 +258,8 @@ impl DbOperationError {
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
             | Self::UnsupportedOperation(details)
+            | Self::UnsupportedOperationWithKind { details, .. }
+            | Self::ConnectionFailedWithKind { details, .. }
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
             | Self::CommandTagParseFailed(details)
@@ -252,6 +317,14 @@ mod tests {
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
+        #[case(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ClientVersion,
+            details: "boom".to_string(),
+        })]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::TlsHandshake,
+            details: "boom".to_string(),
+        })]
         #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
         #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
         #[case(DbOperationError::EmptyResponse("boom".to_string()))]

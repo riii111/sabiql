@@ -5,8 +5,8 @@
 
 use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
 use sabiql_app::ports::outbound::{
-    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder,
-    MYSQL_SQL_MODE_UNSUPPORTED_MARKER, MetadataProvider, QueryExecutor, SqlDialect,
+    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider,
+    QueryExecutor, SqlDialect, UnsupportedOperationKind,
 };
 use sabiql_domain::{
     CommandTag, DatabaseType, FkAction, IndexType, QueryValue, RefreshScope, TableKind,
@@ -1749,37 +1749,43 @@ async fn exports_a_header_only_csv_for_an_empty_result() {
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn rejects_next_process_when_global_sql_mode_is_unsupported() {
-    with_mysql_test_db(|db| Box::pin(async move {
-        let original = db.global_sql_mode().await?;
-        let unsupported = if original.is_empty() {
-            "ANSI_QUOTES".to_string()
-        } else {
-            format!("{original},ANSI_QUOTES")
-        };
-        let test_result = async {
-            db.set_global_sql_mode(&unsupported).await?;
-            let result = db
-                .adapter()
-                .execute_adhoc(
-                    db.dsn(),
-                    "SELECT SLEEP(32)",
-                    AccessMode::ReadWrite,
-                )
-                .await;
-            if !matches!(result, Err(DbOperationError::UnsupportedOperation(ref details)) if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER)) {
-                return Err(format!("expected unsupported sql_mode rejection: {result:?}"));
+    with_mysql_test_db(|db| {
+        Box::pin(async move {
+            let original = db.global_sql_mode().await?;
+            let unsupported = if original.is_empty() {
+                "ANSI_QUOTES".to_string()
+            } else {
+                format!("{original},ANSI_QUOTES")
+            };
+            let test_result = async {
+                db.set_global_sql_mode(&unsupported).await?;
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
+                    .await;
+                if !matches!(
+                    result,
+                    Err(DbOperationError::UnsupportedOperationWithKind {
+                        kind: UnsupportedOperationKind::SessionMode,
+                        ..
+                    })
+                ) {
+                    return Err(format!(
+                        "expected unsupported sql_mode rejection: {result:?}"
+                    ));
+                }
+                Ok::<(), String>(())
             }
-            Ok::<(), String>(())
-        }
-        .await;
-        let restore_result = db.set_global_sql_mode(&original).await;
-        if let Err(error) = restore_result {
-            return Err(format!("failed to restore MySQL global sql_mode: {error}"));
-        }
-        if db.global_sql_mode().await? != original {
-            return Err("MySQL global sql_mode was not restored".to_string());
-        }
-        test_result
-    }))
+            .await;
+            let restore_result = db.set_global_sql_mode(&original).await;
+            if let Err(error) = restore_result {
+                return Err(format!("failed to restore MySQL global sql_mode: {error}"));
+            }
+            if db.global_sql_mode().await? != original {
+                return Err("MySQL global sql_mode was not restored".to_string());
+            }
+            test_result
+        })
+    })
     .await;
 }

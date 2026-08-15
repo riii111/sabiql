@@ -23,6 +23,7 @@ use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
+use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -291,8 +292,14 @@ impl Footer {
                 hints
             }
             InputMode::ConnectionError => {
+                let can_retry = state
+                    .session
+                    .active_database_type()
+                    .is_some_and(|database_type| database_type == DatabaseType::MySQL)
+                    && state.connection_error.can_retry();
                 let first = if state.session.has_pending_connection_switch()
                     || !state.session.can_reenter_connection_setup()
+                    || can_retry
                 {
                     connection_error::RETRY.as_hint()
                 } else {
