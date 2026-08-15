@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER,
+    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
 };
 
@@ -127,6 +127,25 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    run_mysql_command_with_timeout(
+        args,
+        option_file,
+        MYSQL_PROBE_TIMEOUT,
+        "mysql probe exceeded the connection timeout",
+    )
+    .await
+}
+
+pub(super) async fn run_mysql_command_with_timeout<I, S>(
+    args: I,
+    option_file: Option<&PathBuf>,
+    command_timeout: Duration,
+    timeout_message: &str,
+) -> Result<std::process::Output, DbOperationError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     let mut command = Command::new("mysql");
     command
         .args(args)
@@ -138,7 +157,7 @@ where
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     }
 
-    match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
+    match timeout(command_timeout, command.output()).await {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
             Err(DbOperationError::CommandNotFound {
@@ -147,9 +166,7 @@ where
             })
         }
         Ok(Err(error)) => Err(DbOperationError::ConnectionFailed(error.to_string())),
-        Err(_) => Err(DbOperationError::Timeout(
-            "mysql probe exceeded the connection timeout".to_string(),
-        )),
+        Err(_) => Err(DbOperationError::Timeout(timeout_message.to_string())),
     }
 }
 
@@ -173,7 +190,9 @@ fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
 pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.contains("can't connect to mysql server")
-        && (lower.contains("(110)") || lower.contains("(10060)"))
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lower.contains(errno))
 }
 
 #[cfg(test)]
@@ -245,6 +264,12 @@ mod probe_tests {
                     .to_string()
             ),
             DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)".to_string()
+            ),
+            DbOperationError::Timeout(_)
         ));
     }
 

@@ -23,7 +23,6 @@ use crate::app::update::input::keybindings::{
     sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
     table_picker as table_picker_key,
 };
-use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -165,7 +164,7 @@ impl Footer {
                     if state.ui.focused_pane() == FocusedPane::Explorer {
                         list.push(global::CONNECTIONS.as_hint());
                     }
-                    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                    if feature_policy.is_enabled(FeatureRequirement::DatabasePicker) {
                         list.push(global::DATABASE_PICKER.as_hint());
                     }
                     list.push(table_picker_key(keymap_preset).as_hint());
@@ -525,6 +524,30 @@ mod tests {
 
         assert_eq!(
             hints.contains(&global::ER_DIAGRAM.as_hint()),
+            expected_visible
+        );
+    }
+
+    #[rstest]
+    #[case(DatabaseType::PostgreSQL, false)]
+    #[case(DatabaseType::SQLite, false)]
+    #[case(DatabaseType::MySQL, true)]
+    fn database_picker_hint_visibility_tracks_feature_policy(
+        #[case] database_type: DatabaseType,
+        #[case] expected_visible: bool,
+    ) {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "database",
+            database_type,
+            "database",
+        );
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert_eq!(
+            hints.contains(&global::DATABASE_PICKER.as_hint()),
             expected_visible
         );
     }

@@ -274,18 +274,30 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
             let message = error.user_message();
-            let detail_message = if state.session.dsn_matches(&target.dsn) {
-                state.session.mark_connection_failed(message.clone());
-                message
+            let table_detail_retry = if state.session.dsn_matches(&target.dsn) {
+                None
             } else {
-                "Load canceled by connection change".to_string()
+                state.session.retry_table_detail_after_probe_failure().map(
+                    |(dsn, generation, run_id)| Effect::FetchTableDetail {
+                        dsn,
+                        schema: state.query.pagination.schema().to_string(),
+                        table: state.query.pagination.table().to_string(),
+                        generation,
+                        run_id,
+                    },
+                )
             };
-            state.session.mark_table_detail_probe_failed(detail_message);
+            if state.session.dsn_matches(&target.dsn) {
+                state
+                    .session
+                    .mark_table_detail_probe_failed(&target.dsn, message.clone());
+                state.session.mark_connection_failed(message);
+            }
             state.connection_error.set_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
             );
             state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::handled()
+            DispatchResult::handled_with(table_detail_retry.into_iter().collect())
         }
 
         _ => DispatchResult::pass(),
@@ -1130,24 +1142,46 @@ mod tests {
                 })
                 .unwrap();
 
-            reduce(
+            let retry_effects = reduce(
                 &mut state,
                 &Action::ConnectionProbeFailed {
                     target: second,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
                 },
-            );
+            )
+            .unwrap();
 
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
             assert!(state.session.table_detail().is_none());
-            assert!(matches!(
+            assert_eq!(
                 state.session.table_detail_state(),
-                TableDetailState::Error(message) if message == "Load canceled by connection change"
-            ));
+                &TableDetailState::Loading
+            );
             assert_eq!(state.session.selection_generation(), generation);
             assert!(!state.session.is_current_table_detail_run(detail_run_id));
+            let retry_run_id = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchTableDetail {
+                        dsn,
+                        schema,
+                        table,
+                        generation: effect_generation,
+                        run_id,
+                    } if dsn == &first.dsn
+                        && schema == "public"
+                        && table == "users"
+                        && *effect_generation == generation =>
+                    {
+                        Some(*run_id)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            assert_ne!(retry_run_id, detail_run_id);
+            assert!(state.session.is_current_table_detail_run(retry_run_id));
         }
 
         #[test]

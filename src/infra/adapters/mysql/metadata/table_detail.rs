@@ -7,18 +7,18 @@ use crate::domain::{
     Trigger, TriggerEvent, TriggerTiming,
 };
 
+use super::super::sql::{quote_identifier, quote_string};
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
     dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values},
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MysqlTableMetadata, TABLES_QUERY, column_from_metadata, columns_query, expect_columns,
-    fetch_columns, fetch_foreign_keys, fetch_metadata_snapshot_for_schema, find_table,
-    foreign_keys_from_metadata, foreign_keys_query, metadata_shape_error,
-    metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_columns_for_table,
-    parse_foreign_key_metadata, parse_positive_i32, primary_key_names, quote_identifier,
-    quote_string, required_text, validate_selected_schema_name,
+    MysqlTableMetadata, column_from_metadata, columns_query, expect_columns, fetch_columns,
+    fetch_foreign_keys, fetch_table_metadata, find_table, foreign_keys_from_metadata,
+    foreign_keys_query, metadata_shape_error, metadata_snapshot_from_result, optional_text,
+    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
+    primary_key_names, required_text, table_query, validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -61,7 +61,7 @@ pub(super) async fn fetch_table_columns_and_fks(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    let snapshot = fetch_metadata_snapshot_for_schema(dsn, schema).await?;
+    let snapshot = fetch_table_metadata(dsn, schema, table).await?;
     fetch_table_columns_and_fks_with_summaries(
         dsn,
         schema,
@@ -119,12 +119,12 @@ async fn fetch_table_detail_with_session(
     table: &str,
 ) -> Result<Table, DbOperationError> {
     session.probe().await?;
-    let tables_result = session.execute(TABLES_QUERY).await?;
+    let tables_result = session.execute(&table_query(schema, table)).await?;
     let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
     let table_metadata = find_table(schema, table, &snapshot.tables)?;
 
     let columns = parse_columns_for_table(
-        &session.execute(&columns_query(table)).await?,
+        &session.execute(&columns_query(schema, table)).await?,
         schema,
         table,
     )?;
@@ -132,7 +132,7 @@ async fn fetch_table_detail_with_session(
         &session.execute(&indexes_query(table)).await?,
     )?);
     let foreign_keys = foreign_keys_from_metadata(
-        parse_foreign_key_metadata(&session.execute(&foreign_keys_query(table)).await?)?,
+        parse_foreign_key_metadata(&session.execute(&foreign_keys_query(schema, table)).await?)?,
         &snapshot.table_summaries,
     )?;
     let triggers = triggers_from_metadata(parse_trigger_metadata(
@@ -162,7 +162,9 @@ async fn fetch_table_detail_with_session(
         source_ddl: Some(source_ddl),
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
-            ..TableKindInfo::default()
+            is_strict: false,
+            without_rowid: false,
+            virtual_module: None,
         },
     })
 }
@@ -193,7 +195,9 @@ async fn fetch_table_columns_and_fks_with_summaries(
         source_ddl: None,
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
-            ..TableKindInfo::default()
+            is_strict: false,
+            without_rowid: false,
+            virtual_module: None,
         },
     })
 }
@@ -438,15 +442,13 @@ transcript=$(dirname "$0")/transcript.log
 printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
 mode=$(basename "$0" | sed 's/^mysql-//')
 trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
-platform=$(uname -s)
-if [ "$platform" = "Darwin" ]; then
-  stty -icanon <&0 2>/dev/null || true
-fi
 if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
   while [ ! -e "$(dirname "$0")/allow" ]; do sleep 0.001; done
 fi
+eof=$(printf '\004')
 while IFS= read -r line; do
   printf 'query=%s\n' "$line" >> "$transcript"
+  [ "$line" = "$eof" ] && exit 0
   [ "$line" = ";" ] && continue
   if printf '%s\n' "$line" | grep -q '__sabiql_probe'; then
     if [ "$mode" = "probe-failure" ]; then
@@ -489,15 +491,9 @@ while IFS= read -r line; do
       if [ "$mode" = "view" ]; then
         printf '%s\n' '<resultset><row><field name="View">items_view</field><field name="Create View">CREATE VIEW items_view AS SELECT 1</field></row></resultset>'
       fi
-      if [ "$platform" = "Darwin" ]; then
-        stty icanon <&0 2>/dev/null || true
-      fi
       ;;
     *SHOW\ CREATE\ TABLE*)
       printf '%s\n' '<resultset><row><field name="Table">items</field><field name="Create Table">CREATE TABLE items (id int PRIMARY KEY)</field></row></resultset>'
-      if [ "$platform" = "Darwin" ]; then
-        stty icanon <&0 2>/dev/null || true
-      fi
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -602,6 +598,33 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_sends_foreign_key_query_over_one_kilobyte() {
+        let (_directory, program, transcript) = fake_metadata_cli("table");
+        fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap();
+
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        let foreign_key_query = transcript_text
+            .lines()
+            .find(|line| line.contains("REFERENTIAL_CONSTRAINTS"))
+            .expect("foreign key metadata query");
+        assert!(
+            foreign_key_query.len() > 1024,
+            "foreign key query was unexpectedly short: {} bytes",
+            foreign_key_query.len()
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]

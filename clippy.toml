@@ -36,6 +36,7 @@ absolute-paths-allowed-crates = [
     "unicode_width",
     "urlencoding",
     "uuid",
+    "windows_sys",
 ]
 
 disallowed-methods = [

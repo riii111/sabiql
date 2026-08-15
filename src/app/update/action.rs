@@ -746,11 +746,16 @@ impl Action {
 
     pub fn feature_requirement(&self) -> FeatureRequirement {
         use FeatureRequirement::{
-            ErDiagram, Explain, ExplainAnalyze, JsonDocumentDetail, JsonDocumentEdit, None,
-            PlanComparison, SqliteDiagnostics,
+            DatabasePicker, ErDiagram, Explain, ExplainAnalyze, JsonDocumentDetail,
+            JsonDocumentEdit, None, PlanComparison, SqliteDiagnostics,
         };
 
         match self {
+            Self::OpenModal(ModalKind::DatabasePicker)
+            | Self::ToggleModal(ModalKind::DatabasePicker)
+            | Self::SwitchMySqlDatabase { .. }
+            | Self::MySqlDatabasesLoaded { .. }
+            | Self::MySqlDatabasesFailed { .. } => DatabasePicker,
             Self::OpenModal(ModalKind::ErTablePicker)
             | Self::ToggleModal(ModalKind::ErTablePicker)
             | Self::ErToggleSelection
@@ -1043,6 +1048,10 @@ mod tests {
             }
             .feature_requirement(),
             FeatureRequirement::ExplainAnalyze
+        );
+        assert_eq!(
+            Action::OpenModal(ModalKind::DatabasePicker).feature_requirement(),
+            FeatureRequirement::DatabasePicker
         );
     }
 

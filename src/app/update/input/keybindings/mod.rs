@@ -617,6 +617,10 @@ mod tests {
     #[test]
     fn feature_requirements_are_attached_to_feature_bindings() {
         assert_eq!(
+            global::DATABASE_PICKER.feature_requirement(),
+            FeatureRequirement::DatabasePicker
+        );
+        assert_eq!(
             global::ER_DIAGRAM.feature_requirement(),
             FeatureRequirement::ErDiagram
         );

@@ -7,7 +7,7 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
 use crate::policy::sql::statement_classifier;
 use crate::policy::write::sql_risk::{
-    ConfirmationType, evaluate_mysql_explain_target, evaluate_sql_risk_for_database,
+    ConfirmationType, evaluate_mysql_explain_analyze_target, evaluate_sql_risk_for_database,
 };
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
@@ -46,7 +46,7 @@ pub(super) fn reduce_analyze(
                 return DispatchResult::handled();
             }
             let risk = if database_type == DatabaseType::MySQL {
-                let Some(risk) = evaluate_mysql_explain_target(&content, true) else {
+                let Some(risk) = evaluate_mysql_explain_analyze_target(&content) else {
                     show_explain_error_on_plan(
                         state,
                         "MySQL EXPLAIN ANALYZE only supports side-effect-free SELECT or TABLE statements",
@@ -121,7 +121,7 @@ pub(super) fn reduce_analyze(
             {
                 let database_type = state.session.active_database_type_or_default();
                 if database_type == DatabaseType::MySQL
-                    && evaluate_mysql_explain_target(&query, true).is_none()
+                    && evaluate_mysql_explain_analyze_target(&query).is_none()
                 {
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();

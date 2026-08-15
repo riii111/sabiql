@@ -16,9 +16,7 @@ use crate::app::policy::sql::mysql_statement::classify_mysql_statement;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
-#[cfg(not(unix))]
-use super::error::has_mysql_cli_error;
-use super::error::{classify_mysql_query_failure, validate_mode_probe};
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 #[cfg(not(unix))]
 use super::pipe::{MysqlExportPipeSource, read_all};
 use super::policy::mysql_metadata_fallback_kind;
@@ -26,10 +24,10 @@ use super::policy::mysql_metadata_fallback_kind;
 use super::process::write_mysql_input;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    mysql_metadata_columns, read_one_mysql_resultset, write_mysql_statement,
+    mysql_metadata_columns, read_one_mysql_resultset, stop_mysql_process, write_mysql_statement,
 };
 #[cfg(unix)]
-use super::pty::{MysqlExportPtySource, read_pty_all};
+use super::pty::{MysqlExportPtySource, read_pty_until_idle};
 use super::xml::{MysqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
@@ -101,7 +99,7 @@ pub(super) async fn run_mysql_export_process(
     #[cfg(unix)]
     let tail = {
         write_mysql_input(process, b"\x04").await?;
-        read_pty_all(&mut process.pty)
+        read_pty_until_idle(&mut process.pty)
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     };
@@ -114,16 +112,12 @@ pub(super) async fn run_mysql_export_process(
     #[cfg(not(unix))]
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
 
-    let status = process
-        .child
-        .wait()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
     #[cfg(unix)]
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
-    if !status.success() {
+    if !status.success() && !forcibly_stopped {
         return Err(classify_mysql_query_failure(error_bytes));
     }
 
@@ -139,7 +133,9 @@ async fn stream_mysql_resultset_to_csv(
         let source = MysqlExportPtySource {
             pty: &mut process.pty,
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             pending: Vec::new(),
+            frame_scanner: super::xml::MysqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
@@ -150,7 +146,7 @@ async fn stream_mysql_resultset_to_csv(
         let source = buffered.into_inner();
         source.pty.pending.extend(unread);
         source.pty.pending.extend(source.pending);
-        if !source.error_output.is_empty() {
+        if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
         result

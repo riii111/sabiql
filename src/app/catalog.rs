@@ -362,6 +362,9 @@ fn reference_sections(
     if feature_policy.is_visible(sqlite_diagnostics(keymap_preset).feature_requirement()) {
         open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
+    if feature_policy.is_visible(global::DATABASE_PICKER.feature_requirement()) {
+        open_switch_rows.insert(3, &global::DATABASE_PICKER);
+    }
 
     let mut data_action_rows = rows_from_binding_refs(&[
         &global::RELOAD,
@@ -1069,6 +1072,11 @@ mod tests {
         assert!(
             !descriptions
                 .iter()
+                .any(|description| description.contains("MySQL Database Picker"))
+        );
+        assert!(
+            !descriptions
+                .iter()
                 .any(|description| description.contains("JSONB"))
         );
     }
@@ -1109,6 +1117,32 @@ mod tests {
                     .iter()
                     .all(|description| !description.contains("JSONB"))
             );
+        }
+    }
+
+    #[test]
+    fn database_picker_help_row_follows_mysql_feature_policy() {
+        for (database_type, expected_visible) in [
+            (DatabaseType::PostgreSQL, false),
+            (DatabaseType::SQLite, false),
+            (DatabaseType::MySQL, true),
+        ] {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                "database",
+            );
+            let origin = HelpOrigin::from_state(&state);
+            state.ui.help_mut().open(origin);
+
+            let document = HelpDocument::from_state(&state);
+            let visible = row_descriptions(&document)
+                .iter()
+                .any(|description| description.contains("MySQL Database Picker"));
+
+            assert_eq!(visible, expected_visible);
         }
     }
 
