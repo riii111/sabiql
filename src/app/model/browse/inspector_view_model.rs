@@ -34,6 +34,7 @@ pub enum InspectorSection {
     Indexes {
         rows: Vec<InspectorIndexRow>,
         show_type: bool,
+        show_partial: bool,
         show_details: bool,
     },
     ForeignKeys {
@@ -236,6 +237,10 @@ impl InspectorViewModel {
                     .indexes
                     .iter()
                     .any(|index| index.index_type != IndexType::Unknown);
+                let show_partial = matches!(
+                    database_type,
+                    DatabaseType::PostgreSQL | DatabaseType::SQLite
+                );
                 let show_details = table.indexes.iter().any(Index::has_index_detail);
                 let rows = table
                     .indexes
@@ -253,6 +258,7 @@ impl InspectorViewModel {
                     InspectorSection::Indexes {
                         rows,
                         show_type,
+                        show_partial,
                         show_details,
                     },
                     table
@@ -619,6 +625,52 @@ mod tests {
             &InspectorLoadState::Error("permission denied".to_string())
         );
         assert_eq!(model.section(), None);
+    }
+
+    #[test]
+    fn mysql_info_omits_schema_and_indexes_hide_partial_column() {
+        let mut table = table();
+        table.indexes = vec![Index {
+            name: "users_email_lower".to_string(),
+            columns: vec!["lower(email)".to_string()],
+            attributes: IndexAttributes::EXPRESSION,
+            index_type: IndexType::BTree,
+            definition: Some(
+                "CREATE INDEX users_email_lower ON users ((lower(email)))".to_string(),
+            ),
+        }];
+
+        let info = InspectorViewModel::build(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            Some(&table),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+        let indexes = InspectorViewModel::build(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Indexes,
+            Some(&table),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match info.section() {
+            Some(InspectorSection::Info { rows }) => assert!(!rows.iter().any(|row| {
+                matches!(
+                    row,
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::Schema,
+                        ..
+                    }
+                )
+            })),
+            section => panic!("expected info section, got {section:?}"),
+        }
+        match indexes.section() {
+            Some(InspectorSection::Indexes { show_partial, .. }) => assert!(!show_partial),
+            section => panic!("expected index section, got {section:?}"),
+        }
     }
 
     #[test]
