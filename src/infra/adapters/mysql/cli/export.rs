@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::process::ExitStatus;
 use std::time::Duration;
 
 use quick_xml::Reader;
@@ -124,11 +125,23 @@ pub(super) async fn run_mysql_export_process(
     let error_bytes = tail.as_slice();
     #[cfg(not(unix))]
     let error_bytes = stderr.as_slice();
+    validate_mysql_export_exit(status, forcibly_stopped, error_bytes)?;
+
+    csv_writer.finish().await
+}
+
+fn validate_mysql_export_exit(
+    status: ExitStatus,
+    forcibly_stopped: bool,
+    error_bytes: &[u8],
+) -> Result<(), DbOperationError> {
+    if has_mysql_cli_error(error_bytes) {
+        return Err(classify_mysql_query_failure(error_bytes));
+    }
     if !status.success() && !forcibly_stopped {
         return Err(classify_mysql_query_failure(error_bytes));
     }
-
-    csv_writer.finish().await
+    Ok(())
 }
 
 async fn stream_mysql_resultset_to_csv(
@@ -348,6 +361,9 @@ mod tests {
     use std::fs;
 
     #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+
+    #[cfg(unix)]
     use tokio::io::AsyncWriteExt;
 
     use super::*;
@@ -390,5 +406,17 @@ line2]]></field>
              line2\",a\tb,日本語,,,0x00FF\n"
                 .replace("             ", "")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_cli_error_after_forced_stop() {
+        let result = validate_mysql_export_exit(
+            std::process::ExitStatus::from_raw(9),
+            true,
+            b"ERROR 1054 (42S02): Unknown column missing_column",
+        );
+
+        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     }
 }
