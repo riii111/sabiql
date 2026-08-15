@@ -1343,6 +1343,94 @@ async fn executes_multiple_statements_and_returns_only_the_last_result() {
 
 #[tokio::test]
 #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+async fn rejects_multiple_table_update_and_delete_before_mysql_cli_execution() {
+    with_mysql_test_db(|db| Box::pin(async move {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("system clock error: {error}"))?
+            .as_nanos();
+        let target_table = format!("mysql_sab451_target_{suffix}");
+        let source_table = format!("mysql_sab451_source_{suffix}");
+        let result = async {
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TABLE {target_table} (id INT PRIMARY KEY, value INT); CREATE TABLE {source_table} (id INT PRIMARY KEY, value INT); INSERT INTO {target_table} VALUES (1, 1); INSERT INTO {source_table} VALUES (1, 2)"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to create multi-table fixtures: {error:?}"))?;
+
+            for query in [
+                format!(
+                    "UPDATE {target_table} AS target JOIN {source_table} AS source ON target.id = source.id SET target.value = source.value"
+                ),
+                format!(
+                    "DELETE target FROM {target_table} AS target JOIN {source_table} AS source ON target.id = source.id"
+                ),
+            ] {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                    .await;
+                if !matches!(
+                    result,
+                    Err(DbOperationError::UnsupportedOperation(ref details))
+                        if details.contains("multiple-table")
+                ) {
+                    return Err(format!(
+                        "multiple-table mutation was not rejected safely: {query}: {result:?}"
+                    ));
+                }
+            }
+
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT value FROM {target_table} WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to verify multi-table fixture: {error:?}"))?;
+            if result.values() != [[QueryValue::Text("1".to_string())]] {
+                return Err(format!(
+                    "multi-table mutation changed the fixture: {result:?}"
+                ));
+            }
+            Ok::<(), String>(())
+        }
+        .await;
+        let cleanup = async {
+            for table in [&target_table, &source_table] {
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("DROP TABLE IF EXISTS {table}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| {
+                        format!("failed to clean up multi-table fixture {table}: {error:?}")
+                    })?;
+            }
+            Ok::<(), String>(())
+        };
+        match result {
+            Err(error) => {
+                cleanup.await?;
+                Err(error)
+            }
+            Ok(()) => cleanup.await,
+        }
+    }))
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires Oracle MySQL 8.4 server and CLI"]
 async fn keeps_refresh_scope_and_discards_partial_result_after_a_later_failure() {
     with_mysql_test_db(|db| Box::pin(async move {
         let result = async {

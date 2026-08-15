@@ -243,6 +243,22 @@ mod mysql_tests {
     }
 
     #[test]
+    fn rejects_multiple_table_update_and_delete_before_execution() {
+        for sql in [
+            "UPDATE items, prices SET items.price = prices.price WHERE items.id = prices.id",
+            "UPDATE items JOIN prices ON items.id = prices.id SET items.price = prices.price",
+            "DELETE items, prices FROM items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items, prices USING items JOIN prices ON items.id = prices.id",
+            "DELETE items FROM items JOIN prices ON items.id = prices.id",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { ref reason } if reason.contains("multiple-table")),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
     fn ddl_rejects_a_different_database() {
         assert!(matches!(
             evaluate_multi_statement_for_database_with_context(

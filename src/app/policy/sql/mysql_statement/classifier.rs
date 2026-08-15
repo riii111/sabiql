@@ -1,4 +1,8 @@
-use super::{MysqlLexError, MysqlStatementKind, lexer::Token, target, transaction};
+use super::{
+    MysqlLexError, MysqlStatementKind,
+    lexer::{Token, TokenKind},
+    target, transaction,
+};
 
 type MysqlClassification = (MysqlStatementKind, Option<String>, Option<String>);
 
@@ -54,9 +58,16 @@ fn classify_mysql_crud_statement(
             Ok((kind, target, database))
         }
         "UPDATE" => {
-            let has_where = target::top_level_word(&tokens[start..], "WHERE");
             let target_index =
                 target::skip_mysql_modifiers(tokens, start + 1, &["LOW_PRIORITY", "IGNORE"]);
+            let set_index = target::find_word(tokens, "SET", target_index)
+                .ok_or_else(|| MysqlLexError("MySQL UPDATE target is ambiguous".to_string()))?;
+            if has_multi_table_reference(tokens, target_index, set_index) {
+                return Err(MysqlLexError(
+                    "MySQL multiple-table UPDATE statements are not supported".to_string(),
+                ));
+            }
+            let has_where = target::top_level_word(&tokens[start..], "WHERE");
             let (target, database) = target::target_after(tokens, target_index)?;
             Ok((MysqlStatementKind::Update { has_where }, target, database))
         }
@@ -67,16 +78,51 @@ fn classify_mysql_crud_statement(
                 start + 1,
                 &["LOW_PRIORITY", "QUICK", "IGNORE"],
             );
-            let target_index = if target::word(tokens, index) == Some("FROM") {
-                index + 1
-            } else {
-                index
-            };
+            if target::word(tokens, index) != Some("FROM") {
+                return Err(MysqlLexError(
+                    "MySQL multiple-table DELETE statements are not supported".to_string(),
+                ));
+            }
+            let target_index = index + 1;
+            let where_index =
+                target::find_word(tokens, "WHERE", target_index).unwrap_or(tokens.len());
+            if has_multi_table_reference(tokens, target_index, where_index)
+                || has_top_level_word(tokens, "USING", target_index, where_index)
+            {
+                return Err(MysqlLexError(
+                    "MySQL multiple-table DELETE statements are not supported".to_string(),
+                ));
+            }
             let (target, database) = target::target_after(tokens, target_index)?;
             Ok((MysqlStatementKind::Delete { has_where }, target, database))
         }
         _ => unreachable!("not a MySQL CRUD statement: {first}"),
     }
+}
+
+fn has_multi_table_reference(tokens: &[Token], start: usize, end: usize) -> bool {
+    tokens
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .any(|token| {
+            token.depth == 0
+                && match &token.kind {
+                    TokenKind::Symbol(',') => true,
+                    TokenKind::Word(word) => matches!(word.as_str(), "JOIN" | "STRAIGHT_JOIN"),
+                    _ => false,
+                }
+        })
+}
+
+fn has_top_level_word(tokens: &[Token], expected: &str, start: usize, end: usize) -> bool {
+    tokens
+        .iter()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .any(|token| {
+            token.depth == 0 && matches!(&token.kind, TokenKind::Word(word) if word == expected)
+        })
 }
 
 fn classify_mysql_ddl_statement(

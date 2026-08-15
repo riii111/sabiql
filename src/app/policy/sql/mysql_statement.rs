@@ -271,6 +271,32 @@ mod tests {
     }
 
     #[test]
+    fn rejects_multiple_table_update_and_delete_statements() {
+        for sql in [
+            "UPDATE items, prices SET items.price = prices.price WHERE items.id = prices.id",
+            "UPDATE items JOIN prices ON items.id = prices.id SET items.price = prices.price",
+            "DELETE items, prices FROM items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items, prices USING items JOIN prices ON items.id = prices.id",
+            "DELETE items FROM items JOIN prices ON items.id = prices.id",
+        ] {
+            let error = classify_mysql_statement(sql).unwrap_err();
+            assert!(error.0.contains("multiple-table"), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn allows_single_table_mutations_with_nested_table_references() {
+        for sql in [
+            "UPDATE items SET value = (SELECT MAX(value) FROM prices JOIN currencies ON prices.currency_id = currencies.id) WHERE id = 1",
+            "DELETE FROM items WHERE id IN (SELECT item_id FROM prices JOIN currencies ON prices.currency_id = currencies.id)",
+            "UPDATE items PARTITION (p0, p1) SET value = 1 WHERE id = 1",
+            "DELETE FROM items PARTITION (p0, p1) WHERE id = 1",
+        ] {
+            assert!(classify_mysql_statement(sql).is_ok(), "{sql}");
+        }
+    }
+
+    #[test]
     fn rejects_executable_inline_control_statement() {
         assert!(
             classify_mysql_statement("SELECT 1 /*!80000 SET sql_mode='ANSI_QUOTES' */").is_err()
