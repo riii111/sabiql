@@ -1,13 +1,10 @@
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::ExitStatus;
 use std::time::Duration;
 
 use quick_xml::Reader;
 use quick_xml::escape::unescape;
 use quick_xml::events::Event;
-#[cfg(not(unix))]
-use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncRead, BufReader};
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -19,16 +16,14 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 #[cfg(not(unix))]
-use super::pipe::{MysqlExportPipeSource, read_all};
+use super::pipe::MysqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
-#[cfg(unix)]
-use super::process::write_mysql_input;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    mysql_metadata_columns, read_one_mysql_resultset, stop_mysql_process, write_mysql_statement,
+    finish_mysql_session, mysql_metadata_columns, read_one_mysql_resultset, write_mysql_statement,
 };
 #[cfg(unix)]
-use super::pty::{MysqlExportPtySource, read_pty_until_idle};
+use super::pty::MysqlExportPtySource;
 use super::xml::{MysqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
@@ -97,41 +92,14 @@ pub(super) async fn run_mysql_export_process(
         csv_writer.write_record(columns.iter()).await?;
     }
 
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .shutdown()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-
-    #[cfg(unix)]
-    let tail = {
-        write_mysql_input(process, b"\x04").await?;
-        read_pty_until_idle(&mut process.pty)
-            .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
-    };
-
-    #[cfg(not(unix))]
-    let (stdout, stderr) =
-        tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
-    #[cfg(not(unix))]
-    let _stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    #[cfg(not(unix))]
-    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-
-    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
-    #[cfg(unix)]
-    let error_bytes = tail.as_slice();
-    #[cfg(not(unix))]
-    let error_bytes = stderr.as_slice();
-    validate_mysql_export_exit(status, forcibly_stopped, error_bytes)?;
+    let result = finish_mysql_session(process).await?;
+    validate_mysql_export_exit(result.status, result.forcibly_stopped, &result.error_bytes)?;
 
     csv_writer.finish().await
 }
 
 fn validate_mysql_export_exit(
-    status: ExitStatus,
+    status: std::process::ExitStatus,
     forcibly_stopped: bool,
     error_bytes: &[u8],
 ) -> Result<(), DbOperationError> {
@@ -363,7 +331,6 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
 
-    #[cfg(unix)]
     use tokio::io::AsyncWriteExt;
 
     use super::*;
