@@ -581,6 +581,7 @@ impl CompletionEngine {
 
         let mut seen = HashSet::new();
         candidates.retain(|c| seen.insert(c.text.to_uppercase()));
+        quote_mysql_identifiers(&mut candidates, scope.database_type);
 
         candidates
     }
@@ -1215,6 +1216,21 @@ impl CompletionEngine {
     }
 }
 
+fn quote_mysql_identifiers(candidates: &mut [CompletionCandidate], database_type: DatabaseType) {
+    if database_type != DatabaseType::MySQL {
+        return;
+    }
+
+    for candidate in candidates {
+        if matches!(
+            candidate.kind,
+            CompletionKind::Database | CompletionKind::Table | CompletionKind::Column
+        ) {
+            candidate.text = format!("`{}`", candidate.text.replace('`', "``"));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::domain::Column;
@@ -1626,13 +1642,13 @@ mod tests {
             );
 
             assert!(candidates.iter().any(|candidate| {
-                candidate.text == "app" && candidate.kind == CompletionKind::Database
+                candidate.text == "`app`" && candidate.kind == CompletionKind::Database
             }));
             assert!(candidates.iter().any(|candidate| {
-                candidate.text == "analytics" && candidate.kind == CompletionKind::Database
+                candidate.text == "`analytics`" && candidate.kind == CompletionKind::Database
             }));
             assert!(candidates.iter().any(|candidate| {
-                candidate.text == "users" && candidate.kind == CompletionKind::Table
+                candidate.text == "`users`" && candidate.kind == CompletionKind::Table
             }));
             assert!(
                 !candidates
@@ -1749,7 +1765,7 @@ mod tests {
             );
 
             assert!(candidates.iter().any(|candidate| {
-                candidate.text == "name" && candidate.kind == CompletionKind::Column
+                candidate.text == "`name`" && candidate.kind == CompletionKind::Column
             }));
         }
 
@@ -1781,12 +1797,12 @@ mod tests {
             );
 
             assert!(candidates.iter().any(|candidate| {
-                candidate.text == "name" && candidate.kind == CompletionKind::Column
+                candidate.text == "`name`" && candidate.kind == CompletionKind::Column
             }));
             assert!(
                 !candidates
                     .iter()
-                    .any(|candidate| candidate.text == "secret")
+                    .any(|candidate| candidate.text == "`secret`")
             );
         }
 
@@ -1808,7 +1824,11 @@ mod tests {
                 },
             );
 
-            assert!(candidates.iter().any(|candidate| candidate.text == "users"));
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "`users`")
+            );
         }
 
         #[test]
@@ -1833,11 +1853,47 @@ mod tests {
                 },
             );
 
-            assert!(candidates.iter().any(|candidate| candidate.text == "users"));
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "`users`")
+            );
             assert!(
                 !candidates
                     .iter()
-                    .any(|candidate| candidate.text == "events")
+                    .any(|candidate| candidate.text == "`events`")
+            );
+        }
+
+        #[test]
+        fn mysql_identifier_prefix_filters_before_quoting_and_escapes_backticks() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![
+                TableSummary::new("app".to_string(), "order`items".to_string(), None, false),
+                TableSummary::new("app".to_string(), "users".to_string(), None, false),
+            ];
+
+            let candidates = e.get_candidates_for_database(
+                "SELECT * FROM order",
+                19,
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                    available_databases: &[],
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`order``items`" && candidate.kind == CompletionKind::Table
+            }));
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "`users`")
             );
         }
     }
