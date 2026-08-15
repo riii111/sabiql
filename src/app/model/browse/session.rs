@@ -338,6 +338,16 @@ impl BrowseSession {
         self.pending_connection_probe.as_ref()
     }
 
+    pub fn has_pending_connection_switch(&self) -> bool {
+        let Some(pending) = self.pending_connection_probe.as_ref() else {
+            return false;
+        };
+
+        self.active_connection_id()
+            .is_some_and(|id| id != &pending.id)
+            || self.dsn().is_some_and(|dsn| dsn != pending.dsn)
+    }
+
     pub fn clear_connection_probe(&mut self) {
         self.connection_probe_run.clear_active();
         self.pending_connection_probe = None;
