@@ -776,7 +776,7 @@ fn index_row_cells(
         cells.push(row.index_type.clone().unwrap_or_default());
     }
     cells.push(checkmark(row.unique));
-    if show_partial {
+    if show_partial && show_details {
         cells.push(checkmark(row.partial));
     }
     if show_details {
@@ -833,4 +833,24 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
             (max_width + PADDING).clamp(MIN_COL_WIDTH, MAX_COL_WIDTH)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn index_row_cells_match_partial_header_visibility() {
+        let row = InspectorIndexRow {
+            name: "idx_users_email".to_string(),
+            columns: "email".to_string(),
+            index_type: None,
+            unique: false,
+            partial: true,
+            detail: None,
+        };
+
+        assert_eq!(index_row_cells(&row, false, true, false).len(), 3);
+        assert_eq!(index_row_cells(&row, false, true, true).len(), 5);
+    }
 }
