@@ -1,3 +1,6 @@
+use std::ffi::OsStr;
+use std::time::Duration;
+
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     Column, ColumnAttributes, FkAction, ForeignKey, QueryValue, TableKind, TableKindInfo,
@@ -5,7 +8,10 @@ use crate::domain::{
 };
 
 use super::super::{
-    cli::{MysqlResultSet, run_mysql_adhoc, validate_mysql_multi_query},
+    cli::{
+        MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet, run_mysql_adhoc,
+        validate_mysql_multi_query,
+    },
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::quote_string,
@@ -64,17 +70,6 @@ pub(super) async fn fetch_metadata_snapshot(
     metadata_snapshot_from_result(&database, None, &result)
 }
 
-pub(super) async fn fetch_table_metadata(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<MysqlMetadataSnapshot, DbOperationError> {
-    let database = selected_database(dsn)?;
-    validate_selected_schema_name(&database, schema)?;
-    let result = execute_metadata_query(dsn, &table_query(schema, table)).await?;
-    metadata_snapshot_from_result(&database, Some(schema), &result)
-}
-
 pub(super) async fn fetch_columns(
     dsn: &str,
     schema: &str,
@@ -82,20 +77,7 @@ pub(super) async fn fetch_columns(
 ) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
     validate_selected_schema(dsn, schema)?;
     let result = execute_metadata_query(dsn, &columns_query(schema, table)).await?;
-    let columns = parse_columns_for_table(&result, schema, table)?;
-    Ok(columns)
-}
-
-pub(super) async fn fetch_foreign_keys(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-    summaries: &[TableSummary],
-) -> Result<Vec<ForeignKey>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let result = execute_metadata_query(dsn, &foreign_keys_query(schema, table)).await?;
-    let raw = parse_foreign_key_metadata(&result)?;
-    foreign_keys_from_metadata(raw, summaries)
+    parse_columns_for_table(&result, schema, table)
 }
 
 pub(super) fn find_table(
@@ -114,10 +96,7 @@ pub(super) fn find_table(
 
 pub(super) fn table_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND (t.TABLE_NAME = {} OR EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {} AND tc.TABLE_SCHEMA = {} AND tc.TABLE_NAME = {} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' AND kcu.REFERENCED_TABLE_SCHEMA = t.TABLE_SCHEMA AND kcu.REFERENCED_TABLE_NAME = t.TABLE_NAME)) UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {}) ORDER BY TABLE_SCHEMA, TABLE_NAME",
-        quote_string(schema),
-        quote_string(table),
-        quote_string(schema),
+        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {}) ORDER BY TABLE_SCHEMA, TABLE_NAME",
         quote_string(schema),
         quote_string(table),
         quote_string(schema),
@@ -166,7 +145,57 @@ pub(super) async fn execute_metadata_query(
     })
 }
 
-fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
+pub(super) async fn execute_metadata_queries_in_session(
+    dsn: &str,
+    queries: &[&str],
+) -> Result<Vec<MysqlResultSet>, DbOperationError> {
+    execute_metadata_queries_in_session_with_program(
+        dsn,
+        queries,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn execute_metadata_queries_in_session_with_program(
+    dsn: &str,
+    queries: &[&str],
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Vec<MysqlResultSet>, DbOperationError> {
+    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let result = tokio::time::timeout(timeout, async {
+        session.probe().await?;
+        session.prepare_read_only().await?;
+        let mut results = Vec::with_capacity(queries.len());
+        for query in queries {
+            results.push(session.execute(query).await?);
+        }
+        session.finish().await?;
+        Ok(results)
+    })
+    .await;
+    let result = match result {
+        Ok(Ok(results)) => Ok(results),
+        Ok(Err(error)) => {
+            session.cleanup().await;
+            Err(error)
+        }
+        Err(_) => {
+            session.cleanup().await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    };
+    drop(option_file);
+    result
+}
+
+pub(super) fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
     parse_and_validate_mysql_dsn(dsn)?.database.ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
@@ -385,7 +414,7 @@ pub(super) fn parse_foreign_key_metadata(
 
 pub(super) fn foreign_keys_from_metadata(
     mut raw: Vec<MysqlForeignKeyMetadata>,
-    summaries: &[TableSummary],
+    database: &str,
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     raw.sort_by(|left, right| {
         left.name
@@ -394,9 +423,7 @@ pub(super) fn foreign_keys_from_metadata(
     });
     let mut foreign_keys = Vec::new();
     for column in raw {
-        let reference_resolved = summaries
-            .iter()
-            .any(|summary| summary.schema == column.to_schema && summary.name == column.to_table);
+        let reference_resolved = column.to_schema.eq_ignore_ascii_case(database);
         if let Some(foreign_key) = foreign_keys
             .iter_mut()
             .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
@@ -718,6 +745,7 @@ mod tests {
             assert!(query.contains(&quote_string(schema)));
             assert!(query.contains(&quote_string(table)));
         }
+        assert!(!table_query(schema, table).contains("KEY_COLUMN_USAGE"));
     }
 
     #[test]
@@ -789,14 +817,8 @@ mod tests {
             ],
         );
 
-        let summaries = [TableSummary::new(
-            "sabiql_test".to_string(),
-            "parent".to_string(),
-            None,
-            false,
-        )];
         let foreign_keys =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &summaries)
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "sabiql_test")
                 .unwrap();
 
         assert_eq!(foreign_keys.len(), 1);
@@ -807,9 +829,11 @@ mod tests {
         assert_eq!(foreign_keys[0].to_columns, ["first_key", "second_key"]);
         assert_eq!(foreign_keys[0].on_update, FkAction::Cascade);
         assert_eq!(foreign_keys[0].on_delete, FkAction::SetNull);
+        assert!(foreign_keys[0].is_reference_resolved());
 
         let unresolved =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), &[]).unwrap();
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "other")
+                .unwrap();
         assert!(!unresolved[0].is_reference_resolved());
     }
 }
