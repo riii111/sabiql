@@ -47,7 +47,7 @@ use super::xml::{
 };
 
 #[cfg(all(unix, feature = "test-support"))]
-use super::super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
+use super::super::dsn::parse_and_validate_mysql_dsn;
 #[cfg(all(unix, feature = "test-support"))]
 use super::super::option_file::MySqlOptionFile;
 
@@ -228,6 +228,12 @@ impl MysqlMetadataSession {
             format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
         let result = self.execute(&query).await?;
         validate_mode_probe(&result, &marker)
+    }
+
+    pub(in crate::adapters::mysql) async fn prepare_read_only(
+        &mut self,
+    ) -> Result<(), DbOperationError> {
+        configure_mysql_session(&mut self.process, AccessMode::ReadOnly).await
     }
 
     pub(in crate::adapters::mysql) async fn execute(
@@ -869,9 +875,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     dsn: &str,
     script: &str,
 ) -> Result<Vec<u8>, DbOperationError> {
-    let target = parse_mysql_dsn(dsn)?;
-    validate_mysql_values(&target)?;
-    validate_mysql_tls_files(&target)?;
+    let target = parse_and_validate_mysql_dsn(dsn)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = async {
@@ -1219,6 +1223,10 @@ done
                 .expect("spawn fake mysql");
 
         session.probe().await.expect("mode probe");
+        session
+            .prepare_read_only()
+            .await
+            .expect("read-only session setup");
         for query in [
             "SELECT TABLES",
             "SELECT COLUMNS",
@@ -1240,6 +1248,8 @@ done
         );
         let positions = [
             "__sabiql_probe",
+            MYSQL_READ_ONLY_STATEMENT,
+            MYSQL_SESSION_MARKER_COLUMN,
             "SELECT TABLES",
             "SELECT COLUMNS",
             "SELECT INDEXES",
@@ -1274,7 +1284,7 @@ done
     }
 
     #[tokio::test]
-    async fn generated_preview_and_metadata_queries_skip_read_only_session_setup() {
+    async fn generated_preview_and_metadata_queries_configure_read_only_session() {
         for query in [
             "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
             "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
@@ -1291,14 +1301,18 @@ done
                 &option_file,
                 query,
                 &statements,
-                AccessMode::ReadWrite,
+                AccessMode::ReadOnly,
                 Duration::from_secs(5),
             )
             .await
             .unwrap();
 
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT), "{query}: {log}");
+            let session_index = log
+                .find(MYSQL_READ_ONLY_STATEMENT)
+                .expect("read-only session statement");
+            let query_index = log.find(query).expect("generated query");
+            assert!(session_index < query_index, "{query}: {log}");
         }
     }
 

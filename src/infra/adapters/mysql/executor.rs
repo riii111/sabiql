@@ -11,7 +11,7 @@ use super::cli::{
     export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
     validate_mysql_export_query, validate_mysql_multi_query,
 };
-use super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
+use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
 use super::option_file::MySqlOptionFile;
 
@@ -22,9 +22,7 @@ pub(super) mod test_support {
     use crate::adapters::csv_export::export_to_path;
     use crate::app::ports::outbound::DbOperationError;
 
-    use super::{
-        export_mysql_csv_to_file, parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values,
-    };
+    use super::{export_mysql_csv_to_file, parse_and_validate_mysql_dsn};
 
     #[cfg(unix)]
     #[doc(hidden)]
@@ -43,9 +41,7 @@ pub(super) mod test_support {
         query: &str,
         path: PathBuf,
     ) -> Result<PathBuf, DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         let query = query.to_string();
         export_to_path(path, move |temporary_path| async move {
             export_mysql_csv_to_file(target, &query, temporary_path).await
@@ -88,19 +84,12 @@ impl QueryExecutor for MySqlAdapter {
             limit,
             offset,
         );
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         let statements =
-            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadWrite)?;
+            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadOnly)?;
         let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(
-            &option_file.path,
-            &query,
-            &statements,
-            AccessMode::ReadWrite,
-        )
-        .await;
+        let result =
+            run_mysql_adhoc(&option_file.path, &query, &statements, AccessMode::ReadOnly).await;
         drop(option_file);
         let result_set = result?.result_set.ok_or_else(|| {
             DbOperationError::MetadataParseFailed(
@@ -144,9 +133,7 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
 
         if mysql_tree_explain_query_kind(query).is_some() {
             #[expect(
@@ -208,9 +195,7 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         let statements =
             validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
 
@@ -244,9 +229,7 @@ impl QueryExecutor for MySqlAdapter {
     }
 
     async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         validate_mysql_export_query(query, target.database.as_deref())?;
 
         let result = self.execute_adhoc(dsn, query, AccessMode::ReadOnly).await?;
@@ -271,9 +254,7 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         file_name: &str,
     ) -> Result<std::path::PathBuf, DbOperationError> {
-        let target = parse_mysql_dsn(dsn)?;
-        validate_mysql_values(&target)?;
-        validate_mysql_tls_files(&target)?;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         validate_mysql_export_query(query, target.database.as_deref())?;
 
         let query = query.to_string();

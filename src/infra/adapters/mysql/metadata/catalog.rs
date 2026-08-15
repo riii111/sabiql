@@ -6,7 +6,7 @@ use crate::domain::{
 
 use super::super::{
     cli::{MysqlResultSet, run_mysql_adhoc, validate_mysql_multi_query},
-    dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values},
+    dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::quote_string,
 };
@@ -153,14 +153,11 @@ pub(super) async fn execute_metadata_query(
     dsn: &str,
     query: &str,
 ) -> Result<MysqlResultSet, DbOperationError> {
-    let target = parse_mysql_dsn(dsn)?;
-    validate_mysql_values(&target)?;
-    validate_mysql_tls_files(&target)?;
+    let target = parse_and_validate_mysql_dsn(dsn)?;
     let statements =
-        validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
+        validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadOnly)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let result =
-        run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadWrite).await;
+    let result = run_mysql_adhoc(&option_file.path, query, &statements, AccessMode::ReadOnly).await;
     drop(option_file);
     result?.result_set.ok_or_else(|| {
         DbOperationError::MetadataParseFailed(
@@ -170,7 +167,7 @@ pub(super) async fn execute_metadata_query(
 }
 
 fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
-    parse_mysql_dsn(dsn)?.database.ok_or_else(|| {
+    parse_and_validate_mysql_dsn(dsn)?.database.ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
         )
