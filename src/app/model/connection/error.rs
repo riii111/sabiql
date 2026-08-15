@@ -65,22 +65,6 @@ impl ConnectionErrorKind {
             return Self::AuthFailed;
         }
 
-        if is_mysql_client_certificate_error(&stderr_lower) {
-            return Self::MySqlClientCertificateRejected;
-        }
-
-        if is_mysql_hostname_verification_error(&stderr_lower) {
-            return Self::MySqlHostnameVerificationFailed;
-        }
-
-        if is_mysql_ca_verification_error(&stderr_lower) {
-            return Self::MySqlCaVerificationFailed;
-        }
-
-        if is_mysql_tls_handshake_error(&stderr_lower) {
-            return Self::MySqlTlsHandshakeFailed;
-        }
-
         if stderr_lower.contains("does not exist")
             && (stderr_lower.contains("database") || stderr_lower.contains("fatal:"))
         {
@@ -199,38 +183,6 @@ fn is_mysql_connect_timeout_message(value: &str) -> bool {
             .any(|errno| value.contains(errno))
 }
 
-fn is_mysql_client_certificate_error(value: &str) -> bool {
-    (value.contains("certificate")
-        && (value.contains("certificate required")
-            || value.contains("client certificate")
-            || value.contains("peer did not return a certificate")
-            || value.contains("bad certificate")))
-        || value.contains("tlsv1 alert certificate required")
-}
-
-fn is_mysql_hostname_verification_error(value: &str) -> bool {
-    value.contains("hostname mismatch")
-        || value.contains("host name mismatch")
-        || value.contains("hostname does not match")
-        || value.contains("host name does not match")
-        || value.contains("hostname verification failed")
-        || value.contains("host name verification failed")
-        || value.contains("certificate name mismatch")
-        || value.contains("certificate does not match")
-        || value.contains("does not match certificate")
-        || value.contains("not valid for the requested host")
-        || value.contains("not valid for hostname")
-        || value.contains("subject alternative name")
-        || (value.contains("verify identity") && value.contains("certificate"))
-}
-
-fn is_mysql_ca_verification_error(value: &str) -> bool {
-    value.contains("unable to get local issuer")
-        || value.contains("self-signed certificate")
-        || value.contains("unknown ca")
-        || value.contains("certificate signature failure")
-}
-
 fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
     let url = Url::parse(dsn).ok()?;
     if url.scheme() != "mysql" {
@@ -249,15 +201,6 @@ fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
             _ => return None,
         })
     })
-}
-
-fn is_mysql_tls_handshake_error(value: &str) -> bool {
-    value.contains("tls/ssl error")
-        || value.contains("ssl handshake")
-        || value.contains("tls handshake")
-        || value.contains("handshake failure")
-        || value.contains("ssl connection error")
-        || value.contains("tlsv1 alert")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -505,46 +448,6 @@ mod tests {
                 ConnectionErrorKind::Timeout
             );
         }
-
-        #[test]
-        fn stderr_as_mysql_tls_error() {
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): TLS/SSL error: certificate verify failed: hostname mismatch"
-                ),
-                ConnectionErrorKind::MySqlHostnameVerificationFailed
-            );
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
-                ),
-                ConnectionErrorKind::MySqlTlsHandshakeFailed
-            );
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): TLS/SSL error: Certificate validation failure: host name does not match certificate"
-                ),
-                ConnectionErrorKind::MySqlHostnameVerificationFailed
-            );
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): TLS/SSL error: unable to get local issuer certificate"
-                ),
-                ConnectionErrorKind::MySqlCaVerificationFailed
-            );
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): TLS/SSL error: peer did not return a certificate"
-                ),
-                ConnectionErrorKind::MySqlClientCertificateRejected
-            );
-            assert_eq!(
-                ConnectionErrorKind::classify(
-                    "ERROR 2026 (HY000): TLS/SSL error: handshake failure"
-                ),
-                ConnectionErrorKind::MySqlTlsHandshakeFailed
-            );
-        }
     }
 
     mod error_kind {
@@ -763,7 +666,7 @@ mod tests {
         fn unknown_connection_error_fails_closed_without_leaking_details() {
             let info =
                 ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
-                    "password=secret unexpected provider failure".to_string(),
+                    "hostname mismatch password=secret unexpected provider failure".to_string(),
                 ));
 
             assert_eq!(info.kind, ConnectionErrorKind::Unknown);
