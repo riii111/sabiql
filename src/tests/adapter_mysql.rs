@@ -147,13 +147,13 @@ mod connection {
 
 mod metadata_fetch {
 
-    const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
-    const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
-
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::{DdlGenerator, MetadataProvider};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
+
+    const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
+    const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -402,13 +402,13 @@ mod metadata_fetch {
 
 mod query_preview {
 
-    const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
-    const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
-
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
     use sabiql_domain::QueryValue;
+
+    const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
+    const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
 
     fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
         if value.is_empty() || !value.len().is_multiple_of(2) {
@@ -587,14 +587,14 @@ mod query_preview {
 
 mod write_operations {
 
+    use crate::tests::harness::mysql::with_mysql_test_db;
+    use sabiql_app::ports::outbound::{AccessMode, MetadataProvider, QueryExecutor, SqlDialect};
+    use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
+
     const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
     const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
     const MYSQL_GIPK_TABLE: &str = "mysql_edit_gipk";
     const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
-
-    use crate::tests::harness::mysql::with_mysql_test_db;
-    use sabiql_app::ports::outbound::{AccessMode, MetadataProvider, QueryExecutor, SqlDialect};
-    use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
