@@ -1073,7 +1073,7 @@ pub fn evaluate_sql_risk_for_database(
             // Empty / comment-only input has nothing to execute; gating it
             // would show a confirm dialog for a no-op.
             if sql.trim().is_empty() || is_comment_only(sql) {
-                return low_immediate();
+                return Some(low_immediate());
             }
             SqlRiskDecision {
                 risk_level: RiskLevel::Low,
