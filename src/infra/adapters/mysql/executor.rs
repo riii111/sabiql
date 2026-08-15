@@ -20,9 +20,28 @@ pub(super) mod test_support {
     use std::path::PathBuf;
 
     use crate::adapters::csv_export::export_to_path;
-    use crate::app::ports::outbound::DbOperationError;
+    use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
-    use super::{export_mysql_csv_to_file, parse_and_validate_mysql_dsn};
+    use super::{
+        MySqlOptionFile, export_mysql_csv_to_file, parse_and_validate_mysql_dsn, run_mysql_adhoc,
+        validate_mysql_multi_query,
+    };
+
+    #[doc(hidden)]
+    /// Runs the normal adhoc CLI process with a read-only session without the app-side policy
+    /// gate so integration tests can verify server-side rejection of a side effect.
+    pub async fn execute_mysql_adhoc_with_read_only_session_for_test(
+        dsn: &str,
+        query: &str,
+    ) -> Result<(), DbOperationError> {
+        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let statements =
+            validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_adhoc(&option_file.path, &statements, AccessMode::ReadOnly).await;
+        drop(option_file);
+        result.map(|_| ())
+    }
 
     #[cfg(unix)]
     #[doc(hidden)]
