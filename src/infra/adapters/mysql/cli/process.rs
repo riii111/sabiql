@@ -5,7 +5,7 @@ use std::time::Duration;
 
 #[cfg(unix)]
 use tokio::fs::File as TokioFile;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 #[cfg(not(unix))]
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
@@ -33,7 +33,7 @@ use super::policy::{
     mysql_row_count_marker, query_failed_after_change, query_failed_after_mysql_statement,
     validate_mysql_session_marker,
 };
-use super::probe::run_mysql_command_with_timeout;
+use super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
 #[cfg(all(unix, feature = "test-support"))]
 use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
@@ -486,6 +486,7 @@ async fn run_mysql_adhoc_process(
                 option_file,
                 &statement.sql,
                 &statement.kind,
+                access_mode,
             )
             .await
             .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
@@ -585,16 +586,8 @@ pub(super) async fn write_mysql_statement(
     process: &mut MysqlProcess,
     query: &str,
 ) -> Result<(), DbOperationError> {
-    let query = query.trim_end();
-    trace_mysql_statement(query);
-    write_mysql_input(process, query.as_bytes()).await?;
-    if query.ends_with(';') {
-        write_mysql_input(process, b"\n").await
-    } else if mysql_statement_has_trailing_line_comment(query) {
-        write_mysql_input(process, b"\n;\n").await
-    } else {
-        write_mysql_input(process, b";\n").await
-    }
+    trace_mysql_statement(query.trim_end());
+    write_mysql_input(process, &mysql_statement_input(query)).await
 }
 
 fn mysql_statement_has_trailing_line_comment(sql: &str) -> bool {
@@ -735,6 +728,7 @@ pub(super) async fn mysql_metadata_columns(
     option_file: &std::path::Path,
     query: &str,
     kind: MysqlMetadataFallbackKind,
+    access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
     let query = match kind {
         MysqlMetadataFallbackKind::Select | MysqlMetadataFallbackKind::Table => {
@@ -744,7 +738,7 @@ pub(super) async fn mysql_metadata_columns(
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
-    mysql_metadata_columns_external(option_file, &query).await
+    mysql_metadata_columns_external(option_file, &query, access_mode).await
 }
 
 async fn mysql_metadata_select_columns(
@@ -790,7 +784,27 @@ async fn mysql_metadata_select_columns(
 async fn mysql_metadata_columns_external(
     option_file: &std::path::Path,
     query: &str,
+    access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
+    mysql_metadata_columns_external_with_program(
+        OsStr::new("mysql"),
+        option_file,
+        query,
+        access_mode,
+    )
+    .await
+}
+
+async fn mysql_metadata_columns_external_with_program(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+    access_mode: AccessMode,
+) -> Result<Vec<String>, DbOperationError> {
+    if access_mode.is_read_only() {
+        return run_mysql_metadata_query_with_read_only_session(program, option_file, query).await;
+    }
+
     let mut args = mysql_metadata_args(option_file);
     args.push(format!("--execute={query}"));
     let option_file = option_file.to_path_buf();
@@ -805,6 +819,242 @@ async fn mysql_metadata_columns_external(
         return Err(classify_mysql_query_failure(&output.stderr));
     }
     parse_mysql_metadata_header(&output.stdout, query)
+}
+
+struct MysqlMetadataProcess {
+    child: Child,
+    stdin: Option<tokio::process::ChildStdin>,
+    stdout: BufReader<tokio::process::ChildStdout>,
+    stderr: BufReader<tokio::process::ChildStderr>,
+}
+
+impl MysqlMetadataProcess {
+    fn spawn(program: &OsStr, option_file: &std::path::Path) -> Result<Self, DbOperationError> {
+        let mut command = Command::new(program);
+        command
+            .args(mysql_metadata_args(option_file))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env_remove("MYSQL_PWD")
+            .env_remove("MYSQL_PASSWORD")
+            .kill_on_drop(true);
+        let mut child = command.spawn().map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                DbOperationError::CommandNotFound {
+                    command: DatabaseCli::MySql,
+                    details: error.to_string(),
+                }
+            } else {
+                DbOperationError::ConnectionFailed(error.to_string())
+            }
+        })?;
+        let stdin = child.stdin.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
+        })?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stdout was not piped".to_string())
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            DbOperationError::QueryFailed("mysql stderr was not piped".to_string())
+        })?;
+        Ok(Self {
+            child,
+            stdin: Some(stdin),
+            stdout: BufReader::new(stdout),
+            stderr: BufReader::new(stderr),
+        })
+    }
+
+    async fn write_statement(&mut self, query: &str) -> Result<(), DbOperationError> {
+        let statement = mysql_statement_input(query);
+        self.stdin
+            .as_mut()
+            .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
+            .write_all(&statement)
+            .await
+            .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))
+    }
+
+    async fn read_until_marker(&mut self, marker: &str) -> Result<Vec<u8>, DbOperationError> {
+        let mut output = Vec::new();
+        let mut stdout_closed = false;
+        let mut stderr_closed = false;
+        loop {
+            if stdout_closed && stderr_closed {
+                return Err(DbOperationError::QueryFailed(format!(
+                    "MySQL metadata session marker was not returned: {marker}"
+                )));
+            }
+
+            let mut stdout_line = Vec::new();
+            let mut stderr_line = Vec::new();
+            tokio::select! {
+                result = self.stdout.read_until(b'\n', &mut stdout_line), if !stdout_closed => {
+                    let size = result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+                    if size == 0 {
+                        stdout_closed = true;
+                    } else {
+                        output.extend_from_slice(&stdout_line);
+                        if String::from_utf8_lossy(&stdout_line).contains(marker) {
+                            return Ok(output);
+                        }
+                    }
+                }
+                result = self.stderr.read_until(b'\n', &mut stderr_line), if !stderr_closed => {
+                    let size = result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+                    if size == 0 {
+                        stderr_closed = true;
+                    } else if has_mysql_cli_error(&stderr_line) {
+                        return Err(classify_mysql_query_failure(&stderr_line));
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn run_mysql_metadata_query_with_read_only_session(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    run_mysql_metadata_query_with_read_only_session_with_timeout(
+        program,
+        option_file,
+        query,
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn run_mysql_metadata_query_with_read_only_session_with_timeout(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+    execution_timeout: Duration,
+) -> Result<Vec<String>, DbOperationError> {
+    match timeout(
+        execution_timeout,
+        run_mysql_metadata_query_with_read_only_session_process(program, option_file, query),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(DbOperationError::Timeout(
+            "mysql query exceeded the execution timeout".to_string(),
+        )),
+    }
+}
+
+async fn run_mysql_metadata_query_with_read_only_session_process(
+    program: &OsStr,
+    option_file: &std::path::Path,
+    query: &str,
+) -> Result<Vec<String>, DbOperationError> {
+    let mut process = MysqlMetadataProcess::spawn(program, option_file)?;
+    let probe_marker = Uuid::new_v4().simple().to_string();
+    let probe_query = format!(
+        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
+    );
+    process.write_statement(&probe_query).await?;
+    let probe_output = process.read_until_marker(&probe_marker).await?;
+    validate_metadata_mode_probe(&probe_output, &probe_marker)?;
+
+    let session_marker = Uuid::new_v4().simple().to_string();
+    process.write_statement(MYSQL_READ_ONLY_STATEMENT).await?;
+    process
+        .write_statement(&format!(
+            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"
+        ))
+        .await?;
+    let session_output = process.read_until_marker(&session_marker).await?;
+    validate_metadata_session_marker(&session_output, &session_marker)?;
+
+    process.write_statement(query).await?;
+    let mut stdin = process
+        .stdin
+        .take()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?;
+    stdin
+        .shutdown()
+        .await
+        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    drop(stdin);
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let (stdout_result, stderr_result, status_result) = tokio::join!(
+        process.stdout.read_to_end(&mut stdout),
+        process.stderr.read_to_end(&mut stderr),
+        process.child.wait(),
+    );
+    stdout_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    stderr_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status =
+        status_result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    if has_mysql_cli_error(&stderr) {
+        return Err(classify_mysql_query_failure(&stderr));
+    }
+    if !status.success() {
+        return Err(classify_mysql_query_failure(&stderr));
+    }
+    parse_mysql_metadata_header(&stdout, query)
+}
+
+fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
+    let fields = output
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
+        .find(|fields| {
+            fields
+                .first()
+                .is_some_and(|field| *field == marker.as_bytes())
+        })
+        .ok_or_else(|| {
+            DbOperationError::QueryFailed(
+                "MySQL metadata fallback returned an invalid mode probe".to_string(),
+            )
+        })?;
+    let sql_mode = fields.get(1).ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned an incomplete mode probe".to_string(),
+        )
+    })?;
+    let sql_mode = String::from_utf8(sql_mode.to_vec())
+        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    validate_sql_mode(&sql_mode)
+}
+
+fn validate_metadata_session_marker(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
+    let valid = output
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
+        .any(|fields| {
+            fields
+                .first()
+                .is_some_and(|field| *field == marker.as_bytes())
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned an invalid read-only session marker".to_string(),
+        ))
+    }
+}
+
+fn mysql_statement_input(query: &str) -> Vec<u8> {
+    let query = query.trim_end();
+    let terminator = if query.ends_with(';') {
+        "\n"
+    } else if mysql_statement_has_trailing_line_comment(query) {
+        "\n;\n"
+    } else {
+        ";\n"
+    };
+    [query.as_bytes(), terminator.as_bytes()].concat()
 }
 
 fn parse_mysql_metadata_header(
@@ -857,6 +1107,7 @@ async fn fill_mysql_empty_result_columns(
     option_file: &std::path::Path,
     query: &str,
     kind: &MysqlStatementKind,
+    access_mode: AccessMode,
 ) -> Result<MysqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
         return Ok(result);
@@ -866,7 +1117,8 @@ async fn fill_mysql_empty_result_columns(
             "MySQL empty result has no supported metadata fallback".to_string(),
         )
     })?;
-    result.columns = mysql_metadata_columns(process, option_file, query, fallback_kind).await?;
+    result.columns =
+        mysql_metadata_columns(process, option_file, query, fallback_kind, access_mode).await?;
     Ok(result)
 }
 
@@ -974,8 +1226,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
         let program = directory.path().join("mysql");
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
         let probe_response = match mode {
             "missing" => "exit 0".to_string(),
             "invalid" => {
@@ -1054,6 +1306,51 @@ done
 
     fn fake_mysql_multi_with_tail_failure() -> (TempDir, PathBuf, PathBuf) {
         fake_mysql_multi_with_mode(false, None, true)
+    }
+
+    fn fake_mysql_metadata_columns(fail_read_only: bool) -> (TempDir, PathBuf, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let option_file = directory.path().join("option.cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let program = directory.path().join("mysql");
+        let read_only_failure = if fail_read_only {
+            "printf '%s\\n' 'ERROR 1227 (42000): access denied to set transaction read only' >&2\n      exit 1"
+        } else {
+            ""
+        };
+        let script = format!(
+            r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+log="$option.log"
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
+      printf '%s\t%s\n' '__sabiql_probe' '__sabiql_sql_mode'
+      printf '%s\t%s\n' "$marker" 'STRICT_TRANS_TABLES'
+      ;;
+    *"SET SESSION TRANSACTION READ ONLY"*)
+      {read_only_failure}
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+      printf '%s\n' '__sabiql_session_marker'
+      printf '%s\n' "$marker"
+      ;;
+    *"SHOW DATABASES"*)
+      printf '%s\n' 'Database'
+      ;;
+  esac
+done
+exit 0
+"#,
+        );
+        fs::write(&program, script).unwrap();
+        let mut permissions = fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, option_file)
     }
 
     fn fake_mysql_multi_with_mode(
@@ -1314,6 +1611,53 @@ done
             let query_index = log.find(query).expect("generated query");
             assert!(session_index < query_index, "{query}: {log}");
         }
+    }
+
+    #[tokio::test]
+    async fn external_metadata_fallback_configures_read_only_session_before_query() {
+        let (_directory, program, option_file) = fake_mysql_metadata_columns(false);
+        let columns = mysql_metadata_columns_external_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SHOW DATABASES",
+            AccessMode::ReadOnly,
+        )
+        .await
+        .unwrap_or_else(|error| {
+            let log =
+                fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
+            panic!("external metadata fallback failed: {error:?}; log: {log}");
+        });
+
+        assert_eq!(columns, ["Database"]);
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        let positions = [
+            "__sabiql_probe",
+            MYSQL_READ_ONLY_STATEMENT,
+            MYSQL_SESSION_MARKER_COLUMN,
+            "SHOW DATABASES",
+        ]
+        .into_iter()
+        .map(|query| log.find(query).expect("query in transcript"))
+        .collect::<Vec<_>>();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+    }
+
+    #[tokio::test]
+    async fn external_metadata_fallback_setup_failure_never_sends_query() {
+        let (_directory, program, option_file) = fake_mysql_metadata_columns(true);
+        let result = mysql_metadata_columns_external_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SHOW DATABASES",
+            AccessMode::ReadOnly,
+        )
+        .await;
+
+        assert!(result.is_err());
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+        assert!(!log.contains("SHOW DATABASES"), "{log}");
     }
 
     #[tokio::test]
