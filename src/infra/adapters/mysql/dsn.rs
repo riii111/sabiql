@@ -287,26 +287,44 @@ mod tests {
     #[test]
     fn debug_redacts_mysql_passwords_and_preserves_connection_fields() {
         let cases = [
-            ("mysql://user:secret@localhost:3306/app", "secret"),
+            (
+                "mysql://user:secret@localhost:3306/app",
+                "secret",
+                "localhost",
+                3306,
+                Some("app"),
+            ),
             (
                 "mysql://user:p%40ss%23word@db.example:3307/analytics",
                 "p@ss#word",
+                "db.example",
+                3307,
+                Some("analytics"),
             ),
             (
                 r"mysql://user:p%20a%23ss%3B%3D%22%5Cword@db.example:3308/reporting",
                 r#"p a#ss;="\word"#,
+                "db.example",
+                3308,
+                Some("reporting"),
             ),
         ];
 
-        for (dsn, password) in cases {
+        for (dsn, password, expected_host, expected_port, expected_database) in cases {
             let target = parse_mysql_dsn(dsn).unwrap();
             let debug = format!("{target:?}");
             let rendered_password = format!("{password:?}");
 
             assert!(!debug.contains(&rendered_password), "{debug}");
-            assert!(debug.contains("host: \""));
-            assert!(debug.contains("port: "));
-            assert!(debug.contains("database: Some("));
+            assert!(
+                debug.contains(&format!("host: {expected_host:?}")),
+                "{debug}"
+            );
+            assert!(debug.contains(&format!("port: {expected_port}")), "{debug}");
+            assert!(
+                debug.contains(&format!("database: {expected_database:?}")),
+                "{debug}"
+            );
             assert!(debug.contains("password: \"****\""));
         }
     }
