@@ -18,7 +18,14 @@ pub fn table_key_display_name(
     }
 
     database
-        .and_then(|database| qualified_name.strip_prefix(&format!("{database}.")))
+        .and_then(|database| {
+            let qualified_database = qualified_name.get(..database.len())?;
+            let suffix = qualified_name.get(database.len()..)?;
+            qualified_database
+                .eq_ignore_ascii_case(database)
+                .then(|| suffix.strip_prefix('.'))
+                .flatten()
+        })
         .unwrap_or(qualified_name)
         .to_string()
 }
@@ -191,6 +198,14 @@ mod tests {
     fn mysql_table_key_display_uses_table_name_without_changing_identity() {
         assert_eq!(
             table_key_display_name(DatabaseType::MySQL, Some("app"), "app.users"),
+            "users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::MySQL, Some("APP"), "app.users"),
+            "users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::MySQL, Some("app.db"), "app.db.users"),
             "users"
         );
         assert_eq!(
