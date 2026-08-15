@@ -612,7 +612,7 @@ mod tests {
         };
         use crate::model::connection::cache::ConnectionCache;
         use crate::model::connection::error::ConnectionErrorKind;
-        use crate::ports::outbound::DbOperationError;
+        use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
 
         fn fill_valid_form(state: &mut AppState) {
             state
@@ -669,10 +669,10 @@ mod tests {
                 .set_database_type(DatabaseType::MySQL);
             state.connection_setup.mysql_ssl_mode = MySqlSslMode::VerifyIdentity;
 
-            let error = DbOperationError::ConnectionFailed(
-                "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
-                    .to_string(),
-            );
+            let error = DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsCertificateVerification,
+                details: "certificate verification failed".to_string(),
+            };
             let dsn =
                 "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY".to_string();
 

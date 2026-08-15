@@ -9,8 +9,8 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, MYSQL_CLI_VERSION_REQUIRED_MARKER, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    MYSQL_SERVER_VERSION_REQUIRED_MARKER, MYSQL_SQL_MODE_UNSUPPORTED_MARKER,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
+    UnsupportedOperationKind,
 };
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
@@ -32,10 +32,10 @@ pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), 
         String::from_utf8_lossy(&output.stderr)
     );
     if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
-        return Err(DbOperationError::UnsupportedOperation(format!(
-            "{MYSQL_CLI_VERSION_REQUIRED_MARKER}: {}",
-            version_output.trim()
-        )));
+        return Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ClientVersion,
+            details: version_output.trim().to_string(),
+        });
     }
     Ok(())
 }
@@ -76,9 +76,10 @@ fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
     if is_oracle_mysql_server_84_version(version) {
         Ok(())
     } else {
-        Err(DbOperationError::UnsupportedOperation(format!(
-            "{MYSQL_SERVER_VERSION_REQUIRED_MARKER}: {version}"
-        )))
+        Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ServerVersion,
+            details: version.to_string(),
+        })
     }
 }
 
@@ -88,9 +89,10 @@ pub(super) fn validate_sql_mode(sql_mode: &str) -> Result<(), DbOperationError> 
             || mode.eq_ignore_ascii_case("ANSI_QUOTES")
     });
     if unsupported {
-        Err(DbOperationError::UnsupportedOperation(format!(
-            "{MYSQL_SQL_MODE_UNSUPPORTED_MARKER}: {sql_mode}"
-        )))
+        Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::SessionMode,
+            details: sql_mode.to_string(),
+        })
     } else {
         Ok(())
     }
@@ -182,9 +184,68 @@ fn clean_stderr(stderr: &[u8]) -> String {
 fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
     if is_mysql_connect_timeout_message(&stderr) {
         DbOperationError::Timeout(stderr)
+    } else if let Some(kind) = mysql_tls_failure_kind(&stderr.to_ascii_lowercase()) {
+        DbOperationError::ConnectionFailedWithKind {
+            kind,
+            details: stderr,
+        }
     } else {
         DbOperationError::ConnectionFailed(stderr)
     }
+}
+
+pub(super) fn mysql_tls_failure_kind(lowercase_details: &str) -> Option<ConnectionFailureKind> {
+    if lowercase_details.contains("certificate required")
+        || lowercase_details.contains("client certificate")
+        || lowercase_details.contains("peer did not return a certificate")
+        || lowercase_details.contains("bad certificate")
+        || lowercase_details.contains("tlsv1 alert certificate required")
+    {
+        return Some(ConnectionFailureKind::TlsClientCertificateRejected);
+    }
+
+    if lowercase_details.contains("hostname mismatch")
+        || lowercase_details.contains("host name mismatch")
+        || lowercase_details.contains("hostname does not match")
+        || lowercase_details.contains("host name does not match")
+        || lowercase_details.contains("hostname verification failed")
+        || lowercase_details.contains("host name verification failed")
+        || lowercase_details.contains("certificate name mismatch")
+        || lowercase_details.contains("certificate does not match")
+        || lowercase_details.contains("does not match certificate")
+        || lowercase_details.contains("not valid for the requested host")
+        || lowercase_details.contains("not valid for hostname")
+        || lowercase_details.contains("subject alternative name")
+        || (lowercase_details.contains("verify identity")
+            && lowercase_details.contains("certificate"))
+    {
+        return Some(ConnectionFailureKind::TlsHostnameVerification);
+    }
+
+    if lowercase_details.contains("unable to get local issuer")
+        || lowercase_details.contains("self-signed certificate")
+        || lowercase_details.contains("unknown ca")
+        || lowercase_details.contains("certificate signature failure")
+    {
+        return Some(ConnectionFailureKind::TlsCaVerification);
+    }
+
+    if lowercase_details.contains("error:0a000086:ssl routines::certificate verify failed") {
+        return Some(ConnectionFailureKind::TlsCertificateVerification);
+    }
+
+    if lowercase_details.contains("error 2026")
+        || lowercase_details.contains("tls/ssl error")
+        || lowercase_details.contains("ssl handshake")
+        || lowercase_details.contains("tls handshake")
+        || lowercase_details.contains("handshake failure")
+        || lowercase_details.contains("ssl connection error")
+        || lowercase_details.contains("tlsv1 alert")
+    {
+        return Some(ConnectionFailureKind::TlsHandshake);
+    }
+
+    None
 }
 
 pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
@@ -197,8 +258,6 @@ pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
 
 #[cfg(test)]
 mod probe_tests {
-    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
-
     use super::*;
 
     #[test]
@@ -216,8 +275,21 @@ mod probe_tests {
         assert!(is_oracle_mysql_server_84_version("8.4.3"));
         assert!(!is_oracle_mysql_server_84_version("8.4.3-TiDB"));
         assert!(!is_oracle_mysql_server_84_version("8.4.3-Percona"));
+        assert!(matches!(
+            validate_server_version("8.0.36"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::ServerVersion,
+                ..
+            })
+        ));
         assert!(validate_sql_mode("STRICT_TRANS_TABLES").is_ok());
-        assert!(validate_sql_mode("STRICT_TRANS_TABLES,ANSI_QUOTES").is_err());
+        assert!(matches!(
+            validate_sql_mode("STRICT_TRANS_TABLES,ANSI_QUOTES"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::SessionMode,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -280,9 +352,39 @@ mod probe_tests {
                 .to_string(),
         );
 
-        assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error(&error).kind,
-            ConnectionErrorKind::MySqlTlsHandshakeFailed
-        );
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsCertificateVerification,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_tls_failures_before_the_app_boundary() {
+        for (stderr, expected) in [
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: hostname mismatch",
+                ConnectionFailureKind::TlsHostnameVerification,
+            ),
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: unable to get local issuer certificate",
+                ConnectionFailureKind::TlsCaVerification,
+            ),
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: peer did not return a certificate",
+                ConnectionFailureKind::TlsClientCertificateRejected,
+            ),
+            (
+                "ERROR 2026 (HY000): SSL connection error",
+                ConnectionFailureKind::TlsHandshake,
+            ),
+        ] {
+            assert_eq!(
+                mysql_tls_failure_kind(&stderr.to_ascii_lowercase()),
+                Some(expected)
+            );
+        }
     }
 }

@@ -363,7 +363,7 @@ pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Optio
 
 #[cfg(test)]
 mod tests {
-    use crate::app::ports::outbound::MYSQL_SQL_MODE_UNSUPPORTED_MARKER;
+    use crate::app::ports::outbound::UnsupportedOperationKind;
 
     use super::super::error::validate_mode_probe;
     use super::*;
@@ -406,8 +406,10 @@ mod tests {
         unsupported.values[0][1] = QueryValue::Text("ANSI_QUOTES".to_string());
         assert!(matches!(
             validate_mode_probe(&unsupported, "marker"),
-            Err(DbOperationError::UnsupportedOperation(details))
-                if details.contains(MYSQL_SQL_MODE_UNSUPPORTED_MARKER)
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::SessionMode,
+                ..
+            })
         ));
     }
     #[test]

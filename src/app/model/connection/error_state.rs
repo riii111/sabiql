@@ -28,6 +28,12 @@ impl ConnectionErrorState {
         self.error_info.is_some()
     }
 
+    pub fn can_retry(&self) -> bool {
+        self.error_info
+            .as_ref()
+            .is_some_and(ConnectionErrorInfo::is_retryable)
+    }
+
     pub fn details_expanded(&self) -> bool {
         self.details_expanded
     }
@@ -135,6 +141,16 @@ mod tests {
             assert!(!state.details_expanded());
             assert_eq!(state.scroll_offset(), 0);
             assert!(!state.is_copied_visible_at(now()));
+        }
+
+        #[test]
+        fn can_retry_follows_the_classified_error() {
+            let mut state = ConnectionErrorState::default();
+            assert!(!state.can_retry());
+
+            state.set_error(sample_error());
+
+            assert!(state.can_retry());
         }
     }
 

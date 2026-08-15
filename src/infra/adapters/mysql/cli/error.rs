@@ -2,7 +2,7 @@ use std::io::{self, Write};
 
 use crate::app::ports::outbound::DbOperationError;
 
-use super::probe::{is_mysql_connect_timeout_message, validate_sql_mode};
+use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind, validate_sql_mode};
 use super::xml::MysqlResultSet;
 
 pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
@@ -69,8 +69,8 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if is_mysql_tls_error(&lower) {
-        DbOperationError::ConnectionFailed(details)
+    if let Some(kind) = mysql_tls_failure_kind(&lower) {
+        DbOperationError::ConnectionFailedWithKind { kind, details }
     } else if is_mysql_connect_timeout_message(&details)
         || lower.contains("connect timeout")
         || lower.contains("connection timed out")
@@ -111,28 +111,6 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     }
 }
 
-fn is_mysql_tls_error(lowercase_details: &str) -> bool {
-    [
-        "error 2026",
-        "tls/ssl error",
-        "ssl connection error",
-        "ssl handshake",
-        "tls handshake",
-        "handshake failure",
-        "tlsv1 alert",
-        "certificate verify failed",
-        "certificate verification failure",
-        "certificate validation failure",
-        "unable to get local issuer",
-        "self-signed certificate",
-        "unknown ca",
-        "certificate required",
-        "peer did not return a certificate",
-    ]
-    .iter()
-    .any(|marker| lowercase_details.contains(marker))
-}
-
 fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
     let marker = "error ";
     let start = lowercase_details.find(marker)? + marker.len();
@@ -155,7 +133,7 @@ fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
+    use crate::app::ports::outbound::ConnectionFailureKind;
 
     #[test]
     fn classifies_mysql_query_failures_by_server_error() {
@@ -220,10 +198,12 @@ mod tests {
             b"ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed",
         );
 
-        assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error(&error).kind,
-            ConnectionErrorKind::MySqlTlsHandshakeFailed
-        );
-        assert!(matches!(error, DbOperationError::ConnectionFailed(_)));
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsCertificateVerification,
+                ..
+            }
+        ));
     }
 }
