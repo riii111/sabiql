@@ -16,9 +16,7 @@ use crate::app::policy::sql::mysql_statement::classify_mysql_statement;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
-#[cfg(not(unix))]
-use super::error::has_mysql_cli_error;
-use super::error::{classify_mysql_query_failure, validate_mode_probe};
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 #[cfg(not(unix))]
 use super::pipe::{MysqlExportPipeSource, read_all};
 use super::policy::mysql_metadata_fallback_kind;
@@ -137,6 +135,7 @@ async fn stream_mysql_resultset_to_csv(
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
+            frame_scanner: super::xml::MysqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
@@ -147,7 +146,7 @@ async fn stream_mysql_resultset_to_csv(
         let source = buffered.into_inner();
         source.pty.pending.extend(unread);
         source.pty.pending.extend(source.pending);
-        if !source.error_output.is_empty() {
+        if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
         result
