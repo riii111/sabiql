@@ -921,6 +921,9 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("app".to_string()),
             };
+            let server_dsn = target
+                .server_dsn()
+                .expect("MySQL target should have a server DSN");
             let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
                 .expect("switch should start a probe");
             let probe_run_id = probe_effects
@@ -934,7 +937,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 &Action::ConnectionProbeCompleted {
-                    target,
+                    target: target.clone(),
                     run_id: probe_run_id,
                 },
             )
@@ -943,6 +946,11 @@ mod tests {
             assert!(effects.iter().any(|effect| matches!(
                 effect,
                 Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
+            )));
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMySqlDatabases { connection_id, dsn, .. }
+                    if connection_id == &target.id && dsn == &server_dsn
             )));
             assert_eq!(state.session.connection_state(), ConnectionState::Connected);
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
