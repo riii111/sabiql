@@ -87,22 +87,22 @@ pub(super) fn mysql_connection_completion_effects(
         state.ui.table_picker_mut().clear_filter_and_reset();
         state.ui.set_database_picker(true);
         state.modal.set_mode(InputMode::TablePicker);
-        if let (Some(connection_id), Some(server_dsn)) = (
-            state.session.active_connection_id().cloned(),
-            state.session.server_dsn(),
-        ) {
-            effects.push(Effect::FetchMySqlDatabases {
-                connection_id,
-                dsn: server_dsn,
-                connection_generation: state.session.connection_generation(),
-                database_generation: state.session.database_generation(),
-            });
-        }
     } else {
         let run_id = state.session.begin_metadata_refresh();
         effects.push(Effect::FetchMetadata {
             dsn: dsn.to_string(),
             run_id,
+        });
+    }
+    if let (Some(connection_id), Some(server_dsn)) = (
+        state.session.active_connection_id().cloned(),
+        state.session.server_dsn(),
+    ) {
+        effects.push(Effect::FetchMySqlDatabases {
+            connection_id,
+            dsn: server_dsn,
+            connection_generation: state.session.connection_generation(),
+            database_generation: state.session.database_generation(),
         });
     }
     termination_effects(&state.query, effects)
