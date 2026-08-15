@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::policy::sql::mysql_statement::mysql_tree_explain_query_kind;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
-use crate::domain::{QueryResult, QuerySource, QueryValue, WriteExecutionResult};
+use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
 use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
@@ -251,19 +251,7 @@ impl QueryExecutor for MySqlAdapter {
         validate_mysql_export_query(query, target.database.as_deref())?;
 
         let result = self.execute_adhoc(dsn, query, AccessMode::ReadOnly).await?;
-        let value = result
-            .values()
-            .first()
-            .and_then(|row| row.first())
-            .and_then(QueryValue::as_str)
-            .ok_or_else(|| {
-                DbOperationError::QueryFailed(
-                    "MySQL row count query returned an invalid result".to_string(),
-                )
-            })?;
-        value.parse::<usize>().map_err(|_| {
-            DbOperationError::QueryFailed("MySQL row count was not an integer".to_string())
-        })
+        parse_mysql_count_result(&result)
     }
 
     async fn export_to_csv(
@@ -280,5 +268,66 @@ impl QueryExecutor for MySqlAdapter {
             export_mysql_csv_to_file(target, &query, path).await
         })
         .await
+    }
+}
+
+fn parse_mysql_count_result(result: &QueryResult) -> Result<usize, DbOperationError> {
+    let value = match result.values() {
+        [row] => match row.as_slice() {
+            [value] => value.as_str(),
+            _ => None,
+        },
+        _ => None,
+    }
+    .ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL row count query returned an invalid result".to_string(),
+        )
+    })?;
+
+    value.parse::<usize>().map_err(|_| {
+        DbOperationError::QueryFailed("MySQL row count was not an integer".to_string())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::QueryValue;
+
+    fn count_result(values: Vec<Vec<QueryValue>>) -> QueryResult {
+        QueryResult::success_with_values(
+            "SELECT COUNT(*)".to_string(),
+            vec!["COUNT(*)".to_string()],
+            values,
+            0,
+            QuerySource::Adhoc,
+        )
+    }
+
+    #[test]
+    fn parses_a_single_integer_count_result() {
+        assert_eq!(
+            parse_mysql_count_result(&count_result(vec![vec![QueryValue::text("42")]])).unwrap(),
+            42
+        );
+    }
+
+    #[test]
+    fn rejects_an_empty_count_result() {
+        assert!(matches!(
+            parse_mysql_count_result(&count_result(Vec::new())),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL row count query returned an invalid result"
+        ));
+    }
+
+    #[test]
+    fn rejects_a_non_integer_count_result() {
+        assert!(matches!(
+            parse_mysql_count_result(&count_result(vec![vec![QueryValue::text("unknown")]])),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL row count was not an integer"
+        ));
     }
 }

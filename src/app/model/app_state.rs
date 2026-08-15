@@ -30,6 +30,7 @@ use crate::model::sql_editor::modal::SqlModalContext;
 use crate::model::sql_editor::query_history::QueryHistoryPickerState;
 use crate::model::sqlite::diagnostics::SqliteDiagnosticsState;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
+use crate::policy::sql::mysql_export::mysql_export_plan;
 use crate::policy::sql::result_query::is_rerunnable_select;
 use crate::policy::table_kind::max_explorer_table_label_width;
 use crate::policy::write::inline_cell_edit::supports_inline_edit;
@@ -387,10 +388,11 @@ impl AppState {
         if result.is_error() {
             return false;
         }
-        if self.session.active_database_type() == Some(DatabaseType::SQLite) {
-            return true;
+        match self.session.active_database_type() {
+            Some(DatabaseType::SQLite) => true,
+            Some(DatabaseType::MySQL) => mysql_export_plan(&result.query).is_some(),
+            _ => is_rerunnable_select(&result.query),
         }
-        is_rerunnable_select(&result.query)
     }
 
     pub fn visible_preview_target_read_only_reason(&self) -> Option<&'static str> {
@@ -1244,6 +1246,32 @@ mod tests {
             state.query.set_current_result(Arc::new(result));
 
             assert!(!state.can_request_csv_export());
+        }
+
+        #[rstest]
+        #[case("SELECT id FROM users")]
+        #[case("TABLE users")]
+        #[case("SHOW TABLES")]
+        #[case("DESCRIBE users")]
+        fn mysql_csv_export_allows_supported_result_queries(#[case] query: &str) {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    query.to_string(),
+                    vec!["column".to_string()],
+                    vec![vec!["value".to_string()]],
+                    10,
+                    QuerySource::Adhoc,
+                )));
+
+            assert!(state.can_request_csv_export());
         }
 
         #[test]

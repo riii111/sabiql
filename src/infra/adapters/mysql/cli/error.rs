@@ -69,36 +69,31 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if let Some(kind) = mysql_tls_failure_kind(&lower) {
+    if (error_code.is_none() || error_code == Some(2026))
+        && let Some(kind) = mysql_tls_failure_kind(&lower)
+    {
         DbOperationError::ConnectionFailedWithKind { kind, details }
+    } else if let Some(error_code) = error_code {
+        classify_mysql_server_error(error_code, &details, &lower)
+            .unwrap_or(DbOperationError::QueryFailed(details))
     } else if is_mysql_connect_timeout_message(&details)
         || lower.contains("connect timeout")
         || lower.contains("connection timed out")
     {
         DbOperationError::Timeout(details)
-    } else if matches!(error_code, Some(1044 | 1142 | 1143 | 1227))
-        || lower.contains("command denied")
-    {
+    } else if lower.contains("command denied") {
         DbOperationError::PermissionDenied(details)
-    } else if error_code == Some(1049) || lower.contains("unknown database") {
+    } else if lower.contains("unknown database") {
         DbOperationError::ConnectionFailed(details)
-    } else if matches!(error_code, Some(1054 | 1146))
-        || lower.contains("doesn't exist")
-        || lower.contains("does not exist")
-    {
+    } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
         DbOperationError::ObjectMissing(details)
-    } else if error_code == Some(1045)
-        || lower.contains("access denied")
-        || lower.contains("authentication")
-    {
+    } else if lower.contains("access denied") || lower.contains("authentication") {
         DbOperationError::ConnectionFailed(details)
     } else if lower.contains("lost connection") || lower.contains("server has gone away") {
         DbOperationError::ConnectionLost(details)
     } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
         DbOperationError::LockTimeout(details)
-    } else if matches!(error_code, Some(1215 | 1216 | 1217 | 1451 | 1452))
-        || lower.contains("foreign key constraint")
-    {
+    } else if lower.contains("foreign key constraint") {
         DbOperationError::ForeignKeyViolation(details)
     } else if lower.contains("duplicate entry") {
         DbOperationError::UniqueViolation(details)
@@ -109,6 +104,32 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     } else {
         DbOperationError::QueryFailed(details)
     }
+}
+
+fn classify_mysql_server_error(
+    error_code: u32,
+    details: &str,
+    lowercase_details: &str,
+) -> Option<DbOperationError> {
+    let error = |constructor: fn(String) -> DbOperationError| constructor(details.to_string());
+
+    Some(match error_code {
+        1022 | 1062 => error(DbOperationError::UniqueViolation),
+        1044 | 1142 | 1143 | 1227 => error(DbOperationError::PermissionDenied),
+        1045 | 1049 => error(DbOperationError::ConnectionFailed),
+        1051 | 1054 | 1109 | 1146 => error(DbOperationError::ObjectMissing),
+        1205 | 1213 => error(DbOperationError::LockTimeout),
+        1215 | 1216 | 1217 | 1451 | 1452 => error(DbOperationError::ForeignKeyViolation),
+        1317 => error(DbOperationError::Canceled),
+        2006 | 2013 => error(DbOperationError::ConnectionLost),
+        2003 if is_mysql_connect_timeout_message(details)
+            || lowercase_details.contains("connect timeout")
+            || lowercase_details.contains("connection timed out") =>
+        {
+            DbOperationError::Timeout(details.to_string())
+        }
+        _ => return None,
+    })
 }
 
 fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
@@ -158,6 +179,14 @@ mod tests {
             DbOperationError::ObjectMissing(_)
         ));
         assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1051 (42S02): generic failure"),
+            DbOperationError::ObjectMissing(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1109 (42S02): generic failure"),
+            DbOperationError::ObjectMissing(_)
+        ));
+        assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1142 (42000): command denied to user"),
             DbOperationError::PermissionDenied(_)
         ));
@@ -176,6 +205,18 @@ mod tests {
             DbOperationError::LockTimeout(_)
         ));
         assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1213 (40001): generic failure"),
+            DbOperationError::LockTimeout(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1022 (23000): generic failure"),
+            DbOperationError::UniqueViolation(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(b"ERROR 1062 (23000): generic failure"),
+            DbOperationError::UniqueViolation(_)
+        ));
+        assert!(matches!(
             classify_mysql_query_failure(
                 b"ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails"
             ),
@@ -190,6 +231,26 @@ mod tests {
         assert!(!has_mysql_cli_error(b"ERROR"));
         assert!(!has_mysql_cli_error(b"ERROR 1"));
         assert!(has_mysql_cli_error(b"ERROR 1054"));
+    }
+
+    #[test]
+    fn does_not_use_wording_to_classify_an_unknown_server_error_code() {
+        let error = classify_mysql_query_failure(
+            b"ERROR 9999 (HY000): Duplicate entry duplicate_value for key PRIMARY",
+        );
+
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+
+        let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): SSL connection error");
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+    }
+
+    #[test]
+    fn uses_wording_when_mysql_error_code_is_not_present() {
+        assert!(matches!(
+            classify_mysql_query_failure(b"duplicate entry duplicate_value for key PRIMARY"),
+            DbOperationError::UniqueViolation(_)
+        ));
     }
 
     #[test]

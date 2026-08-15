@@ -1890,6 +1890,109 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn classifies_real_mysql_server_errors_by_server_code() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| format!("system clock error: {error}"))?
+                .as_nanos();
+            let lock_table = format!("sabiql_mrf2_05_lock_{suffix}");
+            let missing_table = format!("sabiql_mrf2_05_missing_{suffix}");
+            let result = async {
+                let missing = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("SELECT id FROM {missing_table}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await;
+                if !matches!(missing, Err(DbOperationError::ObjectMissing(_))) {
+                    return Err(format!("missing object was not classified: {missing:?}"));
+                }
+
+                let duplicate = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "CREATE TEMPORARY TABLE sabiql_mrf2_05_duplicate (id INT PRIMARY KEY); INSERT INTO sabiql_mrf2_05_duplicate VALUES (1); INSERT INTO sabiql_mrf2_05_duplicate VALUES (1)",
+                        AccessMode::ReadWrite,
+                    )
+                    .await;
+                if !matches!(
+                    &duplicate,
+                    Err(DbOperationError::QueryFailedAfterChange { source, .. })
+                        if matches!(&**source, DbOperationError::UniqueViolation(_))
+                ) {
+                    return Err(format!("duplicate error was not classified: {duplicate:?}"));
+                }
+
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE TABLE {lock_table} (id INT PRIMARY KEY, value INT NOT NULL); INSERT INTO {lock_table} VALUES (1, 0), (2, 0)"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create lock fixture: {error:?}"))?;
+
+                let first_query = format!(
+                    "BEGIN; UPDATE {lock_table} SET value = value + 1 WHERE id = 1; SELECT SLEEP(1); UPDATE {lock_table} SET value = value + 1 WHERE id = 2; COMMIT"
+                );
+                let second_query = format!(
+                    "BEGIN; UPDATE {lock_table} SET value = value + 1 WHERE id = 2; SELECT SLEEP(1); UPDATE {lock_table} SET value = value + 1 WHERE id = 1; COMMIT"
+                );
+                let first = db.adapter().execute_adhoc(
+                    db.dsn(),
+                    &first_query,
+                    AccessMode::ReadWrite,
+                );
+                let second = db.adapter().execute_adhoc(
+                    db.dsn(),
+                    &second_query,
+                    AccessMode::ReadWrite,
+                );
+                let (first, second) = tokio::join!(first, second);
+                let lock_error = match (first, second) {
+                    (Err(error), _) | (_, Err(error)) => Some(error),
+                    (Ok(_), Ok(_)) => None,
+                };
+                match lock_error.as_ref() {
+                    Some(error) if error.summary() == "Operation blocked by lock or timeout" => {}
+                    _ => {
+                        return Err(format!(
+                            "deadlock error was not classified: {lock_error:?}"
+                        ));
+                    }
+                }
+
+                Ok::<(), String>(())
+            }
+            .await;
+            let cleanup = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE IF EXISTS {lock_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up lock fixture: {error:?}"));
+            match result {
+                Err(error) => {
+                    cleanup?;
+                    Err(error)
+                }
+                Ok(()) => cleanup.map(|_| ()),
+            }
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn times_out_real_cli_query_and_discards_output() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
@@ -2014,7 +2117,7 @@ mod csv_export {
 
     use super::shared::MYSQL_EMPTY_TABLE;
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::DbOperationError;
+    use sabiql_app::ports::outbound::{DbOperationError, QueryExecutor};
     use sabiql_infra::adapters::mysql::export_mysql_csv_to_path_for_test;
     use tempfile::tempdir;
 
@@ -2054,6 +2157,76 @@ mod csv_export {
                 }
                 if write_path.exists() {
                     return Err("write export created an output file".to_string());
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn exports_each_supported_mysql_result_statement() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let output_directory = tempdir().map_err(|error| error.to_string())?;
+                for (name, query) in [
+                    ("select", format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}")),
+                    ("table", format!("TABLE {MYSQL_EMPTY_TABLE}")),
+                    ("show", format!("SHOW TABLES LIKE '{MYSQL_FIXTURE_TABLE}'")),
+                    ("describe", format!("DESCRIBE {MYSQL_FIXTURE_TABLE}")),
+                ] {
+                    let path = export_mysql_csv_to_path_for_test(
+                        db.dsn(),
+                        &query,
+                        output_directory.path().join(format!("{name}.csv")),
+                    )
+                    .await
+                    .map_err(|error| format!("{name} CSV export failed: {error:?}"))?;
+                    let csv = std::fs::read_to_string(&path)
+                        .map_err(|error| format!("failed to read {name} CSV export: {error}"))?;
+                    if csv.trim().is_empty() {
+                        return Err(format!("{name} CSV export was empty"));
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn count_query_rows_rejects_empty_and_non_integer_results() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let empty = db
+                    .adapter()
+                    .count_query_rows(
+                        db.dsn(),
+                        &format!("SELECT id FROM {MYSQL_EMPTY_TABLE} WHERE FALSE"),
+                    )
+                    .await;
+                if !matches!(
+                    empty,
+                    Err(DbOperationError::QueryFailed(ref details))
+                        if details.contains("invalid result")
+                ) {
+                    return Err(format!("empty count result was accepted: {empty:?}"));
+                }
+
+                let non_integer = db
+                    .adapter()
+                    .count_query_rows(db.dsn(), "SELECT 'not-a-count'")
+                    .await;
+                if !matches!(
+                    non_integer,
+                    Err(DbOperationError::QueryFailed(ref details))
+                        if details.contains("not an integer")
+                ) {
+                    return Err(format!(
+                        "non-integer count result was accepted: {non_integer:?}"
+                    ));
                 }
                 Ok(())
             })
