@@ -210,9 +210,44 @@ if [[ "$signal_status" != 143 ]]; then
 fi
 assert_only_unrelated_container_remains
 
+cat >"$fake_bin/mktemp" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+for argument in "$@"; do
+    case "$argument" in
+        */mysql-client-label.XXXXXX)
+            label_file="$(printf '%s\n' "$argument" | sed 's/XXXXXX$/fixed/')"
+            mkdir -p -- "$(dirname "$label_file")"
+            : >"$label_file"
+            printf '%s\n' "$label_file"
+            exit 0
+            ;;
+    esac
+done
+
+exec /usr/bin/mktemp "$@"
+EOF
+chmod +x "$fake_bin/mktemp"
+
+same_suffix_root="$test_root/other-worktree"
+mkdir -p -- "$same_suffix_root/scripts"
+cp -- "$script_dir/mysql_integration.sh" "$same_suffix_root/scripts/mysql_integration.sh"
+cp -- "$script_dir/mysql-docker-cli.sh" "$same_suffix_root/scripts/mysql-docker-cli.sh"
+
+PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" test >/dev/null 2>&1
+PATH="$fake_bin:$PATH" "$same_suffix_root/scripts/mysql_integration.sh" test >/dev/null 2>&1
+same_suffix_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
+if [[ "$same_suffix_labels" != 6 ]]; then
+    printf 'expected distinct labels for same suffix across worktrees, got %s\n%s\n' \
+        "$same_suffix_labels" "$(<"$label_log")" >&2
+    exit 1
+fi
+assert_only_unrelated_container_remains
+
 unique_run_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$unique_run_labels" != 4 ]]; then
-    printf 'expected four unique run labels, got %s\n%s\n' \
+if [[ "$unique_run_labels" != 6 ]]; then
+    printf 'expected six unique run labels, got %s\n%s\n' \
         "$unique_run_labels" "$(<"$label_log")" >&2
     exit 1
 fi

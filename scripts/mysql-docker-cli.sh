@@ -25,9 +25,6 @@ docker_args=(--rm --interactive)
 if [[ -n "${SABIQL_MYSQL_CONTAINER_LABEL:-}" ]]; then
     docker_args+=(--label "$SABIQL_MYSQL_CONTAINER_LABEL")
 fi
-if [[ -t 0 && -t 1 ]]; then
-    docker_args+=(--tty)
-fi
 
 exec docker run "${docker_args[@]}" \
     --add-host=host.docker.internal:host-gateway \

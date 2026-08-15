@@ -24,7 +24,7 @@ mysql_client_label=''
 create_client_container_label() {
     local label_file
     label_file="$(mktemp "$temp_dir/mysql-client-label.XXXXXX")"
-    printf '%s=run-%s\n' "$mysql_client_label_key" "$(basename "$label_file")"
+    printf '%s=run-%s-%s\n' "$mysql_client_label_key" "$repo_root" "$(basename "$label_file")"
 }
 
 cleanup_client_containers() {
@@ -33,19 +33,32 @@ cleanup_client_containers() {
     fi
 
     local container_id
+    local container_ids
+    local remaining_containers
+    if ! container_ids="$(docker ps --all --quiet --filter "label=$mysql_client_label")"; then
+        return 1
+    fi
     while IFS= read -r container_id; do
         if [[ -n "$container_id" ]]; then
-            docker rm --force "$container_id" >/dev/null 2>&1 || true
+            docker rm --force "$container_id" >/dev/null 2>&1 || :
         fi
-    done < <(
-        docker ps --all --quiet --filter "label=$mysql_client_label" 2>/dev/null || true
-    )
+    done <<<"$container_ids"
+
+    if ! remaining_containers="$(docker ps --all --quiet --filter "label=$mysql_client_label")"; then
+        return 1
+    fi
+    [[ -z "$remaining_containers" ]]
 }
 
 cleanup() {
     local status="$1"
 
-    cleanup_client_containers
+    if ! cleanup_client_containers; then
+        printf 'failed to clean up MySQL client containers for %s\n' "$mysql_client_label" >&2
+        if [[ "$status" == 0 ]]; then
+            status=1
+        fi
+    fi
     if [[ -n "$mysql_option_file" ]]; then
         rm -f -- "$mysql_option_file"
     fi
