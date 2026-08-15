@@ -116,11 +116,6 @@ impl Inspector {
                 return ViewportPlan::default();
             }
             InspectorLoadState::Loading => {
-                frame.render_widget(
-                    Paragraph::new("Loading inspector...")
-                        .style(Style::default().fg(theme.semantic.status.pending)),
-                    inner,
-                );
                 return ViewportPlan::default();
             }
             InspectorLoadState::Error(error) => {
