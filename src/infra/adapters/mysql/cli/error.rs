@@ -69,7 +69,9 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if let Some(kind) = mysql_tls_failure_kind(&lower) {
+    if (error_code.is_none() || error_code == Some(2026))
+        && let Some(kind) = mysql_tls_failure_kind(&lower)
+    {
         DbOperationError::ConnectionFailedWithKind { kind, details }
     } else if let Some(error_code) = error_code {
         classify_mysql_server_error(error_code, &details, &lower)
@@ -237,6 +239,9 @@ mod tests {
             b"ERROR 9999 (HY000): Duplicate entry duplicate_value for key PRIMARY",
         );
 
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+
+        let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): SSL connection error");
         assert!(matches!(error, DbOperationError::QueryFailed(_)));
     }
 
