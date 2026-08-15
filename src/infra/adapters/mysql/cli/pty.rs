@@ -99,19 +99,47 @@ pub(super) async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
 }
 
 pub(super) async fn read_pty_until_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
-    let mut output = std::mem::take(&mut pty.pending);
+    let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
+    read_pty_until_idle_from(&mut pty.output, output, false).await
+}
+
+pub(super) async fn read_pty_until_first_byte_then_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+    let output = std::mem::take(&mut pty.pending);
+    pty.frame_scanner.reset();
+    read_pty_until_idle_from(&mut pty.output, output, true).await
+}
+
+async fn read_pty_until_idle_from<R>(
+    reader: &mut R,
+    mut output: Vec<u8>,
+    wait_for_first_byte: bool,
+) -> io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
     let mut chunk = [0; 4096];
     loop {
-        let read =
-            tokio::time::timeout(Duration::from_millis(100), pty.output.read(&mut chunk)).await;
-        match read {
-            Err(_) | Ok(Ok(0)) => return Ok(output),
-            Ok(Ok(count)) => output.extend_from_slice(&chunk[..count]),
-            Ok(Err(error)) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
-                return Ok(output);
+        if wait_for_first_byte && output.is_empty() {
+            match reader.read(&mut chunk).await {
+                Ok(0) => return Ok(output),
+                Ok(count) => output.extend_from_slice(&chunk[..count]),
+                Err(error) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
+                    return Ok(output);
+                }
+                Err(error) => return Err(error),
             }
-            Ok(Err(error)) => return Err(error),
+        } else {
+            let read =
+                tokio::time::timeout(Duration::from_millis(100), reader.read(&mut chunk)).await;
+            match read {
+                Err(_) | Ok(Ok(0)) => return Ok(output),
+                Ok(Ok(count)) => output.extend_from_slice(&chunk[..count]),
+                Ok(Err(error)) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
+                    return Ok(output);
+                }
+                Ok(Err(error)) => return Err(error),
+            }
         }
     }
 }
@@ -362,5 +390,35 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         producer.await.unwrap();
 
         assert!(source.error_output.is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn keeps_zero_byte_idle_timeout_for_production_pty_reads() {
+        let (_writer, mut reader) = tokio::io::duplex(1);
+        let read_task =
+            tokio::spawn(
+                async move { read_pty_until_idle_from(&mut reader, Vec::new(), false).await },
+            );
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(101)).await;
+
+        assert!(read_task.await.unwrap().unwrap().is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn waits_for_the_first_pty_byte_before_using_idle_timeout() {
+        let (mut writer, mut reader) = tokio::io::duplex(1);
+        let read_task =
+            tokio::spawn(
+                async move { read_pty_until_idle_from(&mut reader, Vec::new(), true).await },
+            );
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(101)).await;
+        writer.write_all(b"frame").await.unwrap();
+        writer.shutdown().await.unwrap();
+
+        assert_eq!(read_task.await.unwrap().unwrap(), b"frame");
     }
 }

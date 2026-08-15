@@ -140,6 +140,33 @@ pub(super) fn trace_mysql_frame(kind: &str, bytes: usize) {
     }
 }
 
+pub(super) fn trace_mysql_statement(statement: &str) {
+    if std::env::var_os("SABIQL_MYSQL_TRANSCRIPT").is_some() {
+        write_mysql_transcript_line(&format!(
+            "sabiql mysql stage: send statement, keyword={}, bytes={}",
+            mysql_statement_keyword(statement),
+            statement.len()
+        ));
+    }
+}
+
+fn mysql_statement_keyword(statement: &str) -> String {
+    let keyword = statement
+        .trim_start()
+        .split(|character: char| !character.is_ascii_alphabetic())
+        .next()
+        .unwrap_or_default();
+    if keyword.is_empty() {
+        "unknown".to_string()
+    } else {
+        keyword
+            .chars()
+            .take(32)
+            .flat_map(char::to_uppercase)
+            .collect()
+    }
+}
+
 pub(super) fn decode_mysql_xml_reference(
     reference: &BytesRef<'_>,
 ) -> Result<String, DbOperationError> {

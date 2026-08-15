@@ -34,13 +34,17 @@ use super::policy::{
     validate_mysql_session_marker,
 };
 use super::probe::run_mysql_command_with_timeout;
+#[cfg(all(unix, feature = "test-support"))]
+use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
 use super::pty::{
     MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
 };
 #[cfg(unix)]
 use super::xml::trace_mysql_frame;
-use super::xml::{MysqlResultSet, MysqlResultsetFrameScanner, parse_mysql_xml};
+use super::xml::{
+    MysqlResultSet, MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement,
+};
 
 #[cfg(all(unix, feature = "test-support"))]
 use super::super::dsn::{parse_mysql_dsn, validate_mysql_tls_files, validate_mysql_values};
@@ -576,6 +580,7 @@ pub(super) async fn write_mysql_statement(
     query: &str,
 ) -> Result<(), DbOperationError> {
     let query = query.trim_end();
+    trace_mysql_statement(query);
     write_mysql_input(process, query.as_bytes()).await?;
     if query.ends_with(';') {
         write_mysql_input(process, b"\n").await
@@ -870,11 +875,14 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = async {
+        trace_mysql_statement(script);
         write_mysql_input(&mut process, script.as_bytes()).await?;
         write_mysql_input(&mut process, b"\x04").await?;
-        read_pty_until_idle(&mut process.pty)
+        let output = read_pty_until_first_byte_then_idle(&mut process.pty)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        trace_mysql_frame("receive script output", output.len());
+        Ok(output)
     }
     .await;
     if result.is_err() {
