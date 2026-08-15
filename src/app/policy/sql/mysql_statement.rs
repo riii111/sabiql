@@ -263,13 +263,31 @@ mod tests {
                 Some("app"),
             ),
             (
+                "RENAME TABLE items TO app.archived_items",
+                MysqlStatementKind::RenameTable,
+                "items",
+                Some("app"),
+            ),
+            (
                 "CREATE OR REPLACE VIEW app.item_view AS SELECT id FROM app.items",
                 MysqlStatementKind::CreateView,
                 "item_view",
                 Some("app"),
             ),
             (
+                "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW app.item_view AS SELECT id FROM app.items",
+                MysqlStatementKind::CreateView,
+                "item_view",
+                Some("app"),
+            ),
+            (
                 "ALTER VIEW app.item_view AS SELECT id FROM app.items",
+                MysqlStatementKind::AlterView,
+                "item_view",
+                Some("app"),
+            ),
+            (
+                "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW app.item_view AS SELECT id FROM app.items",
                 MysqlStatementKind::AlterView,
                 "item_view",
                 Some("app"),
@@ -307,12 +325,30 @@ mod tests {
         assert!(
             classify_mysql_statement("CREATE TABLE items (id INT) /* ordinary comment */").is_ok()
         );
+        assert!(
+            classify_mysql_statement(
+                "CREATE TABLE items (id INT) /*!401 DEFAULT DROP TABLE other_items */"
+            )
+            .is_ok()
+        );
+        assert!(
+            classify_mysql_statement(
+                "CREATE TABLE items (id INT) /*!080400 DEFAULT CHARSET=utf8mb4 */"
+            )
+            .is_ok()
+        );
+        assert!(classify_mysql_statement("DROP TABLE items /*!80000 RESTRICT */").is_ok());
+        assert!(classify_mysql_statement("DROP TABLE items /*!80000 CASCADE */").is_ok());
 
         for sql in [
             "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4 */ SELECT 1",
             "CREATE TABLE items (id INT) /*!40100 SET sql_mode='ANSI_QUOTES' */",
             "CREATE TABLE items (id INT) /*!80000 DEFAULT CHARSET=utf8mb4 DROP TABLE other_items */",
             "DROP TABLE items /*!80000 , other_items */",
+            "CREATE TABLE items (id INT) /*!8000011 DEFAULT CHARSET=utf8mb4 */",
+            "CREATE TABLE items (id INT) /*!80000DEFAULT CHARSET=utf8mb4 */",
+            "CREATE TABLE items (id INT) /*!080000DEFAULT CHARSET=utf8mb4 */",
+            "CREATE TABLE items (id INT) /*! 80000 DEFAULT CHARSET=utf8mb4 */",
             "CREATE TABLE items (id INT) /*!40100 */",
             "CREATE TABLE items (id INT) /*! DEFAULT CHARSET=utf8mb4 */",
             "CREATE TABLE items (id INT) /*!40100 DEFAULT CHARSET=utf8mb4",
@@ -330,7 +366,6 @@ mod tests {
             "RENAME DATABASE app TO archive",
             "RENAME TABLE old_items TO archived_items, other_items TO other_archive",
             "RENAME TABLE app.items TO other.archived_items",
-            "RENAME TABLE items TO app.archived_items",
             "CREATE OR REPLACE TABLE items (id INT)",
             "CREATE OR REPLACE INDEX item_index ON items (id)",
         ] {

@@ -135,6 +135,89 @@ fn has_top_level_word(tokens: &[Token], expected: &str, start: usize, end: usize
         })
 }
 
+fn view_statement_start(tokens: &[Token], start: usize, allow_or_replace: bool) -> Option<usize> {
+    let mut index = start + 1;
+    if allow_or_replace
+        && target::word(tokens, index) == Some("OR")
+        && target::word(tokens, index + 1) == Some("REPLACE")
+    {
+        index += 2;
+    }
+    loop {
+        match target::word(tokens, index) {
+            Some("VIEW") => return Some(index),
+            Some("ALGORITHM") => {
+                if !matches!(
+                    tokens.get(index + 1).map(|token| &token.kind),
+                    Some(TokenKind::Symbol('='))
+                ) || !matches!(
+                    target::word(tokens, index + 2),
+                    Some("UNDEFINED" | "MERGE" | "TEMPTABLE")
+                ) {
+                    return None;
+                }
+                index += 3;
+            }
+            Some("DEFINER") => {
+                if !matches!(
+                    tokens.get(index + 1).map(|token| &token.kind),
+                    Some(TokenKind::Symbol('='))
+                ) {
+                    return None;
+                }
+                index = skip_view_definer(tokens, index + 2)?;
+            }
+            Some("SQL") => {
+                if target::word(tokens, index + 1) != Some("SECURITY")
+                    || !matches!(target::word(tokens, index + 2), Some("DEFINER" | "INVOKER"))
+                {
+                    return None;
+                }
+                index += 3;
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn skip_view_definer(tokens: &[Token], mut index: usize) -> Option<usize> {
+    let is_current_user = target::word(tokens, index) == Some("CURRENT_USER");
+    if !matches!(
+        tokens.get(index).map(|token| &token.kind),
+        Some(TokenKind::Word(_) | TokenKind::Identifier(_) | TokenKind::StringLiteral)
+    ) {
+        return None;
+    }
+    index += 1;
+    if is_current_user
+        && matches!(
+            tokens.get(index).map(|token| &token.kind),
+            Some(TokenKind::Symbol('('))
+        )
+    {
+        if !matches!(
+            tokens.get(index + 1).map(|token| &token.kind),
+            Some(TokenKind::Symbol(')'))
+        ) {
+            return None;
+        }
+        index += 2;
+    }
+    if matches!(
+        tokens.get(index).map(|token| &token.kind),
+        Some(TokenKind::Symbol('@'))
+    ) {
+        if !matches!(
+            tokens.get(index + 1).map(|token| &token.kind),
+            Some(TokenKind::Word(_) | TokenKind::Identifier(_) | TokenKind::StringLiteral)
+        ) {
+            return None;
+        }
+        index += 2;
+    }
+    Some(index)
+}
+
 fn classify_mysql_ddl_statement(
     tokens: &[Token],
     start: usize,
@@ -142,13 +225,11 @@ fn classify_mysql_ddl_statement(
 ) -> Result<MysqlClassification, MysqlLexError> {
     match first {
         "CREATE" => {
-            let mut index = start + 1;
-            if target::word(tokens, index) == Some("OR")
-                && target::word(tokens, index + 1) == Some("REPLACE")
-                && target::word(tokens, index + 2) == Some("VIEW")
-            {
-                index += 2;
+            if let Some(view_index) = view_statement_start(tokens, start, true) {
+                let (target, database) = target::target_after(tokens, view_index + 1)?;
+                return Ok((MysqlStatementKind::CreateView, target, database));
             }
+            let mut index = start + 1;
             let temporary = target::word(tokens, index) == Some("TEMPORARY");
             if temporary {
                 index += 1;
@@ -210,19 +291,21 @@ fn classify_mysql_ddl_statement(
                 )),
             }
         }
-        "ALTER" => match target::word(tokens, start + 1) {
-            Some("TABLE") => {
-                let (target, database) = target::target_after(tokens, start + 2)?;
-                Ok((MysqlStatementKind::AlterTable, target, database))
+        "ALTER" => {
+            if let Some(view_index) = view_statement_start(tokens, start, false) {
+                let (target, database) = target::target_after(tokens, view_index + 1)?;
+                return Ok((MysqlStatementKind::AlterView, target, database));
             }
-            Some("VIEW") => {
-                let (target, database) = target::target_after(tokens, start + 2)?;
-                Ok((MysqlStatementKind::AlterView, target, database))
+            match target::word(tokens, start + 1) {
+                Some("TABLE") => {
+                    let (target, database) = target::target_after(tokens, start + 2)?;
+                    Ok((MysqlStatementKind::AlterTable, target, database))
+                }
+                _ => Err(MysqlLexError(
+                    "unsupported MySQL ALTER statement".to_string(),
+                )),
             }
-            _ => Err(MysqlLexError(
-                "unsupported MySQL ALTER statement".to_string(),
-            )),
-        },
+        }
         "RENAME" => {
             if target::word(tokens, start + 1) != Some("TABLE") {
                 return Err(MysqlLexError(
@@ -240,13 +323,16 @@ fn classify_mysql_ddl_statement(
                 .ok_or_else(|| {
                     MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
                 })?;
-            if destination_database.is_some()
-                && (database.is_none() || database.as_deref() != destination_database.as_deref())
-            {
-                return Err(MysqlLexError(
-                    "RENAME TABLE cannot move a table across databases".to_string(),
-                ));
-            }
+            let effective_database = match (database.as_deref(), destination_database.as_deref()) {
+                (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
+                    return Err(MysqlLexError(
+                        "RENAME TABLE cannot move a table across databases".to_string(),
+                    ));
+                }
+                (Some(source), _) => Some(source.to_string()),
+                (None, Some(destination)) => Some(destination.to_string()),
+                (None, None) => None,
+            };
             if tokens[end..]
                 .iter()
                 .any(|token| !matches!(token.kind, TokenKind::Symbol(';')))
@@ -256,7 +342,11 @@ fn classify_mysql_ddl_statement(
                         .to_string(),
                 ));
             }
-            Ok((MysqlStatementKind::RenameTable, Some(target), database))
+            Ok((
+                MysqlStatementKind::RenameTable,
+                Some(target),
+                effective_database,
+            ))
         }
         "DROP" => {
             let mut index = start + 1;

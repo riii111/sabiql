@@ -345,6 +345,22 @@ mod mysql_tests {
         assert!(matches!(
             evaluate_multi_statement_for_database_with_context(
                 DatabaseType::MySQL,
+                Some("app"),
+                "RENAME TABLE items TO app.archived_items",
+            ),
+            MultiStatementDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "RENAME TABLE app.items TO other.archived_items",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
                 None,
                 "CREATE TABLE items (id INT)",
             ),

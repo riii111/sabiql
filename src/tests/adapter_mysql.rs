@@ -130,7 +130,7 @@ async fn executes_supported_mysql_ddl_forms_on_oracle_mysql_84() {
                     .execute_adhoc(
                         db.dsn(),
                         &format!(
-                            "CREATE OR REPLACE VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                            "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {renamed_table}"
                         ),
                         AccessMode::ReadWrite,
                     )
@@ -147,7 +147,7 @@ async fn executes_supported_mysql_ddl_forms_on_oracle_mysql_84() {
                     .execute_adhoc(
                         db.dsn(),
                         &format!(
-                            "ALTER VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                            "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {renamed_table}"
                         ),
                         AccessMode::ReadWrite,
                     )
@@ -185,6 +185,19 @@ async fn executes_supported_mysql_ddl_forms_on_oracle_mysql_84() {
                     .map_err(|error| format!("failed to query altered view: {error:?}"))?;
                 if view_result.columns != ["id", "body"] || !view_result.values().is_empty() {
                     return Err(format!("unexpected DDL view result: {view_result:?}"));
+                }
+
+                let drop = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("DROP TABLE {renamed_table} /*!80000 RESTRICT */"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to drop table with version comment: {error:?}"))?;
+                if drop.command_tag != Some(CommandTag::Drop("TABLE".to_string())) {
+                    return Err(format!("unexpected DROP TABLE result: {drop:?}"));
                 }
                 Ok(())
             }
