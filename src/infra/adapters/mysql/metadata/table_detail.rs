@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
-    ForeignKey, Index, IndexAttributes, IndexType, QueryValue, Table, TableKind, TableKindInfo,
-    Trigger, TriggerEvent, TriggerTiming,
+    ForeignKey, Index, IndexAttributes, IndexType, Table, TableKind, TableKindInfo, Trigger,
+    TriggerEvent, TriggerTiming,
 };
 
 use super::super::sql::{quote_identifier, quote_string};
@@ -14,7 +14,8 @@ use super::super::{
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MysqlColumnMetadata, MysqlTableMetadata, column_from_metadata, columns_query,
+    COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, MysqlColumnMetadata,
+    MysqlTableMetadata, TABLES_RESULT_COLUMNS, column_from_metadata, columns_query,
     execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
     foreign_keys_query, metadata_shape_error, metadata_snapshot_from_result, optional_text,
     parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
@@ -69,7 +70,11 @@ pub(super) async fn fetch_table_columns_and_fks(
     let foreign_keys_query = foreign_keys_query(schema, table);
     let results = execute_metadata_queries_in_session(
         dsn,
-        &[&table_query, &columns_query, &foreign_keys_query],
+        &[
+            (table_query.as_str(), TABLES_RESULT_COLUMNS),
+            (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
+            (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
+        ],
     )
     .await?;
     let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
@@ -130,28 +135,49 @@ async fn fetch_table_detail_with_session(
 ) -> Result<Table, DbOperationError> {
     session.probe().await?;
     session.prepare_read_only().await?;
-    let tables_result = session.execute(&table_query(schema, table)).await?;
+    let tables_result = session
+        .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
+        .await?;
     let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
     let table_metadata = find_table(schema, table, &snapshot.tables)?;
 
     let columns = parse_columns_for_table(
-        &session.execute(&columns_query(schema, table)).await?,
+        &session
+            .execute_with_expected_columns(
+                &columns_query(schema, table),
+                COLUMN_METADATA_RESULT_COLUMNS,
+            )
+            .await?,
         schema,
         table,
     )?;
     let indexes = indexes_from_metadata(parse_index_metadata(
-        &session.execute(&indexes_query(table)).await?,
+        &session
+            .execute_with_expected_columns(&indexes_query(table), INDEX_RESULT_COLUMNS)
+            .await?,
     )?);
     let foreign_keys = foreign_keys_from_metadata(
-        parse_foreign_key_metadata(&session.execute(&foreign_keys_query(schema, table)).await?)?,
+        parse_foreign_key_metadata(
+            &session
+                .execute_with_expected_columns(
+                    &foreign_keys_query(schema, table),
+                    FOREIGN_KEY_RESULT_COLUMNS,
+                )
+                .await?,
+        )?,
         database,
     )?;
     let triggers = triggers_from_metadata(parse_trigger_metadata(
-        &session.execute(&triggers_query(table)).await?,
+        &session
+            .execute_with_expected_columns(&triggers_query(table), TRIGGER_RESULT_COLUMNS)
+            .await?,
     )?)?;
     let source_ddl = parse_source_ddl(
         &session
-            .execute(&show_create_query(table, table_metadata.kind))
+            .execute_with_expected_columns(
+                &show_create_query(table, table_metadata.kind),
+                show_create_result_columns(table_metadata.kind),
+            )
             .await?,
         table_metadata.kind,
     )?;
@@ -208,18 +234,43 @@ fn table_from_columns_and_foreign_keys(
     }
 }
 
+const INDEX_RESULT_COLUMNS: &[&str] = &[
+    "INDEX_NAME",
+    "NON_UNIQUE",
+    "INDEX_TYPE",
+    "SEQ_IN_INDEX",
+    "COLUMN_NAME",
+    "EXPRESSION",
+    "IS_PRIMARY",
+];
+const TRIGGER_RESULT_COLUMNS: &[&str] = &[
+    "TRIGGER_NAME",
+    "ACTION_TIMING",
+    "EVENT_MANIPULATION",
+    "ACTION_STATEMENT",
+    "DEFINER",
+];
+const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
+const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
+
+fn show_create_result_columns(kind: TableKind) -> &'static [&'static str] {
+    if kind == TableKind::View {
+        VIEW_SHOW_CREATE_RESULT_COLUMNS
+    } else {
+        TABLE_SHOW_CREATE_RESULT_COLUMNS
+    }
+}
+
 fn indexes_query(table: &str) -> String {
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {}) ORDER BY INDEX_NAME, SEQ_IN_INDEX",
-        quote_string(table),
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(table),
     )
 }
 
 fn triggers_query(table: &str) -> String {
     format!(
-        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {} UNION ALL SELECT NULL, NULL, NULL, NULL, NULL FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {}) ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
-        quote_string(table),
+        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
         quote_string(table),
     )
 }
@@ -236,16 +287,7 @@ fn show_create_query(table: &str, kind: TableKind) -> String {
 fn parse_trigger_metadata(
     result: &MysqlResultSet,
 ) -> Result<Vec<MysqlTriggerMetadata>, DbOperationError> {
-    expect_columns(
-        result,
-        &[
-            "TRIGGER_NAME",
-            "ACTION_TIMING",
-            "EVENT_MANIPULATION",
-            "ACTION_STATEMENT",
-            "DEFINER",
-        ],
-    )?;
+    expect_columns(result, TRIGGER_RESULT_COLUMNS)?;
     result
         .values
         .iter()
@@ -253,25 +295,21 @@ fn parse_trigger_metadata(
             if row.len() != 5 {
                 return Err(metadata_shape_error("TRIGGERS row"));
             }
-            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
-                return Ok(None);
-            }
             let timing = required_text(&row[1], "ACTION_TIMING")?
                 .parse::<TriggerTiming>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
             let event = required_text(&row[2], "EVENT_MANIPULATION")?
                 .parse::<TriggerEvent>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            Ok(Some(MysqlTriggerMetadata {
+            Ok(MysqlTriggerMetadata {
                 name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
                 timing,
                 event,
                 definition: required_text(&row[3], "ACTION_STATEMENT")?.to_string(),
                 security_context: optional_text(&row[4], "DEFINER")?.map(str::to_string),
-            }))
+            })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|rows| rows.into_iter().flatten().collect())
+        .collect()
 }
 
 fn triggers_from_metadata(
@@ -332,27 +370,13 @@ fn parse_source_ddl(result: &MysqlResultSet, kind: TableKind) -> Result<String, 
 fn parse_index_metadata(
     result: &MysqlResultSet,
 ) -> Result<Vec<MysqlIndexMetadata>, DbOperationError> {
-    expect_columns(
-        result,
-        &[
-            "INDEX_NAME",
-            "NON_UNIQUE",
-            "INDEX_TYPE",
-            "SEQ_IN_INDEX",
-            "COLUMN_NAME",
-            "EXPRESSION",
-            "IS_PRIMARY",
-        ],
-    )?;
+    expect_columns(result, INDEX_RESULT_COLUMNS)?;
     result
         .values
         .iter()
         .map(|row| {
             if row.len() != 7 {
                 return Err(metadata_shape_error("STATISTICS row"));
-            }
-            if row.iter().all(|value| matches!(value, QueryValue::Null)) {
-                return Ok(None);
             }
             let column_name = optional_text(&row[4], "COLUMN_NAME")?;
             let expression = optional_text(&row[5], "EXPRESSION")?;
@@ -374,7 +398,7 @@ fn parse_index_metadata(
                     ));
                 }
             };
-            Ok(Some(MysqlIndexMetadata {
+            Ok(MysqlIndexMetadata {
                 name: required_text(&row[0], "INDEX_NAME")?.to_string(),
                 non_unique: parse_boolean_flag(&row[1], "NON_UNIQUE")?,
                 index_type: required_text(&row[2], "INDEX_TYPE")?.to_string(),
@@ -382,10 +406,9 @@ fn parse_index_metadata(
                 column_name,
                 expression,
                 primary: parse_boolean_flag(&row[6], "IS_PRIMARY")?,
-            }))
+            })
         })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|rows| rows.into_iter().flatten().collect())
+        .collect()
 }
 
 fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
@@ -478,7 +501,7 @@ while IFS= read -r line; do
       ;;
     *TABLES*)
       if [ "$mode" = "empty" ]; then
-        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA" xsi:nil="true"/><field name="TABLE_NAME" xsi:nil="true"/><field name="TABLE_TYPE" xsi:nil="true"/><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT" xsi:nil="true"/></row></resultset>'
+        printf '%s\n' '<resultset></resultset>'
       elif [ "$mode" = "view" ]; then
         printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field></row></resultset>'
       else
@@ -641,7 +664,7 @@ done
     }
 
     #[tokio::test]
-    async fn inspector_detail_sends_foreign_key_query_over_one_kilobyte() {
+    async fn inspector_detail_sends_foreign_key_query_without_sentinel() {
         let (_directory, program, transcript) = fake_metadata_cli("table");
         fetch_table_detail_in_session_with_program(
             "mysql://user:password@localhost:3306/app",
@@ -658,11 +681,7 @@ done
             .lines()
             .find(|line| line.contains("REFERENTIAL_CONSTRAINTS"))
             .expect("foreign key metadata query");
-        assert!(
-            foreign_key_query.len() > 1024,
-            "foreign key query was unexpectedly short: {} bytes",
-            foreign_key_query.len()
-        );
+        assert!(!foreign_key_query.contains("UNION ALL SELECT NULL"));
         assert_process_stopped(&transcript);
         assert_option_file_removed(&transcript);
     }
@@ -783,6 +802,7 @@ done
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::QueryValue;
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
         MysqlResultSet {
@@ -831,23 +851,8 @@ mod tests {
     }
 
     #[test]
-    fn empty_trigger_sentinel_returns_no_triggers() {
-        let result = result(
-            &[
-                "TRIGGER_NAME",
-                "ACTION_TIMING",
-                "EVENT_MANIPULATION",
-                "ACTION_STATEMENT",
-                "DEFINER",
-            ],
-            vec![vec![
-                QueryValue::Null,
-                QueryValue::Null,
-                QueryValue::Null,
-                QueryValue::Null,
-                QueryValue::Null,
-            ]],
-        );
+    fn empty_trigger_result_returns_no_triggers() {
+        let result = result(TRIGGER_RESULT_COLUMNS, Vec::new());
 
         assert!(parse_trigger_metadata(&result).unwrap().is_empty());
     }
