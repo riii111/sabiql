@@ -10,8 +10,8 @@ use crate::update::input::keybindings::KeyCombo;
 pub use classify::{classify_command, classify_sequence};
 pub use types::{
     BrowseVimContext, InspectorVimContext, JsonbDetailVimContext, ResultVimContext,
-    SearchContinuation, SqlModalVimContext, VimCommand, VimModeTransition, VimNavigation,
-    VimOperator, VimSurfaceContext,
+    SearchContinuation, SqlModalVimContext, StagedDeleteState, VimCommand, VimModeTransition,
+    VimNavigation, VimOperator, VimSurfaceContext,
 };
 
 pub fn action_for_input(
