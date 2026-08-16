@@ -1,11 +1,14 @@
 use std::ffi::OsStr;
+use std::io;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use quick_xml::Reader;
 use quick_xml::escape::unescape;
 use quick_xml::events::Event;
-use tokio::io::{AsyncRead, BufReader};
+use tokio::io::{AsyncRead, BufReader, ReadBuf};
 use uuid::Uuid;
 
 use crate::adapters::csv_export::CsvFileWriter;
@@ -27,6 +30,162 @@ use super::pty::MySqlExportPtySource;
 use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
+const MYSQL_CSV_MAX_FIELD_BYTES: usize = 16 * 1024 * 1024;
+const MYSQL_CSV_FIELD_LIMIT_ERROR: &str = "MySQL CSV field exceeds the 16777216-byte limit";
+
+#[derive(Clone, Copy)]
+enum MySqlXmlFieldState {
+    Outside,
+    FieldStartPending,
+    FieldStartTag,
+    FieldContent,
+    Cdata,
+}
+
+struct MySqlXmlFieldLimitReader<R> {
+    inner: R,
+    state: MySqlXmlFieldState,
+    field_bytes: usize,
+    window: Vec<u8>,
+    limit_error_pending: bool,
+}
+
+impl<R> MySqlXmlFieldLimitReader<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            state: MySqlXmlFieldState::Outside,
+            field_bytes: 0,
+            window: Vec::with_capacity(9),
+            limit_error_pending: false,
+        }
+    }
+
+    fn into_inner(self) -> R {
+        self.inner
+    }
+
+    fn process(&mut self, bytes: &[u8]) -> usize {
+        for (index, &byte) in bytes.iter().enumerate() {
+            match self.state {
+                MySqlXmlFieldState::FieldStartTag => {
+                    if byte == b'>' {
+                        self.state = if self.window.ends_with(b"/>") {
+                            self.field_bytes = 0;
+                            MySqlXmlFieldState::Outside
+                        } else {
+                            MySqlXmlFieldState::FieldContent
+                        };
+                    }
+                }
+                MySqlXmlFieldState::FieldContent | MySqlXmlFieldState::Cdata => {
+                    if self.field_bytes >= MYSQL_CSV_MAX_FIELD_BYTES {
+                        return index;
+                    }
+                    self.field_bytes += 1;
+                }
+                MySqlXmlFieldState::FieldStartPending => {
+                    if byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/') {
+                        self.state = if byte == b'>' {
+                            MySqlXmlFieldState::FieldContent
+                        } else {
+                            MySqlXmlFieldState::FieldStartTag
+                        };
+                    } else {
+                        self.state = MySqlXmlFieldState::Outside;
+                    }
+                }
+                MySqlXmlFieldState::Outside => {}
+            }
+
+            self.window.push(byte);
+            if self.window.len() > 9 {
+                self.window.remove(0);
+            }
+
+            match self.state {
+                MySqlXmlFieldState::FieldStartTag => {}
+                MySqlXmlFieldState::FieldContent => {
+                    if self.window.ends_with(b"<![CDATA[") {
+                        self.state = MySqlXmlFieldState::Cdata;
+                    } else if self.window.ends_with(b"</field>") {
+                        self.state = MySqlXmlFieldState::Outside;
+                        self.field_bytes = 0;
+                    }
+                }
+                MySqlXmlFieldState::Cdata => {
+                    if self.window.ends_with(b"]]>") {
+                        self.state = MySqlXmlFieldState::FieldContent;
+                    }
+                }
+                MySqlXmlFieldState::FieldStartPending | MySqlXmlFieldState::Outside => {
+                    if self.window.ends_with(b"<field") {
+                        self.state = MySqlXmlFieldState::FieldStartPending;
+                    }
+                }
+            }
+        }
+        bytes.len()
+    }
+}
+
+impl<R> AsyncRead for MySqlXmlFieldLimitReader<R>
+where
+    R: AsyncRead + Unpin,
+{
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        if self.limit_error_pending {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                MYSQL_CSV_FIELD_LIMIT_ERROR,
+            )));
+        }
+        if buf.remaining() == 0 {
+            return Poll::Ready(Ok(()));
+        }
+
+        let mut chunk = [0; 8192];
+        let chunk_len = buf.remaining().min(chunk.len());
+        let mut chunk_buf = ReadBuf::new(&mut chunk[..chunk_len]);
+        match Pin::new(&mut self.inner).poll_read(cx, &mut chunk_buf) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
+            Poll::Ready(Ok(())) => {
+                let bytes_read = chunk_buf.filled().len();
+                if bytes_read == 0 {
+                    return Poll::Ready(Ok(()));
+                }
+                let bytes_allowed = self.process(&chunk[..bytes_read]);
+                if bytes_allowed < bytes_read {
+                    self.limit_error_pending = true;
+                }
+                if bytes_allowed > 0 {
+                    buf.put_slice(&chunk[..bytes_allowed]);
+                    Poll::Ready(Ok(()))
+                } else {
+                    Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        MYSQL_CSV_FIELD_LIMIT_ERROR,
+                    )))
+                }
+            }
+        }
+    }
+}
+
+fn append_csv_field_value(field: &mut MySqlField, value: &str) -> Result<(), DbOperationError> {
+    if field.value.len().saturating_add(value.len()) > MYSQL_CSV_MAX_FIELD_BYTES {
+        return Err(DbOperationError::QueryFailed(
+            MYSQL_CSV_FIELD_LIMIT_ERROR.to_string(),
+        ));
+    }
+    field.value.push_str(value);
+    Ok(())
+}
 
 pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
     target: MySqlDsn,
@@ -112,12 +271,13 @@ pub(super) async fn stream_mysql_resultset_to_csv(
             frame_scanner: super::xml::MySqlResultsetFrameScanner::default(),
             started: false,
         };
+        let source = MySqlXmlFieldLimitReader::new(source);
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
         let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
         let buffered = reader.into_inner();
         let unread = buffered.buffer().to_vec();
-        let source = buffered.into_inner();
+        let source = buffered.into_inner().into_inner();
         source.pty.pending.extend(unread);
         source.pty.pending.extend(source.pending);
         if has_mysql_cli_error(&source.error_output) {
@@ -140,12 +300,13 @@ pub(super) async fn stream_mysql_resultset_to_csv(
         };
         let pending_stderr = std::mem::take(&mut process.pending_stderr);
         source.capture_error(&pending_stderr);
+        let source = MySqlXmlFieldLimitReader::new(source);
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
         let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
         let buffered = reader.into_inner();
         let unread = buffered.buffer().to_vec();
-        let source = buffered.into_inner();
+        let source = buffered.into_inner().into_inner();
         source.pending.extend(unread);
         if source.error_output.is_empty() {
             process
@@ -222,7 +383,7 @@ where
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
                 if let Some(field) = current_field.as_mut() {
-                    field.value.push_str(&text);
+                    append_csv_field_value(field, &text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -232,7 +393,7 @@ where
             Event::GeneralRef(reference) => {
                 let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
-                    field.value.push_str(&text);
+                    append_csv_field_value(field, &text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -241,13 +402,10 @@ where
             }
             Event::CData(data) => {
                 if let Some(field) = current_field.as_mut() {
-                    field
-                        .value
-                        .push_str(std::str::from_utf8(data.as_ref()).map_err(|error| {
-                            DbOperationError::QueryFailed(format!(
-                                "invalid MySQL XML text: {error}"
-                            ))
-                        })?);
+                    let text = std::str::from_utf8(data.as_ref()).map_err(|error| {
+                        DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                    })?;
+                    append_csv_field_value(field, text)?;
                 } else {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected CDATA in MySQL XML result".to_string(),
@@ -351,7 +509,7 @@ line2]]></field>
         let directory = tempdir().unwrap();
         let path = directory.path().join("stream.csv");
         let mut csv_writer = CsvFileWriter::create(path.clone()).await.unwrap();
-        let mut reader = Reader::from_reader(BufReader::new(output));
+        let mut reader = Reader::from_reader(BufReader::new(MySqlXmlFieldLimitReader::new(output)));
         reader.config_mut().trim_text(false);
 
         stream_mysql_xml_to_csv(&mut reader, &mut csv_writer)
@@ -367,6 +525,46 @@ line2]]></field>
              line2\",a\tb,日本語,,,0x00FF\n"
                 .replace("             ", "")
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_mysql_csv_field_over_byte_limit() {
+        let value = "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES + 1);
+        let xml =
+            format!("<resultset><row><field name=\"payload\">{value}</field></row></resultset>");
+        let (mut input, output) = tokio::io::duplex(32);
+        let producer = tokio::spawn(async move {
+            input.write_all(xml.as_bytes()).await.unwrap();
+        });
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("oversized-field.csv");
+        let mut csv_writer = CsvFileWriter::create(path).await.unwrap();
+        let mut reader = Reader::from_reader(BufReader::new(output));
+        reader.config_mut().trim_text(false);
+
+        let error = stream_mysql_xml_to_csv(&mut reader, &mut csv_writer)
+            .await
+            .unwrap_err();
+        producer.await.unwrap();
+
+        assert!(matches!(&error, DbOperationError::QueryFailed(_)));
+        assert!(error.masked_details().contains(MYSQL_CSV_FIELD_LIMIT_ERROR));
+    }
+
+    #[tokio::test]
+    async fn stops_reading_mysql_csv_field_at_byte_limit() {
+        let value = "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES + 1);
+        let xml =
+            format!("<resultset><row><field name=\"payload\">{value}</field></row></resultset>");
+        let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
+        let mut output = Vec::new();
+
+        let error = tokio::io::AsyncReadExt::read_to_end(&mut source, &mut output)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), MYSQL_CSV_FIELD_LIMIT_ERROR);
+        assert!(output.len() < xml.len());
     }
 
     #[cfg(unix)]
