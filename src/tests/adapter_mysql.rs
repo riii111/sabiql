@@ -645,7 +645,7 @@ mod metadata_fetch {
                     .execute_adhoc(
                         db.dsn(),
                         &format!(
-                            "CREATE TABLE {MYSQL_INDEX_METADATA} (email VARCHAR(255) NOT NULL, created_at DATETIME NOT NULL, status VARCHAR(32) NOT NULL, KEY idx_normal_status (status), KEY idx_email_prefix_desc (email(8) DESC, created_at), KEY idx_invisible_created_at (created_at) INVISIBLE, KEY idx_functional_email ((LOWER(email)))) ENGINE=InnoDB"
+                            "CREATE TABLE {MYSQL_INDEX_METADATA} (email VARCHAR(255) NOT NULL, created_at DATETIME NOT NULL, status VARCHAR(32) NOT NULL, KEY idx_normal_status (status), KEY idx_email_prefix_desc (email(8) DESC, created_at), KEY idx_invisible_created_at (created_at) INVISIBLE, KEY idx_functional_email ((LOWER(email))) INVISIBLE) ENGINE=InnoDB"
                         ),
                         AccessMode::ReadWrite,
                     )
@@ -694,8 +694,10 @@ mod metadata_fetch {
                     .iter()
                     .find(|index| index.name == "idx_functional_email")
                     .ok_or_else(|| "functional MySQL index was not returned".to_string())?;
-                if !functional.has_expression() {
-                    return Err(format!("functional index lost its expression: {functional:?}"));
+                if !functional.has_expression() || !functional.is_invisible() {
+                    return Err(format!(
+                        "functional invisible index lost metadata: {functional:?}"
+                    ));
                 }
 
                 db.adapter()

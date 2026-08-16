@@ -432,7 +432,11 @@ fn index_detail(index: &Index) -> String {
     if index.needs_source_definition_detail()
         && let Some(definition) = &index.definition
     {
-        return definition.clone();
+        let mut detail = definition.clone();
+        if index.is_invisible() {
+            detail.push_str("; invisible");
+        }
+        return detail;
     }
 
     let mut details = Vec::new();
@@ -826,13 +830,22 @@ mod tests {
     #[test]
     fn mysql_index_rows_show_prefix_direction_and_visibility() {
         let mut table = table();
-        table.indexes = vec![Index {
-            name: "users_email_idx".to_string(),
-            columns: vec!["email(8) DESC".to_string()],
-            attributes: IndexAttributes::DESCENDING | IndexAttributes::INVISIBLE,
-            index_type: IndexType::BTree,
-            definition: None,
-        }];
+        table.indexes = vec![
+            Index {
+                name: "users_email_idx".to_string(),
+                columns: vec!["email(8) DESC".to_string()],
+                attributes: IndexAttributes::DESCENDING | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+            Index {
+                name: "users_email_functional_idx".to_string(),
+                columns: vec!["lower(email)".to_string()],
+                attributes: IndexAttributes::EXPRESSION | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: Some("lower(email)".to_string()),
+            },
+        ];
 
         let model = InspectorViewModel::build(
             &EngineFeatureProfile::mysql_like(),
@@ -849,6 +862,7 @@ mod tests {
                 assert!(*show_details);
                 assert_eq!(rows[0].columns, "email(8) DESC");
                 assert_eq!(rows[0].detail.as_deref(), Some("descending; invisible"));
+                assert_eq!(rows[1].detail.as_deref(), Some("lower(email); invisible"));
             }
             section => panic!("expected index section, got {section:?}"),
         }
