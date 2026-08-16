@@ -56,6 +56,7 @@ const MYSQL_COMPLETION_KEYWORDS: &[&str] = &[
     "UPDATE",
     "SET",
     "DELETE",
+    "TRUNCATE",
     "CREATE",
     "DROP",
     "ALTER",
@@ -2034,6 +2035,28 @@ mod tests {
                     .iter()
                     .any(|candidate| candidate.text == "DESCRIBE")
             );
+        }
+
+        #[test]
+        fn mysql_keyword_candidates_include_truncate_case_insensitively() {
+            let e = engine();
+            for prefix in ["TRU", "tru"] {
+                let candidates = e.get_candidates_for_database(
+                    prefix,
+                    prefix.chars().count(),
+                    None,
+                    None,
+                    &[],
+                    CompletionDatabaseScope {
+                        database_type: DatabaseType::MySQL,
+                        active_database: Some("app"),
+                    },
+                );
+
+                assert!(candidates.iter().any(|candidate| {
+                    candidate.text == "TRUNCATE" && candidate.kind == CompletionKind::Keyword
+                }));
+            }
         }
 
         #[test]
