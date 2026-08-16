@@ -53,10 +53,10 @@ pub(super) fn reduce_connection_selector(
         Action::DeleteConnection(id) => {
             if state
                 .session
-                .pending_connection_probe()
+                .pending_mysql_connection_probe()
                 .is_some_and(|pending| pending.id == *id)
             {
-                state.session.clear_connection_probe();
+                state.session.clear_mysql_connection_probe();
             }
             DispatchResult::handled_with(vec![Effect::DeleteConnection { id: id.clone() }])
         }
@@ -64,10 +64,10 @@ pub(super) fn reduce_connection_selector(
             let was_active = state.session.active_connection_id() == Some(id);
             if state
                 .session
-                .pending_connection_probe()
+                .pending_mysql_connection_probe()
                 .is_some_and(|pending| pending.id == *id)
             {
-                state.session.clear_connection_probe();
+                state.session.clear_mysql_connection_probe();
             }
             if was_active {
                 reset_active_connection_state(state);
@@ -353,7 +353,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let probe_run_id = state.session.begin_connection_probe(
+            let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
                 target.database_type,
@@ -368,7 +368,7 @@ mod tests {
             );
             reduce_connection_lifecycle(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
                 },
@@ -377,7 +377,7 @@ mod tests {
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&current_id));
-            assert!(state.session.pending_connection_probe().is_none());
+            assert!(state.session.pending_mysql_connection_probe().is_none());
         }
 
         #[test]
@@ -400,7 +400,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let probe_run_id = state.session.begin_connection_probe(
+            let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
                 target.database_type,
@@ -415,7 +415,7 @@ mod tests {
             );
             reduce_connection_lifecycle(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),

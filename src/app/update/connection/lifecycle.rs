@@ -49,7 +49,7 @@ pub fn reduce_connection_lifecycle(
                             database_type: DatabaseType::MySQL,
                             database: state.session.active_database().map(str::to_string),
                         };
-                        let run_id = state.session.begin_connection_probe(
+                        let run_id = state.session.begin_mysql_connection_probe(
                             &target.id,
                             &target.name,
                             target.database_type,
@@ -57,7 +57,7 @@ pub fn reduce_connection_lifecycle(
                             target.database.as_deref(),
                         );
                         state.session.mark_connecting();
-                        return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                        return DispatchResult::handled_with(vec![Effect::ProbeMySqlConnection {
                             target,
                             run_id,
                         }]);
@@ -93,7 +93,7 @@ pub fn reduce_connection_lifecycle(
             save_current_connection_cache(state);
 
             if *database_type == DatabaseType::MySQL {
-                let run_id = state.session.begin_connection_probe(
+                let run_id = state.session.begin_mysql_connection_probe(
                     id,
                     name,
                     *database_type,
@@ -103,14 +103,14 @@ pub fn reduce_connection_lifecycle(
                 state.query.reset_for_context_change();
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![Effect::ProbeConnection {
+                    vec![Effect::ProbeMySqlConnection {
                         target: target.clone(),
                         run_id,
                     }],
                 ));
             }
 
-            state.session.clear_connection_probe();
+            state.session.clear_mysql_connection_probe();
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
@@ -140,7 +140,7 @@ pub fn reduce_connection_lifecycle(
             }
         }
 
-        Action::ConnectionProbeCompleted { target, run_id } => {
+        Action::MySqlConnectionProbeCompleted { target, run_id } => {
             let ConnectionTarget {
                 id,
                 dsn,
@@ -149,7 +149,7 @@ pub fn reduce_connection_lifecycle(
                 database,
             } = target;
             if *database_type != DatabaseType::MySQL
-                || !state.session.is_current_connection_probe(
+                || !state.session.is_current_mysql_connection_probe(
                     id,
                     name,
                     *database_type,
@@ -176,13 +176,13 @@ pub fn reduce_connection_lifecycle(
             DispatchResult::handled_with(mysql_connection_completion_effects(state, dsn))
         }
 
-        Action::ConnectionProbeFailed {
+        Action::MySqlConnectionProbeFailed {
             target,
             run_id,
             error,
         } => {
             if target.database_type != DatabaseType::MySQL
-                || !state.session.is_current_connection_probe(
+                || !state.session.is_current_mysql_connection_probe(
                     &target.id,
                     &target.name,
                     target.database_type,
@@ -328,13 +328,13 @@ mod tests {
             let run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .expect("switching to MySQL should probe the connection");
             reduce(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target: mysql,
                     run_id,
                 },
@@ -1044,7 +1044,7 @@ mod tests {
 
             assert!(effects.iter().any(|effect| matches!(
                 effect,
-                Effect::ProbeConnection { target: actual, .. } if actual.dsn == target.dsn
+                Effect::ProbeMySqlConnection { target: actual, .. } if actual.dsn == target.dsn
             )));
             assert!(
                 !effects
@@ -1068,14 +1068,14 @@ mod tests {
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .expect("switch should include the probe run");
 
             let effects = reduce(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: probe_run_id,
                 },
@@ -1151,7 +1151,7 @@ mod tests {
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
@@ -1166,7 +1166,7 @@ mod tests {
             );
             reduce(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target: mysql,
                     run_id: mysql_run_id,
                 },
@@ -1205,14 +1205,14 @@ mod tests {
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: mysql,
                     run_id: mysql_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1255,14 +1255,14 @@ mod tests {
             let mysql_run_id = mysql_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: mysql,
                     run_id: mysql_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1309,14 +1309,14 @@ mod tests {
             let probe_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             let retry_effects = reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: second,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1418,7 +1418,7 @@ mod tests {
             let probe_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
@@ -1428,7 +1428,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: second,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1470,7 +1470,7 @@ mod tests {
             let first_run_id = first_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
@@ -1478,7 +1478,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target: first,
                     run_id: first_run_id,
                 },
@@ -1511,7 +1511,7 @@ mod tests {
             let first_run_id = first_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
@@ -1519,7 +1519,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: first,
                     run_id: first_run_id,
                     error: DbOperationError::ConnectionFailed("stale".to_string()),
@@ -1544,14 +1544,14 @@ mod tests {
             let first_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: target.clone(),
                     run_id: first_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1568,7 +1568,7 @@ mod tests {
             let (retry_target, retry_run_id) = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { target, run_id } => Some((target, *run_id)),
+                    Effect::ProbeMySqlConnection { target, run_id } => Some((target, *run_id)),
                     _ => None,
                 })
                 .unwrap();
@@ -1604,13 +1604,13 @@ mod tests {
             let failed_run_id = failed_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: failed_target,
                     run_id: failed_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1629,7 +1629,7 @@ mod tests {
             let retry_run_id = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
@@ -1637,7 +1637,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: retry_target.clone(),
                     run_id: retry_run_id,
                     error: DbOperationError::ConnectionFailed("refused again".to_string()),
@@ -1653,7 +1653,7 @@ mod tests {
             let actual_target = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { target, .. } => Some(target),
+                    Effect::ProbeMySqlConnection { target, .. } => Some(target),
                     _ => None,
                 })
                 .unwrap();
@@ -1691,13 +1691,13 @@ mod tests {
             let first_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: mysql.clone(),
                     run_id: first_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1716,14 +1716,14 @@ mod tests {
             let retry_run_id = retry_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: mysql,
                     run_id: retry_run_id,
                     error: DbOperationError::ConnectionFailed("refused again".to_string()),
@@ -1762,13 +1762,13 @@ mod tests {
             let mysql_run_id = effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target: mysql,
                     run_id: mysql_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
@@ -1776,7 +1776,7 @@ mod tests {
             );
 
             let reload_run_id = state.session.begin_reload();
-            assert!(state.session.pending_connection_probe().is_none());
+            assert!(state.session.pending_mysql_connection_probe().is_none());
             reduce_app(
                 &mut state,
                 Action::MetadataFailed {
@@ -1802,7 +1802,7 @@ mod tests {
             assert!(
                 !retry_effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::ProbeConnection { .. }))
+                    .any(|effect| matches!(effect, Effect::ProbeMySqlConnection { .. }))
             );
         }
 
@@ -1872,7 +1872,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("app".to_string()),
             };
-            let run_id = state.session.begin_connection_probe(
+            let run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
                 target.database_type,
@@ -1882,7 +1882,7 @@ mod tests {
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target,
                     run_id,
                     error: DbOperationError::ConnectionFailed(

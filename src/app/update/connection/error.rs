@@ -21,7 +21,7 @@ pub(super) fn reduce_connection_error(
         }
         Action::CloseConnectionError => {
             if state.session.has_pending_connection_switch() {
-                state.session.clear_connection_probe();
+                state.session.clear_mysql_connection_probe();
                 state.connection_error.clear();
             } else {
                 state.connection_error.details_expanded = false;
@@ -82,7 +82,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::RetryConnection => {
-            if let Some(pending) = state.session.pending_connection_probe().cloned() {
+            if let Some(pending) = state.session.pending_mysql_connection_probe().cloned() {
                 let target = ConnectionTarget {
                     id: pending.id,
                     dsn: pending.dsn,
@@ -90,7 +90,7 @@ pub(super) fn reduce_connection_error(
                     database_type: pending.database_type,
                     database: pending.database,
                 };
-                let run_id = state.session.begin_connection_probe(
+                let run_id = state.session.begin_mysql_connection_probe(
                     &target.id,
                     &target.name,
                     target.database_type,
@@ -102,7 +102,7 @@ pub(super) fn reduce_connection_error(
                     state.session.mark_connecting();
                 }
                 state.modal.set_mode(InputMode::Normal);
-                return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                return DispatchResult::handled_with(vec![Effect::ProbeMySqlConnection {
                     target,
                     run_id,
                 }]);
@@ -136,7 +136,7 @@ pub(super) fn reduce_connection_error(
                         database_type: DatabaseType::MySQL,
                         database: state.session.active_database().map(str::to_string),
                     };
-                    let run_id = state.session.begin_connection_probe(
+                    let run_id = state.session.begin_mysql_connection_probe(
                         &target.id,
                         &target.name,
                         target.database_type,
@@ -145,7 +145,7 @@ pub(super) fn reduce_connection_error(
                     );
                     state.session.mark_connecting();
                     state.modal.set_mode(InputMode::Normal);
-                    return DispatchResult::handled_with(vec![Effect::ProbeConnection {
+                    return DispatchResult::handled_with(vec![Effect::ProbeMySqlConnection {
                         target,
                         run_id,
                     }]);
@@ -274,7 +274,7 @@ mod tests {
 
         assert!(effects.iter().any(|effect| matches!(
             effect,
-            Effect::ProbeConnection { target, .. }
+            Effect::ProbeMySqlConnection { target, .. }
                 if target.id == id
                     && target.dsn == dsn
                     && target.database == Some("app".to_string())
@@ -303,7 +303,7 @@ mod tests {
             .session
             .set_connection_state(ConnectionState::Connected);
 
-        let _ = state.session.begin_connection_probe(
+        let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
             DatabaseType::MySQL,
@@ -317,7 +317,7 @@ mod tests {
 
         reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
 
-        assert!(state.session.pending_connection_probe().is_none());
+        assert!(state.session.pending_mysql_connection_probe().is_none());
         assert!(state.connection_error.error_info().is_none());
         assert_eq!(state.input_mode(), InputMode::Normal);
         assert!(state.session.connection_state().is_connected());
@@ -343,7 +343,7 @@ mod tests {
             .session
             .set_connection_state(ConnectionState::Connected);
 
-        let _ = state.session.begin_connection_probe(
+        let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
             DatabaseType::MySQL,
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(
             state
                 .session
-                .pending_connection_probe()
+                .pending_mysql_connection_probe()
                 .map(|pending| &pending.id),
             Some(&target_id)
         );

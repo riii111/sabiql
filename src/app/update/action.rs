@@ -388,11 +388,11 @@ pub enum Action {
     ConnectionSetupCancel,
     ConnectionSaveCompleted(ConnectionTarget),
     ConnectionSaveFailed(ConnectionSaveError),
-    ConnectionProbeCompleted {
+    MySqlConnectionProbeCompleted {
         target: ConnectionTarget,
         run_id: u64,
     },
-    ConnectionProbeFailed {
+    MySqlConnectionProbeFailed {
         target: ConnectionTarget,
         run_id: u64,
         error: DbOperationError,

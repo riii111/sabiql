@@ -33,7 +33,7 @@ pub enum TableDetailState {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct PendingConnectionProbe {
+pub struct PendingMySqlConnectionProbe {
     pub id: ConnectionId,
     pub name: String,
     pub database_type: DatabaseType,
@@ -45,10 +45,10 @@ pub struct PendingConnectionProbe {
     pub table_detail_generation: u64,
 }
 
-impl fmt::Debug for PendingConnectionProbe {
+impl fmt::Debug for PendingMySqlConnectionProbe {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("PendingConnectionProbe")
+            .debug_struct("PendingMySqlConnectionProbe")
             .field("id", &self.id)
             .field("name", &self.name)
             .field("database_type", &self.database_type)
@@ -102,8 +102,8 @@ pub struct BrowseSession {
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
     active_connection: Option<ActiveConnection>,
-    connection_probe_run: AsyncRun,
-    pending_connection_probe: Option<PendingConnectionProbe>,
+    mysql_connection_probe_run: AsyncRun,
+    pending_mysql_connection_probe: Option<PendingMySqlConnectionProbe>,
     connection_generation: u64,
     database_generation: u64,
     active_engine_feature_profile: EngineFeatureProfile,
@@ -127,8 +127,8 @@ impl Default for BrowseSession {
             table_detail_run: AsyncRun::default(),
             dsn: None,
             active_connection: None,
-            connection_probe_run: AsyncRun::default(),
-            pending_connection_probe: None,
+            mysql_connection_probe_run: AsyncRun::default(),
+            pending_mysql_connection_probe: None,
             connection_generation: 0,
             database_generation: 0,
             active_engine_feature_profile: EngineFeatureProfile::disconnected(),
@@ -204,14 +204,14 @@ impl BrowseSession {
     }
 
     pub fn mark_table_detail_probe_failed(&mut self, dsn: &str, error: String) -> bool {
-        let belongs_to_probe = self
-            .pending_connection_probe
-            .as_ref()
-            .is_some_and(|pending| {
-                pending.table_detail_dsn.as_deref() == Some(dsn)
-                    && pending.table_detail_run_id == Some(self.table_detail_run.last_id())
-                    && pending.table_detail_generation == self.selection_generation
-            });
+        let belongs_to_probe =
+            self.pending_mysql_connection_probe
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.table_detail_dsn.as_deref() == Some(dsn)
+                        && pending.table_detail_run_id == Some(self.table_detail_run.last_id())
+                        && pending.table_detail_generation == self.selection_generation
+                });
         if belongs_to_probe
             && self.dsn_matches(dsn)
             && self.selected_table_key.is_some()
@@ -226,7 +226,7 @@ impl BrowseSession {
     }
 
     pub fn retry_table_detail_after_probe_failure(&mut self) -> Option<(String, u64, u64)> {
-        let pending = self.pending_connection_probe.as_ref()?;
+        let pending = self.pending_mysql_connection_probe.as_ref()?;
         let dsn = pending.table_detail_dsn.clone()?;
         let generation = pending.table_detail_generation;
         let run_id = pending.table_detail_run_id?;
@@ -254,7 +254,7 @@ impl BrowseSession {
     }
 
     #[must_use]
-    pub fn begin_connection_probe(
+    pub fn begin_mysql_connection_probe(
         &mut self,
         id: &ConnectionId,
         name: &str,
@@ -265,10 +265,10 @@ impl BrowseSession {
         let table_detail_dsn = self.dsn.clone();
         let table_detail_run_id = self.table_detail_run.active_id();
         let table_detail_generation = self.selection_generation;
-        self.cancel_metadata_for_connection_probe();
+        self.cancel_metadata_for_mysql_connection_probe();
         self.connection_generation = self.connection_generation.wrapping_add(1);
-        let run_id = self.connection_probe_run.begin();
-        self.pending_connection_probe = Some(PendingConnectionProbe {
+        let run_id = self.mysql_connection_probe_run.begin();
+        self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
             id: id.clone(),
             name: name.to_string(),
             database_type,
@@ -286,7 +286,7 @@ impl BrowseSession {
         self.connection_generation = self.connection_generation.wrapping_add(1);
     }
 
-    fn cancel_metadata_for_connection_probe(&mut self) {
+    fn cancel_metadata_for_mysql_connection_probe(&mut self) {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
@@ -307,7 +307,7 @@ impl BrowseSession {
         }
     }
 
-    pub fn is_current_connection_probe(
+    pub fn is_current_mysql_connection_probe(
         &self,
         id: &ConnectionId,
         name: &str,
@@ -316,9 +316,9 @@ impl BrowseSession {
         database: Option<&str>,
         run_id: u64,
     ) -> bool {
-        self.connection_probe_run.is_current(run_id)
+        self.mysql_connection_probe_run.is_current(run_id)
             && self
-                .pending_connection_probe
+                .pending_mysql_connection_probe
                 .as_ref()
                 .is_some_and(|pending| {
                     pending.run_id == run_id
@@ -330,12 +330,12 @@ impl BrowseSession {
                 })
     }
 
-    pub fn pending_connection_probe(&self) -> Option<&PendingConnectionProbe> {
-        self.pending_connection_probe.as_ref()
+    pub fn pending_mysql_connection_probe(&self) -> Option<&PendingMySqlConnectionProbe> {
+        self.pending_mysql_connection_probe.as_ref()
     }
 
     pub fn has_pending_connection_switch(&self) -> bool {
-        let Some(pending) = self.pending_connection_probe.as_ref() else {
+        let Some(pending) = self.pending_mysql_connection_probe.as_ref() else {
             return false;
         };
 
@@ -344,14 +344,14 @@ impl BrowseSession {
             || self.dsn().is_some_and(|dsn| dsn != pending.dsn)
     }
 
-    pub fn clear_connection_probe(&mut self) {
-        self.connection_probe_run.clear_active();
-        self.pending_connection_probe = None;
+    pub fn clear_mysql_connection_probe(&mut self) {
+        self.mysql_connection_probe_run.clear_active();
+        self.pending_mysql_connection_probe = None;
     }
 
     #[must_use]
     pub fn begin_connecting(&mut self, dsn: &str) -> u64 {
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
         self.dsn = Some(dsn.to_string());
         self.mark_connecting();
         self.begin_metadata_run()
@@ -386,7 +386,7 @@ impl BrowseSession {
         self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
     }
 
     pub fn activate_cli_ephemeral_connection(&mut self, id: &ConnectionId, name: &str, dsn: &str) {
@@ -401,7 +401,7 @@ impl BrowseSession {
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -431,7 +431,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
 
@@ -468,7 +468,7 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_metadata_refresh(&mut self) -> u64 {
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
         self.metadata_state = MetadataState::Loading;
         self.begin_metadata_run()
     }
@@ -481,12 +481,12 @@ impl BrowseSession {
         self.effective_user = None;
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
     }
 
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
         self.is_reloading = true;
         self.begin_metadata_run()
     }
@@ -585,7 +585,7 @@ impl BrowseSession {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
-        self.clear_connection_probe();
+        self.clear_mysql_connection_probe();
         match &cache.query_result {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
@@ -1514,7 +1514,7 @@ mod tests {
         fn pending_probe_debug_masks_password() {
             let mut session = BrowseSession::default();
             let id = ConnectionId::new();
-            let _ = session.begin_connection_probe(
+            let _ = session.begin_mysql_connection_probe(
                 &id,
                 "mysql",
                 DatabaseType::MySQL,

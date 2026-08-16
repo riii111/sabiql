@@ -15,7 +15,9 @@ mod connection {
         MYSQL_FIXTURE_TABLE, mysql_integration_config, mysql_tls_config, with_mysql_test_db,
     };
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
-    use sabiql_app::ports::outbound::{AccessMode, ConnectionProbe, DsnBuilder, QueryExecutor};
+    use sabiql_app::ports::outbound::{
+        AccessMode, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
+    };
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, MySqlConnectionConfig, MySqlSslMode,

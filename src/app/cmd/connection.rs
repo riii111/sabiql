@@ -104,7 +104,7 @@ pub(crate) async fn run(
                     database_type,
                     database,
                 };
-                let probe = Arc::clone(&connection.connection_probe);
+                let probe = Arc::clone(&connection.mysql_connection_probe);
                 tokio::spawn(async move {
                     match probe.probe(&target.dsn).await {
                         Ok(()) => match tokio::task::spawn_blocking(move || store.save(&profile))
@@ -166,17 +166,17 @@ pub(crate) async fn run(
             Ok(())
         }
 
-        Effect::ProbeConnection { target, run_id } => {
-            let probe = Arc::clone(&connection.connection_probe);
+        Effect::ProbeMySqlConnection { target, run_id } => {
+            let probe = Arc::clone(&connection.mysql_connection_probe);
             let tx = action_tx.clone();
             tokio::spawn(async move {
                 match probe.probe(&target.dsn).await {
                     Ok(()) => tx
-                        .send(Action::ConnectionProbeCompleted { target, run_id })
+                        .send(Action::MySqlConnectionProbeCompleted { target, run_id })
                         .await
                         .ok(),
                     Err(error) => tx
-                        .send(Action::ConnectionProbeFailed {
+                        .send(Action::MySqlConnectionProbeFailed {
                             target,
                             run_id,
                             error,
@@ -345,9 +345,9 @@ mod tests {
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
-    use crate::ports::outbound::connection_probe::MockConnectionProbe;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
         ConnectionStoreError, DbOperationError, DsnBuilder, RenderOutput, RenderResult, Renderer,
@@ -411,7 +411,7 @@ mod tests {
         #[tokio::test]
         async fn mysql_profile_is_saved_only_after_probe_success() {
             let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
-            let mut probe = MockConnectionProbe::new();
+            let mut probe = MockMySqlConnectionProbe::new();
             probe
                 .expect_probe()
                 .with(eq(dsn.to_string()))
@@ -474,7 +474,7 @@ mod tests {
         #[tokio::test]
         async fn mysql_profile_is_not_saved_when_probe_fails() {
             let dsn = "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED";
-            let mut probe = MockConnectionProbe::new();
+            let mut probe = MockMySqlConnectionProbe::new();
             probe
                 .expect_probe()
                 .with(eq(dsn.to_string()))
@@ -798,7 +798,7 @@ mod tests {
                 Arc::new(MockMetadataProvider::new()),
                 ConnectionDeps {
                     dsn_builder: Arc::new(test_fixtures::NoopDsnBuilder),
-                    connection_probe: Arc::new(test_fixtures::NoopConnectionProbe),
+                    mysql_connection_probe: Arc::new(test_fixtures::NoopMySqlConnectionProbe),
                     connection_store: Arc::new(mock_store),
                     pg_service_entry_reader: None,
                     sqlite_path_validator: Arc::new(test_fixtures::TestFsSqlitePathValidator),
