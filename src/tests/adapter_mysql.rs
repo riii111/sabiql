@@ -805,6 +805,8 @@ mod write_operations {
                     .as_nanos();
                 let table = format!("sabiql_ddl_{suffix}");
                 let renamed_table = format!("sabiql_ddl_renamed_{suffix}");
+                let alter_renamed_table = format!("sabiql_ddl_alter_renamed_{suffix}");
+                let alter_as_renamed_table = format!("sabiql_ddl_alter_as_renamed_{suffix}");
                 let view = format!("sabiql_ddl_view_{suffix}");
                 let result: Result<(), String> = async {
                     let create = db
@@ -835,12 +837,50 @@ mod write_operations {
                         return Err(format!("unexpected RENAME TABLE result: {rename:?}"));
                     }
 
+                    let alter_rename = db
+                        .adapter()
+                        .execute_adhoc(
+                            db.dsn(),
+                            &format!(
+                                "ALTER TABLE {renamed_table} RENAME TO {alter_renamed_table}"
+                            ),
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .map_err(|error| {
+                            format!("failed to rename table with ALTER TABLE: {error:?}")
+                        })?;
+                    if alter_rename.command_tag != Some(CommandTag::Alter("TABLE".to_string())) {
+                        return Err(format!(
+                            "unexpected ALTER TABLE RENAME TO result: {alter_rename:?}"
+                        ));
+                    }
+
+                    let alter_as_rename = db
+                        .adapter()
+                        .execute_adhoc(
+                            db.dsn(),
+                            &format!(
+                                "ALTER TABLE {alter_renamed_table} RENAME AS {alter_as_renamed_table}"
+                            ),
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .map_err(|error| {
+                            format!("failed to rename table with ALTER TABLE AS: {error:?}")
+                        })?;
+                    if alter_as_rename.command_tag != Some(CommandTag::Alter("TABLE".to_string())) {
+                        return Err(format!(
+                            "unexpected ALTER TABLE RENAME AS result: {alter_as_rename:?}"
+                        ));
+                    }
+
                     let create_view = db
                         .adapter()
                         .execute_adhoc(
                             db.dsn(),
                             &format!(
-                                "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                                "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {alter_as_renamed_table}"
                             ),
                             AccessMode::ReadWrite,
                         )
@@ -857,7 +897,7 @@ mod write_operations {
                         .execute_adhoc(
                             db.dsn(),
                             &format!(
-                                "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {renamed_table}"
+                                "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW {view} AS SELECT id, body FROM {alter_as_renamed_table}"
                             ),
                             AccessMode::ReadWrite,
                         )
@@ -872,7 +912,7 @@ mod write_operations {
                         .execute_adhoc(
                             db.dsn(),
                             &format!(
-                                "CREATE FULLTEXT INDEX {view}_body ON {renamed_table} (body)"
+                                "CREATE FULLTEXT INDEX {view}_body ON {alter_as_renamed_table} (body)"
                             ),
                             AccessMode::ReadWrite,
                         )
@@ -901,7 +941,7 @@ mod write_operations {
                         .adapter()
                         .execute_adhoc(
                             db.dsn(),
-                            &format!("DROP TABLE {renamed_table} /*!80000 RESTRICT */"),
+                            &format!("DROP TABLE {alter_as_renamed_table} /*!80000 RESTRICT */"),
                             AccessMode::ReadWrite,
                         )
                         .await
@@ -915,7 +955,7 @@ mod write_operations {
 
                 let cleanup = db
                     .run_cli_script(&format!(
-                        "DROP VIEW IF EXISTS {view}; DROP TABLE IF EXISTS {renamed_table}; DROP TABLE IF EXISTS {table}"
+                        "DROP VIEW IF EXISTS {view}; DROP TABLE IF EXISTS {alter_as_renamed_table}; DROP TABLE IF EXISTS {alter_renamed_table}; DROP TABLE IF EXISTS {renamed_table}; DROP TABLE IF EXISTS {table}"
                     ))
                     .await;
                 match (result, cleanup) {
