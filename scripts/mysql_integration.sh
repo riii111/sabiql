@@ -7,24 +7,65 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 readonly repo_root
 readonly compose_file="$repo_root/compose.yml"
 readonly tls_compose_file="$repo_root/compose.mysql-tls.yml"
-readonly temp_dir="$repo_root/.tmp/mysql"
-readonly tls_dir="$temp_dir/tls"
+readonly temp_root="$repo_root/.tmp/mysql"
 readonly mysql_image="mysql:8.4.10"
 readonly mysql_host="${SABIQL_MYSQL_TEST_HOST:-host.docker.internal}"
-readonly mysql_port="${SABIQL_MYSQL_TEST_PORT:-3306}"
+mysql_port="${SABIQL_MYSQL_TEST_PORT:-}"
 readonly mysql_database="${SABIQL_MYSQL_TEST_DATABASE:-sabiql_test}"
 readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 readonly mysql_client_label_key='com.sabiql.mysql.integration'
 
+run_dir=''
+temp_dir=''
+tls_dir=''
+compose_project=''
+compose_args=()
+repo_hash=''
+mysql_host_port=''
 mysql_option_file=''
 mysql_bin_dir=''
+mysql_run_label=''
 mysql_client_label=''
+cleanup_failed=0
 
 create_client_container_label() {
-    local label_file
-    label_file="$(mktemp "$temp_dir/mysql-client-label.XXXXXX")"
-    printf '%s=run-%s-%s-%s\n' "$mysql_client_label_key" "$repo_root" "$$" "$(basename "$label_file")"
+    mysql_run_label="run-${repo_hash}-$(basename "$run_dir")"
+    mysql_client_label="${mysql_client_label_key}=${mysql_run_label}"
+}
+
+run_compose() {
+    docker compose "${compose_args[@]}" "$@"
+}
+
+prepare_run() {
+    local repo_hash_value
+
+    mkdir -p -- "$temp_root"
+    run_dir="$(mktemp -d "$temp_root/run-XXXXXX")"
+    temp_dir="$run_dir"
+    tls_dir="$temp_dir/tls"
+    repo_hash_value="$(printf '%s' "$repo_root" | cksum | awk '{print $1}')"
+    repo_hash="$repo_hash_value"
+    compose_project="sabiql-mysql-${repo_hash}-${run_dir##*/}"
+    compose_args=(
+        --project-name "$compose_project"
+        --file "$compose_file"
+        --file "$tls_compose_file"
+    )
+    if [[ -n "${SABIQL_MYSQL_TEST_PORT:-}" ]]; then
+        mysql_host_port="$SABIQL_MYSQL_TEST_PORT"
+    else
+        mysql_host_port=0
+    fi
+    create_client_container_label
+    export SABIQL_MYSQL_CONTAINER_LABEL="$mysql_client_label"
+    export SABIQL_MYSQL_HOST_PORT="$mysql_host_port"
+    export SABIQL_MYSQL_RUN_LABEL="$mysql_run_label"
+    export SABIQL_MYSQL_TLS_DIR="$tls_dir"
+    export TMPDIR="$temp_dir"
+    export RUSTC_WRAPPER=
+    export CARGO_TARGET_DIR="$temp_dir/cargo-target"
 }
 
 cleanup_client_containers() {
@@ -40,7 +81,7 @@ cleanup_client_containers() {
     fi
     while IFS= read -r container_id; do
         if [[ -n "$container_id" ]]; then
-            docker rm --force "$container_id" >/dev/null 2>&1 || :
+            docker rm --force --volumes "$container_id" >/dev/null 2>&1 || :
         fi
     done <<<"$container_ids"
 
@@ -52,21 +93,28 @@ cleanup_client_containers() {
 
 cleanup() {
     local status="$1"
+    cleanup_failed=0
 
     if ! cleanup_client_containers; then
         printf 'failed to clean up MySQL client containers for %s\n' "$mysql_client_label" >&2
-        if [[ "$status" == 0 ]]; then
-            status=1
-        fi
+        cleanup_failed=1
     fi
-    if [[ -n "$mysql_option_file" ]]; then
-        rm -f -- "$mysql_option_file"
+    if [[ -n "$compose_project" ]] && ! run_compose down --volumes --remove-orphans >/dev/null 2>&1; then
+        printf 'failed to clean up MySQL Compose project %s\n' "$compose_project" >&2
+        cleanup_failed=1
     fi
-    if [[ -n "$mysql_bin_dir" ]]; then
-        rm -rf -- "$mysql_bin_dir"
+    if [[ -n "$mysql_option_file" ]] && ! rm -f -- "$mysql_option_file"; then
+        cleanup_failed=1
     fi
-    rm -rf -- "$temp_dir"
-    docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
+    if [[ -n "$mysql_bin_dir" ]] && ! rm -rf -- "$mysql_bin_dir"; then
+        cleanup_failed=1
+    fi
+    if [[ -n "$run_dir" ]] && ! rm -rf -- "$run_dir"; then
+        cleanup_failed=1
+    fi
+    if [[ "$status" == 0 && "$cleanup_failed" != 0 ]]; then
+        status=1
+    fi
     return "$status"
 }
 
@@ -90,7 +138,10 @@ handle_signal() {
     local status="$1"
 
     trap - EXIT HUP INT TERM
-    cleanup "$status"
+    cleanup "$status" || :
+    if [[ "$cleanup_failed" != 0 ]]; then
+        exit 1
+    fi
     exit "$status"
 }
 
@@ -117,6 +168,21 @@ create_option_file() {
         printf 'password = %s\n' "$(quote_option_value "$mysql_password")"
         printf 'database = %s\n' "$(quote_option_value "$mysql_database")"
     } >"$mysql_option_file"
+}
+
+discover_mysql_port() {
+    if [[ "$mysql_host_port" != 0 ]]; then
+        return
+    fi
+
+    local published_port
+    published_port="$(run_compose port mysql 3306)"
+    if [[ "$published_port" =~ :([0-9]+)$ ]]; then
+        mysql_port="${BASH_REMATCH[1]}"
+    else
+        printf 'failed to discover the published MySQL port: %s\n' "$published_port" >&2
+        return 1
+    fi
 }
 
 create_tls_material() {
@@ -202,20 +268,17 @@ run_tests() {
 
 case "${1:-test}" in
     test)
-        mkdir -p -- "$temp_dir"
-        export TMPDIR="$temp_dir"
-        mysql_client_label="$(create_client_container_label)"
-        export SABIQL_MYSQL_CONTAINER_LABEL="$mysql_client_label"
-        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql >/dev/null 2>&1 || true
+        prepare_run
         create_tls_material
-        docker compose --file "$compose_file" --file "$tls_compose_file" up --detach --wait mysql
+        run_compose up --detach --wait mysql
+        discover_mysql_port
         install_cli_wrapper
         create_option_file
         assert_versions
         run_tests
         ;;
     stop)
-        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql
+        docker compose --file "$compose_file" --file "$tls_compose_file" down --volumes --remove-orphans
         ;;
     *)
         echo "usage: $0 [test|stop]" >&2
