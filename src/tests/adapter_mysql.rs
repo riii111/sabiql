@@ -191,7 +191,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_tables_views_and_column_attributes() {
+    async fn loads_mysql_tables_only_and_preserves_view_details() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
@@ -208,13 +208,23 @@ mod metadata_fetch {
                 {
                     return Err(format!("unexpected MySQL schemas: {:?}", metadata.schemas));
                 }
-                let view = metadata
+                let table = metadata
                     .table_summaries
                     .iter()
-                    .find(|summary| summary.name == MYSQL_VIEW)
-                    .ok_or_else(|| "MySQL view was not listed".to_string())?;
-                if view.kind_info.kind != TableKind::View {
-                    return Err(format!("unexpected MySQL view kind: {:?}", view.kind_info));
+                    .find(|summary| summary.name == MYSQL_FIXTURE_TABLE)
+                    .ok_or_else(|| "MySQL fixture table was not listed".to_string())?;
+                if table.kind_info.kind != TableKind::Table {
+                    return Err(format!(
+                        "unexpected MySQL fixture table kind: {:?}",
+                        table.kind_info
+                    ));
+                }
+                if metadata
+                    .table_summaries
+                    .iter()
+                    .any(|summary| summary.name == MYSQL_VIEW)
+                {
+                    return Err("MySQL view was listed in table metadata".to_string());
                 }
 
                 let detail = db

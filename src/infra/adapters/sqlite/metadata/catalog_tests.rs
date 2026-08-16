@@ -95,8 +95,8 @@ mod metadata {
             .collect();
 
         assert_eq!(metadata.schemas, vec![Schema::new("main")]);
-        assert_eq!(table_names, vec!["active_users", "users"]);
-        assert_eq!(metadata.table_summaries[1].qualified_name(), "main.users");
+        assert_eq!(table_names, vec!["users"]);
+        assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
         assert!(metadata.table_summaries[0].row_count_estimate.is_none());
     }
 
@@ -164,7 +164,6 @@ mod metadata {
         ) WITHOUT ROWID;
         CREATE TABLE typed_users(id INTEGER PRIMARY KEY, name TEXT) STRICT;
         CREATE VIRTUAL TABLE notes_fts USING fts5(body);
-        CREATE VIEW active_users AS SELECT id FROM users;
         ",
             );
             let adapter = SqliteAdapter::new();
@@ -228,14 +227,6 @@ mod metadata {
             fixture.kind_info("notes_fts").virtual_module.as_deref(),
             Some("fts5")
         );
-    }
-
-    #[tokio::test]
-    async fn classifies_view_kind() {
-        let fixture = TableKindInfoMetadataFixture::new().await;
-
-        assert_eq!(fixture.kind_info("active_users").kind, TableKind::View);
-        assert!(fixture.kind_info("active_users").virtual_module.is_none());
     }
 
     #[tokio::test]
