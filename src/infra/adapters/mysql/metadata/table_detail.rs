@@ -23,9 +23,9 @@ use super::catalog::{
     MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata,
     execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
     mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result, optional_text,
-    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
-    parse_unique_column_metadata, primary_key_names, required_text, selected_database,
-    validate_selected_schema_name,
+    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata,
+    parse_optional_positive_i32, parse_positive_i32, parse_unique_column_metadata,
+    primary_key_names, required_text, selected_database, validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,7 @@ struct MySqlIndexMetadata {
     index_type: String,
     ordinal_position: i32,
     column_name: String,
+    sub_part: Option<i32>,
     expression: Option<String>,
     primary: bool,
 }
@@ -161,7 +162,7 @@ async fn fetch_table_detail_with_session(
     )?;
     let raw_indexes = parse_index_metadata(
         &session
-            .execute_with_expected_columns(&indexes_query(table), INDEX_RESULT_COLUMNS)
+            .execute_with_expected_columns(&indexes_query(schema, table), INDEX_RESULT_COLUMNS)
             .await?,
     )?;
     let unique_single_columns = unique_single_columns_from_metadata(&raw_indexes);
@@ -180,7 +181,7 @@ async fn fetch_table_detail_with_session(
     )?;
     let triggers = triggers_from_metadata(parse_trigger_metadata(
         &session
-            .execute_with_expected_columns(&triggers_query(table), TRIGGER_RESULT_COLUMNS)
+            .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
             .await?,
     )?)?;
     let source_ddl = parse_source_ddl(
@@ -336,11 +337,12 @@ fn parse_index_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 7 {
+            if row.len() != 8 {
                 return Err(metadata_shape_error("STATISTICS row"));
             }
             let column_name = optional_text(&row[4], "COLUMN_NAME")?;
-            let expression = optional_text(&row[5], "EXPRESSION")?;
+            let sub_part = parse_optional_positive_i32(&row[5], "SUB_PART")?;
+            let expression = optional_text(&row[6], "EXPRESSION")?;
             let (column_name, expression) = match (column_name, expression) {
                 (Some(column_name), None) => (column_name.to_string(), None),
                 (None, Some(expression)) => {
@@ -365,8 +367,9 @@ fn parse_index_metadata(
                 index_type: required_text(&row[2], "INDEX_TYPE")?.to_string(),
                 ordinal_position: parse_positive_i32(&row[3], "SEQ_IN_INDEX")?,
                 column_name,
+                sub_part,
                 expression,
-                primary: parse_boolean_flag(&row[6], "IS_PRIMARY")?,
+                primary: parse_boolean_flag(&row[7], "IS_PRIMARY")?,
             })
         })
         .collect()
@@ -429,7 +432,8 @@ fn unique_single_columns_from_metadata(raw: &[MySqlIndexMetadata]) -> HashSet<St
         .into_values()
         .filter_map(|parts| {
             let part = parts.first()?;
-            (parts.len() == 1 && part.expression.is_none()).then(|| part.column_name.clone())
+            (parts.len() == 1 && part.sub_part.is_none() && part.expression.is_none())
+                .then(|| part.column_name.clone())
         })
         .collect()
 }
@@ -503,7 +507,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset></resultset>'
       ;;
     *STATISTICS*)
-      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="SUB_PART" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
       ;;
     *FOREIGN*)
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
@@ -872,6 +876,7 @@ mod tests {
                 "INDEX_TYPE",
                 "SEQ_IN_INDEX",
                 "COLUMN_NAME",
+                "SUB_PART",
                 "EXPRESSION",
                 "IS_PRIMARY",
             ],
@@ -883,6 +888,7 @@ mod tests {
                     QueryValue::Text("2".to_string()),
                     QueryValue::Text("second_key".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -892,6 +898,7 @@ mod tests {
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("first_key".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -900,6 +907,7 @@ mod tests {
                     QueryValue::Text("FULLTEXT".to_string()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("body".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
@@ -919,7 +927,7 @@ mod tests {
     }
 
     #[test]
-    fn single_column_unique_indexes_exclude_primary_composite_regular_and_functional_indexes() {
+    fn single_column_unique_indexes_exclude_prefix_and_non_single_indexes() {
         let result = result(
             INDEX_RESULT_COLUMNS,
             vec![
@@ -930,6 +938,37 @@ mod tests {
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("email".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_email_prefix".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Text("8".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_prefix_pair".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Text("8".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("uq_prefix_pair".to_string()),
+                    QueryValue::Text("0".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -938,6 +977,7 @@ mod tests {
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("first_key".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
@@ -948,6 +988,7 @@ mod tests {
                     QueryValue::Text("2".to_string()),
                     QueryValue::Text("second_key".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -956,6 +997,7 @@ mod tests {
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("id".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("YES".to_string()),
                 ],
@@ -966,6 +1008,7 @@ mod tests {
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("email".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -973,6 +1016,7 @@ mod tests {
                     QueryValue::Text("0".to_string()),
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`email`)".to_string()),
                     QueryValue::Text("NO".to_string()),
@@ -986,6 +1030,13 @@ mod tests {
             unique_single_columns_from_metadata(&raw),
             HashSet::from(["email".to_string()])
         );
+        let indexes = indexes_from_metadata(raw);
+        assert!(
+            indexes
+                .iter()
+                .find(|index| index.name == "uq_email_prefix")
+                .is_some_and(Index::is_unique)
+        );
     }
 
     #[test]
@@ -997,6 +1048,7 @@ mod tests {
                 "INDEX_TYPE",
                 "SEQ_IN_INDEX",
                 "COLUMN_NAME",
+                "SUB_PART",
                 "EXPRESSION",
                 "IS_PRIMARY",
             ],
@@ -1008,6 +1060,7 @@ mod tests {
                     QueryValue::Text("2".to_string()),
                     QueryValue::Text("sort_key".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -1015,6 +1068,7 @@ mod tests {
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
                     QueryValue::Text("NO".to_string()),
@@ -1024,6 +1078,7 @@ mod tests {
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("BTREE".to_string()),
                     QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
                     QueryValue::Text("NO".to_string()),
@@ -1069,6 +1124,7 @@ mod tests {
                 "INDEX_TYPE",
                 "SEQ_IN_INDEX",
                 "COLUMN_NAME",
+                "SUB_PART",
                 "EXPRESSION",
                 "IS_PRIMARY",
             ],
@@ -1077,6 +1133,7 @@ mod tests {
                 QueryValue::Text("1".to_string()),
                 QueryValue::Text("BTREE".to_string()),
                 QueryValue::Text("1".to_string()),
+                QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Text("NO".to_string()),
