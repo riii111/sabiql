@@ -1,6 +1,6 @@
 use std::process::Stdio;
 
-use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder};
+use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 #[cfg(unix)]
 use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
@@ -17,7 +17,7 @@ pub struct MySqlTestDb {
 }
 
 impl MySqlTestDb {
-    pub async fn setup() -> Result<Self, DbOperationError> {
+    pub fn setup() -> Result<Self, DbOperationError> {
         let config = mysql_integration_config();
         let profile = ConnectionProfile::new_mysql(
             "mysql-integration",
@@ -31,7 +31,6 @@ impl MySqlTestDb {
         .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?;
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
-        adapter.probe(&dsn).await?;
         Ok(Self { adapter, dsn })
     }
 
@@ -100,7 +99,7 @@ pub async fn with_mysql_test_db<F>(test: F)
 where
     F: for<'db> FnOnce(&'db MySqlTestDb) -> MySqlFixtureTest<'db>,
 {
-    let db = MySqlTestDb::setup().await.unwrap();
+    let db = MySqlTestDb::setup().unwrap();
     let result = test(&db).await;
     if let Err(error) = result {
         panic!("{error}");
