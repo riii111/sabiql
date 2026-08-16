@@ -88,7 +88,9 @@ where
             if this.stderr_closed {
                 return Poll::Ready(Ok(()));
             }
-            cx.waker().wake_by_ref();
+            if stderr_count > 0 {
+                cx.waker().wake_by_ref();
+            }
             return Poll::Pending;
         }
 
@@ -99,7 +101,9 @@ where
             if count == 0 {
                 this.stdout_closed = true;
                 if !this.stderr_closed {
-                    cx.waker().wake_by_ref();
+                    if stderr_count > 0 {
+                        cx.waker().wake_by_ref();
+                    }
                     return Poll::Pending;
                 }
             }
@@ -208,6 +212,70 @@ fn mysql_pipe_empty_response_or_error(pending_stderr: &[u8]) -> DbOperationError
         classify_mysql_query_failure(pending_stderr)
     } else {
         DbOperationError::EmptyResponse("mysql mode probe returned no resultset".to_string())
+    }
+}
+
+#[cfg(test)]
+mod source_tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::task::{Wake, Waker};
+
+    use super::*;
+
+    struct PendingReader {
+        waker: Option<Waker>,
+    }
+
+    impl AsyncRead for PendingReader {
+        fn poll_read(
+            self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            _buffer: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            self.get_mut().waker = Some(cx.waker().clone());
+            Poll::Pending
+        }
+    }
+
+    struct WakeCounter(AtomicUsize);
+
+    impl Wake for WakeCounter {
+        fn wake(self: Arc<Self>) {
+            self.wake_by_ref();
+        }
+
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn does_not_self_wake_while_waiting_for_stderr_after_stdout_eof() {
+        let mut stdout = tokio::io::empty();
+        let mut stderr = PendingReader { waker: None };
+        let mut pending = Vec::new();
+        let mut source = MySqlExportPipeSource {
+            stdout: &mut stdout,
+            stderr: &mut stderr,
+            pending: &mut pending,
+            error_output: Vec::new(),
+            stderr_buffer: [0; 4096],
+            stderr_closed: false,
+            stdout_closed: false,
+        };
+        let wake_counter = Arc::new(WakeCounter(AtomicUsize::new(0)));
+        let waker = Waker::from(Arc::clone(&wake_counter));
+        let mut context = Context::from_waker(&waker);
+        let mut output = [0; 8];
+        let mut buffer = ReadBuf::new(&mut output);
+
+        let result = Pin::new(&mut source).poll_read(&mut context, &mut buffer);
+
+        assert!(matches!(result, Poll::Pending));
+        assert_eq!(wake_counter.0.load(Ordering::Relaxed), 0);
     }
 }
 
