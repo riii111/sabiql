@@ -269,6 +269,49 @@ mod tests {
             assert!(state.messages.last_error().is_none());
         }
 
+        #[test]
+        fn mysql_metadata_actions_during_pending_switch_preserve_probe() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("mysql-a");
+            let target_id = ConnectionId::from_string("mysql-b");
+            state.session.activate_connection_with_target(
+                &current_id,
+                "mysql-a",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/a",
+                Some("a"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let probe_run_id = state.session.begin_mysql_connection_probe(
+                &target_id,
+                "mysql-b",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/b",
+                Some("b"),
+            );
+
+            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
+                let effects = dispatch_metadata(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .unwrap();
+
+                assert!(effects.is_empty());
+                assert_eq!(
+                    state
+                        .session
+                        .pending_mysql_connection_probe()
+                        .map(|pending| pending.run_id),
+                    Some(probe_run_id)
+                );
+                assert_eq!(
+                    state.messages.last_error(),
+                    Some("Connection switch in progress")
+                );
+            }
+        }
+
         fn contains_fetch_metadata(effect: &Effect) -> bool {
             match effect {
                 Effect::FetchMetadata { .. } => true,
