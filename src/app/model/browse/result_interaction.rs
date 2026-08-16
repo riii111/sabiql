@@ -5,7 +5,7 @@ use super::cell_edit::CellEditState;
 use crate::model::shared::cursor::CursorMove;
 use crate::model::shared::text_input::TextKillDirection;
 use crate::model::shared::ui_state::{ResultSelection, YankFlash};
-use crate::policy::write::write_guardrails::WritePreview;
+use crate::policy::write::write_guardrails::{WriteOperation, WritePreview};
 
 // Invariants:
 // - `reset_view` / `reset_interaction` clear staged deletes too.
@@ -177,6 +177,18 @@ impl ResultInteraction {
         self.pending_write_preview = None;
     }
 
+    pub fn complete_write_failure(&mut self) -> WriteOperation {
+        let operation = self
+            .pending_write_preview
+            .as_ref()
+            .map_or(WriteOperation::Update, |preview| preview.operation);
+        self.clear_write_preview();
+        if operation == WriteOperation::Delete {
+            self.clear_staged_deletes();
+        }
+        operation
+    }
+
     pub fn discard_cell_edit(&mut self) {
         self.cell_edit.clear();
         self.pending_write_preview = None;
@@ -328,6 +340,40 @@ mod tests {
         assert!(ri.pending_write_preview().is_none());
         assert_eq!(ri.selection().mode(), ResultNavMode::CellActive);
         assert!(ri.staged_delete_rows().contains(&0));
+    }
+
+    #[test]
+    fn complete_write_failure_for_update_preserves_selection_and_staging() {
+        let mut ri = ResultInteraction::default();
+        ri.activate_cell(2, 4);
+        ri.stage_row(0);
+        ri.set_write_preview(test_preview());
+
+        let operation = ri.complete_write_failure();
+
+        assert_eq!(operation, WriteOperation::Update);
+        assert!(ri.pending_write_preview().is_none());
+        assert_eq!(ri.selection().row(), Some(2));
+        assert_eq!(ri.selection().cell(), Some(4));
+        assert!(ri.staged_delete_rows().contains(&0));
+    }
+
+    #[test]
+    fn complete_write_failure_for_delete_clears_staging_and_preserves_selection() {
+        let mut ri = ResultInteraction::default();
+        ri.activate_cell(2, 4);
+        ri.stage_row(0);
+        let mut preview = test_preview();
+        preview.operation = WriteOperation::Delete;
+        ri.set_write_preview(preview);
+
+        let operation = ri.complete_write_failure();
+
+        assert_eq!(operation, WriteOperation::Delete);
+        assert!(ri.pending_write_preview().is_none());
+        assert_eq!(ri.selection().row(), Some(2));
+        assert_eq!(ri.selection().cell(), Some(4));
+        assert!(ri.staged_delete_rows().is_empty());
     }
 
     #[test]

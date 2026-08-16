@@ -56,6 +56,12 @@ pub enum VimOperator {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StagedDeleteState {
+    None,
+    InProgress,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VimSurfaceContext {
     Browse(BrowseVimContext),
     SqlModal(SqlModalVimContext),
@@ -79,6 +85,7 @@ pub enum InspectorVimContext {
 pub struct ResultVimContext {
     pub mode: ResultNavMode,
     pub has_pending_draft: bool,
+    pub staged_delete: StagedDeleteState,
     pub yank_pending: bool,
     pub delete_pending: bool,
 }
@@ -101,6 +108,11 @@ impl From<&AppState> for BrowseVimContext {
             return Self::Result(ResultVimContext {
                 mode: state.result_interaction.selection().mode(),
                 has_pending_draft: state.result_interaction.cell_edit().has_pending_draft(),
+                staged_delete: if state.result_interaction.staged_delete_rows().is_empty() {
+                    StagedDeleteState::None
+                } else {
+                    StagedDeleteState::InProgress
+                },
                 yank_pending: state.result_interaction.is_yank_operator_pending(),
                 delete_pending: state.result_interaction.is_delete_operator_pending(),
             });

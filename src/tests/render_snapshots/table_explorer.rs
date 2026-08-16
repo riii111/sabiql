@@ -65,6 +65,22 @@ fn error_message_in_footer() {
 }
 
 #[test]
+fn long_error_message_wraps_into_footer_and_command_line() {
+    let mut state = explorer_selected_state();
+    let now = test_instant();
+    let mut terminal = create_test_terminal();
+
+    state.messages.set_error_at(
+        "Connection failed: the database server returned a detailed explanation that should remain visible until the next user operation instead of disappearing from the footer after a short timeout".to_string(),
+        now,
+    );
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn empty_query_result() {
     let mut state = table_detail_loaded_state();
     let mut terminal = create_test_terminal();
