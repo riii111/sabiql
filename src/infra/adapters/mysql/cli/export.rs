@@ -98,7 +98,7 @@ fn validate_mysql_export_exit(
     Ok(())
 }
 
-async fn stream_mysql_resultset_to_csv(
+pub(super) async fn stream_mysql_resultset_to_csv(
     process: &mut MySqlProcess,
     csv_writer: &mut CsvFileWriter,
 ) -> Result<Option<Vec<String>>, DbOperationError> {
@@ -128,15 +128,18 @@ async fn stream_mysql_resultset_to_csv(
 
     #[cfg(not(unix))]
     {
-        let source = MySqlExportPipeSource {
+        let mut source = MySqlExportPipeSource {
             stdout: &mut process.stdout,
             stderr: &mut process.stderr,
             pending: &mut process.pending,
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
             stderr_closed: false,
             stdout_closed: false,
         };
+        let pending_stderr = std::mem::take(&mut process.pending_stderr);
+        source.capture_error(&pending_stderr);
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
         let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;
@@ -144,6 +147,11 @@ async fn stream_mysql_resultset_to_csv(
         let unread = buffered.buffer().to_vec();
         let source = buffered.into_inner();
         source.pending.extend(unread);
+        if source.error_output.is_empty() {
+            process
+                .pending_stderr
+                .extend_from_slice(&source.error_buffer);
+        }
         if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }
