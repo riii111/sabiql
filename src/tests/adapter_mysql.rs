@@ -762,7 +762,6 @@ mod write_operations {
 
     const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
     const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
-    const MYSQL_GIPK_TABLE: &str = "mysql_edit_gipk";
     const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
 
     #[tokio::test]
@@ -989,8 +988,18 @@ mod write_operations {
     async fn previews_and_writes_rows_using_hidden_mysql_primary_keys() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let mut gipk_identity_value = None;
+                let suffix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| format!("system clock error: {error}"))?
+                    .as_nanos();
+                let gipk_table = format!("mysql_edit_gipk_{suffix}");
                 let result = async {
+                    db.run_cli_script(&format!(
+                        "SET SESSION sql_generate_invisible_primary_key = ON; CREATE TABLE {gipk_table} (payload TEXT NOT NULL) ENGINE=InnoDB CHARACTER SET utf8mb4; INSERT INTO {gipk_table} (payload) VALUES ('before'); SET SESSION sql_generate_invisible_primary_key = OFF"
+                    ))
+                    .await
+                    .map_err(|error| format!("failed to create GIPK fixture: {error}"))?;
+
                     let invisible = db
                     .adapter()
                     .execute_preview(db.dsn(), "sabiql_test", MYSQL_INVISIBLE_PK_TABLE, 10, 0)
@@ -1046,7 +1055,7 @@ mod write_operations {
 
                     let gipk_detail = db
                     .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE)
+                    .fetch_table_detail(db.dsn(), "sabiql_test", &gipk_table)
                     .await
                     .map_err(|error| format!("failed to fetch GIPK metadata: {error:?}"))?;
                     if gipk_detail.primary_key != Some(vec!["my_row_id".to_string()]) {
@@ -1057,7 +1066,7 @@ mod write_operations {
                     }
                     let gipk = db
                     .adapter()
-                    .execute_preview(db.dsn(), "sabiql_test", MYSQL_GIPK_TABLE, 10, 0)
+                    .execute_preview(db.dsn(), "sabiql_test", &gipk_table, 10, 0)
                     .await
                     .map_err(|error| format!("failed to preview GIPK: {error:?}"))?;
                     if gipk.columns != ["payload"]
@@ -1076,14 +1085,12 @@ mod write_operations {
                         .and_then(|values| values.first())
                         .cloned()
                         .ok_or_else(|| "GIPK row identity value was not returned".to_string())?;
-                    gipk_identity_value = Some(identity_value.clone());
-
                     let update_sql = db.adapter().build_update_sql(
                         DatabaseType::MySQL,
                         "sabiql_test",
-                        MYSQL_GIPK_TABLE,
+                        &gipk_table,
                         "payload",
-                        &QueryValue::text("updated through GIPK"),
+                        &QueryValue::text("after"),
                         &[("my_row_id".to_string(), identity_value.clone())],
                     );
                     if !update_sql.contains("WHERE `my_row_id` =")
@@ -1103,7 +1110,7 @@ mod write_operations {
                         .adapter()
                         .execute_adhoc(
                             db.dsn(),
-                            "SELECT my_row_id, payload FROM mysql_edit_gipk",
+                            &format!("SELECT my_row_id, payload FROM {gipk_table}"),
                             AccessMode::ReadWrite,
                         )
                         .await
@@ -1111,7 +1118,7 @@ mod write_operations {
                     if changed.values()
                         != [[
                             QueryValue::text(identity_value.display_value()),
-                            QueryValue::text("updated through GIPK"),
+                            QueryValue::text("after"),
                         ]]
                     {
                         return Err(format!("unexpected updated GIPK row: {changed:?}"));
@@ -1142,37 +1149,38 @@ mod write_operations {
                 }
                 .await;
 
-                let restore_gipk: Result<(), String> = match gipk_identity_value.as_ref() {
-                    Some(identity_value) => {
-                        let restore_sql = db.adapter().build_update_sql(
-                            DatabaseType::MySQL,
-                            "sabiql_test",
-                            MYSQL_GIPK_TABLE,
-                            "payload",
-                            &QueryValue::text("generated invisible primary key"),
-                            &[("my_row_id".to_string(), identity_value.clone())],
-                        );
-                        db.adapter()
-                            .execute_adhoc(db.dsn(), &restore_sql, AccessMode::ReadWrite)
-                            .await
-                            .map(|_| ())
-                            .map_err(|error| format!("failed to restore GIPK fixture: {error:?}"))
+                let cleanup = async {
+                    let drop_gipk = db
+                        .run_cli_script(&format!("DROP TABLE IF EXISTS {gipk_table}"))
+                        .await
+                        .map_err(|error| format!("failed to clean up GIPK fixture: {error}"));
+                    let restore_invisible = db
+                        .adapter()
+                        .execute_adhoc(
+                            db.dsn(),
+                            "INSERT INTO mysql_edit_invisible_pk (id, payload) VALUES (1, 'invisible single primary key')",
+                            AccessMode::ReadWrite,
+                        )
+                        .await
+                        .map_err(|error| {
+                            format!("failed to restore invisible primary key fixture: {error:?}")
+                        });
+                    match (drop_gipk, restore_invisible) {
+                        (Ok(_), Ok(_)) => Ok(()),
+                        (Err(error), Ok(_)) | (Ok(_), Err(error)) => Err(error),
+                        (Err(drop_error), Err(restore_error)) => {
+                            Err(format!("{drop_error}; {restore_error}"))
+                        }
                     }
-                    None => Ok(()),
-                };
-                let restore_invisible = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        "INSERT INTO mysql_edit_invisible_pk (id, payload) VALUES (1, 'invisible single primary key')",
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("failed to restore invisible primary key fixture: {error:?}"));
+                }
+                .await;
 
-                match result {
-                    Err(error) => Err(error),
-                    Ok(()) => restore_gipk.and_then(|()| restore_invisible.map(|_| ())),
+                match (result, cleanup) {
+                    (Ok(()), Ok(())) => Ok(()),
+                    (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+                    (Err(error), Err(cleanup_error)) => {
+                        Err(format!("{error}; GIPK cleanup failed: {cleanup_error}"))
+                    }
                 }
             })
         })

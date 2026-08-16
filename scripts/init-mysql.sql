@@ -74,17 +74,6 @@ CREATE TABLE mysql_edit_invisible_composite (
 INSERT INTO mysql_edit_invisible_composite (first_key, second_key, payload)
 VALUES (1, 20, 'invisible composite primary key');
 
-SET SESSION sql_generate_invisible_primary_key = ON;
-
-CREATE TABLE mysql_edit_gipk (
-    payload TEXT NOT NULL
-) ENGINE=InnoDB CHARACTER SET utf8mb4;
-
-INSERT INTO mysql_edit_gipk (payload)
-VALUES ('generated invisible primary key');
-
-SET SESSION sql_generate_invisible_primary_key = OFF;
-
 CREATE TABLE mysql_metadata_parent (
     first_key INT NOT NULL,
     second_key INT NOT NULL,
