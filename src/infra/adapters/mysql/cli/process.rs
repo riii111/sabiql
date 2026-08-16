@@ -616,6 +616,8 @@ mod tests {
             "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
         } else if mode == "no_result_failure" {
             "printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2\n    exit 1"
+        } else if mode == "connection_refused" {
+            "printf '%s\\n' \"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)\" >&2\n    exit 1"
         } else if mode == "field_error" {
             "printf '%s\\n' '<resultset><row><field name=\"message\">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
@@ -1368,6 +1370,23 @@ done
             Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
         ));
+    }
+
+    #[tokio::test]
+    async fn classifies_connection_refusal_from_the_shared_cli_error_path() {
+        let (_directory, program, log_file) = fake_mysql("connection_refused");
+        let option_file = log_file.with_extension("cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let result = run_mysql_single_statement_with_program(
+            OsStr::new(&program),
+            &option_file,
+            "SELECT 123",
+            AccessMode::ReadWrite,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
     }
 
     #[tokio::test]
