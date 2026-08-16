@@ -200,8 +200,13 @@ pub(in crate::adapters::mysql) fn build_preview_query(
         .map(|column| quote_identifier(column))
         .collect::<Vec<_>>()
         .join(", ");
+    let order_clause = if order_by.is_empty() {
+        String::new()
+    } else {
+        format!(" ORDER BY {order_by}")
+    };
     format!(
-        "SELECT {columns} FROM {}.{} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}",
+        "SELECT {columns} FROM {}.{}{order_clause} LIMIT {limit} OFFSET {offset}",
         quote_identifier(schema),
         quote_identifier(table),
     )
@@ -580,6 +585,11 @@ mod tests {
                 0,
             ),
             "SELECT `payload`, `id` AS `__sabiql_row_identity_0` FROM `app`.`items` ORDER BY `id` LIMIT 10 OFFSET 0"
+        );
+
+        assert_eq!(
+            build_preview_query("app", "items", &[], &visible_columns, &[], 10, 0,),
+            "SELECT `payload` FROM `app`.`items` LIMIT 10 OFFSET 0"
         );
     }
 }
