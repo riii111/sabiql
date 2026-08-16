@@ -685,11 +685,6 @@ impl SqlLexer {
         tokens
     }
 
-    pub fn is_in_string_or_comment(&self, text: &str, cursor_pos: usize) -> bool {
-        let tokens = self.tokenize(text, text.chars().count());
-        Self::is_in_string_or_comment_from_tokens(&tokens, cursor_pos)
-    }
-
     pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
         tokens.iter().any(|t| {
             if matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment) {
@@ -1559,10 +1554,22 @@ mod tests {
             let l = mysql_lexer();
             let sql = "SELECT `SEL";
 
-            assert!(l.is_in_string_or_comment(sql, sql.chars().count()));
-            assert!(l.is_in_string_or_comment("SELECT `a``", 11));
-            assert!(l.is_in_string_or_comment("SELECT `a``b`", 10));
-            assert!(!l.is_in_string_or_comment("SELECT `SEL`", 12));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize(sql, sql.chars().count()),
+                sql.chars().count()
+            ));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `a``", "SELECT `a``".len()),
+                11
+            ));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `a``b`", "SELECT `a``b`".len()),
+                10
+            ));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `SEL`", "SELECT `SEL`".len()),
+                12
+            ));
         }
 
         #[test]
@@ -1577,8 +1584,14 @@ mod tests {
                     TokenKind::StringLiteral if token.text == r#""users.""#
                 )
             }));
-            assert!(l.is_in_string_or_comment(sql, sql.chars().count()));
-            assert!(!l.is_in_string_or_comment(r#"SELECT "users." FROM "#, 20));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &tokens,
+                sql.chars().count()
+            ));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize(r#"SELECT "users." FROM "#, 20),
+                20
+            ));
         }
 
         #[test]
@@ -1606,8 +1619,10 @@ mod tests {
         #[test]
         fn cursor_in_string_returns_true() {
             let l = lexer();
+            let sql = "SELECT 'hel";
 
-            let result = l.is_in_string_or_comment("SELECT 'hel", 11);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 11);
 
             assert!(result);
         }
@@ -1615,8 +1630,10 @@ mod tests {
         #[test]
         fn cursor_in_line_comment_returns_true() {
             let l = lexer();
+            let sql = "SELECT -- com";
 
-            let result = l.is_in_string_or_comment("SELECT -- com", 13);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
 
             assert!(result);
         }
@@ -1624,8 +1641,10 @@ mod tests {
         #[test]
         fn cursor_in_block_comment_returns_true() {
             let l = lexer();
+            let sql = "SELECT /* com";
 
-            let result = l.is_in_string_or_comment("SELECT /* com", 13);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
 
             assert!(result);
         }
@@ -1633,8 +1652,10 @@ mod tests {
         #[test]
         fn cursor_in_normal_context_returns_false() {
             let l = lexer();
+            let sql = "SELECT * FROM ";
 
-            let result = l.is_in_string_or_comment("SELECT * FROM ", 14);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 14);
 
             assert!(!result);
         }
@@ -1642,8 +1663,10 @@ mod tests {
         #[test]
         fn cursor_after_closed_string_returns_false() {
             let l = lexer();
+            let sql = "SELECT 'hello' FROM ";
 
-            let result = l.is_in_string_or_comment("SELECT 'hello' FROM ", 20);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 20);
 
             assert!(!result);
         }
