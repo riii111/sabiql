@@ -67,7 +67,9 @@ prepare_run() {
     export SABIQL_MYSQL_TLS_DIR="$tls_dir"
     export TMPDIR="$temp_dir"
     export RUSTC_WRAPPER=
-    export CARGO_TARGET_DIR="$temp_dir/cargo-target"
+    if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+        export CARGO_TARGET_DIR="$temp_dir/cargo-target"
+    fi
 }
 
 cleanup_client_containers() {
