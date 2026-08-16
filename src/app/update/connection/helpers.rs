@@ -76,7 +76,7 @@ pub(super) fn connection_save_fetch_effects(
 }
 
 pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
-    state.session.mark_probe_connected();
+    state.session.mark_connecting();
     let run_id = state.session.begin_metadata_refresh();
     let effects = vec![
         Effect::ClearCompletionEngineCache,
