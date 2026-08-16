@@ -2,7 +2,6 @@ use crate::cmd::effect::Effect;
 use crate::domain::connection::{ConnectionId, DatabaseType};
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
-use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
@@ -76,35 +75,16 @@ pub(super) fn connection_save_fetch_effects(
     }
 }
 
-pub(super) fn mysql_connection_completion_effects(
-    state: &mut AppState,
-    dsn: &str,
-    database: Option<&str>,
-) -> Vec<Effect> {
-    state.session.mark_probe_connected(database.is_some());
-    let mut effects = vec![Effect::ClearCompletionEngineCache];
-    if database.is_none() {
-        state.ui.table_picker_mut().clear_filter_and_reset();
-        state.ui.set_database_picker(true);
-        state.modal.set_mode(InputMode::TablePicker);
-    } else {
-        let run_id = state.session.begin_metadata_refresh();
-        effects.push(Effect::FetchMetadata {
+pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+    state.session.mark_probe_connected();
+    let run_id = state.session.begin_metadata_refresh();
+    let effects = vec![
+        Effect::ClearCompletionEngineCache,
+        Effect::FetchMetadata {
             dsn: dsn.to_string(),
             run_id,
-        });
-    }
-    if let (Some(connection_id), Some(server_dsn)) = (
-        state.session.active_connection_id().cloned(),
-        state.session.server_dsn(),
-    ) {
-        effects.push(Effect::FetchMySqlDatabases {
-            connection_id,
-            dsn: server_dsn,
-            connection_generation: state.session.connection_generation(),
-            database_generation: state.session.database_generation(),
-        });
-    }
+        },
+    ];
     termination_effects(&state.query, effects)
 }
 
@@ -120,29 +100,6 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
     reset_active_connection_state_inner(state);
-    reconcile_connection_state(state, inspector_tab);
-}
-
-pub(super) fn reset_for_database_switch(state: &mut AppState, target: &ConnectionTarget) {
-    let inspector_tab = state.ui.inspector_tab();
-    let sql_modal_tab = state.sql_modal.active_tab();
-    let read_only = state.session.is_read_only();
-    let available_databases = state.session.available_databases().to_vec();
-    reset_active_connection_state_inner(state);
-    state.ui.set_inspector_tab(inspector_tab);
-    state.sql_modal.set_active_tab(sql_modal_tab);
-    state.session.activate_connection_with_target(
-        &target.id,
-        &target.name,
-        target.database_type,
-        &target.dsn,
-        target.database.as_deref(),
-    );
-    state.session.mark_probe_connected(true);
-    state.session.set_available_databases(available_databases);
-    if read_only {
-        state.session.enable_read_only();
-    }
     reconcile_connection_state(state, inspector_tab);
 }
 

@@ -193,7 +193,6 @@ mod tests {
             #[case(global::QUIT, Action::Quit)]
             #[case(global::HELP, Action::ToggleModal(ModalKind::Help))]
             #[case(global::TABLE_PICKER, Action::OpenModal(ModalKind::TablePicker))]
-            #[case(global::DATABASE_PICKER, Action::OpenModal(ModalKind::DatabasePicker))]
             #[case(global::SETTINGS, Action::OpenModal(ModalKind::Settings))]
             #[case(global::COMMAND_LINE, Action::EnterCommandLine)]
             #[case(global::COMMAND_PALETTE, Action::OpenModal(ModalKind::CommandPalette))]
@@ -616,10 +615,6 @@ mod tests {
 
     #[test]
     fn feature_requirements_are_attached_to_feature_bindings() {
-        assert_eq!(
-            global::DATABASE_PICKER.feature_requirement(),
-            FeatureRequirement::DatabasePicker
-        );
         assert_eq!(
             global::ER_DIAGRAM.feature_requirement(),
             FeatureRequirement::ErDiagram

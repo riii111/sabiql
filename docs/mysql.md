@@ -22,6 +22,5 @@ Passphrase-protected TLS client keys are not supported. An unencrypted PEM priva
 
 - **NUL in text** — Query results cannot preserve NUL characters embedded in text values.
 - **Binary values in arbitrary SQL** — Binary columns in table previews are handled as Blob values. Binary values returned by arbitrary SQL use the `0x...` text representation.
-- **System databases** — `information_schema`, `mysql`, `performance_schema`, and `sys` are omitted from the MySQL Database Picker.
 - **Grid editing scope** — Views, tables without a retrievable primary key, and generated columns are read-only in the grid. Invisible primary keys and generated invisible primary keys are used for row identity when available but are not shown as grid columns.
 - **CSV representation** — NULL values are exported as empty fields. Blob values use uppercase hexadecimal strings; binary values from arbitrary SQL keep the `0x...` representation.

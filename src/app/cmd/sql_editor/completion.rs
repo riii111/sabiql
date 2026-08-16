@@ -46,7 +46,6 @@ pub async fn run(
             let content = state.sql_modal.editor().content();
             let database_type = state.session.active_database_type_or_default();
             let active_database = state.session.active_database();
-            let available_databases = state.session.available_databases();
 
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
@@ -93,7 +92,6 @@ pub async fn run(
                     CompletionDatabaseScope {
                         database_type,
                         active_database,
-                        available_databases,
                     },
                 );
                 let visible = !candidates.is_empty() && !content.trim().is_empty();

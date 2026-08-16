@@ -106,7 +106,6 @@ pub struct BrowseSession {
     pending_connection_probe: Option<PendingConnectionProbe>,
     connection_generation: u64,
     database_generation: u64,
-    available_databases: Vec<String>,
     active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
@@ -132,7 +131,6 @@ impl Default for BrowseSession {
             pending_connection_probe: None,
             connection_generation: 0,
             database_generation: 0,
-            available_databases: Vec::new(),
             active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
@@ -305,9 +303,7 @@ impl BrowseSession {
                     MetadataState::NotLoaded
                 };
             }
-            ConnectionState::AwaitingDatabase
-            | ConnectionState::Failed
-            | ConnectionState::NotConnected => {}
+            ConnectionState::Failed | ConnectionState::NotConnected => {}
         }
     }
 
@@ -380,7 +376,6 @@ impl BrowseSession {
         database: Option<&str>,
     ) {
         self.database_generation = self.database_generation.wrapping_add(1);
-        self.available_databases.clear();
         self.active_connection = Some(ActiveConnection {
             id: id.clone(),
             name: name.to_string(),
@@ -436,7 +431,6 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
-        self.available_databases.clear();
         self.clear_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
@@ -450,12 +444,8 @@ impl BrowseSession {
         self.effective_user_run.clear_active();
     }
 
-    pub fn mark_probe_connected(&mut self, has_database: bool) {
-        self.connection_state = if has_database {
-            ConnectionState::Connected
-        } else {
-            ConnectionState::AwaitingDatabase
-        };
+    pub fn mark_probe_connected(&mut self) {
+        self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::NotLoaded;
         self.metadata = None;
         self.metadata_run.clear_active();
@@ -693,44 +683,6 @@ impl BrowseSession {
         self.database_generation
     }
 
-    pub fn is_current_database_fetch(
-        &self,
-        id: &ConnectionId,
-        dsn: &str,
-        connection_generation: u64,
-        database_generation: u64,
-    ) -> bool {
-        self.connection_generation == connection_generation
-            && self.database_generation == database_generation
-            && self.active_connection_id() == Some(id)
-            && self.active_database_type() == Some(DatabaseType::MySQL)
-            && self.dsn().is_some_and(|current| {
-                self.server_dsn().as_deref() == Some(dsn) && current.starts_with("mysql:")
-            })
-    }
-
-    pub fn server_dsn(&self) -> Option<String> {
-        let mut url = url::Url::parse(self.dsn()?).ok()?;
-        url.path_segments_mut().ok()?.clear();
-        Some(url.to_string())
-    }
-
-    pub fn set_available_databases(&mut self, databases: Vec<String>) {
-        self.available_databases = databases
-            .into_iter()
-            .filter(|database| {
-                !matches!(
-                    database.to_ascii_lowercase().as_str(),
-                    "information_schema" | "mysql" | "performance_schema" | "sys"
-                )
-            })
-            .collect();
-    }
-
-    pub fn available_databases(&self) -> &[String] {
-        &self.available_databases
-    }
-
     pub fn active_connection_id(&self) -> Option<&ConnectionId> {
         self.active_connection
             .as_ref()
@@ -838,7 +790,6 @@ mod tests {
 
     use super::*;
     use crate::domain::QuerySource;
-    use rstest::rstest;
 
     fn make_metadata(db_name: &str) -> Arc<DatabaseMetadata> {
         Arc::new({
@@ -868,30 +819,6 @@ mod tests {
             10,
             QuerySource::Preview,
         ))
-    }
-
-    mod available_databases {
-        use super::*;
-
-        #[rstest]
-        #[case("information_schema")]
-        #[case("INFORMATION_SCHEMA")]
-        #[case("mysql")]
-        #[case("MYSQL")]
-        #[case("performance_schema")]
-        #[case("PERFORMANCE_SCHEMA")]
-        #[case("sys")]
-        #[case("SYS")]
-        fn hides_mysql_system_databases_case_insensitively(#[case] system_database: &str) {
-            let mut session = BrowseSession::default();
-
-            session.set_available_databases(vec![
-                system_database.to_string(),
-                "application".to_string(),
-            ]);
-
-            assert_eq!(session.available_databases(), &["application".to_string()]);
-        }
     }
 
     // ── select_table ─────────────────────────────────────────────────
