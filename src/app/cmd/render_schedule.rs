@@ -113,11 +113,11 @@ mod tests {
         }
 
         #[test]
-        fn message_timeout_returns_expiration() {
+        fn success_message_timeout_returns_expiration() {
             let mut state = create_test_state();
             let now = Instant::now();
             let expires_at = now + Duration::from_secs(2);
-            state.messages.set_error_at(
+            state.messages.set_success_at(
                 "message".to_string(),
                 expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
             );
@@ -193,13 +193,13 @@ mod tests {
         }
 
         #[test]
-        fn earlier_message_timeout_takes_priority() {
+        fn earlier_success_message_timeout_takes_priority() {
             let mut state = create_test_state();
             let now = Instant::now();
             let _ = state.query.begin_running(now);
             // Message expires before spinner would update
             let expires_at = now + Duration::from_millis(50);
-            state.messages.set_error_at(
+            state.messages.set_success_at(
                 "message".to_string(),
                 expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
             );
@@ -216,7 +216,7 @@ mod tests {
 
             let _ = state.query.begin_running(now);
             let message_expires_at = now + Duration::from_secs(2);
-            state.messages.set_error_at(
+            state.messages.set_success_at(
                 "message".to_string(),
                 message_expires_at.checked_sub(MESSAGE_TIMEOUT).unwrap(),
             );

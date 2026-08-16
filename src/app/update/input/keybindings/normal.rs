@@ -575,6 +575,15 @@ pub mod result_active {
         combos: &[KeyCombo::plain(Key::Char('u'))],
     };
 
+    pub const CLEAR_STAGED_DELETE: KeyBinding = KeyBinding {
+        key_short: "Esc",
+        key: "Esc",
+        desc_short: "Clear Del",
+        description: "Clear all staged row deletions",
+        action: Action::ClearStagedDeletes,
+        combos: &[], // Esc is resolved by the Vim result-scroll transition
+    };
+
     pub const CELL_NAV: KeyBinding = KeyBinding {
         key_short: "h/l",
         key: "h / l",
@@ -654,6 +663,7 @@ pub const RESULT_ACTIVE_KEYS: &[KeyBinding] = &[
     result_active::ROW_DETAIL,
     result_active::STAGE_DELETE,
     result_active::UNSTAGE_DELETE,
+    result_active::CLEAR_STAGED_DELETE,
     result_active::CELL_NAV,
     result_active::ROW_NAV,
     result_active::TOP_BOTTOM,

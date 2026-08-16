@@ -44,7 +44,10 @@ impl Footer {
             let line = Self::build_er_waiting_line(state, time_ms, theme);
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else if let Some(error) = state.messages.last_error() {
-            let line = StatusMessage::render_line(error, MessageType::Error, theme);
+            let line = StatusMessage::render_lines(error, MessageType::Error, area.width, theme)
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| StatusMessage::render_line("", MessageType::Error, theme));
             frame.render_widget(Paragraph::new(line).style(base_style), area);
         } else {
             // Show hints with optional inline success message
@@ -135,6 +138,7 @@ impl Footer {
                     let mut list = vec![result_active::ENTER_DEEPEN.as_hint()];
                     if !state.result_interaction.staged_delete_rows().is_empty() {
                         list.push(result_active::UNSTAGE_DELETE.as_hint());
+                        list.push(result_active::CLEAR_STAGED_DELETE.as_hint());
                         list.push(cell_edit::WRITE.as_hint());
                     }
                     if state.can_request_csv_export() {
@@ -189,6 +193,7 @@ impl Footer {
                         list.push(result_active::ENTER_DEEPEN.as_hint());
                         if !state.result_interaction.staged_delete_rows().is_empty() {
                             list.push(result_active::UNSTAGE_DELETE.as_hint());
+                            list.push(result_active::CLEAR_STAGED_DELETE.as_hint());
                             list.push(cell_edit::WRITE.as_hint());
                         }
                         if state.query.can_paginate_visible_result() {

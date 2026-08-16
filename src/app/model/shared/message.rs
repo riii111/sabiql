@@ -8,7 +8,6 @@ pub struct MessageState {
 }
 
 impl MessageState {
-    const ERROR_TIMEOUT_SECS: u64 = 3;
     const SUCCESS_TIMEOUT_SECS: u64 = 3;
 
     pub fn last_error(&self) -> Option<&str> {
@@ -23,10 +22,10 @@ impl MessageState {
         self.expires_at
     }
 
-    pub fn set_error_at(&mut self, msg: String, now: Instant) {
+    pub fn set_error_at(&mut self, msg: String, _now: Instant) {
         self.last_error = Some(msg);
         self.last_success = None;
-        self.expires_at = Some(now + Duration::from_secs(Self::ERROR_TIMEOUT_SECS));
+        self.expires_at = None;
     }
 
     pub fn set_success_at(&mut self, msg: String, now: Instant) {
@@ -35,11 +34,14 @@ impl MessageState {
         self.expires_at = Some(now + Duration::from_secs(Self::SUCCESS_TIMEOUT_SECS));
     }
 
+    pub fn clear_error(&mut self) {
+        self.last_error = None;
+    }
+
     pub fn clear_expired_at(&mut self, now: Instant) {
         if let Some(expires) = self.expires_at
             && expires <= now
         {
-            self.last_error = None;
             self.last_success = None;
             self.expires_at = None;
         }
@@ -87,46 +89,53 @@ mod tests {
     }
 
     #[test]
-    fn set_error_sets_expiration_time() {
+    fn set_error_does_not_set_expiration_time() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         assert!(state.expires_at().is_none());
 
         state.set_error_at("Error!".to_string(), now);
 
-        assert!(state.expires_at().is_some());
-        assert_eq!(
-            state.expires_at(),
-            Some(now + Duration::from_secs(MessageState::ERROR_TIMEOUT_SECS))
-        );
+        assert!(state.expires_at().is_none());
     }
 
     #[test]
-    fn clear_expired_at_removes_expired_messages() {
+    fn clear_expired_at_keeps_error_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at(
-            "Error".to_string(),
-            now.checked_sub(Duration::from_secs(MessageState::ERROR_TIMEOUT_SECS + 1))
+        state.set_error_at("Error".to_string(), now);
+
+        state.clear_expired_at(now + Duration::from_mins(1));
+
+        assert_eq!(state.last_error(), Some("Error"));
+        assert!(state.expires_at().is_none());
+    }
+
+    #[test]
+    fn clear_expired_at_removes_expired_success() {
+        let now = fixed_instant();
+        let mut state = MessageState::default();
+        state.set_success_at(
+            "Success".to_string(),
+            now.checked_sub(Duration::from_secs(MessageState::SUCCESS_TIMEOUT_SECS + 1))
                 .unwrap(),
         );
 
         state.clear_expired_at(now);
 
-        assert!(state.last_error().is_none());
+        assert!(state.last_success().is_none());
         assert!(state.expires_at().is_none());
     }
 
     #[test]
-    fn clear_expired_at_keeps_unexpired_messages() {
+    fn clear_error_removes_error_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
         state.set_error_at("Error".to_string(), now);
 
-        state.clear_expired_at(now);
+        state.clear_error();
 
-        assert!(state.last_error().is_some());
-        assert!(state.expires_at().is_some());
+        assert!(state.last_error().is_none());
     }
 
     #[test]

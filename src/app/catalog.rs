@@ -249,6 +249,7 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
         } => rows_from_binding_refs(&[
             &result_active::ENTER_DEEPEN,
             &result_active::UNSTAGE_DELETE,
+            &result_active::CLEAR_STAGED_DELETE,
             &cell_edit::WRITE,
             &footer_nav::PAGE_NAV,
             csv_export(keymap_preset),

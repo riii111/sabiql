@@ -380,6 +380,9 @@ pub fn reduce_write(
                 .map_or(WriteOperation::Update, |p| p.operation);
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
+            if operation == WriteOperation::Delete {
+                state.result_interaction.clear_staged_deletes();
+            }
             state.messages.set_error_at(error.user_message(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
@@ -1337,6 +1340,7 @@ mod tests {
             let mut state = create_test_state();
             state.query.pagination.reset_for_table("public", "users");
             state.query.set_delete_refresh_target(1, Some(499), 1);
+            state.result_interaction.stage_row(2);
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_succeeded_action(&mut state, 1);
 
@@ -1352,6 +1356,7 @@ mod tests {
                 state.messages.last_success.as_deref(),
                 Some("Deleted 1 row")
             );
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
                 Effect::ExecutePreview {
@@ -1387,6 +1392,8 @@ mod tests {
         #[test]
         fn execute_write_failed_for_delete_returns_to_normal_mode() {
             let mut state = create_test_state();
+            state.result_interaction.activate_cell(4, 2);
+            state.result_interaction.stage_row(4);
             state.result_interaction.set_write_preview(delete_preview());
             let action = write_failed_action(
                 &mut state,
@@ -1402,6 +1409,9 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Query failed: boom. Review the database error details and SQL.")
             );
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert_eq!(state.result_interaction.selection().row(), Some(4));
+            assert_eq!(state.result_interaction.selection().cell(), Some(2));
         }
 
         #[test]
