@@ -379,6 +379,46 @@ mod mysql_tests {
             evaluate_multi_statement_for_database_with_context(
                 DatabaseType::MySQL,
                 Some("app"),
+                "ALTER TABLE app.items RENAME TO app.archived_items",
+            ),
+            MultiStatementDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE app.items RENAME AS app.archived_items",
+            ),
+            MultiStatementDecision::Allow { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE app.items RENAME TO other.archived_items",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE items RENAME TO other.archived_items",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
+                "ALTER TABLE app.items RENAME AS other.archived_items",
+            ),
+            MultiStatementDecision::Block { .. }
+        ));
+        assert!(matches!(
+            evaluate_multi_statement_for_database_with_context(
+                DatabaseType::MySQL,
+                Some("app"),
                 "RENAME TABLE app.items TO other.archived_items",
             ),
             MultiStatementDecision::Block { .. }

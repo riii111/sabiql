@@ -298,7 +298,7 @@ fn classify_mysql_ddl_statement(
             }
             match target::word(tokens, start + 1) {
                 Some("TABLE") => {
-                    let (target, database) = target::target_after(tokens, start + 2)?;
+                    let (target, database) = classify_alter_table_target(tokens, start + 2)?;
                     Ok((MysqlStatementKind::AlterTable, target, database))
                 }
                 _ => Err(MysqlLexError(
@@ -407,6 +407,49 @@ fn classify_mysql_ddl_statement(
         }
         _ => unreachable!("not a MySQL DDL statement: {first}"),
     }
+}
+
+fn classify_alter_table_target(
+    tokens: &[Token],
+    table_index: usize,
+) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+    let (target, source_database, after_target) = target::identifier_at(tokens, table_index)
+        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
+    let destination_database = alter_table_rename_database(tokens, after_target)?;
+    let effective_database = match (source_database.as_deref(), destination_database.as_deref()) {
+        (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
+            return Err(MysqlLexError(
+                "ALTER TABLE RENAME cannot move a table across databases".to_string(),
+            ));
+        }
+        (Some(source), _) => Some(source.to_string()),
+        (None, Some(destination)) => Some(destination.to_string()),
+        (None, None) => None,
+    };
+    Ok((Some(target), effective_database))
+}
+
+fn alter_table_rename_database(
+    tokens: &[Token],
+    start: usize,
+) -> Result<Option<String>, MysqlLexError> {
+    let Some(destination_start) =
+        tokens
+            .iter()
+            .enumerate()
+            .skip(start)
+            .find_map(|(index, token)| {
+                (token.depth == 0
+                    && target::word(tokens, index) == Some("RENAME")
+                    && matches!(target::word(tokens, index + 1), Some("TO" | "AS")))
+                .then_some(index + 2)
+            })
+    else {
+        return Ok(None);
+    };
+    let (_, database, _) = target::identifier_at(tokens, destination_start)
+        .ok_or_else(|| MysqlLexError("ALTER TABLE RENAME destination is ambiguous".to_string()))?;
+    Ok(database)
 }
 
 fn classify_mysql_utility_statement(first: &str) -> MysqlClassification {
