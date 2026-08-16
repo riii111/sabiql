@@ -32,6 +32,8 @@ mod session;
 pub(in crate::adapters::mysql) use session::MySqlMetadataSession;
 mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
+#[cfg(feature = "test-support")]
+pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc_with_timeout_for_test;
 mod single;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 mod metadata;
@@ -448,6 +450,18 @@ where
                 "mysql query exceeded the execution timeout".to_string(),
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod timeout_tests {
+    use std::time::Duration;
+
+    use super::MYSQL_QUERY_TIMEOUT;
+
+    #[test]
+    fn keeps_production_query_timeout_at_31_seconds() {
+        assert_eq!(MYSQL_QUERY_TIMEOUT, Duration::from_secs(31));
     }
 }
 

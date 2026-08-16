@@ -1475,7 +1475,10 @@ mod query_execution {
         AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
     };
     use sabiql_domain::{CommandTag, QueryValue, RefreshScope};
-    use sabiql_infra::adapters::mysql::execute_mysql_adhoc_with_read_only_session_for_test;
+    use sabiql_infra::adapters::mysql::{
+        execute_mysql_adhoc_with_read_only_session_for_test,
+        execute_mysql_adhoc_with_timeout_for_test,
+    };
     use std::time::Duration;
 
     #[tokio::test]
@@ -2290,10 +2293,16 @@ mod query_execution {
     async fn times_out_real_cli_query_and_discards_output() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let result = db
-                    .adapter()
-                    .execute_adhoc(db.dsn(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
-                    .await;
+                let result = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    execute_mysql_adhoc_with_timeout_for_test(
+                        db.dsn(),
+                        "SELECT SLEEP(10), 'discarded'",
+                        Duration::from_secs(1),
+                    ),
+                )
+                .await
+                .map_err(|_| "timeout cleanup did not finish within 5 seconds".to_string())?;
                 if !matches!(result, Err(DbOperationError::Timeout(_))) {
                     return Err(format!("expected a query timeout: {result:?}"));
                 }
