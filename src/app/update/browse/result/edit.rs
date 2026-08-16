@@ -78,7 +78,6 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                 return DispatchResult::handled();
             }
 
-            // JSON columns open the dedicated detail modal instead of inline edit
             if cell_uses_json_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
                     Action::OpenModal(ModalKind::JsonDetail),
