@@ -36,17 +36,28 @@ const MYSQL_CSV_FIELD_LIMIT_ERROR: &str = "MySQL CSV field exceeds the 16777216-
 #[derive(Clone, Copy)]
 enum MySqlXmlFieldState {
     Outside,
+    FieldStartCandidate,
     FieldStartPending,
     FieldStartTag,
     FieldContent,
     Cdata,
 }
 
+#[derive(Clone, Copy)]
+enum MySqlXmlPendingKind {
+    Markup,
+    Entity,
+}
+
 struct MySqlXmlFieldLimitReader<R> {
     inner: R,
     state: MySqlXmlFieldState,
     field_bytes: usize,
-    window: Vec<u8>,
+    field_start_match: usize,
+    field_start_quote: Option<u8>,
+    field_start_self_closing: bool,
+    pending: Vec<u8>,
+    pending_kind: Option<MySqlXmlPendingKind>,
     limit_error_pending: bool,
 }
 
@@ -56,7 +67,11 @@ impl<R> MySqlXmlFieldLimitReader<R> {
             inner,
             state: MySqlXmlFieldState::Outside,
             field_bytes: 0,
-            window: Vec::with_capacity(9),
+            field_start_match: 0,
+            field_start_quote: None,
+            field_start_self_closing: false,
+            pending: Vec::new(),
+            pending_kind: None,
             limit_error_pending: false,
         }
     }
@@ -65,64 +80,176 @@ impl<R> MySqlXmlFieldLimitReader<R> {
         self.inner
     }
 
-    fn process(&mut self, bytes: &[u8]) -> usize {
-        for (index, &byte) in bytes.iter().enumerate() {
-            match self.state {
-                MySqlXmlFieldState::FieldStartTag => {
-                    if byte == b'>' {
-                        self.state = if self.window.ends_with(b"/>") {
-                            self.field_bytes = 0;
-                            MySqlXmlFieldState::Outside
+    fn count_field_bytes(&mut self, bytes: usize) -> bool {
+        if self.field_bytes > MYSQL_CSV_MAX_FIELD_BYTES.saturating_sub(bytes) {
+            false
+        } else {
+            self.field_bytes += bytes;
+            true
+        }
+    }
+
+    fn process_pending_byte(&mut self, byte: u8) -> bool {
+        self.pending.push(byte);
+        match self.pending_kind {
+            Some(MySqlXmlPendingKind::Markup) => {
+                let target = match self.state {
+                    MySqlXmlFieldState::FieldContent => {
+                        if self.pending.first() == Some(&b'<') && self.pending.get(1) == Some(&b'!')
+                        {
+                            b"<![CDATA[".as_slice()
                         } else {
-                            MySqlXmlFieldState::FieldContent
+                            b"</field>".as_slice()
+                        }
+                    }
+                    MySqlXmlFieldState::Cdata => b"]]>".as_slice(),
+                    _ => unreachable!(),
+                };
+                if target.starts_with(&self.pending) {
+                    if self.pending == target {
+                        let state = self.state;
+                        self.pending.clear();
+                        self.pending_kind = None;
+                        self.state = match state {
+                            MySqlXmlFieldState::FieldContent => {
+                                if target == b"<![CDATA[" {
+                                    MySqlXmlFieldState::Cdata
+                                } else {
+                                    self.field_bytes = 0;
+                                    MySqlXmlFieldState::Outside
+                                }
+                            }
+                            MySqlXmlFieldState::Cdata => MySqlXmlFieldState::FieldContent,
+                            _ => unreachable!(),
                         };
                     }
+                    true
+                } else {
+                    let pending_len = self.pending.len();
+                    self.pending.clear();
+                    self.pending_kind = None;
+                    self.count_field_bytes(pending_len)
                 }
-                MySqlXmlFieldState::FieldContent | MySqlXmlFieldState::Cdata => {
-                    if self.field_bytes >= MYSQL_CSV_MAX_FIELD_BYTES {
-                        return index;
-                    }
-                    self.field_bytes += 1;
-                }
-                MySqlXmlFieldState::FieldStartPending => {
-                    if byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/') {
-                        self.state = if byte == b'>' {
-                            MySqlXmlFieldState::FieldContent
-                        } else {
-                            MySqlXmlFieldState::FieldStartTag
-                        };
-                    } else {
-                        self.state = MySqlXmlFieldState::Outside;
-                    }
-                }
-                MySqlXmlFieldState::Outside => {}
             }
-
-            self.window.push(byte);
-            if self.window.len() > 9 {
-                self.window.remove(0);
+            Some(MySqlXmlPendingKind::Entity) => {
+                if byte == b';' {
+                    let decoded_len = std::str::from_utf8(&self.pending)
+                        .ok()
+                        .and_then(|entity| unescape(entity).ok())
+                        .map_or(self.pending.len(), |decoded| decoded.len());
+                    self.pending.clear();
+                    self.pending_kind = None;
+                    self.count_field_bytes(decoded_len)
+                } else if self.pending.len() >= 64 {
+                    let pending_len = self.pending.len();
+                    self.pending.clear();
+                    self.pending_kind = None;
+                    self.count_field_bytes(pending_len)
+                } else {
+                    true
+                }
             }
+            None => unreachable!(),
+        }
+    }
 
-            match self.state {
-                MySqlXmlFieldState::FieldStartTag => {}
-                MySqlXmlFieldState::FieldContent => {
-                    if self.window.ends_with(b"<![CDATA[") {
-                        self.state = MySqlXmlFieldState::Cdata;
-                    } else if self.window.ends_with(b"</field>") {
-                        self.state = MySqlXmlFieldState::Outside;
-                        self.field_bytes = 0;
-                    }
+    fn process_byte(&mut self, byte: u8) -> bool {
+        if self.pending_kind.is_some() {
+            return self.process_pending_byte(byte);
+        }
+
+        match self.state {
+            MySqlXmlFieldState::Outside => {
+                if byte == b'<' {
+                    self.state = MySqlXmlFieldState::FieldStartCandidate;
+                    self.field_start_match = 0;
                 }
-                MySqlXmlFieldState::Cdata => {
-                    if self.window.ends_with(b"]]>") {
-                        self.state = MySqlXmlFieldState::FieldContent;
-                    }
-                }
-                MySqlXmlFieldState::FieldStartPending | MySqlXmlFieldState::Outside => {
-                    if self.window.ends_with(b"<field") {
+                true
+            }
+            MySqlXmlFieldState::FieldStartCandidate => {
+                let field_name = b"field";
+                if byte == field_name[self.field_start_match] {
+                    self.field_start_match += 1;
+                    if self.field_start_match == field_name.len() {
                         self.state = MySqlXmlFieldState::FieldStartPending;
                     }
+                } else {
+                    self.state = if byte == b'<' {
+                        self.field_start_match = 0;
+                        MySqlXmlFieldState::FieldStartCandidate
+                    } else {
+                        MySqlXmlFieldState::Outside
+                    };
                 }
+                true
+            }
+            MySqlXmlFieldState::FieldStartPending => {
+                if byte.is_ascii_whitespace() {
+                    self.state = MySqlXmlFieldState::FieldStartTag;
+                    self.field_start_quote = None;
+                    self.field_start_self_closing = false;
+                } else if byte == b'>' {
+                    self.field_bytes = 0;
+                    self.state = MySqlXmlFieldState::FieldContent;
+                } else if byte == b'/' {
+                    self.state = MySqlXmlFieldState::FieldStartTag;
+                    self.field_start_quote = None;
+                    self.field_start_self_closing = true;
+                } else {
+                    self.state = MySqlXmlFieldState::Outside;
+                }
+                true
+            }
+            MySqlXmlFieldState::FieldStartTag => {
+                if let Some(quote) = self.field_start_quote {
+                    if byte == quote {
+                        self.field_start_quote = None;
+                    }
+                } else if matches!(byte, b'\'' | b'"') {
+                    self.field_start_quote = Some(byte);
+                } else if byte == b'/' {
+                    self.field_start_self_closing = true;
+                } else if byte == b'>' {
+                    self.field_bytes = 0;
+                    self.state = if self.field_start_self_closing {
+                        MySqlXmlFieldState::Outside
+                    } else {
+                        MySqlXmlFieldState::FieldContent
+                    };
+                } else if !byte.is_ascii_whitespace() {
+                    self.field_start_self_closing = false;
+                }
+                true
+            }
+            MySqlXmlFieldState::FieldContent => {
+                if byte == b'<' {
+                    self.pending.push(byte);
+                    self.pending_kind = Some(MySqlXmlPendingKind::Markup);
+                    true
+                } else if byte == b'&' {
+                    self.pending.push(byte);
+                    self.pending_kind = Some(MySqlXmlPendingKind::Entity);
+                    true
+                } else {
+                    self.count_field_bytes(1)
+                }
+            }
+            MySqlXmlFieldState::Cdata => {
+                if byte == b']' {
+                    self.pending.push(byte);
+                    self.pending_kind = Some(MySqlXmlPendingKind::Markup);
+                    true
+                } else {
+                    self.count_field_bytes(1)
+                }
+            }
+        }
+    }
+
+    fn process(&mut self, bytes: &[u8]) -> usize {
+        for (index, &byte) in bytes.iter().enumerate() {
+            if !self.process_byte(byte) {
+                return index;
             }
         }
         bytes.len()
@@ -565,6 +692,50 @@ line2]]></field>
 
         assert_eq!(error.to_string(), MYSQL_CSV_FIELD_LIMIT_ERROR);
         assert!(output.len() < xml.len());
+    }
+
+    #[tokio::test]
+    async fn accepts_null_fields_without_accumulating_their_xml_bytes() {
+        let null_field = r#"<field name="null" xsi:nil="true"/>"#;
+        let xml = format!(
+            "<resultset><row>{}</row></resultset>",
+            null_field.repeat(MYSQL_CSV_MAX_FIELD_BYTES / null_field.len() + 1)
+        );
+        let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
+        let mut output = Vec::new();
+
+        tokio::io::AsyncReadExt::read_to_end(&mut source, &mut output)
+            .await
+            .unwrap();
+
+        assert_eq!(output, xml.as_bytes());
+    }
+
+    #[tokio::test]
+    async fn does_not_count_xml_syntax_against_mysql_csv_field_limit() {
+        let escaped_value = format!("{}&amp;", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 1));
+        let cases = [
+            format!(
+                "<resultset><row><field name=\"payload\">{}</field></row></resultset>",
+                "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES)
+            ),
+            format!(
+                "<resultset><row><field name=\"payload\">{escaped_value}</field></row></resultset>"
+            ),
+            format!(
+                "<resultset><row><field name=\"payload\"><![CDATA[{}]]></field></row></resultset>",
+                "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES)
+            ),
+        ];
+
+        for xml in cases {
+            let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
+            let mut output = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut source, &mut output)
+                .await
+                .unwrap();
+            assert_eq!(output, xml.as_bytes());
+        }
     }
 
     #[cfg(unix)]
