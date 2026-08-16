@@ -1954,6 +1954,21 @@ mod query_execution {
                     ));
                 }
 
+                let hash_comment = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "SELECT 1 AS value WHERE FALSE # trailing comment",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("empty SELECT with hash comment failed: {error:?}"))?;
+                if hash_comment.columns != ["value"] || !hash_comment.values().is_empty() {
+                    return Err(format!(
+                        "unexpected empty SELECT with hash comment: {hash_comment:?}"
+                    ));
+                }
+
                 let case_expression = db
                     .adapter()
                     .execute_adhoc(

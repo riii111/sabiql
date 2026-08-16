@@ -306,78 +306,6 @@ pub(super) async fn write_mysql_statement(
     write_mysql_input(process, &mysql_statement_input(query)).await
 }
 
-fn mysql_statement_has_trailing_line_comment(sql: &str) -> bool {
-    let bytes = sql.as_bytes();
-    let mut index = 0;
-    let mut quote = None;
-    let mut line_comment = false;
-    while index < bytes.len() {
-        if let Some(delimiter) = quote {
-            if bytes[index] == b'\\' && delimiter != b'`' {
-                index += 2;
-            } else if bytes[index] == delimiter {
-                if bytes.get(index + 1) == Some(&delimiter) {
-                    index += 2;
-                } else {
-                    quote = None;
-                    index += 1;
-                }
-            } else {
-                index += 1;
-            }
-            continue;
-        }
-        if line_comment {
-            if bytes[index] == b'\n' {
-                line_comment = false;
-            }
-            index += 1;
-            continue;
-        }
-        if matches!(bytes[index], b'\'' | b'"' | b'`') {
-            quote = Some(bytes[index]);
-            index += 1;
-        } else if mysql_is_line_comment_start(bytes, index) {
-            let comment_start = index;
-            index = mysql_skip_line_comment(bytes, index);
-            line_comment = !bytes[comment_start..index].contains(&b'\n');
-        } else if bytes.get(index..index + 2) == Some(b"/*") {
-            index = mysql_skip_block_comment(bytes, index);
-        } else {
-            index += 1;
-        }
-    }
-    line_comment
-}
-
-fn mysql_is_line_comment_start(bytes: &[u8], index: usize) -> bool {
-    bytes[index] == b'#'
-        || (bytes.get(index..index + 2) == Some(b"--")
-            && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace))
-}
-
-fn mysql_skip_line_comment(bytes: &[u8], mut index: usize) -> usize {
-    while index < bytes.len() {
-        let byte = bytes[index];
-        index += 1;
-        if byte == b'\n' {
-            break;
-        }
-    }
-    index
-}
-
-fn mysql_skip_block_comment(bytes: &[u8], index: usize) -> usize {
-    let mut cursor = index + 2;
-    while cursor + 1 < bytes.len() {
-        if bytes[cursor] == b'*' && bytes[cursor + 1] == b'/' {
-            return cursor + 2;
-        }
-        cursor += 1;
-    }
-    bytes.len()
-}
-
 pub(super) async fn write_mysql_input(
     process: &mut MySqlProcess,
     input: &[u8],
@@ -488,14 +416,32 @@ pub(super) async fn read_one_mysql_resultset(
 
 fn mysql_statement_input(query: &str) -> Vec<u8> {
     let query = query.trim_end();
-    let terminator = if query.ends_with(';') {
-        "\n"
-    } else if mysql_statement_has_trailing_line_comment(query) {
-        "\n;\n"
-    } else {
-        ";\n"
-    };
+    let terminator = if query.ends_with(';') { "\n" } else { "\n;\n" };
     [query.as_bytes(), terminator.as_bytes()].concat()
+}
+
+#[cfg(test)]
+mod statement_input_tests {
+    use super::mysql_statement_input;
+
+    #[test]
+    fn separates_semicolonless_statements_after_line_comments() {
+        for query in [
+            "SELECT 1",
+            "SELECT 1 -- trailing comment",
+            "SELECT 1 # trailing comment",
+        ] {
+            assert_eq!(
+                mysql_statement_input(query),
+                format!("{query}\n;\n").into_bytes()
+            );
+        }
+    }
+
+    #[test]
+    fn keeps_existing_semicolon_terminator() {
+        assert_eq!(mysql_statement_input("SELECT 1;"), b"SELECT 1;\n");
+    }
 }
 
 #[cfg(all(unix, feature = "test-support"))]
@@ -691,7 +637,7 @@ while IFS= read -r line; do
     phase=user
   else
     case "$line" in
-      "SET SESSION TRANSACTION READ ONLY;")
+      "SET SESSION TRANSACTION READ ONLY")
         {session_failure}
         ;;
       *__sabiql_session_marker*)
@@ -866,6 +812,8 @@ while IFS= read -r line; do
       ;;
     "SET SESSION TRANSACTION READ ONLY")
       ;;
+    ";")
+      ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
@@ -1034,9 +982,7 @@ done
             "result={result:?}; log={log}"
         );
         assert_eq!(
-            log.lines()
-                .filter(|line| *line == format!("{query};"))
-                .count(),
+            log.lines().filter(|line| *line == query).count(),
             1,
             "{log}"
         );

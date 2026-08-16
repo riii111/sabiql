@@ -88,11 +88,6 @@ pub async fn run(
     state: &AppState,
 ) -> Result<()> {
     match effect {
-        Effect::CancelActiveQuery => {
-            query_tasks.cancel();
-            Ok(())
-        }
-
         Effect::ExecutePreview {
             dsn,
             schema,
