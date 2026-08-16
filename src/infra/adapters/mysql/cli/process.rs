@@ -228,7 +228,9 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
         let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-        (stdout, stderr, status)
+        let mut error_bytes = std::mem::take(&mut process.pending_stderr);
+        error_bytes.extend_from_slice(&stderr);
+        (stdout, error_bytes, status)
     };
 
     #[cfg(unix)]
@@ -1573,6 +1575,43 @@ done
 #[cfg(all(test, not(unix)))]
 mod windows_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn pipe_finish_combines_pending_stderr_with_final_read() {
+        let mut child = Command::new("cmd.exe")
+            .args([
+                "/C",
+                "findstr /R \"^\" >nul & echo 054 (42S22): missing_column 1>&2 & exit /B 0",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn cmd.exe");
+        let stdin = child.stdin.take().expect("piped stdin");
+        let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
+        let mut process = MySqlProcess {
+            child,
+            stdin: Some(stdin),
+            stdout,
+            stderr,
+            pending: Vec::new(),
+            pending_stderr: b"ERROR 1".to_vec(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
+        };
+
+        let result =
+            tokio::time::timeout(Duration::from_secs(2), finish_mysql_session(&mut process))
+                .await
+                .expect("finish pipe process timed out waiting for stdin EOF")
+                .expect("finish pipe process");
+
+        assert!(matches!(
+            classify_mysql_query_failure(&result.error_bytes),
+            DbOperationError::ObjectMissing(details) if details.contains("missing_column")
+        ));
+    }
 
     #[tokio::test]
     async fn pipe_finish_shuts_down_stdin_before_draining_cli_error() {

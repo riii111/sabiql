@@ -128,15 +128,18 @@ async fn stream_mysql_resultset_to_csv(
 
     #[cfg(not(unix))]
     {
-        let source = MySqlExportPipeSource {
+        let mut source = MySqlExportPipeSource {
             stdout: &mut process.stdout,
             stderr: &mut process.stderr,
             pending: &mut process.pending,
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
             stderr_closed: false,
             stdout_closed: false,
         };
+        let pending_stderr = std::mem::take(&mut process.pending_stderr);
+        source.capture_error(&pending_stderr);
         let mut reader = Reader::from_reader(BufReader::new(source));
         reader.config_mut().trim_text(false);
         let result = stream_mysql_xml_to_csv(&mut reader, csv_writer).await;

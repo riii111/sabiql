@@ -16,6 +16,7 @@ pub(super) struct MySqlExportPipeSource<'a, O, E> {
     pub(super) stderr: &'a mut E,
     pub(super) pending: &'a mut Vec<u8>,
     pub(super) error_output: Vec<u8>,
+    pub(super) error_buffer: Vec<u8>,
     pub(super) stderr_buffer: [u8; 4096],
     pub(super) stderr_closed: bool,
     pub(super) stdout_closed: bool,
@@ -26,11 +27,17 @@ where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
 {
-    fn capture_error(&mut self, bytes: &[u8]) {
-        let remaining = (32usize * 1024).saturating_sub(self.error_output.len());
-        if remaining > 0 {
-            self.error_output
-                .extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+    pub(super) fn capture_error(&mut self, bytes: &[u8]) {
+        if !self.error_output.is_empty() {
+            return;
+        }
+        self.error_buffer.extend_from_slice(bytes);
+        if self.error_buffer.len() > 32 * 1024 {
+            let discard = self.error_buffer.len() - 32 * 1024;
+            self.error_buffer.drain(..discard);
+        }
+        if has_mysql_cli_error(&self.error_buffer) {
+            self.error_output.extend_from_slice(&self.error_buffer);
         }
     }
 
@@ -267,6 +274,7 @@ mod tests {
             stderr: &mut stderr,
             pending: &mut pending,
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
             stderr_closed: false,
             stdout_closed: false,
@@ -381,6 +389,7 @@ mod tests {
             stderr: &mut stderr_reader,
             pending: &mut Vec::new(),
             error_output: Vec::new(),
+            error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
             stderr_closed: false,
             stdout_closed: false,
@@ -395,6 +404,52 @@ mod tests {
         assert!(matches!(
             classify_mysql_query_failure(&source.error_output),
             DbOperationError::ObjectMissing(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn captures_error_after_large_stderr_prefix_and_read_split() {
+        let (mut stdout_writer, mut stdout_reader) = tokio::io::duplex(1024);
+        let (mut stderr_writer, mut stderr_reader) = tokio::io::duplex(64);
+        let stdout_task = tokio::spawn(async move {
+            stdout_writer
+                .write_all(b"<resultset><row></row></resultset>")
+                .await
+                .unwrap();
+        });
+        let stderr_task = tokio::spawn(async move {
+            stderr_writer
+                .write_all(&b"warning\n".repeat(8 * 1024))
+                .await
+                .unwrap();
+            stderr_writer.write_all(b"ERROR 1").await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            stderr_writer
+                .write_all(b"054 (42S22): Unknown column missing_column\n")
+                .await
+                .unwrap();
+        });
+
+        let mut source = MySqlExportPipeSource {
+            stdout: &mut stdout_reader,
+            stderr: &mut stderr_reader,
+            pending: &mut Vec::new(),
+            error_output: Vec::new(),
+            error_buffer: Vec::new(),
+            stderr_buffer: [0; 4096],
+            stderr_closed: false,
+            stdout_closed: false,
+        };
+        let mut output = Vec::new();
+        source.read_to_end(&mut output).await.unwrap();
+        stdout_task.await.unwrap();
+        stderr_task.await.unwrap();
+
+        assert_eq!(output, b"<resultset><row></row></resultset>");
+        assert!(matches!(
+            classify_mysql_query_failure(&source.error_output),
+            DbOperationError::ObjectMissing(details)
+                if details.contains("missing_column")
         ));
     }
 }
