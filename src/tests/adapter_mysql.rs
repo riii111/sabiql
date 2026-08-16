@@ -822,11 +822,17 @@ mod query_preview {
                     .execute_preview(db.dsn(), "sabiql_test", MYSQL_NO_PK_TABLE, 1, 1)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
-                if !page
-                    .query
-                    .contains("ORDER BY `duplicate_value`, `payload` LIMIT 1 OFFSET 1")
+                if page.query
+                    != "SELECT `duplicate_value`, `payload` FROM `sabiql_test`.`mysql_preview_no_pk` LIMIT 1 OFFSET 1"
                 {
                     return Err(format!("unexpected no-PK preview SQL: {}", page.query));
+                }
+                let plan = db
+                    .run_cli_script(&format!("EXPLAIN {}", page.query))
+                    .await
+                    .map_err(|error| format!("failed to explain no-PK preview: {error}"))?;
+                if plan.contains("Using filesort") {
+                    return Err(format!("no-PK preview unexpectedly used filesort: {plan:?}"));
                 }
 
                 let composite = db

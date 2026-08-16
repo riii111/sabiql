@@ -9,13 +9,12 @@ use super::super::{
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
-        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, build_preview_query,
-        preview_columns_query, preview_identity_alias, unique_columns_query,
+        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, build_preview_query, preview_columns_query,
+        preview_identity_alias,
     },
 };
 use super::catalog::{
-    MySqlColumnMetadata, column_from_metadata, mark_single_column_unique,
-    parse_preview_columns_for_table, parse_unique_column_metadata, primary_key_names,
+    MySqlColumnMetadata, column_from_metadata, parse_preview_columns_for_table, primary_key_names,
     validate_selected_schema_name,
 };
 
@@ -117,17 +116,7 @@ async fn execute_preview_with_session(
             PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
         )
         .await?;
-    let unique_result = session
-        .execute_with_expected_columns(
-            &unique_columns_query(schema, table),
-            UNIQUE_COLUMN_RESULT_COLUMNS,
-        )
-        .await?;
-    let mut column_metadata = parse_preview_columns_for_table(&column_result, schema, table)?;
-    mark_single_column_unique(
-        &mut column_metadata,
-        &parse_unique_column_metadata(&unique_result)?,
-    );
+    let column_metadata = parse_preview_columns_for_table(&column_result, schema, table)?;
     let metadata = preview_metadata_from_columns(&column_metadata, schema, table)?;
     let query = build_preview_query(
         schema,
@@ -220,14 +209,6 @@ fn preview_metadata_from_columns(
         })
         .collect();
     let order_columns = primary_key_names;
-    let order_columns = if order_columns.is_empty() {
-        visible_columns
-            .iter()
-            .map(|column| column.name.clone())
-            .collect()
-    } else {
-        order_columns
-    };
     Ok(PreviewMetadata {
         visible_columns,
         order_columns,
@@ -496,9 +477,6 @@ while IFS= read -r line; do
     *INFORMATION_SCHEMA.COLUMNS*)
       {columns_result}
       ;;
-    *INFORMATION_SCHEMA.STATISTICS*)
-      printf '%s\n' '<resultset></resultset>'
-      ;;
     *"LIMIT 2 OFFSET 1"*)
       printf '%s\n' '<resultset><row><field name="payload">0x00FF</field><field name="__sabiql_row_identity_0">1</field></row></resultset>'
       {delayed_preview_error}
@@ -605,7 +583,6 @@ done
             "__sabiql_probe",
             "SET SESSION TRANSACTION READ ONLY",
             "INFORMATION_SCHEMA.COLUMNS",
-            "INFORMATION_SCHEMA.STATISTICS",
             "LIMIT 2 OFFSET 1",
             "__sabiql_preview_completion",
         ]
@@ -613,6 +590,7 @@ done
         .map(|query| log.find(query).expect("query in transcript"))
         .collect::<Vec<_>>();
         assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+        assert!(!log.contains("INFORMATION_SCHEMA.STATISTICS"), "{log}");
     }
 
     #[cfg(unix)]
