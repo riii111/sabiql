@@ -180,7 +180,7 @@ pub(super) async fn execute_metadata_queries_in_session(
     .await
 }
 
-async fn execute_metadata_queries_in_session_with_program(
+pub(super) async fn execute_metadata_queries_in_session_with_program(
     dsn: &str,
     queries: &[(&str, &[&str])],
     program: &OsStr,

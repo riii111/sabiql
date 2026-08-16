@@ -82,12 +82,6 @@ pub(super) fn reduce_loading(
                 state.session.finish_reload();
             }
 
-            if state.modal.active_mode() == InputMode::SqlModal
-                && !state.sql_modal.is_prefetch_started()
-            {
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-            }
-
             if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,

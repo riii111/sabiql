@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
+use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
@@ -30,7 +31,7 @@ pub(super) fn reduce_prefetch(
 ) -> DispatchResult {
     match action {
         Action::StartPrefetchAll => {
-            if !state.sql_modal.is_prefetch_started()
+            if (!state.sql_modal.is_prefetch_started() || !state.sql_modal.prefetch_tracks_er())
                 && let Some(metadata) = state.session.metadata()
             {
                 let run_id = state.sql_modal.begin_prefetch();
@@ -60,7 +61,7 @@ pub(super) fn reduce_prefetch(
         }
 
         Action::StartPrefetchScoped { tables } => {
-            if state.sql_modal.is_prefetch_started() {
+            if state.sql_modal.is_prefetch_started() && state.sql_modal.prefetch_tracks_er() {
                 DispatchResult::handled()
             } else {
                 let run_id = state.sql_modal.begin_prefetch();
@@ -78,6 +79,22 @@ pub(super) fn reduce_prefetch(
                 effects.push(Effect::ProcessPrefetchQueue { run_id });
                 DispatchResult::handled_with(effects)
             }
+        }
+
+        Action::StartCompletionPrefetch { tables } => {
+            if tables.is_empty() {
+                return DispatchResult::handled();
+            }
+
+            let run_id = if let Some(run_id) = state.sql_modal.active_prefetch_run_id() {
+                run_id
+            } else {
+                state.sql_modal.begin_completion_prefetch()
+            };
+            for qualified_name in tables {
+                state.sql_modal.queue_table_prefetch(qualified_name.clone());
+            }
+            DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
         }
 
         Action::ProcessPrefetchQueue { run_id } => {
@@ -125,12 +142,19 @@ pub(super) fn reduce_prefetch(
             if let Some(entry) = state.sql_modal.failed_prefetch(&qualified_name) {
                 if entry.retry_count >= MAX_PREFETCH_RETRIES {
                     // Exceeded retry limit — give up, don't re-queue
-                    state
-                        .er_preparation
-                        .on_table_failed(&qualified_name, entry.error.clone());
-                    let mut effects = check_er_completion(state, now);
+                    let mut effects = if state.sql_modal.prefetch_tracks_er() {
+                        state
+                            .er_preparation
+                            .on_table_failed(&qualified_name, entry.error.clone());
+                        check_er_completion(state, now)
+                    } else {
+                        Vec::new()
+                    };
                     // No fetch started → no completion event to re-drive the queue.
-                    if effects.is_empty() && state.er_preparation.is_waiting() {
+                    if effects.is_empty()
+                        && state.sql_modal.prefetch_tracks_er()
+                        && state.er_preparation.is_waiting()
+                    {
                         effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
                     }
                     return DispatchResult::handled_with(effects);
@@ -158,7 +182,9 @@ pub(super) fn reduce_prefetch(
             };
 
             state.sql_modal.start_table_prefetch(qualified_name.clone());
-            state.er_preparation.start_fetching(&qualified_name);
+            if state.sql_modal.prefetch_tracks_er() {
+                state.er_preparation.start_fetching(&qualified_name);
+            }
 
             DispatchResult::handled_with(vec![Effect::PrefetchTableDetail {
                 dsn,
@@ -181,7 +207,9 @@ pub(super) fn reduce_prefetch(
             }
             let qualified_name = format!("{schema}.{table}");
             state.sql_modal.complete_table_prefetch(&qualified_name);
-            state.er_preparation.on_table_cached(&qualified_name);
+            if state.sql_modal.prefetch_tracks_er() {
+                state.er_preparation.on_table_cached(&qualified_name);
+            }
 
             let mut effects = vec![Effect::CacheTableInCompletionEngine {
                 qualified_name,
@@ -192,7 +220,11 @@ pub(super) fn reduce_prefetch(
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
 
-            effects.extend(check_er_completion(state, now));
+            if state.sql_modal.prefetch_tracks_er() {
+                effects.extend(check_er_completion(state, now));
+            } else if state.modal.active_mode() == InputMode::SqlModal {
+                effects.push(Effect::TriggerCompletion);
+            }
 
             DispatchResult::handled_with(effects)
         }
@@ -222,7 +254,9 @@ pub(super) fn reduce_prefetch(
                     retry_count: prev_count + 1,
                 },
             );
-            state.er_preparation.requeue_for_retry(&qualified_name);
+            if state.sql_modal.prefetch_tracks_er() {
+                state.er_preparation.requeue_for_retry(&qualified_name);
+            }
 
             let mut effects = Vec::new();
 
@@ -234,7 +268,9 @@ pub(super) fn reduce_prefetch(
                 delay_secs: backoff_secs_for(prev_count + 1),
             });
 
-            effects.extend(check_er_completion(state, now));
+            if state.sql_modal.prefetch_tracks_er() {
+                effects.extend(check_er_completion(state, now));
+            }
 
             DispatchResult::handled_with(effects)
         }
@@ -251,7 +287,9 @@ pub(super) fn reduce_prefetch(
             }
             let qualified_name = format!("{schema}.{table}");
             state.sql_modal.complete_table_prefetch(&qualified_name);
-            state.er_preparation.on_table_cached(&qualified_name);
+            if state.sql_modal.prefetch_tracks_er() {
+                state.er_preparation.on_table_cached(&qualified_name);
+            }
 
             let mut effects = Vec::new();
 
@@ -259,7 +297,11 @@ pub(super) fn reduce_prefetch(
                 effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
             }
 
-            effects.extend(check_er_completion(state, now));
+            if state.sql_modal.prefetch_tracks_er() {
+                effects.extend(check_er_completion(state, now));
+            } else if state.modal.active_mode() == InputMode::SqlModal {
+                effects.push(Effect::TriggerCompletion);
+            }
 
             DispatchResult::handled_with(effects)
         }
