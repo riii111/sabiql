@@ -1,4 +1,4 @@
-use std::{fmt, fs};
+use std::fmt;
 
 use url::Url;
 
@@ -132,7 +132,7 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
 pub(super) fn parse_and_validate_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
-    validate_mysql_tls_files(&target)?;
+    validate_mysql_tls_config(&target)?;
     Ok(target)
 }
 
@@ -158,7 +158,7 @@ pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperation
     Ok(())
 }
 
-pub(super) fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
+pub(super) fn validate_mysql_tls_config(target: &MySqlDsn) -> Result<(), DbOperationError> {
     let has_tls_path =
         target.ssl_ca.is_some() || target.ssl_cert.is_some() || target.ssl_key.is_some();
     if target.ssl_mode == MySqlSslMode::Disabled && has_tls_path {
@@ -181,55 +181,6 @@ pub(super) fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperat
         ));
     }
 
-    for (kind, path) in [
-        ("CA", target.ssl_ca.as_deref()),
-        ("client certificate", target.ssl_cert.as_deref()),
-        ("client key", target.ssl_key.as_deref()),
-    ] {
-        let Some(path) = path else { continue };
-        let metadata = fs::metadata(path).map_err(|error| {
-            DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} path cannot be accessed: {error}"
-            ))
-        })?;
-        if !metadata.is_file() {
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} path is not a regular file"
-            )));
-        }
-        let contents = fs::read(path).map_err(|error| {
-            DbOperationError::ConnectionFailed(format!("MySQL {kind} cannot be read: {error}"))
-        })?;
-        let text = String::from_utf8_lossy(&contents);
-        if matches!(kind, "CA" | "client certificate") && !text.contains("BEGIN CERTIFICATE") {
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "MySQL {kind} is not a PEM certificate"
-            )));
-        }
-        if kind == "client key" {
-            if text.contains("BEGIN ENCRYPTED PRIVATE KEY")
-                || text
-                    .lines()
-                    .any(|line| line.trim().eq_ignore_ascii_case("Proc-Type: 4,ENCRYPTED"))
-            {
-                return Err(DbOperationError::ConnectionFailed(
-                    "Encrypted MySQL client keys are not supported".to_string(),
-                ));
-            }
-            if ![
-                "BEGIN PRIVATE KEY",
-                "BEGIN RSA PRIVATE KEY",
-                "BEGIN EC PRIVATE KEY",
-            ]
-            .iter()
-            .any(|marker| text.contains(marker))
-            {
-                return Err(DbOperationError::ConnectionFailed(
-                    "MySQL client key is not a PEM private key".to_string(),
-                ));
-            }
-        }
-    }
     Ok(())
 }
 
@@ -368,6 +319,17 @@ mod tests {
     }
 
     #[test]
+    fn validates_tls_paths_without_accessing_files() {
+        let target = parse_and_validate_mysql_dsn(
+            "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_CA&ssl-ca=/missing/ca.pem&ssl-cert=/missing/client.pem&ssl-key=/missing/client-key.pem",
+        )
+        .unwrap();
+
+        assert_eq!(target.ssl_mode, MySqlSslMode::VerifyCa);
+        assert_eq!(target.ssl_ca.as_deref(), Some("/missing/ca.pem"));
+    }
+
+    #[test]
     fn rejects_control_characters_in_tls_paths() {
         for field in ["CA", "client certificate", "client key"] {
             let mut target = MySqlDsn {
@@ -397,59 +359,5 @@ mod tests {
                 "{field}"
             );
         }
-    }
-
-    #[test]
-    fn rejects_encrypted_client_keys_before_process_start() {
-        let directory = tempfile::tempdir().unwrap();
-        let ca = directory.path().join("ca.pem");
-        let cert = directory.path().join("client.pem");
-        let key = directory.path().join("client-key.pem");
-        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
-        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
-        fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "password".to_string(),
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca.display().to_string()),
-            ssl_cert: Some(cert.display().to_string()),
-            ssl_key: Some(key.display().to_string()),
-        };
-
-        let result = validate_mysql_tls_files(&target);
-
-        assert!(matches!(
-            result,
-            Err(DbOperationError::ConnectionFailed(details))
-                if details == "Encrypted MySQL client keys are not supported"
-        ));
-    }
-
-    #[test]
-    fn rejects_traditional_encrypted_client_keys_before_process_start() {
-        let directory = tempfile::tempdir().unwrap();
-        let ca = directory.path().join("ca.pem");
-        let cert = directory.path().join("client.pem");
-        let key = directory.path().join("client-key.pem");
-        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
-        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
-        fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
-        let target = MySqlDsn {
-            host: "localhost".to_string(),
-            port: 3306,
-            database: None,
-            username: "user".to_string(),
-            password: "password".to_string(),
-            ssl_mode: MySqlSslMode::VerifyCa,
-            ssl_ca: Some(ca.display().to_string()),
-            ssl_cert: Some(cert.display().to_string()),
-            ssl_key: Some(key.display().to_string()),
-        };
-
-        assert!(validate_mysql_tls_files(&target).is_err());
     }
 }

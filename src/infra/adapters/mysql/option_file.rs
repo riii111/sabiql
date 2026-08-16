@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::DbOperationError;
 
-use super::dsn::{MySqlDsn, validate_mysql_tls_files, validate_mysql_values};
+use super::dsn::{MySqlDsn, validate_mysql_tls_config, validate_mysql_values};
 
 pub(super) struct MySqlOptionFile {
     pub(super) path: PathBuf,
@@ -60,6 +60,61 @@ impl MySqlOptionFile {
         }
         Ok(Self { path })
     }
+}
+
+fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    validate_mysql_tls_config(target)?;
+
+    for (kind, path) in [
+        ("CA", target.ssl_ca.as_deref()),
+        ("client certificate", target.ssl_cert.as_deref()),
+        ("client key", target.ssl_key.as_deref()),
+    ] {
+        let Some(path) = path else { continue };
+        let metadata = fs::metadata(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path cannot be accessed: {error}"
+            ))
+        })?;
+        if !metadata.is_file() {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path is not a regular file"
+            )));
+        }
+        let contents = fs::read(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!("MySQL {kind} cannot be read: {error}"))
+        })?;
+        let text = String::from_utf8_lossy(&contents);
+        if matches!(kind, "CA" | "client certificate") && !text.contains("BEGIN CERTIFICATE") {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} is not a PEM certificate"
+            )));
+        }
+        if kind == "client key" {
+            if text.contains("BEGIN ENCRYPTED PRIVATE KEY")
+                || text
+                    .lines()
+                    .any(|line| line.trim().eq_ignore_ascii_case("Proc-Type: 4,ENCRYPTED"))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "Encrypted MySQL client keys are not supported".to_string(),
+                ));
+            }
+            if ![
+                "BEGIN PRIVATE KEY",
+                "BEGIN RSA PRIVATE KEY",
+                "BEGIN EC PRIVATE KEY",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL client key is not a PEM private key".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -301,6 +356,83 @@ mod tests {
         assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
         assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
         assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn rejects_encrypted_client_keys_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "Encrypted MySQL client keys are not supported"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_certificates_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        fs::write(&ca, "not a certificate").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "MySQL CA is not a PEM certificate"
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_files_at_option_file_creation() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some("/missing/ca.pem".to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details.starts_with("MySQL CA path cannot be accessed:")
+        ));
+    }
+
+    #[test]
+    fn rejects_traditional_encrypted_client_keys_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(MySqlOptionFile::create(&target).is_err());
     }
 
     #[test]
