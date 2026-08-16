@@ -683,6 +683,45 @@ mod tests {
         }
 
         #[test]
+        fn mysql_probe_failure_uses_server_error_codes_for_connection_guidance() {
+            for (stderr, expected) in [
+                (
+                    "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'",
+                    ConnectionErrorKind::PermissionDenied,
+                ),
+                (
+                    "ERROR 1045 (28000): Access denied for user 'user'",
+                    ConnectionErrorKind::AuthFailed,
+                ),
+                (
+                    "ERROR 1049 (42000): Unknown database 'missing'",
+                    ConnectionErrorKind::DatabaseNotFound,
+                ),
+            ] {
+                let mut state = AppState::new("test".to_string());
+                state
+                    .connection_setup
+                    .set_database_type(DatabaseType::MySQL);
+
+                reduce(
+                    &mut state,
+                    &Action::ConnectionSaveFailed(ConnectionSaveError::Probe {
+                        error: DbOperationError::ConnectionFailed(stderr.to_string()),
+                        dsn: "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED"
+                            .to_string(),
+                    }),
+                    Instant::now(),
+                );
+
+                let error_info = state.connection_error.error_info().unwrap();
+                assert_eq!(error_info.kind, expected);
+                if expected == ConnectionErrorKind::PermissionDenied {
+                    assert!(!error_info.hint().contains("password"));
+                }
+            }
+        }
+
+        #[test]
         fn save_invalidates_in_flight_mysql_probe() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("postgres-a");

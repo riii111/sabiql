@@ -189,8 +189,13 @@ fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
             kind,
             details: stderr,
         }
-    } else {
+    } else if stderr
+        .to_ascii_lowercase()
+        .contains("can't connect to mysql server")
+    {
         DbOperationError::ConnectionFailed(stderr)
+    } else {
+        super::error::classify_mysql_query_failure(stderr.as_bytes())
     }
 }
 
@@ -369,6 +374,28 @@ mod probe_tests {
                 kind: ConnectionFailureKind::TlsCertificateVerification,
                 ..
             }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_server_probe_failures_with_query_error_vocabulary() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'".to_string()
+            ),
+            DbOperationError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1045 (28000): Access denied for user 'user'".to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1049 (42000): Unknown database 'missing'".to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
         ));
     }
 

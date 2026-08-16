@@ -11,7 +11,9 @@ mod shared {
 
 mod connection {
 
-    use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, mysql_tls_config, with_mysql_test_db};
+    use crate::tests::harness::mysql::{
+        MYSQL_FIXTURE_TABLE, mysql_integration_config, mysql_tls_config, with_mysql_test_db,
+    };
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use sabiql_app::ports::outbound::{AccessMode, ConnectionProbe, DsnBuilder, QueryExecutor};
     use sabiql_domain::QueryValue;
@@ -22,7 +24,7 @@ mod connection {
     #[cfg(unix)]
     use tempfile::NamedTempFile;
 
-    fn mysql_tls_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
+    fn mysql_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
         ConnectionProfile::with_id_and_config(
             ConnectionId::new(),
             name,
@@ -98,7 +100,7 @@ mod connection {
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
         let config = mysql_tls_config();
-        let profile = mysql_tls_profile("mysql-tls-integration", config);
+        let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
 
@@ -119,7 +121,7 @@ mod connection {
     async fn rejects_oracle_mysql_84_fixture_with_wrong_ca() {
         let mut config = mysql_tls_config();
         config.ssl_ca = config.ssl_cert.clone();
-        let profile = mysql_tls_profile("mysql-tls-wrong-ca", config);
+        let profile = mysql_profile("mysql-tls-wrong-ca", config);
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
@@ -135,7 +137,7 @@ mod connection {
         let mut config = mysql_tls_config();
         config.host = "host.docker.internal".to_string();
         config.ssl_mode = MySqlSslMode::VerifyIdentity;
-        let profile = mysql_tls_profile("mysql-tls-wrong-host", config);
+        let profile = mysql_profile("mysql-tls-wrong-host", config);
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
@@ -145,6 +147,54 @@ mod connection {
             ConnectionErrorKind::MySqlHostnameVerificationFailed,
             "masked connection error details: {}",
             error_info.masked_details()
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn classifies_real_mysql_connection_errors_by_server_code() {
+        let adapter = MySqlAdapter::new();
+        let base_config = mysql_integration_config();
+
+        let mut permission_config = base_config.clone();
+        permission_config.database = Some("mysql".to_string());
+        let permission_profile = mysql_profile("mysql-permission", permission_config);
+        let permission_dsn = adapter.build_dsn(&permission_profile);
+        let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error_with_dsn(
+                &permission_error,
+                &permission_dsn
+            )
+            .kind,
+            ConnectionErrorKind::PermissionDenied
+        );
+
+        let mut missing_config = base_config.clone();
+        missing_config.database = Some("sabiql_missing_connection_database".to_string());
+        missing_config.username = "root".to_string();
+        missing_config.password = "root".to_string();
+        let missing_profile = mysql_profile("mysql-missing-database", missing_config);
+        let missing_dsn = adapter.build_dsn(&missing_profile);
+        let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
+        assert_eq!(
+            ConnectionErrorInfo::from_db_operation_error_with_dsn(&missing_error, &missing_dsn)
+                .kind,
+            ConnectionErrorKind::DatabaseNotFound
+        );
+
+        let mut auth_config = mysql_tls_config();
+        auth_config.password = "wrong-password".to_string();
+        let auth_profile = mysql_profile("mysql-authentication", auth_config);
+        let auth_dsn = adapter.build_dsn(&auth_profile);
+        let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
+        let auth_info =
+            ConnectionErrorInfo::from_db_operation_error_with_dsn(&auth_error, &auth_dsn);
+        assert_eq!(
+            auth_info.kind,
+            ConnectionErrorKind::AuthFailed,
+            "MySQL authentication error: {auth_error:?}; masked details: {}",
+            auth_info.masked_details()
         );
     }
 }
