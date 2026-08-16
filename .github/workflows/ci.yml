@@ -136,8 +136,6 @@ jobs:
   integration:
     name: Integration Test
     runs-on: ubuntu-latest
-    env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -150,8 +148,12 @@ jobs:
       - name: Start PostgreSQL
         run: docker compose up -d --wait postgres
       - name: Run psql integration tests (Tier 2)
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
       - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: bash scripts/mysql_integration.sh test
 
   sqlite-safe-mode:
