@@ -39,23 +39,6 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     .await
 }
 
-pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_expected_columns(
-    option_file: &Path,
-    statements: &[MysqlStatement],
-    access_mode: AccessMode,
-    expected_columns: &[&str],
-) -> Result<MysqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-        OsStr::new("mysql"),
-        option_file,
-        statements,
-        access_mode,
-        Some(expected_columns),
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
 pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
     program: &OsStr,
     option_file: &Path,

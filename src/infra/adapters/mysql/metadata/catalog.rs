@@ -14,7 +14,7 @@ use super::super::{
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, TABLES_QUERY,
-        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, columns_query, unique_columns_query,
+        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
     },
 };
 
@@ -74,31 +74,6 @@ pub(super) async fn fetch_metadata_snapshot(
     let database = selected_database(dsn)?;
     let result = execute_metadata_query(dsn, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
     metadata_snapshot_from_result(&database, None, &result)
-}
-
-pub(super) async fn fetch_columns(
-    dsn: &str,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
-    validate_selected_schema(dsn, schema)?;
-    let results = execute_metadata_queries_in_session(
-        dsn,
-        &[
-            (
-                &columns_query(schema, table),
-                COLUMN_METADATA_RESULT_COLUMNS,
-            ),
-            (
-                &unique_columns_query(schema, table),
-                UNIQUE_COLUMN_RESULT_COLUMNS,
-            ),
-        ],
-    )
-    .await?;
-    let mut columns = parse_columns_for_table(&results[0], schema, table)?;
-    mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[1])?);
-    Ok(columns)
 }
 
 pub(super) fn find_table(
@@ -205,10 +180,6 @@ pub(super) fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
             "MySQL metadata requires a selected database".to_string(),
         )
     })
-}
-
-fn validate_selected_schema(dsn: &str, schema: &str) -> Result<(), DbOperationError> {
-    validate_selected_schema_name(&selected_database(dsn)?, schema)
 }
 
 pub(super) fn validate_selected_schema_name(
