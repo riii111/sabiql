@@ -21,6 +21,27 @@ fn update_subcommand_is_recognized() {
     assert!(matches!(args.command, Some(Command::Update)));
 }
 
+#[cfg(feature = "self-update")]
+mod self_update_selection {
+    use super::super::latest_stable_release;
+
+    fn release(version: &str) -> self_update::update::Release {
+        self_update::update::Release {
+            version: version.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn selects_latest_stable_release_across_major_versions() {
+        let releases = vec![release("1.15.1"), release("2.0.0-rc.1"), release("2.0.0")];
+
+        let selected = latest_stable_release("1.14.0", &releases).unwrap();
+
+        assert_eq!(selected.version, "2.0.0");
+    }
+}
+
 #[test]
 fn database_positional_is_recognized() {
     let args = Args::parse_from(["sabiql", "/tmp/app.db"]);
