@@ -38,6 +38,34 @@ INSERT INTO mysql_cli_fixture (
     1.23e100
 );
 
+CREATE TABLE mysql_preview_binary_charset (
+    id INT PRIMARY KEY,
+    binary_char CHAR(4) CHARACTER SET binary NOT NULL,
+    binary_varchar VARCHAR(4) CHARACTER SET binary NOT NULL,
+    regular_varchar VARCHAR(6) CHARACTER SET utf8mb4 NOT NULL,
+    binary_varbinary VARBINARY(4) NOT NULL,
+    binary_blob BLOB NOT NULL,
+    binary_bit BIT(8) NOT NULL
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_preview_binary_charset (
+    id,
+    binary_char,
+    binary_varchar,
+    regular_varchar,
+    binary_varbinary,
+    binary_blob,
+    binary_bit
+) VALUES (
+    1,
+    X'00FFA10D',
+    X'00FFA10D',
+    '0x00FF',
+    X'00FFA10D',
+    X'00FFA10D',
+    b'10100101'
+);
+
 CREATE DEFINER='sabiql'@'%' TRIGGER mysql_cli_fixture_audit
 BEFORE UPDATE ON mysql_cli_fixture
 FOR EACH ROW

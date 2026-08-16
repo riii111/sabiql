@@ -13,8 +13,9 @@ use super::super::{
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
-        COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, TABLES_QUERY,
-        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
+        COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS,
+        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
+        UNIQUE_COLUMN_RESULT_COLUMNS,
     },
 };
 
@@ -28,6 +29,7 @@ enum MySqlColumnUnique {
 pub(super) struct MySqlColumnMetadata {
     name: String,
     data_type: String,
+    character_set_name: Option<String>,
     nullable: bool,
     default: Option<String>,
     comment: Option<String>,
@@ -36,6 +38,18 @@ pub(super) struct MySqlColumnMetadata {
     unique: MySqlColumnUnique,
     invisible: bool,
     generated: bool,
+}
+
+impl MySqlColumnMetadata {
+    pub(super) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(super) fn has_binary_character_set(&self) -> bool {
+        self.character_set_name
+            .as_deref()
+            .is_some_and(|name| name.eq_ignore_ascii_case("binary"))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +110,39 @@ pub(super) fn parse_columns_for_table(
     table: &str,
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
     let columns = parse_column_metadata(result)?;
+    if columns.is_empty() {
+        return Err(DbOperationError::ObjectMissing(format!(
+            "MySQL table not found: {schema}.{table}"
+        )));
+    }
+    Ok(columns)
+}
+
+pub(super) fn parse_preview_columns_for_table(
+    result: &MySqlResultSet,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+    expect_columns(result, PREVIEW_COLUMN_METADATA_RESULT_COLUMNS)?;
+    let columns = result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != PREVIEW_COLUMN_METADATA_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("preview COLUMNS row"));
+            }
+            let mut column = parse_column_metadata_row(
+                &row[..COLUMN_METADATA_RESULT_COLUMNS.len()],
+                "preview COLUMNS row",
+            )?;
+            column.character_set_name = optional_text(
+                &row[COLUMN_METADATA_RESULT_COLUMNS.len()],
+                "CHARACTER_SET_NAME",
+            )?
+            .map(str::to_string);
+            Ok(column)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     if columns.is_empty() {
         return Err(DbOperationError::ObjectMissing(format!(
             "MySQL table not found: {schema}.{table}"
@@ -283,6 +330,7 @@ pub(super) fn parse_column_metadata_row(
     Ok(MySqlColumnMetadata {
         name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
         data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
+        character_set_name: None,
         nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
         default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
         comment: optional_text(&row[5], "COLUMN_COMMENT")?
@@ -677,6 +725,45 @@ mod tests {
 
         assert!(column.is_hidden());
         assert!(column.is_read_only());
+    }
+
+    #[test]
+    fn preview_metadata_preserves_binary_character_set() {
+        let parsed = parse_preview_columns_for_table(
+            &result(
+                PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
+                vec![
+                    vec![
+                        QueryValue::Text("binary_char".to_string()),
+                        QueryValue::Text("char(4)".to_string()),
+                        QueryValue::Text("NO".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text(String::new()),
+                        QueryValue::Null,
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text("binary".to_string()),
+                    ],
+                    vec![
+                        QueryValue::Text("normal_text".to_string()),
+                        QueryValue::Text("varchar(4)".to_string()),
+                        QueryValue::Text("NO".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text(String::new()),
+                        QueryValue::Null,
+                        QueryValue::Text("2".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text("utf8mb4".to_string()),
+                    ],
+                ],
+            ),
+            "app",
+            "items",
+        )
+        .expect("preview metadata parses");
+
+        assert!(parsed[0].has_binary_character_set());
+        assert!(!parsed[1].has_binary_character_set());
     }
 
     #[test]

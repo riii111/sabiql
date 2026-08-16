@@ -9,13 +9,14 @@ use super::super::{
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
-        COLUMN_METADATA_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, build_preview_query,
-        columns_query, preview_identity_alias, unique_columns_query,
+        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, build_preview_query,
+        preview_columns_query, preview_identity_alias, unique_columns_query,
     },
 };
 use super::catalog::{
-    MySqlColumnMetadata, column_from_metadata, mark_single_column_unique, parse_columns_for_table,
-    parse_unique_column_metadata, primary_key_names, validate_selected_schema_name,
+    MySqlColumnMetadata, column_from_metadata, mark_single_column_unique,
+    parse_preview_columns_for_table, parse_unique_column_metadata, primary_key_names,
+    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -23,6 +24,8 @@ pub(in crate::adapters::mysql) struct PreviewMetadata {
     pub(in crate::adapters::mysql) visible_columns: Vec<Column>,
     pub(in crate::adapters::mysql) order_columns: Vec<String>,
     pub(in crate::adapters::mysql) identity_columns: Vec<Column>,
+    pub(in crate::adapters::mysql) binary_charset_columns: Vec<bool>,
+    pub(in crate::adapters::mysql) binary_charset_identity_columns: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,8 +113,8 @@ async fn execute_preview_with_session(
 
     let column_result = session
         .execute_with_expected_columns(
-            &columns_query(schema, table),
-            COLUMN_METADATA_RESULT_COLUMNS,
+            &preview_columns_query(schema, table),
+            PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
         )
         .await?;
     let unique_result = session
@@ -120,7 +123,7 @@ async fn execute_preview_with_session(
             UNIQUE_COLUMN_RESULT_COLUMNS,
         )
         .await?;
-    let mut column_metadata = parse_columns_for_table(&column_result, schema, table)?;
+    let mut column_metadata = parse_preview_columns_for_table(&column_result, schema, table)?;
     mark_single_column_unique(
         &mut column_metadata,
         &parse_unique_column_metadata(&unique_result)?,
@@ -174,10 +177,18 @@ fn preview_metadata_from_columns(
         .iter()
         .map(column_from_metadata)
         .collect::<Vec<_>>();
-    let visible_columns = columns
+    let visible_metadata = column_metadata
         .iter()
-        .filter(|column| !column.is_hidden())
-        .cloned()
+        .zip(&columns)
+        .filter(|(_, column)| !column.is_hidden())
+        .collect::<Vec<_>>();
+    let visible_columns = visible_metadata
+        .iter()
+        .map(|(_, column)| (*column).clone())
+        .collect::<Vec<_>>();
+    let binary_charset_columns = visible_metadata
+        .iter()
+        .map(|(metadata, _)| metadata.has_binary_character_set())
         .collect::<Vec<_>>();
     if visible_columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
@@ -199,6 +210,15 @@ fn preview_metadata_from_columns(
     } else {
         Vec::new()
     };
+    let binary_charset_identity_columns = identity_columns
+        .iter()
+        .map(|column| {
+            column_metadata
+                .iter()
+                .find(|metadata| metadata.name() == column.name)
+                .is_some_and(MySqlColumnMetadata::has_binary_character_set)
+        })
+        .collect();
     let order_columns = primary_key_names;
     let order_columns = if order_columns.is_empty() {
         visible_columns
@@ -212,13 +232,17 @@ fn preview_metadata_from_columns(
         visible_columns,
         order_columns,
         identity_columns,
+        binary_charset_columns,
+        binary_charset_identity_columns,
     })
 }
 
-pub(in crate::adapters::mysql) fn convert_preview_values(
+pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
     result: &MySqlResultSet,
     columns: &[Column],
     identity_columns: &[Column],
+    binary_charset_columns: &[bool],
+    binary_charset_identity_columns: &[bool],
 ) -> Result<ConvertedPreviewValues, DbOperationError> {
     let expected_columns = preview_result_columns(columns, identity_columns);
     if result.values.is_empty() {
@@ -248,7 +272,22 @@ pub(in crate::adapters::mysql) fn convert_preview_values(
             }
             row.iter()
                 .zip(columns.iter().chain(identity_columns))
-                .map(|(value, column)| Ok(convert_preview_value(value, &column.data_type)))
+                .enumerate()
+                .map(|(index, (value, column))| {
+                    let has_binary_charset = if index < columns.len() {
+                        binary_charset_columns.get(index).copied().unwrap_or(false)
+                    } else {
+                        binary_charset_identity_columns
+                            .get(index - columns.len())
+                            .copied()
+                            .unwrap_or(false)
+                    };
+                    Ok(convert_preview_value(
+                        value,
+                        &column.data_type,
+                        has_binary_charset,
+                    ))
+                })
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -282,11 +321,15 @@ pub(in crate::adapters::mysql) fn preview_result_columns(
         .collect()
 }
 
-fn convert_preview_value(value: &QueryValue, data_type: &str) -> QueryValue {
+fn convert_preview_value(
+    value: &QueryValue,
+    data_type: &str,
+    has_binary_charset: bool,
+) -> QueryValue {
     let QueryValue::Text(value) = value else {
         return value.clone();
     };
-    if is_binary_type(data_type)
+    if (has_binary_charset || is_binary_type(data_type))
         && let Some(bytes) = decode_hex(value)
     {
         return QueryValue::Blob(bytes);
@@ -409,6 +452,14 @@ mod tests {
     use super::*;
     use crate::domain::ColumnAttributes;
 
+    fn convert_preview_values(
+        result: &MySqlResultSet,
+        columns: &[Column],
+        identity_columns: &[Column],
+    ) -> Result<ConvertedPreviewValues, DbOperationError> {
+        convert_preview_values_with_binary_charset(result, columns, identity_columns, &[], &[])
+    }
+
     #[cfg(unix)]
     fn fake_preview_mysql(metadata_failure: bool) -> (tempfile::TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -417,7 +468,7 @@ mod tests {
         let columns_result = if metadata_failure {
             r#"printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'"#
         } else {
-            r#"printf '%s\n' '<resultset><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA">INVISIBLE</field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row><row><field name="COLUMN_NAME">payload</field><field name="COLUMN_TYPE">varbinary(16)</field><field name="IS_NULLABLE">YES</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT"></field><field name="ORDINAL_POSITION">2</field><field name="PRIMARY_KEY_POSITION" xsi:nil="true"/></row></resultset>'"#
+            r#"printf '%s\n' '<resultset><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA">INVISIBLE</field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field><field name="CHARACTER_SET_NAME" xsi:nil="true"/></row><row><field name="COLUMN_NAME">payload</field><field name="COLUMN_TYPE">varbinary(16)</field><field name="IS_NULLABLE">YES</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT"></field><field name="ORDINAL_POSITION">2</field><field name="PRIMARY_KEY_POSITION" xsi:nil="true"/><field name="CHARACTER_SET_NAME" xsi:nil="true"/></row></resultset>'"#
         };
         let script = format!(
             r#"#!/bin/sh
@@ -592,6 +643,36 @@ done
 
         assert_eq!(values.visible[0][0], QueryValue::Text("0x41".to_string()));
         assert_eq!(values.visible[0][1], QueryValue::Blob(vec![0, 255]));
+    }
+
+    #[test]
+    fn preview_conversion_decodes_binary_character_set_hex() {
+        let result = result(
+            &["char_value", "varchar_value", "text_value"],
+            vec![vec![
+                QueryValue::Text("0x00FFA1".to_string()),
+                QueryValue::Text("0x10FE".to_string()),
+                QueryValue::Text("0x41".to_string()),
+            ]],
+        );
+        let columns = vec![
+            column("char_value", "char(3)"),
+            column("varchar_value", "varchar(3)"),
+            column("text_value", "varchar(3)"),
+        ];
+
+        let values = convert_preview_values_with_binary_charset(
+            &result,
+            &columns,
+            &[],
+            &[true, true, false],
+            &[],
+        )
+        .expect("conversion succeeds");
+
+        assert_eq!(values.visible[0][0], QueryValue::Blob(vec![0, 255, 161]));
+        assert_eq!(values.visible[0][1], QueryValue::Blob(vec![16, 254]));
+        assert_eq!(values.visible[0][2], QueryValue::Text("0x41".to_string()));
     }
 
     #[test]
