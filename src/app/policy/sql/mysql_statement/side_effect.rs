@@ -17,10 +17,7 @@ pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLe
         if matches!(&token.kind, TokenKind::Word(word) if word == "INTO") {
             return Ok(true);
         }
-        if matches!(&token.kind, TokenKind::Word(word) if matches!(
-            word.as_str(),
-            "GET_LOCK" | "RELEASE_LOCK" | "RELEASE_ALL_LOCKS"
-        )) {
+        if has_mysql_read_only_side_effect_function(&tokens, index) {
             return Ok(true);
         }
         if matches!(&token.kind, TokenKind::Symbol(':'))
@@ -45,6 +42,27 @@ pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLe
         }
     }
     Ok(false)
+}
+
+fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usize) -> bool {
+    let Some(TokenKind::Word(word)) = tokens.get(index).map(|token| &token.kind) else {
+        return false;
+    };
+    if !matches!(
+        tokens.get(index + 1).map(|token| &token.kind),
+        Some(TokenKind::Symbol('('))
+    ) {
+        return false;
+    }
+
+    match word.as_str() {
+        "GET_LOCK" | "RELEASE_LOCK" | "RELEASE_ALL_LOCKS" => true,
+        "LAST_INSERT_ID" => !matches!(
+            tokens.get(index + 2).map(|token| &token.kind),
+            Some(TokenKind::Symbol(')'))
+        ),
+        _ => false,
+    }
 }
 
 pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
