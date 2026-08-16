@@ -15,6 +15,8 @@ pub(in crate::adapters::mysql) struct MySqlMetadataSession {
     process: MySqlProcess,
 }
 
+const MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN: &str = "__sabiql_preview_completion";
+
 impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
@@ -77,6 +79,21 @@ impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) async fn finish_preview(
         &mut self,
     ) -> Result<(), DbOperationError> {
+        let marker = Uuid::new_v4().simple().to_string();
+        let marker_result = self
+            .execute(&format!(
+                "SELECT '{marker}' AS {MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN}"
+            ))
+            .await?;
+        if marker_result.columns != [MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN]
+            || marker_result.values.len() != 1
+            || marker_result.values[0].len() != 1
+            || marker_result.values[0][0].as_str() != Some(marker.as_str())
+        {
+            return Err(DbOperationError::QueryFailed(
+                "mysql preview completion marker did not match".to_string(),
+            ));
+        }
         let result = finish_mysql_session_after_preview_frame(&mut self.process).await?;
         if super::has_mysql_cli_error(&result.error_bytes) {
             return Err(super::classify_mysql_query_failure(&result.error_bytes));
