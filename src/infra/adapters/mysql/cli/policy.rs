@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::app::policy::sql::mysql_statement::{
-    MysqlStatement, MysqlStatementKind, has_mysql_read_only_side_effect,
+    MySqlStatement, MySqlStatementKind, has_mysql_read_only_side_effect,
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
@@ -11,12 +11,12 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
 use super::super::sql;
-use super::xml::MysqlResultSet;
+use super::xml::MySqlResultSet;
 
 pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
 
 #[derive(Debug, Clone, Copy)]
-pub(super) enum MysqlMetadataFallbackKind {
+pub(super) enum MySqlMetadataFallbackKind {
     Select,
     Table,
     Show,
@@ -24,14 +24,14 @@ pub(super) enum MysqlMetadataFallbackKind {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::adapters::mysql) struct MysqlExecutionResult {
-    pub(in crate::adapters::mysql) result_set: Option<MysqlResultSet>,
+pub(in crate::adapters::mysql) struct MySqlExecutionResult {
+    pub(in crate::adapters::mysql) result_set: Option<MySqlResultSet>,
     pub(in crate::adapters::mysql) command_tag: Option<CommandTag>,
     pub(in crate::adapters::mysql) refresh_scope: RefreshScope,
 }
 
-pub(super) struct MysqlCommandEvent {
-    pub(super) kind: MysqlStatementKind,
+pub(super) struct MySqlCommandEvent {
+    pub(super) kind: MySqlStatementKind,
     pub(super) target: Option<String>,
     pub(super) tag: CommandTag,
 }
@@ -40,7 +40,7 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
     query: &str,
     selected_database: Option<&str>,
     access_mode: AccessMode,
-) -> Result<Vec<MysqlStatement>, DbOperationError> {
+) -> Result<Vec<MySqlStatement>, DbOperationError> {
     let decision = evaluate_mysql_multi_statement(query, selected_database);
     let (statements, risk) = match decision {
         MultiStatementDecision::Allow { statements, risk } => (statements, risk),
@@ -64,10 +64,10 @@ pub(in crate::adapters::mysql) fn validate_mysql_export_query(
     if statements.len() != 1
         || !matches!(
             statements[0].kind,
-            MysqlStatementKind::Select
-                | MysqlStatementKind::Table
-                | MysqlStatementKind::Show
-                | MysqlStatementKind::Describe
+            MySqlStatementKind::Select
+                | MySqlStatementKind::Table
+                | MySqlStatementKind::Show
+                | MySqlStatementKind::Describe
         )
     {
         return Err(DbOperationError::UnsupportedOperation(
@@ -78,33 +78,33 @@ pub(in crate::adapters::mysql) fn validate_mysql_export_query(
 }
 
 pub(super) fn mysql_metadata_fallback_kind(
-    kind: &MysqlStatementKind,
-) -> Option<MysqlMetadataFallbackKind> {
+    kind: &MySqlStatementKind,
+) -> Option<MySqlMetadataFallbackKind> {
     match kind {
-        MysqlStatementKind::Select => Some(MysqlMetadataFallbackKind::Select),
-        MysqlStatementKind::Table => Some(MysqlMetadataFallbackKind::Table),
-        MysqlStatementKind::Show => Some(MysqlMetadataFallbackKind::Show),
-        MysqlStatementKind::Describe => Some(MysqlMetadataFallbackKind::Describe),
+        MySqlStatementKind::Select => Some(MySqlMetadataFallbackKind::Select),
+        MySqlStatementKind::Table => Some(MySqlMetadataFallbackKind::Table),
+        MySqlStatementKind::Show => Some(MySqlMetadataFallbackKind::Show),
+        MySqlStatementKind::Describe => Some(MySqlMetadataFallbackKind::Describe),
         _ => None,
     }
 }
 
 pub(super) fn mysql_metadata_fallback_has_unsupported_session_state(
-    statements: &[MysqlStatement],
+    statements: &[MySqlStatement],
 ) -> bool {
     let mut temporary_table_created = false;
     for statement in statements {
         if temporary_table_created
             && matches!(
                 statement.kind,
-                MysqlStatementKind::Show | MysqlStatementKind::Describe
+                MySqlStatementKind::Show | MySqlStatementKind::Describe
             )
         {
             return true;
         }
         if matches!(
             statement.kind,
-            MysqlStatementKind::CreateTable { temporary: true }
+            MySqlStatementKind::CreateTable { temporary: true }
         ) {
             temporary_table_created = true;
         }
@@ -139,7 +139,7 @@ pub(super) fn mysql_metadata_select_query(
 }
 
 pub(super) fn validate_mysql_session_marker(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
     if result.columns != [MYSQL_SESSION_MARKER_COLUMN]
@@ -194,14 +194,14 @@ fn is_mysql_statement_failure(error: &DbOperationError) -> bool {
     )
 }
 
-pub(super) fn is_mysql_row_count_marker(result: &MysqlResultSet, marker: &str) -> bool {
+pub(super) fn is_mysql_row_count_marker(result: &MySqlResultSet, marker: &str) -> bool {
     result.columns == ["__sabiql_marker", "affected_rows"]
         && result.values.len() == 1
         && result.values[0].first().and_then(QueryValue::as_str) == Some(marker)
 }
 
 pub(super) fn mysql_row_count_marker(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     marker: &str,
 ) -> Result<i64, DbOperationError> {
     if !is_mysql_row_count_marker(result, marker) || result.values[0].len() != 2 {
@@ -218,51 +218,51 @@ pub(super) fn mysql_row_count_marker(
 }
 
 pub(super) fn mysql_command_tag(
-    kind: &MysqlStatementKind,
+    kind: &MySqlStatementKind,
     affected_rows: i64,
-    user_result: Option<&MysqlResultSet>,
+    user_result: Option<&MySqlResultSet>,
 ) -> CommandTag {
     let rows = || u64::try_from(affected_rows.max(0)).unwrap_or(0);
     match kind {
-        MysqlStatementKind::Select
-        | MysqlStatementKind::Table
-        | MysqlStatementKind::Show
-        | MysqlStatementKind::Describe => {
+        MySqlStatementKind::Select
+        | MySqlStatementKind::Table
+        | MySqlStatementKind::Show
+        | MySqlStatementKind::Describe => {
             CommandTag::Select(user_result.map_or(0, |result| result.values.len() as u64))
         }
-        MysqlStatementKind::Insert | MysqlStatementKind::Replace => CommandTag::Insert(rows()),
-        MysqlStatementKind::Update { .. } => CommandTag::Update(rows()),
-        MysqlStatementKind::Delete { .. } => CommandTag::Delete(rows()),
-        MysqlStatementKind::CreateTable { temporary: true } => {
+        MySqlStatementKind::Insert | MySqlStatementKind::Replace => CommandTag::Insert(rows()),
+        MySqlStatementKind::Update { .. } => CommandTag::Update(rows()),
+        MySqlStatementKind::Delete { .. } => CommandTag::Delete(rows()),
+        MySqlStatementKind::CreateTable { temporary: true } => {
             CommandTag::Other("CREATE TEMPORARY TABLE".to_string())
         }
-        MysqlStatementKind::CreateTable { temporary: false } => {
+        MySqlStatementKind::CreateTable { temporary: false } => {
             CommandTag::Create("TABLE".to_string())
         }
-        MysqlStatementKind::AlterTable | MysqlStatementKind::RenameTable => {
+        MySqlStatementKind::AlterTable | MySqlStatementKind::RenameTable => {
             CommandTag::Alter("TABLE".to_string())
         }
-        MysqlStatementKind::DropTable { temporary: true } => {
+        MySqlStatementKind::DropTable { temporary: true } => {
             CommandTag::Other("DROP TEMPORARY TABLE".to_string())
         }
-        MysqlStatementKind::DropTable { temporary: false } => CommandTag::Drop("TABLE".to_string()),
-        MysqlStatementKind::TruncateTable => CommandTag::Truncate,
-        MysqlStatementKind::CreateView => CommandTag::Create("VIEW".to_string()),
-        MysqlStatementKind::AlterView => CommandTag::Alter("VIEW".to_string()),
-        MysqlStatementKind::DropView => CommandTag::Drop("VIEW".to_string()),
-        MysqlStatementKind::CreateIndex => CommandTag::Create("INDEX".to_string()),
-        MysqlStatementKind::DropIndex => CommandTag::Drop("INDEX".to_string()),
-        MysqlStatementKind::Begin | MysqlStatementKind::StartTransaction => CommandTag::Begin,
-        MysqlStatementKind::Commit => CommandTag::Commit,
-        MysqlStatementKind::Rollback | MysqlStatementKind::RollbackToSavepoint => {
+        MySqlStatementKind::DropTable { temporary: false } => CommandTag::Drop("TABLE".to_string()),
+        MySqlStatementKind::TruncateTable => CommandTag::Truncate,
+        MySqlStatementKind::CreateView => CommandTag::Create("VIEW".to_string()),
+        MySqlStatementKind::AlterView => CommandTag::Alter("VIEW".to_string()),
+        MySqlStatementKind::DropView => CommandTag::Drop("VIEW".to_string()),
+        MySqlStatementKind::CreateIndex => CommandTag::Create("INDEX".to_string()),
+        MySqlStatementKind::DropIndex => CommandTag::Drop("INDEX".to_string()),
+        MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => CommandTag::Begin,
+        MySqlStatementKind::Commit => CommandTag::Commit,
+        MySqlStatementKind::Rollback | MySqlStatementKind::RollbackToSavepoint => {
             CommandTag::Rollback
         }
-        MysqlStatementKind::Savepoint => CommandTag::Other("SAVEPOINT".to_string()),
-        MysqlStatementKind::ReleaseSavepoint => CommandTag::Other("RELEASE SAVEPOINT".to_string()),
+        MySqlStatementKind::Savepoint => CommandTag::Other("SAVEPOINT".to_string()),
+        MySqlStatementKind::ReleaseSavepoint => CommandTag::Other("RELEASE SAVEPOINT".to_string()),
     }
 }
 
-pub(super) fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
+pub(super) fn mysql_refresh_scope(kind: &MySqlStatementKind) -> RefreshScope {
     if mysql_statement_is_persistent_schema_change(kind) {
         RefreshScope::Metadata
     } else if mysql_statement_is_data_modifying(kind) {
@@ -273,13 +273,13 @@ pub(super) fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
 }
 
 #[derive(Default)]
-struct MysqlPendingTransactionTags {
+struct MySqlPendingTransactionTags {
     data: Vec<CommandTag>,
     savepoints: Vec<(String, usize)>,
 }
 
 fn apply_pending_mysql_data(
-    pending: MysqlPendingTransactionTags,
+    pending: MySqlPendingTransactionTags,
     committed_data: &mut Option<CommandTag>,
 ) {
     if let Some(tag) = pending.data.last() {
@@ -287,7 +287,7 @@ fn apply_pending_mysql_data(
     }
 }
 
-pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Option<CommandTag> {
+pub(super) fn aggregate_mysql_command_tag(events: &[MySqlCommandEvent]) -> Option<CommandTag> {
     let mut committed_schema = None;
     let mut committed_data = None;
     let mut pending = None;
@@ -296,18 +296,18 @@ pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Optio
     for event in events {
         last_tag = Some(event.tag.clone());
         match &event.kind {
-            MysqlStatementKind::Begin | MysqlStatementKind::StartTransaction => {
-                pending = Some(MysqlPendingTransactionTags::default());
+            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
+                pending = Some(MySqlPendingTransactionTags::default());
             }
-            MysqlStatementKind::Commit => {
+            MySqlStatementKind::Commit => {
                 if let Some(transaction) = pending.take() {
                     apply_pending_mysql_data(transaction, &mut committed_data);
                 }
             }
-            MysqlStatementKind::Rollback => {
+            MySqlStatementKind::Rollback => {
                 pending = None;
             }
-            MysqlStatementKind::Savepoint => {
+            MySqlStatementKind::Savepoint => {
                 if let Some(transaction) = pending.as_mut()
                     && let Some(name) = event.target.as_deref()
                 {
@@ -319,7 +319,7 @@ pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Optio
                         .push((name.to_string(), transaction.data.len()));
                 }
             }
-            MysqlStatementKind::RollbackToSavepoint => {
+            MySqlStatementKind::RollbackToSavepoint => {
                 if let Some(transaction) = pending.as_mut()
                     && let Some(name) = event.target.as_deref()
                     && let Some(index) = transaction
@@ -331,7 +331,7 @@ pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Optio
                     transaction.savepoints.truncate(index + 1);
                 }
             }
-            MysqlStatementKind::ReleaseSavepoint => {
+            MySqlStatementKind::ReleaseSavepoint => {
                 if let Some(transaction) = pending.as_mut()
                     && let Some(name) = event.target.as_deref()
                     && let Some(index) = transaction
@@ -342,8 +342,8 @@ pub(super) fn aggregate_mysql_command_tag(events: &[MysqlCommandEvent]) -> Optio
                     transaction.savepoints.remove(index);
                 }
             }
-            MysqlStatementKind::CreateTable { temporary: true }
-            | MysqlStatementKind::DropTable { temporary: true } => {}
+            MySqlStatementKind::CreateTable { temporary: true }
+            | MySqlStatementKind::DropTable { temporary: true } => {}
             kind if mysql_statement_is_persistent_schema_change(kind) => {
                 if let Some(transaction) = pending.take() {
                     apply_pending_mysql_data(transaction, &mut committed_data);
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn mode_probe_requires_marker_and_allowed_mode_before_user_sql() {
-        let probe = MysqlResultSet {
+        let probe = MySqlResultSet {
             columns: vec![
                 "__sabiql_probe".to_string(),
                 "__sabiql_sql_mode".to_string(),
@@ -535,8 +535,8 @@ mod tests {
     #[test]
     fn refresh_scope_ignores_temporary_table_ddl() {
         for kind in [
-            MysqlStatementKind::CreateTable { temporary: true },
-            MysqlStatementKind::DropTable { temporary: true },
+            MySqlStatementKind::CreateTable { temporary: true },
+            MySqlStatementKind::DropTable { temporary: true },
         ] {
             assert_eq!(mysql_refresh_scope(&kind), RefreshScope::None);
         }
@@ -545,11 +545,11 @@ mod tests {
     #[test]
     fn refresh_scope_preserves_data_and_persistent_metadata_changes() {
         assert_eq!(
-            mysql_refresh_scope(&MysqlStatementKind::Insert),
+            mysql_refresh_scope(&MySqlStatementKind::Insert),
             RefreshScope::Data
         );
         assert_eq!(
-            mysql_refresh_scope(&MysqlStatementKind::CreateTable { temporary: false }),
+            mysql_refresh_scope(&MySqlStatementKind::CreateTable { temporary: false }),
             RefreshScope::Metadata
         );
     }
@@ -557,23 +557,23 @@ mod tests {
     #[test]
     fn transaction_rollback_removes_pending_data_tag() {
         let events = vec![
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Begin,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Begin,
                 target: None,
                 tag: CommandTag::Begin,
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Update { has_where: true },
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Update { has_where: true },
                 target: Some("items".to_string()),
                 tag: CommandTag::Update(1),
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Rollback,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Rollback,
                 target: None,
                 tag: CommandTag::Rollback,
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Select,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Select,
                 target: None,
                 tag: CommandTag::Select(1),
             },
@@ -588,23 +588,23 @@ mod tests {
     #[test]
     fn ddl_implicit_commit_keeps_prior_data_change() {
         let events = vec![
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Begin,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Begin,
                 target: None,
                 tag: CommandTag::Begin,
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Insert,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Insert,
                 target: Some("items".to_string()),
                 tag: CommandTag::Insert(1),
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::CreateTable { temporary: false },
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::CreateTable { temporary: false },
                 target: Some("created".to_string()),
                 tag: CommandTag::Create("TABLE".to_string()),
             },
-            MysqlCommandEvent {
-                kind: MysqlStatementKind::Rollback,
+            MySqlCommandEvent {
+                kind: MySqlStatementKind::Rollback,
                 target: None,
                 tag: CommandTag::Rollback,
             },

@@ -3,14 +3,14 @@ use std::collections::{HashMap, HashSet};
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{FkAction, Table, TableKind, TableKindInfo, TableSignature};
 
-use super::super::cli::MysqlResultSet;
+use super::super::cli::MySqlResultSet;
 use super::super::sql::{
     FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
     SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
     SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
 };
 use super::catalog::{
-    MysqlColumnMetadata, MysqlForeignKeyMetadata, MysqlTableMetadata, column_from_metadata,
+    MySqlColumnMetadata, MySqlForeignKeyMetadata, MySqlTableMetadata, column_from_metadata,
     execute_metadata_queries_in_session, expect_columns, foreign_keys_from_metadata,
     mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result,
     parse_column_metadata_row, parse_foreign_key_metadata, primary_key_names, required_text,
@@ -18,10 +18,10 @@ use super::catalog::{
 };
 
 #[derive(Debug, Clone)]
-struct MysqlSignatureColumnMetadata {
+struct MySqlSignatureColumnMetadata {
     schema: String,
     table: String,
-    column: MysqlColumnMetadata,
+    column: MySqlColumnMetadata,
 }
 
 pub(super) async fn fetch_table_signatures(
@@ -52,8 +52,8 @@ pub(super) async fn fetch_table_signatures(
 }
 
 fn parse_signature_column_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlSignatureColumnMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlSignatureColumnMetadata>, DbOperationError> {
     expect_columns(result, SIGNATURE_COLUMNS_RESULT_COLUMNS)?;
     result
         .values
@@ -62,7 +62,7 @@ fn parse_signature_column_metadata(
             if row.len() != 10 {
                 return Err(metadata_shape_error("signature COLUMNS row"));
             }
-            Ok(MysqlSignatureColumnMetadata {
+            Ok(MySqlSignatureColumnMetadata {
                 schema: required_text(&row[0], "TABLE_SCHEMA")?.to_string(),
                 table: required_text(&row[1], "TABLE_NAME")?.to_string(),
                 column: parse_column_metadata_row(&row[2..], "signature COLUMNS row")?,
@@ -72,17 +72,17 @@ fn parse_signature_column_metadata(
 }
 
 fn table_signatures_from_metadata(
-    tables: &[MysqlTableMetadata],
+    tables: &[MySqlTableMetadata],
     database: &str,
-    columns: Vec<MysqlSignatureColumnMetadata>,
-    foreign_keys: Vec<MysqlForeignKeyMetadata>,
+    columns: Vec<MySqlSignatureColumnMetadata>,
+    foreign_keys: Vec<MySqlForeignKeyMetadata>,
     mut unique_columns_by_table: HashMap<String, HashSet<String>>,
 ) -> Result<Vec<TableSignature>, DbOperationError> {
     let known_tables: HashSet<(String, String)> = tables
         .iter()
         .map(|table| (table.schema.clone(), table.name.clone()))
         .collect();
-    let mut columns_by_table: HashMap<(String, String), Vec<MysqlColumnMetadata>> = HashMap::new();
+    let mut columns_by_table: HashMap<(String, String), Vec<MySqlColumnMetadata>> = HashMap::new();
     for metadata in columns {
         let key = (metadata.schema.clone(), metadata.table.clone());
         if !known_tables.contains(&key) {
@@ -97,7 +97,7 @@ fn table_signatures_from_metadata(
             .push(metadata.column);
     }
 
-    let mut foreign_keys_by_table: HashMap<(String, String), Vec<MysqlForeignKeyMetadata>> =
+    let mut foreign_keys_by_table: HashMap<(String, String), Vec<MySqlForeignKeyMetadata>> =
         HashMap::new();
     for foreign_key in foreign_keys {
         let key = (
@@ -312,7 +312,7 @@ fn foreign_key_action_name(action: &FkAction) -> &'static str {
 }
 
 fn parse_signature_unique_column_metadata(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
 ) -> Result<HashMap<String, HashSet<String>>, DbOperationError> {
     expect_columns(result, SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS)?;
     let mut unique_columns_by_table = HashMap::new();
@@ -333,8 +333,8 @@ mod tests {
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue};
 
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
-        MysqlResultSet {
+    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),
             values,
         }
@@ -467,14 +467,14 @@ mod tests {
     #[test]
     fn signature_metadata_batches_columns_and_foreign_keys_by_server_table() {
         let tables = vec![
-            MysqlTableMetadata {
+            MySqlTableMetadata {
                 schema: "App".to_string(),
                 name: "child".to_string(),
                 kind: TableKind::Table,
                 row_count_estimate: None,
                 comment: None,
             },
-            MysqlTableMetadata {
+            MySqlTableMetadata {
                 schema: "App".to_string(),
                 name: "parent".to_string(),
                 kind: TableKind::Table,
@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn signature_metadata_requires_columns_for_each_table() {
-        let tables = vec![MysqlTableMetadata {
+        let tables = vec![MySqlTableMetadata {
             schema: "app".to_string(),
             name: "users".to_string(),
             kind: TableKind::Table,

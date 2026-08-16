@@ -6,7 +6,7 @@ use crate::domain::{DatabaseType, QuerySource, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::sql::mysql_export::{MysqlExportPlan, mysql_export_plan};
+use crate::policy::sql::mysql_export::{MySqlExportPlan, mysql_export_plan};
 use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -211,8 +211,8 @@ pub fn reduce_pagination(
                     return DispatchResult::handled();
                 };
                 let row_count = match plan {
-                    MysqlExportPlan::CountRows => RerunnableCsvRowCount::QueryDatabase,
-                    MysqlExportPlan::UseResultRowCount => RerunnableCsvRowCount::Known(row_count),
+                    MySqlExportPlan::CountRows => RerunnableCsvRowCount::QueryDatabase,
+                    MySqlExportPlan::UseResultRowCount => RerunnableCsvRowCount::Known(row_count),
                 };
                 let run_id = state.query.begin_running(now);
                 return dispatch_rerunnable_csv_export(

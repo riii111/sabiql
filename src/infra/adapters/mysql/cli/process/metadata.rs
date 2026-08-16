@@ -16,23 +16,23 @@ use super::super::error::{
     classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
 };
 use super::super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, MysqlMetadataFallbackKind, mysql_metadata_select_query,
+    MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
 };
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
-use super::{MYSQL_QUERY_TIMEOUT, MysqlProcess, read_one_mysql_resultset, write_mysql_statement};
+use super::{MYSQL_QUERY_TIMEOUT, MySqlProcess, read_one_mysql_resultset, write_mysql_statement};
 
 pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     option_file: &std::path::Path,
     query: &str,
-    kind: MysqlMetadataFallbackKind,
+    kind: MySqlMetadataFallbackKind,
     access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
     let query = match kind {
-        MysqlMetadataFallbackKind::Select | MysqlMetadataFallbackKind::Table => {
+        MySqlMetadataFallbackKind::Select | MySqlMetadataFallbackKind::Table => {
             return mysql_metadata_select_columns(process, query).await;
         }
-        MysqlMetadataFallbackKind::Show | MysqlMetadataFallbackKind::Describe => {
+        MySqlMetadataFallbackKind::Show | MySqlMetadataFallbackKind::Describe => {
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
@@ -40,7 +40,7 @@ pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
 }
 
 async fn mysql_metadata_select_columns(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     query: &str,
 ) -> Result<Vec<String>, DbOperationError> {
     let suffix = Uuid::new_v4().simple().to_string();
@@ -119,14 +119,14 @@ pub(super) async fn mysql_metadata_columns_external_with_program(
     parse_mysql_metadata_header(&output.stdout, query)
 }
 
-struct MysqlMetadataProcess {
+struct MySqlMetadataProcess {
     child: Child,
     stdin: Option<tokio::process::ChildStdin>,
     stdout: BufReader<tokio::process::ChildStdout>,
     stderr: BufReader<tokio::process::ChildStderr>,
 }
 
-impl MysqlMetadataProcess {
+impl MySqlMetadataProcess {
     fn spawn(program: &OsStr, option_file: &std::path::Path) -> Result<Self, DbOperationError> {
         let mut command = Command::new(program);
         command
@@ -213,7 +213,7 @@ impl MysqlMetadataProcess {
 }
 
 async fn finish_mysql_metadata_process(
-    process: &mut MysqlMetadataProcess,
+    process: &mut MySqlMetadataProcess,
 ) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
@@ -229,7 +229,7 @@ async fn finish_mysql_metadata_process(
     Ok((status, stdout, stderr))
 }
 
-async fn cleanup_mysql_metadata_process(process: &mut MysqlMetadataProcess) {
+async fn cleanup_mysql_metadata_process(process: &mut MySqlMetadataProcess) {
     drop(process.stdin.take());
     let _ = process.child.kill().await;
     let _ = finish_mysql_metadata_process(process).await;
@@ -255,7 +255,7 @@ pub(super) async fn run_mysql_metadata_query_with_read_only_session_with_timeout
     query: &str,
     execution_timeout: Duration,
 ) -> Result<Vec<String>, DbOperationError> {
-    let mut process = MysqlMetadataProcess::spawn(program, option_file)?;
+    let mut process = MySqlMetadataProcess::spawn(program, option_file)?;
     match timeout(
         execution_timeout,
         run_mysql_metadata_query_with_read_only_session_process(&mut process, query),
@@ -277,7 +277,7 @@ pub(super) async fn run_mysql_metadata_query_with_read_only_session_with_timeout
 }
 
 async fn run_mysql_metadata_query_with_read_only_session_process(
-    process: &mut MysqlMetadataProcess,
+    process: &mut MySqlMetadataProcess,
     query: &str,
 ) -> Result<Vec<String>, DbOperationError> {
     let probe_marker = Uuid::new_v4().simple().to_string();

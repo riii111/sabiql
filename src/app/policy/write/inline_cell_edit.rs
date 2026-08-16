@@ -28,7 +28,7 @@ enum InlineCellEditKind {
     Text,
     SqliteInteger,
     SqliteReal,
-    MysqlNumeric,
+    MySqlNumeric,
 }
 
 pub fn supports_inline_edit(database_type: DatabaseType, value: &QueryValue) -> bool {
@@ -46,7 +46,7 @@ pub fn text_for_inline_edit(
         },
         InlineCellEditKind::SqliteInteger
         | InlineCellEditKind::SqliteReal
-        | InlineCellEditKind::MysqlNumeric => Ok(value.display_value()),
+        | InlineCellEditKind::MySqlNumeric => Ok(value.display_value()),
     }
 }
 
@@ -59,7 +59,7 @@ pub fn build_inline_edited_value(
         InlineCellEditKind::Text => Ok(QueryValue::text(edited_text)),
         InlineCellEditKind::SqliteInteger => parse_sqlite_integer_text(edited_text),
         InlineCellEditKind::SqliteReal => parse_sqlite_real_text(edited_text),
-        InlineCellEditKind::MysqlNumeric => matches_mysql_numeric_lexeme(edited_text)
+        InlineCellEditKind::MySqlNumeric => matches_mysql_numeric_lexeme(edited_text)
             .then(|| QueryValue::SqlLiteral(edited_text.to_string()))
             .ok_or(InlineCellEditError::InvalidNumeric),
     }
@@ -84,7 +84,7 @@ fn classify_mysql_inline_cell_edit(
         QueryValue::Null => Err(InlineCellEditError::NullUnsupported),
         QueryValue::Blob(_) => Err(InlineCellEditError::BlobUnsupported),
         QueryValue::SqlLiteral(value) if matches_mysql_numeric_lexeme(value) => {
-            Ok(InlineCellEditKind::MysqlNumeric)
+            Ok(InlineCellEditKind::MySqlNumeric)
         }
         QueryValue::SqlLiteral(_) => Err(InlineCellEditError::UnsupportedCellType),
     }

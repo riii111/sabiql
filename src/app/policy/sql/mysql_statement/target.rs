@@ -1,28 +1,28 @@
 use super::{
-    MysqlLexError, MysqlStatement,
+    MySqlLexError, MySqlStatement,
     lexer::{Token, TokenKind},
 };
 
 pub(super) fn target_after(
     tokens: &[Token],
     index: usize,
-) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+) -> Result<(Option<String>, Option<String>), MySqlLexError> {
     identifier_at(tokens, index)
         .map(|(target, database, _)| (Some(target), database))
-        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))
+        .ok_or_else(|| MySqlLexError("MySQL statement target is ambiguous".to_string()))
 }
 
 pub(super) fn drop_target_after(
     tokens: &[Token],
     index: usize,
-) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+) -> Result<(Option<String>, Option<String>), MySqlLexError> {
     let (target, database, next) = identifier_at(tokens, index)
-        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
+        .ok_or_else(|| MySqlLexError("MySQL statement target is ambiguous".to_string()))?;
     if tokens[next..]
         .iter()
         .any(|token| token.depth == 0 && matches!(token.kind, TokenKind::Symbol(',')))
     {
-        return Err(MysqlLexError(
+        return Err(MySqlLexError(
             "MySQL DROP statements must have one target".to_string(),
         ));
     }
@@ -34,7 +34,7 @@ pub(super) fn effective_start(tokens: &[Token]) -> usize {
 }
 
 pub(super) fn target_is_selected_database(
-    statement: &MysqlStatement,
+    statement: &MySqlStatement,
     selected_database: Option<&str>,
 ) -> bool {
     match (statement.target_database.as_deref(), selected_database) {

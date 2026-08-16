@@ -15,16 +15,16 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 #[cfg(not(unix))]
-use super::pipe::MysqlExportPipeSource;
+use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
-    MYSQL_QUERY_TIMEOUT, MysqlProcess, configure_mysql_session, finish_mysql_session_after_result,
+    MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session_after_result,
     mysql_metadata_columns, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
 #[cfg(unix)]
-use super::pty::MysqlExportPtySource;
-use super::xml::{MysqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
+use super::pty::MySqlExportPtySource;
+use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
 
@@ -34,7 +34,7 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
+    let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     run_mysql_process_with_timeout(MYSQL_EXPORT_TIMEOUT, &mut process, async |process| {
         run_mysql_export_process(process, &option_file.path, query, path).await
     })
@@ -42,7 +42,7 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
 }
 
 pub(super) async fn run_mysql_export_process(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     option_file: &std::path::Path,
     query: &str,
     path: PathBuf,
@@ -99,17 +99,17 @@ fn validate_mysql_export_exit(
 }
 
 async fn stream_mysql_resultset_to_csv(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     csv_writer: &mut CsvFileWriter,
 ) -> Result<Option<Vec<String>>, DbOperationError> {
     #[cfg(unix)]
     {
-        let source = MysqlExportPtySource {
+        let source = MySqlExportPtySource {
             pty: &mut process.pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: super::xml::MysqlResultsetFrameScanner::default(),
+            frame_scanner: super::xml::MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut reader = Reader::from_reader(BufReader::new(source));
@@ -128,7 +128,7 @@ async fn stream_mysql_resultset_to_csv(
 
     #[cfg(not(unix))]
     {
-        let source = MysqlExportPipeSource {
+        let source = MySqlExportPipeSource {
             stdout: &mut process.stdout,
             stderr: &mut process.stderr,
             pending: &mut process.pending,
@@ -162,7 +162,7 @@ where
     let mut resultset_count = 0;
     let mut in_resultset = false;
     let mut current_row: Option<Vec<(String, String)>> = None;
-    let mut current_field: Option<MysqlField> = None;
+    let mut current_field: Option<MySqlField> = None;
     let mut columns: Option<Vec<String>> = None;
 
     loop {

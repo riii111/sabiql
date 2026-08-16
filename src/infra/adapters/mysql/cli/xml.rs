@@ -11,7 +11,7 @@ use super::error::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::adapters::mysql) struct MysqlResultSet {
+pub(in crate::adapters::mysql) struct MySqlResultSet {
     pub(in crate::adapters::mysql) columns: Vec<String>,
     pub(in crate::adapters::mysql) values: Vec<Vec<QueryValue>>,
 }
@@ -20,14 +20,14 @@ const MYSQL_RESULTSET_START: &[u8] = b"<resultset";
 const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
 
 #[derive(Debug, Default)]
-pub(super) struct MysqlResultsetFrameScanner {
+pub(super) struct MySqlResultsetFrameScanner {
     resultset_start: Option<usize>,
     resultset_end: Option<usize>,
     resultset_start_cursor: usize,
     resultset_end_cursor: usize,
 }
 
-impl MysqlResultsetFrameScanner {
+impl MySqlResultsetFrameScanner {
     pub(super) fn frame_start(&mut self, buffer: &[u8]) -> Option<usize> {
         let _ = self.frame_bounds(buffer);
         self.resultset_start
@@ -102,7 +102,7 @@ impl MysqlResultsetFrameScanner {
 #[cfg(any(unix, test))]
 pub(super) fn take_mysql_pty_resultset_frame(
     buffer: &mut Vec<u8>,
-    scanner: &mut MysqlResultsetFrameScanner,
+    scanner: &mut MySqlResultsetFrameScanner,
 ) -> Result<Option<Vec<u8>>, DbOperationError> {
     let bounds = scanner.frame_bounds(buffer);
     let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
@@ -117,7 +117,7 @@ pub(super) fn take_mysql_pty_resultset_frame(
 pub(super) fn take_mysql_resultset_frame_after_error_check(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
-    scanner: &mut MysqlResultsetFrameScanner,
+    scanner: &mut MySqlResultsetFrameScanner,
 ) -> Result<Option<Vec<u8>>, DbOperationError> {
     if has_mysql_cli_error(error_output) {
         trace_mysql_error(error_output);
@@ -178,14 +178,14 @@ pub(super) fn decode_mysql_xml_reference(
         .map_err(|error| DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}")))
 }
 
-pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationError> {
+pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationError> {
     let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     let mut resultset_count = 0;
     let mut in_resultset = false;
     let mut current_row: Option<Vec<(String, QueryValue)>> = None;
-    let mut current_field: Option<MysqlField> = None;
+    let mut current_field: Option<MySqlField> = None;
     let mut rows = Vec::new();
     let mut columns = Vec::new();
 
@@ -328,19 +328,19 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MysqlResultSet, DbOperationE
             "MySQL XML result did not contain one complete resultset".to_string(),
         ));
     }
-    Ok(MysqlResultSet {
+    Ok(MySqlResultSet {
         columns,
         values: rows,
     })
 }
 
-pub(super) struct MysqlField {
+pub(super) struct MySqlField {
     name: String,
     pub(super) value: String,
     is_null: bool,
 }
 
-impl MysqlField {
+impl MySqlField {
     fn finish(self) -> (String, QueryValue) {
         let value = if self.is_null {
             QueryValue::Null
@@ -362,7 +362,7 @@ impl MysqlField {
 
 pub(super) fn parse_mysql_field(
     element: &quick_xml::events::BytesStart<'_>,
-) -> Result<MysqlField, DbOperationError> {
+) -> Result<MySqlField, DbOperationError> {
     let mut name = None;
     let mut is_null = false;
     for attribute in element.attributes() {
@@ -380,7 +380,7 @@ pub(super) fn parse_mysql_field(
     }
     let name = name
         .ok_or_else(|| DbOperationError::QueryFailed("MySQL XML field has no name".to_string()))?;
-    Ok(MysqlField {
+    Ok(MySqlField {
         name,
         value: String::new(),
         is_null,
@@ -477,7 +477,7 @@ mod tests {
     fn frames_one_xml_resultset_and_preserves_following_output() {
         let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
             .to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         assert_eq!(
             scanner.take(&mut buffer),
@@ -495,7 +495,7 @@ mod tests {
     fn frames_resultset_after_mysql_cli_text() {
         let mut buffer =
             b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         assert_eq!(
             scanner.take(&mut buffer),
@@ -512,7 +512,7 @@ mod tests {
         expected.extend_from_slice(MYSQL_RESULTSET_END);
 
         let mut buffer = Vec::new();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
         let mut frames = Vec::new();
         for chunk in expected.chunks(4096) {
             buffer.extend_from_slice(chunk);
@@ -535,7 +535,7 @@ mod tests {
         expected.extend_from_slice(MYSQL_RESULTSET_END);
 
         let mut buffer = Vec::new();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
         let mut frames = Vec::new();
         for chunk in expected.chunks(37) {
             buffer.extend_from_slice(chunk);
@@ -555,7 +555,7 @@ mod tests {
         let mut input = first.to_vec();
         input.extend_from_slice(second);
         let mut buffer = Vec::new();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
         let mut frames = Vec::new();
 
         for chunk in input.chunks(11) {
@@ -573,7 +573,7 @@ mod tests {
     fn delimiter_prefix_in_field_text_does_not_end_the_frame() {
         let expected = b"<resultset><row><field name=\"value\">literal </resultset prefix</field></row></resultset>";
         let mut buffer = expected.to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         assert_eq!(scanner.take(&mut buffer), Some(expected.to_vec()));
         assert!(buffer.is_empty());
@@ -584,7 +584,7 @@ mod tests {
         let mut buffer = br#"<resultset><row><field name="message">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             .to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         let frame = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner).unwrap();
 
@@ -596,7 +596,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn cli_error_before_resultset_frame_is_still_rejected() {
         let mut buffer =
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         let result = take_mysql_pty_resultset_frame(&mut buffer, &mut scanner);
 
@@ -611,7 +611,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn error_before_resultset_frame_is_not_accepted() {
         let mut buffer = b"<resultset><row></row></resultset>".to_vec();
         let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
-        let mut scanner = MysqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultsetFrameScanner::default();
 
         assert!(matches!(
             take_mysql_resultset_frame_after_error_check(&mut buffer, error, &mut scanner),

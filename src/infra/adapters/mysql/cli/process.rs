@@ -22,14 +22,14 @@ use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
 use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
 use super::pty::{
-    MysqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
+    MySqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
 };
 #[cfg(all(unix, feature = "test-support"))]
 use super::xml::trace_mysql_frame;
-use super::xml::{MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
+use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
 mod session;
-pub(in crate::adapters::mysql) use session::MysqlMetadataSession;
+pub(in crate::adapters::mysql) use session::MySqlMetadataSession;
 mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
 mod single;
@@ -45,10 +45,10 @@ use super::super::option_file::MySqlOptionFile;
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
-pub(in crate::adapters::mysql) struct MysqlProcess {
+pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
     #[cfg(unix)]
-    pub(super) pty: MysqlPty,
+    pub(super) pty: MySqlPty,
     #[cfg(not(unix))]
     pub(super) stdin: Option<ChildStdin>,
     #[cfg(not(unix))]
@@ -60,10 +60,10 @@ pub(in crate::adapters::mysql) struct MysqlProcess {
     #[cfg(not(unix))]
     pub(super) pending_stderr: Vec<u8>,
     #[cfg(not(unix))]
-    pub(super) frame_scanner: MysqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultsetFrameScanner,
 }
 
-impl MysqlProcess {
+impl MySqlProcess {
     pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
@@ -110,7 +110,7 @@ impl MysqlProcess {
                 stderr,
                 pending: Vec::new(),
                 pending_stderr: Vec::new(),
-                frame_scanner: MysqlResultsetFrameScanner::default(),
+                frame_scanner: MySqlResultsetFrameScanner::default(),
             })
         }
     }
@@ -154,11 +154,11 @@ impl MysqlProcess {
         let input = TokioFile::from_std(master);
         Ok(Self {
             child,
-            pty: MysqlPty {
+            pty: MySqlPty {
                 input,
                 output,
                 pending: Vec::new(),
-                frame_scanner: MysqlResultsetFrameScanner::default(),
+                frame_scanner: MySqlResultsetFrameScanner::default(),
             },
         })
     }
@@ -180,7 +180,7 @@ async fn stop_mysql_process(child: &mut Child) -> Result<(ExitStatus, bool), DbO
     Ok((status, true))
 }
 
-pub(super) struct MysqlSessionResult {
+pub(super) struct MySqlSessionResult {
     pub(super) status: ExitStatus,
     pub(super) forcibly_stopped: bool,
     #[cfg(not(unix))]
@@ -188,7 +188,7 @@ pub(super) struct MysqlSessionResult {
     pub(super) error_bytes: Vec<u8>,
 }
 
-async fn shutdown_mysql_input(process: &mut MysqlProcess) -> Result<(), DbOperationError> {
+async fn shutdown_mysql_input(process: &mut MySqlProcess) -> Result<(), DbOperationError> {
     #[cfg(unix)]
     {
         write_mysql_input(process, b"\x04").await?;
@@ -205,8 +205,8 @@ async fn shutdown_mysql_input(process: &mut MysqlProcess) -> Result<(), DbOperat
 }
 
 pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
-    process: &mut MysqlProcess,
-) -> Result<MysqlSessionResult, DbOperationError> {
+    process: &mut MySqlProcess,
+) -> Result<MySqlSessionResult, DbOperationError> {
     shutdown_mysql_input(process).await?;
 
     #[cfg(unix)]
@@ -232,7 +232,7 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
     #[cfg(not(unix))]
     let forcibly_stopped = false;
 
-    Ok(MysqlSessionResult {
+    Ok(MySqlSessionResult {
         status,
         forcibly_stopped,
         #[cfg(not(unix))]
@@ -242,8 +242,8 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
 }
 
 pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_result(
-    process: &mut MysqlProcess,
-) -> Result<MysqlSessionResult, DbOperationError> {
+    process: &mut MySqlProcess,
+) -> Result<MySqlSessionResult, DbOperationError> {
     #[cfg(unix)]
     {
         shutdown_mysql_input(process).await?;
@@ -256,7 +256,7 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_result(
         let error_bytes =
             error_bytes.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         let (status, forcibly_stopped) = status?;
-        Ok(MysqlSessionResult {
+        Ok(MySqlSessionResult {
             status,
             forcibly_stopped,
             error_bytes,
@@ -268,7 +268,7 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_result(
 }
 
 pub(super) async fn configure_mysql_session(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     access_mode: AccessMode,
 ) -> Result<(), DbOperationError> {
     if !access_mode.is_read_only() {
@@ -293,7 +293,7 @@ pub(super) async fn configure_mysql_session(
 }
 
 pub(super) async fn write_mysql_statement(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     query: &str,
 ) -> Result<(), DbOperationError> {
     trace_mysql_statement(query.trim_end());
@@ -373,7 +373,7 @@ fn mysql_skip_block_comment(bytes: &[u8], index: usize) -> usize {
 }
 
 pub(super) async fn write_mysql_input(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     input: &[u8],
 ) -> Result<(), DbOperationError> {
     #[cfg(unix)]
@@ -409,7 +409,7 @@ pub(super) async fn write_mysql_input(
     Ok(())
 }
 
-pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
+pub(super) async fn cleanup_mysql_process(process: &mut MySqlProcess) {
     let _ = process.child.kill().await;
     #[cfg(unix)]
     let _ = read_pty_all(&mut process.pty).await;
@@ -423,11 +423,11 @@ pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
 
 pub(super) async fn run_mysql_process_with_timeout<T, F>(
     execution_timeout: Duration,
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     execute: F,
 ) -> Result<T, DbOperationError>
 where
-    F: AsyncFnOnce(&mut MysqlProcess) -> Result<T, DbOperationError>,
+    F: AsyncFnOnce(&mut MySqlProcess) -> Result<T, DbOperationError>,
 {
     match tokio::time::timeout(execution_timeout, execute(process)).await {
         Ok(Ok(value)) => Ok(value),
@@ -445,7 +445,7 @@ where
 }
 
 pub(super) async fn read_one_mysql_resultset(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
 ) -> Result<Vec<u8>, DbOperationError> {
     #[cfg(unix)]
     {
@@ -482,7 +482,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
 ) -> Result<Vec<u8>, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
+    let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
     let result = async {
         trace_mysql_statement(script);
         write_mysql_input(&mut process, script.as_bytes()).await?;
@@ -512,7 +512,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::super::export::run_mysql_export_process;
-    use super::super::xml::MysqlResultSet;
+    use super::super::xml::MySqlResultSet;
     use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
     use super::metadata::{
         mysql_metadata_columns_external_with_program,
@@ -533,7 +533,7 @@ mod tests {
         path: PathBuf,
         execution_timeout: Duration,
     ) -> Result<(), DbOperationError> {
-        let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+        let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
         run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
             run_mysql_export_process(process, option_file, query, path).await
         })
@@ -545,8 +545,8 @@ mod tests {
         query: &str,
         access_mode: AccessMode,
         execution_timeout: Duration,
-    ) -> Result<MysqlResultSet, DbOperationError> {
-        let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
+    ) -> Result<MySqlResultSet, DbOperationError> {
+        let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
         run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
             run_mysql_single_statement_process(process, query, access_mode).await
         })
@@ -897,7 +897,7 @@ done
     async fn metadata_session_reuses_one_process_for_ordered_resultsets() {
         let (_directory, program, option_file) = fake_mysql_multi();
         let mut session =
-            MysqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
+            MySqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
                 .expect("spawn fake mysql");
 
         session.probe().await.expect("mode probe");
@@ -1308,7 +1308,7 @@ done
 
         assert_eq!(
             result.result_set,
-            Some(MysqlResultSet {
+            Some(MySqlResultSet {
                 columns: vec!["value".to_string()],
                 values: vec![vec![QueryValue::Text("two".to_string())]],
             })
@@ -1506,14 +1506,14 @@ mod windows_tests {
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
         let stderr = child.stderr.take().expect("piped stderr");
-        let mut process = MysqlProcess {
+        let mut process = MySqlProcess {
             child,
             stdin: Some(stdin),
             stdout,
             stderr,
             pending: Vec::new(),
             pending_stderr: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
         };
 
         let result =
