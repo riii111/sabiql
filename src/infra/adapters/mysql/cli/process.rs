@@ -243,7 +243,7 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
     })
 }
 
-pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_result(
+pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_preview_frame(
     process: &mut MySqlProcess,
 ) -> Result<MySqlSessionResult, DbOperationError> {
     #[cfg(unix)]

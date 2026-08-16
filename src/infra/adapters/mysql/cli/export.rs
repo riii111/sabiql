@@ -18,7 +18,7 @@ use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_m
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
-    MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session_after_result,
+    MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
     mysql_metadata_columns, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
@@ -78,7 +78,7 @@ pub(super) async fn run_mysql_export_process(
         csv_writer.write_record(columns.iter()).await?;
     }
 
-    let result = finish_mysql_session_after_result(process).await?;
+    let result = finish_mysql_session(process).await?;
     validate_mysql_export_exit(result.status, result.forcibly_stopped, &result.error_bytes)?;
 
     csv_writer.finish().await

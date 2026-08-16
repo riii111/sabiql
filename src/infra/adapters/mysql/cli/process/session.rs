@@ -6,8 +6,8 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
-    MySqlProcess, cleanup_mysql_process, configure_mysql_session,
-    finish_mysql_session_after_result, read_one_mysql_resultset, validate_mode_probe,
+    MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
+    finish_mysql_session_after_preview_frame, read_one_mysql_resultset, validate_mode_probe,
     write_mysql_statement,
 };
 
@@ -64,7 +64,20 @@ impl MySqlMetadataSession {
     }
 
     pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
-        let result = finish_mysql_session_after_result(&mut self.process).await?;
+        let result = finish_mysql_session(&mut self.process).await?;
+        if super::has_mysql_cli_error(&result.error_bytes) {
+            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+        }
+        if !result.status.success() && !result.forcibly_stopped {
+            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+        }
+        Ok(())
+    }
+
+    pub(in crate::adapters::mysql) async fn finish_preview(
+        &mut self,
+    ) -> Result<(), DbOperationError> {
+        let result = finish_mysql_session_after_preview_frame(&mut self.process).await?;
         if super::has_mysql_cli_error(&result.error_bytes) {
             return Err(super::classify_mysql_query_failure(&result.error_bytes));
         }

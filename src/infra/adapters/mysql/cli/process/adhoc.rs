@@ -19,8 +19,7 @@ use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns;
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    finish_mysql_session_after_result, read_one_mysql_resultset, run_mysql_process_with_timeout,
-    write_mysql_statement,
+    read_one_mysql_resultset, run_mysql_process_with_timeout, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
@@ -224,11 +223,7 @@ async fn run_mysql_adhoc_process(
         refresh_scope = execution.refresh_scope;
     }
 
-    let result = if access_mode.is_read_only() {
-        finish_mysql_session_after_result(process).await?
-    } else {
-        finish_mysql_session(process).await?
-    };
+    let result = finish_mysql_session(process).await?;
     if has_mysql_cli_error(&result.error_bytes) {
         return Err(query_failed_after_change(
             classify_mysql_query_failure(&result.error_bytes),

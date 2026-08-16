@@ -156,7 +156,7 @@ async fn execute_preview_with_session(
         limit,
         offset,
     );
-    session.finish().await?;
+    session.finish_preview().await?;
 
     Ok(PreviewExecution {
         metadata,
