@@ -98,7 +98,7 @@ fn validate_mysql_export_exit(
     Ok(())
 }
 
-async fn stream_mysql_resultset_to_csv(
+pub(super) async fn stream_mysql_resultset_to_csv(
     process: &mut MySqlProcess,
     csv_writer: &mut CsvFileWriter,
 ) -> Result<Option<Vec<String>>, DbOperationError> {
@@ -147,6 +147,11 @@ async fn stream_mysql_resultset_to_csv(
         let unread = buffered.buffer().to_vec();
         let source = buffered.into_inner();
         source.pending.extend(unread);
+        if source.error_output.is_empty() {
+            process
+                .pending_stderr
+                .extend_from_slice(&source.error_buffer);
+        }
         if has_mysql_cli_error(&source.error_output) {
             return Err(classify_mysql_query_failure(&source.error_output));
         }

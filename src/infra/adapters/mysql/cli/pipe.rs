@@ -36,7 +36,13 @@ where
             let discard = self.error_buffer.len() - 32 * 1024;
             self.error_buffer.drain(..discard);
         }
-        if has_mysql_cli_error(&self.error_buffer) {
+        if has_complete_mysql_cli_error(&self.error_buffer) {
+            self.error_output.extend_from_slice(&self.error_buffer);
+        }
+    }
+
+    fn finish_error_capture(&mut self) {
+        if self.error_output.is_empty() && has_mysql_cli_error(&self.error_buffer) {
             self.error_output.extend_from_slice(&self.error_buffer);
         }
     }
@@ -57,6 +63,7 @@ where
             Poll::Ready(Ok(bytes)) => {
                 if bytes.is_empty() {
                     self.stderr_closed = true;
+                    self.finish_error_capture();
                 } else {
                     self.capture_error(&bytes);
                 }
@@ -66,6 +73,16 @@ where
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+fn has_complete_mysql_cli_error(output: &[u8]) -> bool {
+    output
+        .split_inclusive(|byte| *byte == b'\n' || *byte == b'\r')
+        .any(|line| {
+            line.last()
+                .is_some_and(|byte| *byte == b'\n' || *byte == b'\r')
+                && has_mysql_cli_error(line)
+        })
 }
 
 impl<O, E> AsyncRead for MySqlExportPipeSource<'_, O, E>
@@ -425,7 +442,12 @@ mod tests {
             stderr_writer.write_all(b"ERROR 1").await.unwrap();
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             stderr_writer
-                .write_all(b"054 (42S22): Unknown column missing_column\n")
+                .write_all(b"054 (42S22): Unknown column missing_column \xe6")
+                .await
+                .unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            stderr_writer
+                .write_all(b"\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e\n")
                 .await
                 .unwrap();
         });
@@ -449,7 +471,7 @@ mod tests {
         assert!(matches!(
             classify_mysql_query_failure(&source.error_output),
             DbOperationError::ObjectMissing(details)
-                if details.contains("missing_column")
+                if details.contains("missing_column 日本語")
         ));
     }
 }
