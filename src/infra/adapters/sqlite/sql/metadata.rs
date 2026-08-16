@@ -38,7 +38,7 @@ pub(in crate::adapters::sqlite) fn user_tables_query() -> &'static str {
       ON m.type IN ('table', 'view')
      AND m.name = tl.name
     WHERE tl.schema = 'main'
-      AND tl.type IN ('table', 'virtual', 'view')
+      AND tl.type IN ('table', 'virtual')
       AND tl.name NOT LIKE 'sqlite_%'
     ORDER BY tl.name
     "
@@ -48,7 +48,7 @@ pub(in crate::adapters::sqlite) fn legacy_user_tables_query() -> &'static str {
     r"
     SELECT name, sql
     FROM sqlite_master
-    WHERE type IN ('table', 'view')
+    WHERE type = 'table'
       AND name NOT LIKE 'sqlite_%'
     ORDER BY name
     "
@@ -128,7 +128,7 @@ pub(in crate::adapters::sqlite) fn table_signatures_query() -> String {
             SELECT tl.name
             FROM pragma_table_list() AS tl
             WHERE tl.schema = 'main'
-              AND tl.type IN ('table', 'virtual', 'view')
+              AND tl.type IN ('table', 'virtual')
               AND tl.name NOT LIKE 'sqlite_%'
             ORDER BY tl.name
         ) AS t
@@ -281,10 +281,10 @@ mod tests {
         use super::*;
 
         #[test]
-        fn user_tables_uses_table_list_and_includes_views() {
+        fn user_tables_uses_table_list_and_excludes_views() {
             assert!(user_tables_query().contains("pragma_table_list()"));
             assert!(user_tables_query().contains("tl.schema = 'main'"));
-            assert!(user_tables_query().contains("tl.type IN ('table', 'virtual', 'view')"));
+            assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
             assert!(user_tables_query().contains("tl.type"));
             assert!(user_tables_query().contains("tl.wr"));
             assert!(user_tables_query().contains("tl.strict"));
@@ -292,9 +292,9 @@ mod tests {
         }
 
         #[test]
-        fn legacy_user_tables_lists_tables_and_views() {
+        fn legacy_user_tables_lists_tables_only() {
             assert!(legacy_user_tables_query().contains("FROM sqlite_master"));
-            assert!(legacy_user_tables_query().contains("type IN ('table', 'view')"));
+            assert!(legacy_user_tables_query().contains("type = 'table'"));
             assert!(!legacy_user_tables_query().contains("fts5_tables"));
             assert!(legacy_user_tables_query().contains("name NOT LIKE 'sqlite_%'"));
         }
@@ -351,6 +351,7 @@ mod tests {
             assert!(query.contains("pragma_table_xinfo(t.name)"));
             assert!(query.contains("pragma_index_list(t.name)"));
             assert!(query.contains("pragma_foreign_key_list(t.name)"));
+            assert!(query.contains("tl.type IN ('table', 'virtual')"));
         }
 
         #[test]

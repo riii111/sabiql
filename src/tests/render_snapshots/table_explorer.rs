@@ -103,8 +103,6 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
                     virtual_module: Some("fts5".to_string()),
                     ..TableKindInfo::default()
                 }),
-            TableSummary::new("main".to_string(), "active_users".to_string(), None, false)
-                .with_kind_info(fixtures::view_kind_info()),
             TableSummary::new("main".to_string(), "typed_users".to_string(), None, false)
                 .with_kind_info(TableKindInfo {
                     is_strict: true,

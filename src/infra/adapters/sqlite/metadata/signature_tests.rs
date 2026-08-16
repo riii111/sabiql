@@ -30,6 +30,28 @@ mod table_signatures {
     }
 
     #[tokio::test]
+    async fn excludes_views_but_keeps_virtual_tables() {
+        let (_dir, dsn) = test_support::make_sqlite_db(
+            r"
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            CREATE VIEW active_users AS SELECT id FROM users;
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            ",
+        );
+        let adapter = SqliteAdapter::new();
+
+        let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
+        let names: Vec<_> = signatures
+            .iter()
+            .map(|signature| signature.name.as_str())
+            .collect();
+
+        assert_eq!(names, ["notes_fts", "users"]);
+        assert!(!names.contains(&"active_users"));
+        assert!(signatures[0].signature.contains("CREATE VIRTUAL TABLE"));
+    }
+
+    #[tokio::test]
     async fn change_with_table_shape() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
