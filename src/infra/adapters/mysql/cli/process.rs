@@ -637,7 +637,7 @@ while IFS= read -r line; do
     phase=user
   else
     case "$line" in
-      "SET SESSION TRANSACTION READ ONLY;")
+      "SET SESSION TRANSACTION READ ONLY")
         {session_failure}
         ;;
       *__sabiql_session_marker*)
@@ -812,6 +812,8 @@ while IFS= read -r line; do
       ;;
     "SET SESSION TRANSACTION READ ONLY")
       ;;
+    ";")
+      ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
       printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
@@ -980,9 +982,7 @@ done
             "result={result:?}; log={log}"
         );
         assert_eq!(
-            log.lines()
-                .filter(|line| *line == format!("{query};"))
-                .count(),
+            log.lines().filter(|line| *line == query).count(),
             1,
             "{log}"
         );
