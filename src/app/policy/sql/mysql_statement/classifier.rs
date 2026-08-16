@@ -415,6 +415,11 @@ fn classify_alter_table_target(
 ) -> Result<(Option<String>, Option<String>), MySqlLexError> {
     let (target, source_database, after_target) = target::identifier_at(tokens, table_index)
         .ok_or_else(|| MySqlLexError("MySQL statement target is ambiguous".to_string()))?;
+    if alter_table_target_is_ambiguous(tokens, table_index) {
+        return Err(MySqlLexError(
+            "MySQL ALTER TABLE target is ambiguous".to_string(),
+        ));
+    }
     let destination_database = alter_table_rename_database(tokens, after_target)?;
     let effective_database = match (source_database.as_deref(), destination_database.as_deref()) {
         (Some(source), Some(destination)) if source != destination => {
@@ -427,6 +432,87 @@ fn classify_alter_table_target(
         (None, None) => None,
     };
     Ok((Some(target), effective_database))
+}
+
+fn alter_table_target_is_ambiguous(tokens: &[Token], table_index: usize) -> bool {
+    if matches!(
+        tokens.get(table_index + 1).map(|token| &token.kind),
+        Some(TokenKind::Symbol('='))
+    ) {
+        return true;
+    }
+
+    if target::word(tokens, table_index).is_some_and(is_mysql_reserved_alter_word) {
+        return true;
+    }
+
+    if matches!(
+        target::word(tokens, table_index),
+        Some("SECONDARY_LOAD" | "SECONDARY_UNLOAD")
+    ) && tokens[table_index + 1..]
+        .iter()
+        .all(|token| matches!(token.kind, TokenKind::Symbol(';')))
+    {
+        return true;
+    }
+
+    matches!(
+        (
+            target::word(tokens, table_index),
+            target::word(tokens, table_index + 1)
+        ),
+        (
+            Some(
+                "CHECK"
+                    | "COALESCE"
+                    | "EXCHANGE"
+                    | "MODIFY"
+                    | "OPTIMIZE"
+                    | "REBUILD"
+                    | "REORGANIZE"
+                    | "REPAIR"
+                    | "TRUNCATE"
+            ),
+            Some("COLUMN" | "PARTITION")
+        ) | (Some("DISABLE" | "ENABLE"), Some("KEYS"))
+            | (Some("DISCARD" | "IMPORT"), Some("TABLESPACE"))
+            | (Some("REMOVE" | "UPGRADE"), Some("PARTITIONING"))
+            | (Some("WITH" | "WITHOUT"), Some("VALIDATION"))
+    )
+}
+
+fn is_mysql_reserved_alter_word(word: &str) -> bool {
+    matches!(
+        word,
+        "ADD"
+            | "ALTER"
+            | "ANALYZE"
+            | "AS"
+            | "BY"
+            | "CHANGE"
+            | "CHECK"
+            | "CHARACTER"
+            | "COLLATE"
+            | "COLUMN"
+            | "CONSTRAINT"
+            | "CONVERT"
+            | "DEFAULT"
+            | "DROP"
+            | "FORCE"
+            | "FOREIGN"
+            | "FULLTEXT"
+            | "INDEX"
+            | "KEY"
+            | "LOCK"
+            | "ORDER"
+            | "PARTITION"
+            | "PRIMARY"
+            | "RENAME"
+            | "TO"
+            | "UNION"
+            | "UNIQUE"
+            | "WITH"
+    )
 }
 
 fn alter_table_rename_database(

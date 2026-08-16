@@ -387,6 +387,9 @@ mod tests {
         for sql in [
             "CREATE DATABASE app",
             "ALTER DATABASE app CHARACTER SET utf8mb4",
+            "ALTER TABLE",
+            "ALTER TABLE PARTITION BY HASH(id)",
+            "ALTER TABLE ORDER BY value",
             "RENAME DATABASE app TO archive",
             "RENAME TABLE old_items TO archived_items, other_items TO other_archive",
             "RENAME TABLE app.items TO other.archived_items",
