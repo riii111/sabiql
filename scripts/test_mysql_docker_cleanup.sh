@@ -283,6 +283,17 @@ if [[ "$same_suffix_labels" != 6 ]]; then
 fi
 assert_only_unrelated_container_remains
 
+shared_target="$test_root/shared-cargo-target"
+shared_target_start="$(wc -l <"$cargo_log")"
+CARGO_TARGET_DIR="$shared_target" PATH="$fake_bin:$PATH" \
+    "$script_dir/mysql_integration.sh" test >/dev/null 2>&1
+shared_target_row="$(tail -n +$((shared_target_start + 1)) "$cargo_log")"
+if [[ "$(printf '%s\n' "$shared_target_row" | awk -F'|' 'NF >= 3 { print $3; exit }')" != "$shared_target" ]]; then
+    printf 'configured cargo target was not preserved:\n%s\n' "$shared_target_row" >&2
+    exit 1
+fi
+assert_only_unrelated_container_remains
+
 parallel_start="$(wc -l <"$cargo_log")"
 parallel_one_marker="$test_root/parallel-one.marker"
 parallel_one_release="$test_root/parallel-one.release"
@@ -370,8 +381,8 @@ done <"$state_file"
 assert_only_unrelated_container_remains
 
 unique_run_labels="$(awk '/^com\.sabiql\.mysql\.integration=run-/ { labels[$0] = 1 } END { print length(labels) + 0 }' "$label_log")"
-if [[ "$unique_run_labels" != 9 ]]; then
-    printf 'expected nine unique run labels, got %s\n%s\n' \
+if [[ "$unique_run_labels" != 10 ]]; then
+    printf 'expected ten unique run labels, got %s\n%s\n' \
         "$unique_run_labels" "$(<"$label_log")" >&2
     exit 1
 fi
@@ -379,7 +390,7 @@ fi
 run_project_count="$(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 port_lookup_count="$(awk -F'|' '$2 == "port" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
 down_project_count="$(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u | wc -l | tr -d ' ')"
-if [[ "$run_project_count" != 9 || "$port_lookup_count" != 9 || "$down_project_count" != 9 ]] || \
+if [[ "$run_project_count" != 10 || "$port_lookup_count" != 10 || "$down_project_count" != 10 ]] || \
     ! diff -u \
         <(awk -F'|' '$2 == "up" { print $1 }' "$compose_log" | sort -u) \
         <(awk -F'|' '$2 == "down" && $1 != "default" { print $1 }' "$compose_log" | sort -u); then
