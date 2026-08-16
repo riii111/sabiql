@@ -11,7 +11,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 use super::helpers::{
     mysql_connection_completion_effects, reset_for_new_connection, restore_cache,
-    save_current_non_mysql_cache,
+    save_current_connection_cache,
 };
 
 pub fn reduce_connection_lifecycle(
@@ -90,7 +90,7 @@ pub fn reduce_connection_lifecycle(
                 return DispatchResult::handled();
             }
 
-            save_current_non_mysql_cache(state);
+            save_current_connection_cache(state);
 
             if *database_type == DatabaseType::MySQL {
                 let run_id = state.session.begin_connection_probe(
@@ -160,6 +160,18 @@ pub fn reduce_connection_lifecycle(
             {
                 return DispatchResult::handled();
             }
+            let cached = state.connection_caches.get(id).cloned();
+            if let Some(cached) =
+                cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn, database.as_deref()))
+            {
+                restore_cache(state, &cached, target);
+                return DispatchResult::handled_with(termination_effects(
+                    &state.query,
+                    vec![Effect::ClearCompletionEngineCache],
+                ));
+            }
+
+            state.connection_caches.remove(id);
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
             DispatchResult::handled_with(mysql_connection_completion_effects(state, dsn))
         }
@@ -350,6 +362,52 @@ mod tests {
                 "sqlite:///tmp/current.db",
                 "sqlite",
             );
+        }
+
+        #[test]
+        fn saves_current_mysql_cache_before_switching() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("mysql-current");
+            state.session.activate_connection_with_target(
+                &current_id,
+                "current",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/current",
+                Some("current"),
+            );
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("current".to_string())));
+            state
+                .session
+                .mark_effective_user_loaded(Some("user@localhost".to_string()));
+            state.ui.set_explorer_selected_raw(5);
+            state.ui.set_inspector_tab(InspectorTab::Indexes);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT 1".to_string(),
+                    vec!["value".to_string()],
+                    vec![vec!["1".to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+
+            reduce(
+                &mut state,
+                &create_postgres_switch_action(&ConnectionId::from_string("postgres"), "postgres"),
+            );
+
+            let cache = state.connection_caches.get(&current_id).unwrap();
+            assert!(
+                cache.is_valid_mysql_snapshot(
+                    "mysql://user@localhost:3306/current",
+                    Some("current")
+                )
+            );
+            assert_eq!(cache.explorer_selected, 5);
+            assert_eq!(cache.inspector_tab, InspectorTab::Indexes);
+            assert!(cache.query_result.is_some());
         }
 
         #[test]
@@ -700,6 +758,165 @@ mod tests {
 
     mod cache_restore_tests {
         use super::*;
+
+        fn valid_mysql_cache(dsn: &str, database: &str) -> ConnectionCache {
+            ConnectionCache {
+                connection_dsn: Some(dsn.to_string()),
+                database_type: Some(DatabaseType::MySQL),
+                database: Some(database.to_string()),
+                metadata: Some(Arc::new(DatabaseMetadata::new(database.to_string()))),
+                effective_user: Some("user@localhost".to_string()),
+                selected_table_key: Some("app.users".to_string()),
+                query_result: Some(Arc::new(QueryResult::success(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string()],
+                    vec![vec!["1".to_string()]],
+                    1,
+                    QuerySource::Preview,
+                ))),
+                explorer_selected: 42,
+                inspector_tab: InspectorTab::ForeignKeys,
+                ..Default::default()
+            }
+        }
+
+        fn mysql_target(id: &ConnectionId, dsn: &str, database: &str) -> ConnectionTarget {
+            ConnectionTarget {
+                id: id.clone(),
+                dsn: dsn.to_string(),
+                name: database.to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some(database.to_string()),
+            }
+        }
+
+        #[test]
+        fn mysql_switch_restores_valid_cache_without_metadata_or_user_fetch() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::from_string("mysql-target");
+            let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
+            state.connection_caches.save(
+                &target_id,
+                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+            );
+
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch should include the probe run");
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target,
+                    run_id: probe_run_id,
+                },
+            )
+            .expect("probe completion should be handled");
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
+            );
+            assert!(state.session.connection_state().is_connected());
+            assert_eq!(state.session.database_name(), Some("app"));
+            assert_eq!(state.session.effective_user(), Some("user@localhost"));
+            assert_eq!(state.session.selected_table_key(), Some("app.users"));
+            assert!(state.query.current_result().is_some());
+            assert_eq!(state.ui.explorer_selected(), 42);
+            assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
+        }
+
+        #[test]
+        fn mysql_switch_ignores_cache_for_stale_dsn_or_database() {
+            for (cached_dsn, cached_database) in [
+                ("mysql://user@localhost:3306/old", "app"),
+                ("mysql://user@localhost:3306/app", "old"),
+            ] {
+                let mut state = AppState::new("test".to_string());
+                let target_id = ConnectionId::from_string("mysql-target");
+                let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
+                state
+                    .connection_caches
+                    .save(&target_id, valid_mysql_cache(cached_dsn, cached_database));
+
+                let probe_effects =
+                    reduce(&mut state, &Action::SwitchConnection(target.clone())).unwrap();
+                let probe_run_id = probe_effects
+                    .iter()
+                    .find_map(|effect| match effect {
+                        Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                        _ => None,
+                    })
+                    .unwrap();
+                let effects = reduce(
+                    &mut state,
+                    &Action::ConnectionProbeCompleted {
+                        target,
+                        run_id: probe_run_id,
+                    },
+                )
+                .unwrap();
+
+                assert!(
+                    effects
+                        .iter()
+                        .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+                );
+                assert!(state.session.connection_state().is_connecting());
+                assert!(state.connection_caches.get(&target_id).is_none());
+            }
+        }
+
+        #[test]
+        fn mysql_probe_failure_does_not_restore_cached_target() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::from_string("mysql-target");
+            let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
+            state.connection_caches.save(
+                &target_id,
+                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+            );
+
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target,
+                    run_id: probe_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+
+            assert!(!state.session.connection_state().is_connected());
+            assert!(state.session.metadata().is_none());
+            assert!(state.query.current_result().is_none());
+        }
 
         #[test]
         fn sqlite_switch_restores_cache() {

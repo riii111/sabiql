@@ -17,7 +17,7 @@ use crate::update::action::{
 };
 use crate::update::connection::helpers::{
     connection_save_fetch_effects, mysql_connection_completion_effects, reset_for_new_connection,
-    save_current_non_mysql_cache,
+    save_current_connection_cache,
 };
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
@@ -196,7 +196,7 @@ pub fn reduce_connection_setup(
                 }
             };
             if state.session.connection_state() == ConnectionState::Connected {
-                save_current_non_mysql_cache(state);
+                save_current_connection_cache(state);
             }
             state.query.reset_for_context_change();
             state.session.clear_connection_probe();
