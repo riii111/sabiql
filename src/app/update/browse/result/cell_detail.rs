@@ -3,6 +3,7 @@ use std::time::Instant;
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
+use crate::model::browse::query_execution::VisibleResultKind;
 use crate::model::shared::detail_view::DetailDisplayMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
@@ -159,6 +160,10 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
 }
 
 fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
+    if state.query.visible_result_kind() != VisibleResultKind::LivePreview {
+        return false;
+    }
+
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -174,6 +179,10 @@ fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
+    if state.query.visible_result_kind() != VisibleResultKind::LivePreview {
+        return None;
+    }
+
     let table_detail = state.session.table_detail()?;
     if !state.query.pagination.matches_table(table_detail) {
         return None;
@@ -438,6 +447,38 @@ mod tests {
                 if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
         ));
         assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn adhoc_json_cell_after_preview_opens_read_only_cell_detail() {
+        let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
+        let mut table = state.session.table_detail().expect("table detail").clone();
+        table.columns[1].data_type = "json".to_string();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("mysql-test"),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.session.set_table_detail_raw(Some(table));
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT body FROM notes".to_string(),
+                vec!["id".to_string(), "body".to_string()],
+                vec![vec!["1".to_string(), r#"{"a":1}"#.to_string()]],
+                1,
+                QuerySource::Adhoc,
+            )));
+
+        let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(effects.is_handled_and(Vec::is_empty));
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert!(!state.json_detail.is_active());
+        assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
+        assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
     }
 
     #[test]
