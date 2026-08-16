@@ -43,6 +43,8 @@ use super::super::dsn::parse_and_validate_mysql_dsn;
 use super::super::option_file::MySqlOptionFile;
 
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
+#[cfg(unix)]
+const MYSQL_PTY_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
 pub(in crate::adapters::mysql) struct MySqlProcess {
@@ -412,13 +414,18 @@ pub(super) async fn write_mysql_input(
 pub(super) async fn cleanup_mysql_process(process: &mut MySqlProcess) {
     let _ = process.child.kill().await;
     #[cfg(unix)]
-    let _ = read_pty_all(&mut process.pty).await;
+    drain_mysql_pty(&mut process.pty).await;
     #[cfg(not(unix))]
     {
         drop(process.stdin.take());
         let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
     }
     let _ = process.child.wait().await;
+}
+
+#[cfg(unix)]
+async fn drain_mysql_pty(pty: &mut MySqlPty) {
+    let _ = tokio::time::timeout(MYSQL_PTY_DRAIN_TIMEOUT, read_pty_all(pty)).await;
 }
 
 pub(super) async fn run_mysql_process_with_timeout<T, F>(
@@ -525,6 +532,26 @@ mod tests {
         classify_mysql_statement, split_mysql_statements,
     };
     use crate::domain::{CommandTag, QueryValue, RefreshScope};
+
+    #[tokio::test]
+    async fn bounds_pty_drain_when_the_slave_stays_open() {
+        let (master, _slave) = create_mysql_pty().expect("create test PTY");
+        let mut pty = MySqlPty {
+            input: TokioFile::from_std(master.try_clone().expect("clone PTY master")),
+            output: TokioFile::from_std(master),
+            pending: Vec::new(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
+        };
+
+        assert!(
+            tokio::time::timeout(
+                MYSQL_PTY_DRAIN_TIMEOUT + Duration::from_secs(1),
+                drain_mysql_pty(&mut pty),
+            )
+            .await
+            .is_ok()
+        );
+    }
 
     async fn export_mysql_csv_with_program(
         program: &OsStr,
