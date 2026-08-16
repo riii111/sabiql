@@ -90,10 +90,6 @@ pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError>
     side_effect::has_mysql_read_only_side_effect(sql)
 }
 
-pub fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
-    side_effect::has_mysql_version_comment(sql)
-}
-
 pub fn target_is_selected_database(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
