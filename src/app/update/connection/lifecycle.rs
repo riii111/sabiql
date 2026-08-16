@@ -859,7 +859,7 @@ mod tests {
             let effects = reduce(
                 &mut state,
                 &Action::ConnectionProbeCompleted {
-                    target,
+                    target: target.clone(),
                     run_id: probe_run_id,
                 },
             )
@@ -869,8 +869,37 @@ mod tests {
                 effect,
                 Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
             )));
-            assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+            assert_eq!(
+                state.session.connection_state(),
+                ConnectionState::Connecting
+            );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+
+            let metadata_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("probe completion should start metadata loading");
+            let error_effects = reduce_app(
+                &mut state,
+                Action::MetadataFailed {
+                    dsn: target.dsn,
+                    run_id: metadata_run_id,
+                    error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.session.connection_state().is_failed());
+            assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
+            assert!(state.connection_error.error_info().is_some());
+            assert!(matches!(
+                error_effects.as_slice(),
+                [Effect::CancelActiveTasks]
+            ));
         }
 
         #[test]
@@ -930,7 +959,7 @@ mod tests {
                 state.session.active_database_type(),
                 Some(DatabaseType::MySQL)
             );
-            assert!(state.session.connection_state().is_connected());
+            assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.modal.active_mode(), InputMode::Normal);
             assert!(state.connection_error.error_info().is_none());
         }

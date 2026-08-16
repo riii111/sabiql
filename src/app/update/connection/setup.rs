@@ -1049,7 +1049,10 @@ mod tests {
                 effect,
                 Effect::FetchMetadata { dsn, .. } if dsn == "mysql://user@localhost:3306/app"
             )));
-            assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+            assert_eq!(
+                state.session.connection_state(),
+                ConnectionState::Connecting
+            );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
             assert_eq!(state.input_mode(), InputMode::Normal);
         }
