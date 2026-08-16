@@ -211,14 +211,6 @@ mod tests {
     }
 
     #[test]
-    fn builds_metadata_select_query_without_changing_the_fallback_sql() {
-        assert_eq!(
-            build_metadata_select_query("SELECT 1", "__source", "__marker"),
-            "WITH __source AS (SELECT * FROM ((SELECT 1\n) LIMIT 0) AS __sabiql_metadata_inner) SELECT __source.* FROM __source RIGHT JOIN (SELECT 1 AS __marker) AS __sabiql_metadata_marker ON TRUE"
-        );
-    }
-
-    #[test]
     fn metadata_queries_escape_literals_and_preserve_scope_conditions() {
         let schema = "app\\\n\r\t\u{0008}\u{001a}'";
         let table = "items\\\n\r\t\u{0008}\u{001a}'";

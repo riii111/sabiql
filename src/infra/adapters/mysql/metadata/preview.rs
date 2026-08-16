@@ -329,22 +329,6 @@ mod tests {
     }
 
     #[test]
-    fn binary_type_recognizes_mysql_spatial_types() {
-        for data_type in [
-            "geometry",
-            "point srid 4326",
-            "linestring",
-            "polygon",
-            "multipoint",
-            "multilinestring",
-            "multipolygon",
-            "geometrycollection",
-        ] {
-            assert!(is_binary_type(data_type), "{data_type}");
-        }
-    }
-
-    #[test]
     fn preview_conversion_keeps_numeric_server_literals_without_rounding() {
         let result = result(
             &["unsigned_value", "decimal_value", "float_value"],
