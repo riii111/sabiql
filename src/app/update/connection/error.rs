@@ -6,6 +6,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::connection::helpers::restore_current_mysql_cache;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_connection_error(
@@ -21,6 +22,7 @@ pub(super) fn reduce_connection_error(
         }
         Action::CloseConnectionError => {
             if state.session.has_pending_connection_switch() {
+                restore_current_mysql_cache(state);
                 state.session.clear_connection_probe();
                 state.connection_error.clear();
             } else {

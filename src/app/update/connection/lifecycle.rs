@@ -246,6 +246,7 @@ mod tests {
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
+    use crate::update::connection::error::reduce_connection_error;
     use crate::update::reducer::reduce as reduce_app;
 
     fn reduce(state: &mut AppState, action: &Action) -> Option<Vec<Effect>> {
@@ -408,6 +409,97 @@ mod tests {
             assert_eq!(cache.explorer_selected, 5);
             assert_eq!(cache.inspector_tab, InspectorTab::Indexes);
             assert!(cache.query_result.is_some());
+        }
+
+        #[test]
+        fn preserves_mysql_cache_after_failed_switch_before_next_save() {
+            let mut state = AppState::new("test".to_string());
+            let first = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-a"),
+                dsn: "mysql://user@localhost:3306/a".to_string(),
+                name: "mysql-a".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("a".to_string()),
+            };
+            state.session.activate_connection_with_target(
+                &first.id,
+                &first.name,
+                first.database_type,
+                &first.dsn,
+                first.database.as_deref(),
+            );
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("a".to_string())));
+            state
+                .session
+                .mark_effective_user_loaded(Some("user@localhost".to_string()));
+            let result = Arc::new(QueryResult::success(
+                "SELECT 1".to_string(),
+                vec!["value".to_string()],
+                vec![vec!["1".to_string()]],
+                1,
+                QuerySource::Adhoc,
+            ));
+            state.query.set_current_result(Arc::clone(&result));
+            state.query.push_history(result);
+
+            let second = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(second.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch should include the probe run");
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeFailed {
+                    target: second,
+                    run_id: probe_run_id,
+                    error: DbOperationError::ConnectionFailed("refused".to_string()),
+                },
+            );
+            reduce_connection_error(
+                &mut state,
+                &Action::CloseConnectionError,
+                std::time::Instant::now(),
+            );
+
+            let third = create_postgres_switch_action(
+                &ConnectionId::from_string("postgres-c"),
+                "postgres-c",
+            );
+            reduce(&mut state, &third);
+
+            let effects = reduce(&mut state, &Action::SwitchConnection(first.clone()))
+                .expect("switch back should start a probe");
+            let probe_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch back should include the probe run");
+            reduce(
+                &mut state,
+                &Action::ConnectionProbeCompleted {
+                    target: first,
+                    run_id: probe_run_id,
+                },
+            );
+
+            assert_eq!(state.query.current_result().unwrap().query, "SELECT 1");
+            assert_eq!(state.query.result_history().len(), 1);
+            assert_eq!(state.session.effective_user(), Some("user@localhost"));
         }
 
         #[test]
@@ -1001,7 +1093,6 @@ mod tests {
 
     mod connection_state_tests {
         use super::*;
-        use crate::update::connection::error::reduce_connection_error;
 
         #[test]
         fn sqlite_try_connect_fetches_metadata() {

@@ -106,6 +106,39 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
     state.connection_caches.save(&current_id, cache);
 }
 
+pub(super) fn restore_current_mysql_cache(state: &mut AppState) {
+    if state.session.active_database_type() != Some(DatabaseType::MySQL) {
+        return;
+    }
+
+    let Some(id) = state.session.active_connection_id().cloned() else {
+        return;
+    };
+    let Some(dsn) = state.session.dsn().map(str::to_string) else {
+        return;
+    };
+    let database = state.session.active_database().map(str::to_string);
+    let Some(cache) = state.connection_caches.get(&id).cloned() else {
+        return;
+    };
+    if !cache.is_valid_mysql_snapshot(&dsn, database.as_deref()) {
+        return;
+    }
+
+    let target = ConnectionTarget {
+        id,
+        dsn,
+        name: state
+            .session
+            .active_connection_name()
+            .unwrap_or_default()
+            .to_string(),
+        database_type: DatabaseType::MySQL,
+        database,
+    };
+    restore_cache(state, &cache, &target);
+}
+
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
     reset_active_connection_state_inner(state);
