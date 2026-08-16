@@ -212,6 +212,8 @@ mod mysql_tests {
     #[case::missing_target_before_partition("ALTER TABLE PARTITION BY HASH(id)")]
     #[case::missing_target_before_force("ALTER TABLE FORCE")]
     #[case::missing_target_before_order("ALTER TABLE ORDER BY value")]
+    #[case::missing_target_before_table_option_without_equals("ALTER TABLE AVG_ROW_LENGTH 100")]
+    #[case::missing_target_before_tablespace_value("ALTER TABLE TABLESPACE ts")]
     #[case::missing_target_before_secondary_load("ALTER TABLE SECONDARY_LOAD")]
     #[case::missing_target_before_secondary_load_partition(
         "ALTER TABLE SECONDARY_LOAD PARTITION (p0)"
