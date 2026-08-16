@@ -61,12 +61,35 @@ struct Args {
 #[derive(clap::Subcommand, Debug)]
 enum Command {
     #[cfg(feature = "self-update")]
-    /// Update sabiql to the latest compatible version
+    /// Update sabiql to the latest stable version
     Update,
     #[cfg(not(feature = "self-update"))]
     /// Self-update is disabled in this build
     #[command(hide = true)]
     Update,
+}
+
+#[cfg(feature = "self-update")]
+fn latest_stable_release<'a>(
+    current_version: &str,
+    releases: &'a [self_update::update::Release],
+) -> Option<&'a self_update::update::Release> {
+    releases
+        .iter()
+        .filter(|release| !release.version.contains('-'))
+        .filter(|release| {
+            self_update::version::bump_is_greater(current_version, &release.version)
+                .unwrap_or(false)
+        })
+        .reduce(|latest, release| {
+            if self_update::version::bump_is_greater(&latest.version, &release.version)
+                .unwrap_or(false)
+            {
+                release
+            } else {
+                latest
+            }
+        })
 }
 
 #[tokio::main]
@@ -459,6 +482,17 @@ fn run_update() -> Result<()> {
     println!("Current version: v{current}");
     println!("Checking for updates...");
 
+    let releases = self_update::backends::github::ReleaseList::configure()
+        .repo_owner("riii111")
+        .repo_name("sabiql")
+        .build()?
+        .fetch()?;
+    let Some(latest) = latest_stable_release(current, &releases) else {
+        println!("Already up to date (v{current}).");
+        return Ok(());
+    };
+    let target_version = format!("v{}", latest.version);
+
     let status = self_update::backends::github::Update::configure()
         .repo_owner("riii111")
         .repo_name("sabiql")
@@ -466,6 +500,7 @@ fn run_update() -> Result<()> {
         .show_download_progress(true)
         .no_confirm(true)
         .current_version(current)
+        .target_version_tag(&target_version)
         .build()?
         .update()?;
 
