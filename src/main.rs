@@ -367,8 +367,8 @@ impl Runtime {
                 pending,
                 Instant::now(),
             );
-            // Render immediately: the main loop's next wakeup is the message expiry
-            // itself, so without this draw the message would never become visible.
+            // Render immediately so the overflow error is visible before the next
+            // event-loop pass; errors do not have an expiry wake-up anymore.
             self.run_effects(vec![Effect::Render]).await?;
         }
         Ok(())

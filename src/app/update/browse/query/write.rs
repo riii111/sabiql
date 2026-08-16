@@ -374,15 +374,8 @@ pub fn reduce_write(
             }
 
             state.query.mark_idle();
-            let operation = state
-                .result_interaction
-                .pending_write_preview()
-                .map_or(WriteOperation::Update, |p| p.operation);
-            state.result_interaction.clear_write_preview();
+            let operation = state.result_interaction.complete_write_failure();
             state.query.clear_delete_refresh_target();
-            if operation == WriteOperation::Delete {
-                state.result_interaction.clear_staged_deletes();
-            }
             state.messages.set_error_at(error.user_message(), now);
             state.modal.set_mode(match operation {
                 WriteOperation::Update => InputMode::CellEdit,
