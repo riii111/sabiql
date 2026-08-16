@@ -100,6 +100,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
+            && state.connection_error.target_database_type().is_none()
             && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(
@@ -178,9 +179,10 @@ impl ConnectionError {
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if state.session.has_pending_connection_switch()
-            || !state.session.can_reenter_connection_setup()
-            || can_retry
+        if !error_state.is_save_and_connect_failure()
+            && (state.session.has_pending_connection_switch()
+                || !state.session.can_reenter_connection_setup()
+                || can_retry)
         {
             spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));

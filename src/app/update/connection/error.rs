@@ -71,17 +71,22 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::ReenterConnectionSetup => {
-            if state.session.has_pending_connection_switch()
-                || !state.session.can_reenter_connection_setup()
+            if !state.connection_error.is_save_and_connect_failure()
+                && (state.session.has_pending_connection_switch()
+                    || !state.session.can_reenter_connection_setup())
             {
                 return DispatchResult::handled();
             }
             state.connection_error.clear();
+            state.session.cancel_connection_save();
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
         }
         Action::RetryConnection => {
+            if state.connection_error.is_save_and_connect_failure() {
+                return DispatchResult::handled();
+            }
             if let Some(pending) = state.session.pending_mysql_connection_probe().cloned() {
                 let target = ConnectionTarget {
                     id: pending.id,

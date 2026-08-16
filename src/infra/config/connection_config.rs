@@ -161,6 +161,9 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 )?)?),
             ),
             DatabaseType::MySQL => {
+                if entry.port == Some(0) {
+                    return Err(ConnectionProfileError::InvalidMySqlPort);
+                }
                 let database = entry.database.clone().filter(|value| !value.is_empty());
                 Self::with_id_and_config(
                     id,
@@ -463,6 +466,17 @@ mod tests {
         assert!(matches!(
             ConnectionProfile::try_from(&entry),
             Err(ConnectionProfileError::InvalidMySqlHost)
+        ));
+    }
+
+    #[test]
+    fn mysql_entry_rejects_zero_port() {
+        let mut entry = mysql_entry(None);
+        entry.port = Some(0);
+
+        assert!(matches!(
+            ConnectionProfile::try_from(&entry),
+            Err(ConnectionProfileError::InvalidMySqlPort)
         ));
     }
 }
