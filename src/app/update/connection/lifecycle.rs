@@ -806,14 +806,14 @@ mod tests {
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .expect("switch should include the probe run");
 
             let effects = reduce(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
                 },
@@ -862,13 +862,13 @@ mod tests {
                 let probe_run_id = probe_effects
                     .iter()
                     .find_map(|effect| match effect {
-                        Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                        Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                         _ => None,
                     })
                     .unwrap();
                 let effects = reduce(
                     &mut state,
-                    &Action::ConnectionProbeCompleted {
+                    &Action::MySqlConnectionProbeCompleted {
                         target,
                         run_id: probe_run_id,
                     },
@@ -900,14 +900,14 @@ mod tests {
             let probe_run_id = probe_effects
                 .iter()
                 .find_map(|effect| match effect {
-                    Effect::ProbeConnection { run_id, .. } => Some(*run_id),
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
                     _ => None,
                 })
                 .unwrap();
 
             reduce(
                 &mut state,
-                &Action::ConnectionProbeFailed {
+                &Action::MySqlConnectionProbeFailed {
                     target,
                     run_id: probe_run_id,
                     error: DbOperationError::ConnectionFailed("refused".to_string()),
