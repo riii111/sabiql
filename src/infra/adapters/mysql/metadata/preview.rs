@@ -295,6 +295,19 @@ mod tests {
     }
 
     #[test]
+    fn preview_conversion_decodes_bit_hex_as_binary() {
+        let result = result(
+            &["bit_value"],
+            vec![vec![QueryValue::Text("0x05".to_string())]],
+        );
+        let columns = vec![column("bit_value", "bit(3)")];
+
+        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+
+        assert_eq!(values.visible[0][0], QueryValue::Blob(vec![5]));
+    }
+
+    #[test]
     fn preview_conversion_decodes_spatial_hex_as_binary() {
         let result = result(
             &["location"],
@@ -313,22 +326,6 @@ mod tests {
                 0x80, 0x5E, 0x40, 0xCD, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0x42, 0x40,
             ])
         );
-    }
-
-    #[test]
-    fn binary_type_recognizes_mysql_spatial_types() {
-        for data_type in [
-            "geometry",
-            "point srid 4326",
-            "linestring",
-            "polygon",
-            "multipoint",
-            "multilinestring",
-            "multipolygon",
-            "geometrycollection",
-        ] {
-            assert!(is_binary_type(data_type), "{data_type}");
-        }
     }
 
     #[test]

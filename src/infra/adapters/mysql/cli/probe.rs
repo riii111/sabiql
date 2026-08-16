@@ -293,6 +293,17 @@ mod probe_tests {
     }
 
     #[test]
+    fn rejects_no_backslash_escapes_sql_mode() {
+        assert!(matches!(
+            validate_sql_mode("STRICT_TRANS_TABLES,NO_BACKSLASH_ESCAPES"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::SessionMode,
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn uses_tcp_and_keeps_defaults_file_first() {
         let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
 

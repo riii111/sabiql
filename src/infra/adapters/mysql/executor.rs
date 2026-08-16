@@ -18,7 +18,7 @@ use super::sql;
 
 #[cfg(feature = "test-support")]
 pub(super) mod test_support {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use crate::adapters::csv_export::export_to_path;
     use crate::app::ports::outbound::{AccessMode, DbOperationError};
@@ -27,6 +27,28 @@ pub(super) mod test_support {
         MySqlOptionFile, export_mysql_csv_to_file, parse_and_validate_mysql_dsn, run_mysql_adhoc,
         validate_mysql_multi_query,
     };
+
+    #[doc(hidden)]
+    pub struct MySqlOptionFileForTest {
+        option_file: MySqlOptionFile,
+    }
+
+    impl MySqlOptionFileForTest {
+        #[must_use]
+        pub fn path(&self) -> &Path {
+            &self.option_file.path
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn create_mysql_option_file_for_test(
+        dsn: &str,
+    ) -> Result<MySqlOptionFileForTest, DbOperationError> {
+        let target = parse_and_validate_mysql_dsn(dsn)?;
+        Ok(MySqlOptionFileForTest {
+            option_file: MySqlOptionFile::create(&target)?,
+        })
+    }
 
     #[doc(hidden)]
     /// Runs the normal adhoc CLI process with a read-only session without the app-side policy

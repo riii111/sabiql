@@ -109,6 +109,22 @@ mod tests {
     }
 
     #[test]
+    fn update_uses_null_literal_for_cell_value() {
+        let sql = build_update_sql(
+            "sabiql_test",
+            "items",
+            "payload",
+            &QueryValue::Null,
+            &[("id".to_string(), QueryValue::SqlLiteral("1".into()))],
+        );
+
+        assert_eq!(
+            sql,
+            "UPDATE `sabiql_test`.`items`\nSET `payload` = NULL\nWHERE `id` = 1;"
+        );
+    }
+
+    #[test]
     fn json_document_update_keeps_json_null_distinct_from_string_null() {
         let json_null = build_update_sql(
             "sabiql_test",
@@ -151,5 +167,16 @@ mod tests {
             sql,
             "DELETE FROM `sabiql_test`.`items`\nWHERE (`first` = 1 AND `second` = 20) OR (`first` = 2 AND `second` = 10);"
         );
+    }
+
+    #[test]
+    fn bulk_delete_uses_unwrapped_predicate_for_single_row() {
+        let sql = build_bulk_delete_sql(
+            "sabiql_test",
+            "items",
+            &[vec![("id".to_string(), QueryValue::SqlLiteral("1".into()))]],
+        );
+
+        assert_eq!(sql, "DELETE FROM `sabiql_test`.`items`\nWHERE `id` = 1;");
     }
 }

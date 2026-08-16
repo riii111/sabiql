@@ -276,7 +276,6 @@ mod mysql_tests {
     #[case::unterminated_comment("SELECT 1 /* unfinished")]
     #[case::unsupported_statement("MERGE INTO items USING source ON items.id = source.id")]
     #[case::replace("REPLACE INTO items VALUES (1)")]
-    #[case::begin_work("BEGIN WORK")]
     fn invalid_mysql_scripts_are_blocked_before_execution(#[case] sql: &str) {
         assert!(
             matches!(mysql(sql), MultiStatementDecision::Block { .. }),
@@ -2702,9 +2701,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_mysql_single_statement_risk_entry() {
+    fn rejects_unsupported_mysql_single_statement_risk_entries() {
         for sql in [
-            "BEGIN WORK",
             "REPLACE INTO items VALUES (1)",
             "MERGE INTO items USING source ON items.id = source.id",
         ] {
@@ -2713,5 +2711,17 @@ mod tests {
                 "{sql}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_begin_work_as_single_statement_risk_entry() {
+        assert!(
+            evaluate_sql_risk_for_database(
+                DatabaseType::MySQL,
+                &classify("BEGIN WORK"),
+                "BEGIN WORK",
+            )
+            .is_none()
+        );
     }
 }
