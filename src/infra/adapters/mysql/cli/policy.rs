@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app::policy::sql::mysql_export::mysql_export_plan;
 use crate::app::policy::sql::mysql_statement::{
     MySqlStatement, MySqlStatementKind, has_mysql_read_only_side_effect,
 };
@@ -60,16 +61,8 @@ pub(in crate::adapters::mysql) fn validate_mysql_export_query(
     query: &str,
     selected_database: Option<&str>,
 ) -> Result<(), DbOperationError> {
-    let statements = validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
-    if statements.len() != 1
-        || !matches!(
-            statements[0].kind,
-            MySqlStatementKind::Select
-                | MySqlStatementKind::Table
-                | MySqlStatementKind::Show
-                | MySqlStatementKind::Describe
-        )
-    {
+    validate_mysql_multi_query(query, selected_database, AccessMode::ReadOnly)?;
+    if mysql_export_plan(query).is_none() {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL CSV export supports a single read-only result query".to_string(),
         ));
@@ -388,6 +381,10 @@ mod tests {
             validate_mysql_export_query("SELECT 1; SELECT 2", Some("app")),
             Err(DbOperationError::UnsupportedOperation(details))
                 if details.contains("single read-only result")
+        ));
+        assert!(matches!(
+            validate_mysql_export_query("SELECT GET_LOCK('sabiql', 0)", Some("app")),
+            Err(DbOperationError::PermissionDenied(_))
         ));
     }
 
