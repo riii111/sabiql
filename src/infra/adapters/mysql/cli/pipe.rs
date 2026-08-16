@@ -216,12 +216,17 @@ fn mysql_pipe_empty_response_or_error(pending_stderr: &[u8]) -> DbOperationError
 }
 
 #[cfg(test)]
-mod source_tests {
+#[cfg(not(unix))]
+mod tests {
+    use std::process::Stdio;
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
     use std::task::{Wake, Waker};
+
+    use tokio::io::AsyncWriteExt;
+    use tokio::process::{Child, Command};
 
     use super::*;
 
@@ -277,17 +282,6 @@ mod source_tests {
         assert!(matches!(result, Poll::Pending));
         assert_eq!(wake_counter.0.load(Ordering::Relaxed), 0);
     }
-}
-
-#[cfg(test)]
-#[cfg(not(unix))]
-mod tests {
-    use std::process::Stdio;
-
-    use tokio::io::AsyncWriteExt;
-    use tokio::process::{Child, Command};
-
-    use super::*;
 
     fn exited_child() -> Child {
         Command::new("cmd.exe")
