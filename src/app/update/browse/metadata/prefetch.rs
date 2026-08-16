@@ -11,10 +11,16 @@ use super::check_er_completion;
 
 const BASE_BACKOFF_SECS: u64 = 1;
 const MAX_BACKOFF_SECS: u64 = 4;
+const MIN_COMPLETION_CACHE_CAPACITY: usize = 500;
+const MAX_COMPLETION_CACHE_CAPACITY: usize = 10_000;
 pub(super) const MAX_PREFETCH_RETRIES: u32 = 3;
 
 pub(super) fn backoff_secs_for(retry_count: u32) -> u64 {
     (BASE_BACKOFF_SECS * 2u64.pow(retry_count)).min(MAX_BACKOFF_SECS)
+}
+
+fn completion_cache_capacity(table_count: usize) -> usize {
+    table_count.clamp(MIN_COMPLETION_CACHE_CAPACITY, MAX_COMPLETION_CACHE_CAPACITY)
 }
 
 pub(super) fn reduce_prefetch(
@@ -37,8 +43,7 @@ pub(super) fn reduce_prefetch(
                     .er_preparation
                     .begin_all_prefetch(qualified_names.iter().cloned());
 
-                let table_count = qualified_names.len();
-                let resize_capacity = table_count.clamp(500, 10_000);
+                let resize_capacity = completion_cache_capacity(metadata.table_summaries.len());
 
                 for qualified_name in qualified_names {
                     state.sql_modal.queue_table_prefetch(qualified_name);
@@ -64,7 +69,14 @@ pub(super) fn reduce_prefetch(
                 for qualified_name in tables {
                     state.sql_modal.queue_table_prefetch(qualified_name.clone());
                 }
-                DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
+                let mut effects = Vec::with_capacity(2);
+                if let Some(metadata) = state.session.metadata() {
+                    effects.push(Effect::ResizeCompletionCache {
+                        capacity: completion_cache_capacity(metadata.table_summaries.len()),
+                    });
+                }
+                effects.push(Effect::ProcessPrefetchQueue { run_id });
+                DispatchResult::handled_with(effects)
             }
         }
 
