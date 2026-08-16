@@ -45,6 +45,26 @@ fn header_shows_effective_user_at_normal_width() {
 }
 
 #[test]
+fn mysql_header_shows_effective_user_without_dsn_password() {
+    let mut state = connected_state();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::MySQL,
+        "mysql://app:header-secret@localhost/app",
+    );
+    state
+        .session
+        .mark_effective_user_loaded(Some("app@%".to_string()));
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("user: app@%"));
+    assert!(!output.contains("header-secret"));
+}
+
+#[test]
 fn header_truncates_connection_name_at_narrow_width() {
     let mut state = connected_state();
     state.session.activate_connection_with_dsn(

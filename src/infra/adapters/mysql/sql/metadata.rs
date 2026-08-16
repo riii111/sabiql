@@ -1,6 +1,8 @@
 use super::literal::{quote_identifier, quote_string};
 use crate::domain::{Column, TableKind};
 
+pub(in crate::adapters::mysql) const EFFECTIVE_USER_QUERY: &str = "SELECT CURRENT_USER()";
+pub(in crate::adapters::mysql) const EFFECTIVE_USER_RESULT_COLUMNS: &[&str] = &["CURRENT_USER()"];
 pub(in crate::adapters::mysql) const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE IN ('BASE TABLE', 'VIEW') ORDER BY TABLE_SCHEMA, TABLE_NAME";
 pub(in crate::adapters::mysql) const TABLES_RESULT_COLUMNS: &[&str] = &[
     "TABLE_SCHEMA",
@@ -214,6 +216,9 @@ mod tests {
     fn metadata_queries_escape_literals_and_preserve_scope_conditions() {
         let schema = "app\\\n\r\t\u{0008}\u{001a}'";
         let table = "items\\\n\r\t\u{0008}\u{001a}'";
+
+        assert_eq!(EFFECTIVE_USER_QUERY, "SELECT CURRENT_USER()");
+        assert_eq!(EFFECTIVE_USER_RESULT_COLUMNS, &["CURRENT_USER()"][..]);
 
         assert_eq!(
             quote_string(schema),
