@@ -895,6 +895,22 @@ mod tests {
         }
 
         #[test]
+        fn very_large_db_uses_ceiling_capacity() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.session.set_metadata(Some(make_metadata(10_001)));
+
+            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::ResizeCompletionCache { capacity: 10_000 }))
+            );
+        }
+
+        #[test]
         fn sets_fk_expanded_true() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(10)));
@@ -907,6 +923,18 @@ mod tests {
 
     mod start_prefetch_scoped {
         use super::*;
+        use crate::domain::{DatabaseMetadata, TableSummary};
+
+        fn make_metadata(table_count: usize) -> Arc<DatabaseMetadata> {
+            let tables: Vec<TableSummary> = (0..table_count)
+                .map(|i| TableSummary::new(format!("t{i}"), "public".to_string(), None, false))
+                .collect();
+            Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = tables;
+                metadata
+            })
+        }
 
         #[test]
         fn second_call_while_running_is_ignored() {
@@ -976,6 +1004,29 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
             );
+        }
+
+        #[test]
+        fn resizes_to_total_table_count_before_processing_scoped_queue() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.session.set_metadata(Some(make_metadata(560)));
+            let tables: Vec<String> = (0..60).map(|i| format!("public.t{i}")).collect();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped { tables },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("reducer should handle action");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::ResizeCompletionCache { capacity: 560 },
+                    Effect::ProcessPrefetchQueue { .. }
+                ]
+            ));
         }
     }
 
