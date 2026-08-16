@@ -231,6 +231,10 @@ mod mysql_tests {
             "SELECT 1; SELECT 2",
             "SELECT 1\nsystem echo unsafe",
             "SELECT 1\n\\! echo unsafe",
+            "SELECT 'unfinished",
+            "SELECT 1 /* unfinished",
+            "MERGE INTO items USING source ON items.id = source.id",
+            "REPLACE INTO items VALUES (1)",
         ] {
             assert!(
                 evaluate_mysql_explain_analyze_target(sql).is_none(),
