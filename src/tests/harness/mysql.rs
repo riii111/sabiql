@@ -1,6 +1,6 @@
 use std::process::Stdio;
 
-use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder};
+use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder, MySqlConnectionProbe};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 #[cfg(unix)]
 use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;

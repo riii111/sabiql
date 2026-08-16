@@ -199,7 +199,7 @@ pub fn reduce_connection_setup(
                 save_current_non_mysql_cache(state);
             }
             state.query.reset_for_context_change();
-            state.session.clear_connection_probe();
+            state.session.clear_mysql_connection_probe();
             state.session.invalidate_connection_generation();
             state.session.mark_connecting();
             DispatchResult::handled_with(termination_effects(
@@ -741,7 +741,7 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("b".to_string()),
             };
-            let probe_run_id = state.session.begin_connection_probe(
+            let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
                 target.database_type,
@@ -753,7 +753,7 @@ mod tests {
             reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
             reduce_connection_lifecycle(
                 &mut state,
-                &Action::ConnectionProbeCompleted {
+                &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
                 },
@@ -762,7 +762,7 @@ mod tests {
             );
 
             assert_eq!(state.session.active_connection_id(), Some(&current_id));
-            assert!(state.session.pending_connection_probe().is_none());
+            assert!(state.session.pending_mysql_connection_probe().is_none());
         }
 
         #[test]

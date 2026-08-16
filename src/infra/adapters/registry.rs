@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::app::ports::outbound::{
-    AccessMode, ConnectionProbe, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
     QueryExecutor, SqlDialect, SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
@@ -327,7 +327,7 @@ impl SqlDialect for DbAdapterRegistry {
 }
 
 #[async_trait]
-impl ConnectionProbe for DbAdapterRegistry {
+impl MySqlConnectionProbe for DbAdapterRegistry {
     async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::MySQL => self.mysql.probe(dsn).await,

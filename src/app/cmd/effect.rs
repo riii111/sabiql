@@ -13,7 +13,7 @@ pub enum Effect {
         name: String,
         config: ConnectionConfig,
     },
-    ProbeConnection {
+    ProbeMySqlConnection {
         target: ConnectionTarget,
         run_id: u64,
     },

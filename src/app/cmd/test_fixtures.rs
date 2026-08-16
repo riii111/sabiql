@@ -17,10 +17,10 @@ use crate::domain::{
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
-    ConfigWriterError, ConnectionProbe, ConnectionStore, DsnBuilder, ErDiagramExporter,
-    ErExportResult, ErLogWriter, FolderOpenError, FolderOpener, MetadataProvider,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, ServiceFileError,
-    SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
+    ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
+    FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe, PgServiceEntryReader,
+    QueryExecutor, QueryHistoryError, QueryHistoryStore, ServiceFileError, SettingsStore,
+    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
 
@@ -123,9 +123,9 @@ impl DsnBuilder for NoopDsnBuilder {
     }
 }
 
-pub struct NoopConnectionProbe;
+pub struct NoopMySqlConnectionProbe;
 #[async_trait::async_trait]
-impl ConnectionProbe for NoopConnectionProbe {
+impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
     async fn probe(&self, _dsn: &str) -> Result<(), DbOperationError> {
         Ok(())
     }
@@ -250,7 +250,7 @@ pub fn make_runner_with_dsn(
         cache,
         action_tx,
         dsn_builder,
-        Arc::new(NoopConnectionProbe),
+        Arc::new(NoopMySqlConnectionProbe),
     )
 }
 
@@ -261,7 +261,7 @@ pub fn make_runner_with_dsn_and_probe(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
-    connection_probe: Arc<dyn ConnectionProbe>,
+    mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
 ) -> EffectRunner {
     make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
@@ -270,7 +270,7 @@ pub fn make_runner_with_dsn_and_probe(
         cache,
         action_tx,
         dsn_builder,
-        connection_probe,
+        mysql_connection_probe,
         Arc::new(TestCachedResultExporter),
     )
 }
@@ -291,7 +291,7 @@ fn make_runner_with_dsn_and_cached_result_exporter(
         cache,
         action_tx,
         dsn_builder,
-        Arc::new(NoopConnectionProbe),
+        Arc::new(NoopMySqlConnectionProbe),
         cached_result_exporter,
     )
 }
@@ -303,14 +303,14 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
     dsn_builder: Arc<dyn DsnBuilder>,
-    connection_probe: Arc<dyn ConnectionProbe>,
+    mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
         ConnectionDeps {
             dsn_builder,
-            connection_probe,
+            mysql_connection_probe,
             connection_store,
             pg_service_entry_reader: Some(Arc::new(NoopPgServiceEntryReader)),
             sqlite_path_validator: Arc::new(TestFsSqlitePathValidator),

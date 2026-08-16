@@ -23,8 +23,8 @@ use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{
-    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionProbe, ConnectionStore,
-    DsnBuilder, ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider,
+    CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
+    ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
     PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
     SqliteDiagnosticsProvider, SqlitePathValidator,
 };
@@ -33,7 +33,7 @@ use crate::update::action::Action;
 
 pub struct ConnectionDeps {
     pub dsn_builder: Arc<dyn DsnBuilder>,
-    pub connection_probe: Arc<dyn ConnectionProbe>,
+    pub mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     pub connection_store: Arc<dyn ConnectionStore>,
     pub pg_service_entry_reader: Option<Arc<dyn PgServiceEntryReader>>,
     pub sqlite_path_validator: Arc<dyn SqlitePathValidator>,
@@ -176,13 +176,13 @@ impl EffectRunner {
             }
 
             e @ (Effect::SaveAndConnect { .. }
-            | Effect::ProbeConnection { .. }
+            | Effect::ProbeMySqlConnection { .. }
             | Effect::LoadConnectionForEdit { .. }
             | Effect::LoadConnections
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
-                if matches!(&e, Effect::ProbeConnection { .. }) {
+                if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
                     self.table_detail_tasks.cancel();
                 }
                 cmd_connection::run(
