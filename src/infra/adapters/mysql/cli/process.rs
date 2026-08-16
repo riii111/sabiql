@@ -793,6 +793,10 @@ while IFS= read -r line; do
       *__sabiql_marker*)
       {marker_response}
       ;;
+    *metadata_source*)
+      printf '%s\n' 'ERROR 1060 (42S21): Duplicate column name duplicate_alias'
+      printf '%s\n' '<resultset></resultset>'
+      ;;
     *missing_column*)
       pending_error=1
       ;;
@@ -918,6 +922,44 @@ done
         let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
         assert_eq!(log.matches(query).count(), 1, "{log}");
         assert!(!log.contains("__sabiql_metadata_inner"));
+    }
+
+    #[tokio::test]
+    async fn duplicate_empty_select_columns_are_rejected_without_replaying_user_sql() {
+        let (_directory, program, option_file) = fake_mysql_multi();
+        let query = "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE";
+        let statements = split_mysql_statements(query)
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            OsStr::new(&program),
+            &option_file,
+            &statements,
+            AccessMode::ReadWrite,
+            None,
+            Duration::from_secs(5),
+        )
+        .await;
+
+        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+        assert!(
+            matches!(
+                result,
+                Err(DbOperationError::UnsupportedOperation(ref details))
+                    if details.contains("duplicate column names")
+            ),
+            "result={result:?}; log={log}"
+        );
+        assert_eq!(
+            log.lines()
+                .filter(|line| *line == format!("{query};"))
+                .count(),
+            1,
+            "{log}"
+        );
     }
 
     #[tokio::test]

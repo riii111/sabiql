@@ -1,6 +1,6 @@
 use std::process::Stdio;
 
-use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder};
+use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 #[cfg(unix)]
 use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
@@ -31,7 +31,6 @@ impl MySqlTestDb {
         .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?;
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
-        adapter.probe(&dsn).await?;
         Ok(Self { adapter, dsn })
     }
 
