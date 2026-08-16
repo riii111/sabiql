@@ -131,10 +131,12 @@ impl QueryExecutor for MySqlAdapter {
         let start = Instant::now();
         let execution = metadata::execute_preview(dsn, schema, table, limit, offset).await?;
         let preview = execution.metadata;
-        let values = metadata::convert_preview_values(
+        let values = metadata::convert_preview_values_with_binary_charset(
             &execution.result_set,
             &preview.visible_columns,
             &preview.identity_columns,
+            &preview.binary_charset_columns,
+            &preview.binary_charset_identity_columns,
         )?;
         let elapsed = start.elapsed().as_millis() as u64;
 

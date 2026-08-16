@@ -12,7 +12,7 @@ mod preview;
 mod signature;
 mod table_detail;
 
-pub(super) use preview::{convert_preview_values, execute_preview};
+pub(super) use preview::{convert_preview_values_with_binary_charset, execute_preview};
 
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {

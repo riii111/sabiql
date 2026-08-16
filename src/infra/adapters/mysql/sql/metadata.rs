@@ -21,6 +21,17 @@ pub(in crate::adapters::mysql) const COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &
     "ORDINAL_POSITION",
     "PRIMARY_KEY_POSITION",
 ];
+pub(in crate::adapters::mysql) const PREVIEW_COLUMN_METADATA_RESULT_COLUMNS: &[&str] = &[
+    "COLUMN_NAME",
+    "COLUMN_TYPE",
+    "IS_NULLABLE",
+    "COLUMN_DEFAULT",
+    "EXTRA",
+    "COLUMN_COMMENT",
+    "ORDINAL_POSITION",
+    "PRIMARY_KEY_POSITION",
+    "CHARACTER_SET_NAME",
+];
 pub(in crate::adapters::mysql) const UNIQUE_COLUMN_RESULT_COLUMNS: &[&str] = &["COLUMN_NAME"];
 pub(in crate::adapters::mysql) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
     "CONSTRAINT_NAME",
@@ -46,6 +57,14 @@ pub(in crate::adapters::mysql) fn table_query(schema: &str, table: &str) -> Stri
 pub(in crate::adapters::mysql) fn columns_query(schema: &str, table: &str) -> String {
     format!(
         "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
+        quote_string(schema),
+        quote_string(table),
+    )
+}
+
+pub(in crate::adapters::mysql) fn preview_columns_query(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {} AND c.TABLE_NAME = {} ORDER BY ORDINAL_POSITION",
         quote_string(schema),
         quote_string(table),
     )
@@ -279,6 +298,18 @@ mod tests {
             ],
         );
 
+        let preview_columns_sql = preview_columns_query(schema, table);
+        assert_contains_in_order(
+            &preview_columns_sql,
+            &[
+                "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME",
+                "FROM INFORMATION_SCHEMA.COLUMNS AS c",
+                &format!("WHERE c.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND c.TABLE_NAME = {quoted_table}"),
+                "ORDER BY ORDINAL_POSITION",
+            ],
+        );
+
         let unique_columns_sql = unique_columns_query(schema, table);
         assert_contains_in_order(
             &unique_columns_sql,
@@ -390,6 +421,7 @@ mod tests {
             SIGNATURE_FOREIGN_KEYS_QUERY,
             &table_query(schema, table),
             &columns_query(schema, table),
+            &preview_columns_query(schema, table),
             &unique_columns_query(schema, table),
             &foreign_keys_query(schema, table),
             &indexes_query(schema, table),
@@ -419,6 +451,20 @@ mod tests {
                 "COLUMN_COMMENT",
                 "ORDINAL_POSITION",
                 "PRIMARY_KEY_POSITION",
+            ]
+        );
+        assert_eq!(
+            PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
+            &[
+                "COLUMN_NAME",
+                "COLUMN_TYPE",
+                "IS_NULLABLE",
+                "COLUMN_DEFAULT",
+                "EXTRA",
+                "COLUMN_COMMENT",
+                "ORDINAL_POSITION",
+                "PRIMARY_KEY_POSITION",
+                "CHARACTER_SET_NAME",
             ]
         );
         assert_eq!(UNIQUE_COLUMN_RESULT_COLUMNS, &["COLUMN_NAME"]);

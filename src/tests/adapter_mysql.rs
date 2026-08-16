@@ -638,11 +638,12 @@ mod query_preview {
 
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_EMPTY_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor};
-    use sabiql_domain::QueryValue;
+    use sabiql_app::ports::outbound::{AccessMode, QueryExecutor, SqlDialect};
+    use sabiql_domain::{DatabaseType, QueryValue};
 
     const MYSQL_NO_PK_TABLE: &str = "mysql_preview_no_pk";
     const MYSQL_SPATIAL_TABLE: &str = "demo_warehouses";
+    const MYSQL_BINARY_CHARSET_TABLE: &str = "mysql_preview_binary_charset";
 
     fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
         if value.is_empty() || !value.len().is_multiple_of(2) {
@@ -750,6 +751,99 @@ mod query_preview {
                     ));
                 }
                 Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn previews_and_writes_binary_charset_strings_without_byte_changes() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let preview = db
+                    .adapter()
+                    .execute_preview(
+                        db.dsn(),
+                        "sabiql_test",
+                        MYSQL_BINARY_CHARSET_TABLE,
+                        1,
+                        0,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to preview binary charset table: {error:?}"))?;
+                let expected = vec![
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1, 0x0D]),
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1, 0x0D]),
+                    QueryValue::Text("0x00FF".to_string()),
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1, 0x0D]),
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1, 0x0D]),
+                    QueryValue::Blob(vec![0xA5]),
+                ];
+                if preview.columns
+                    != [
+                        "id",
+                        "binary_char",
+                        "binary_varchar",
+                        "regular_varchar",
+                        "binary_varbinary",
+                        "binary_blob",
+                        "binary_bit",
+                    ]
+                    || preview.values() != [
+                        vec![QueryValue::SqlLiteral("1".to_string())]
+                            .into_iter()
+                            .chain(expected.clone())
+                            .collect::<Vec<_>>(),
+                    ]
+                {
+                    return Err(format!("unexpected binary charset preview: {preview:?}"));
+                }
+
+                for (column, value) in [
+                    ("binary_char", expected[0].clone()),
+                    ("binary_varchar", expected[1].clone()),
+                    ("binary_varbinary", expected[3].clone()),
+                    ("binary_blob", expected[4].clone()),
+                    ("binary_bit", expected[5].clone()),
+                ] {
+                    let update_sql = db.adapter().build_update_sql(
+                        DatabaseType::MySQL,
+                        "sabiql_test",
+                        MYSQL_BINARY_CHARSET_TABLE,
+                        column,
+                        &value,
+                        &[("id".to_string(), QueryValue::SqlLiteral("1".to_string()))],
+                    );
+                    db.adapter()
+                        .execute_write(db.dsn(), &update_sql, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| {
+                            format!("failed to write binary charset column {column}: {error:?}")
+                        })?;
+                }
+
+                let hex = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "SELECT HEX(binary_char), HEX(binary_varchar), HEX(binary_varbinary), HEX(binary_blob), HEX(binary_bit) FROM mysql_preview_binary_charset WHERE id = 1",
+                        AccessMode::ReadOnly,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to read binary charset HEX values: {error:?}"))?;
+                if hex.values()
+                    != [[
+                        QueryValue::Text("00FFA10D".to_string()),
+                        QueryValue::Text("00FFA10D".to_string()),
+                        QueryValue::Text("00FFA10D".to_string()),
+                        QueryValue::Text("00FFA10D".to_string()),
+                        QueryValue::Text("A5".to_string()),
+                    ]]
+                {
+                    return Err(format!("binary charset bytes changed: {hex:?}"));
+                }
+                Ok::<(), String>(())
             })
         })
         .await;
