@@ -20,6 +20,7 @@ pub enum ConnectionErrorKind {
     SqliteCliNotFound,
     HostUnreachable,
     AuthFailed,
+    PermissionDenied,
     DatabaseNotFound,
     ConnectionLost,
     Timeout,
@@ -55,6 +56,17 @@ impl ConnectionErrorKind {
             || stderr_lower.contains("unknown mysql server host")
         {
             return Self::HostUnreachable;
+        }
+
+        if let Some(error_code) = mysql_server_error_code(&stderr_lower) {
+            match error_code {
+                1044 => return Self::PermissionDenied,
+                1045 => return Self::AuthFailed,
+                1049 => return Self::DatabaseNotFound,
+                2003 => {}
+                2006 | 2013 => return Self::ConnectionLost,
+                _ => return Self::Unknown,
+            }
         }
 
         if stderr_lower.contains("password authentication failed")
@@ -106,6 +118,7 @@ impl ConnectionErrorKind {
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_summary(),
             Self::HostUnreachable => "Could not resolve host",
             Self::AuthFailed => "Authentication failed",
+            Self::PermissionDenied => "Permission denied",
             Self::DatabaseNotFound => "Database does not exist",
             Self::ConnectionLost => "Connection lost during operation",
             Self::Timeout => "Connection timed out",
@@ -146,6 +159,7 @@ impl ConnectionErrorKind {
             Self::SqliteCliNotFound => DatabaseCli::Sqlite3.not_found_hint(),
             Self::HostUnreachable => "Check the hostname",
             Self::AuthFailed => "Check username and password",
+            Self::PermissionDenied => "Check the connected user's privileges",
             Self::DatabaseNotFound => "Check database name",
             Self::ConnectionLost => "Reconnect and retry the operation",
             Self::Timeout => "Check network connectivity",
@@ -181,6 +195,15 @@ fn is_mysql_connect_timeout_message(value: &str) -> bool {
         && MYSQL_CONNECT_TIMEOUT_ERRNOS
             .iter()
             .any(|errno| value.contains(errno))
+}
+
+fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let start = lowercase_details.find("error ")? + "error ".len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
 }
 
 fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
@@ -245,6 +268,7 @@ impl ConnectionErrorInfo {
             DbOperationError::CommandNotFound { .. } => ConnectionErrorKind::CliNotFound,
             DbOperationError::ConnectionLost(_) => ConnectionErrorKind::ConnectionLost,
             DbOperationError::Timeout(_) => ConnectionErrorKind::Timeout,
+            DbOperationError::PermissionDenied(_) => ConnectionErrorKind::PermissionDenied,
             DbOperationError::UnsupportedOperationWithKind { kind, .. } => match kind {
                 UnsupportedOperationKind::ClientVersion => {
                     ConnectionErrorKind::MySqlCliVersionUnsupported
@@ -392,6 +416,34 @@ mod tests {
             );
         }
 
+        #[rstest]
+        #[case(
+            "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'",
+            ConnectionErrorKind::PermissionDenied
+        )]
+        #[case(
+            "ERROR 1045 (28000): Access denied for user 'user'",
+            ConnectionErrorKind::AuthFailed
+        )]
+        #[case(
+            "ERROR 1049 (42000): Unknown database 'missing'",
+            ConnectionErrorKind::DatabaseNotFound
+        )]
+        fn mysql_server_error_codes_use_specific_connection_guidance(
+            #[case] stderr: &str,
+            #[case] expected: ConnectionErrorKind,
+        ) {
+            assert_eq!(ConnectionErrorKind::classify(stderr), expected);
+        }
+
+        #[test]
+        fn unknown_mysql_server_error_code_fails_closed() {
+            assert_eq!(
+                ConnectionErrorKind::classify("ERROR 9999 (HY000): Access denied for user 'user'"),
+                ConnectionErrorKind::Unknown
+            );
+        }
+
         #[test]
         fn stderr_as_database_not_found() {
             assert_eq!(
@@ -458,6 +510,7 @@ mod tests {
         #[case(ConnectionErrorKind::SqliteCliNotFound)]
         #[case(ConnectionErrorKind::HostUnreachable)]
         #[case(ConnectionErrorKind::AuthFailed)]
+        #[case(ConnectionErrorKind::PermissionDenied)]
         #[case(ConnectionErrorKind::DatabaseNotFound)]
         #[case(ConnectionErrorKind::ConnectionLost)]
         #[case(ConnectionErrorKind::Timeout)]
@@ -543,6 +596,17 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::ConnectionLost);
+        }
+
+        #[test]
+        fn from_db_operation_error_preserves_permission_denied_kind() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::PermissionDenied(
+                    "ERROR 1044 (42000): Access denied to database".to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::PermissionDenied);
+            assert_eq!(info.hint(), "Check the connected user's privileges");
         }
 
         #[test]
