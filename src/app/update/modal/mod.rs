@@ -1285,7 +1285,7 @@ mod tests {
             }
 
             #[test]
-            fn load_failed_sets_error_with_expiry() {
+            fn load_failed_sets_persistent_error() {
                 let mut state = connected_state();
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 let now = Instant::now();
