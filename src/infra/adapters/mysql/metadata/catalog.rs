@@ -97,7 +97,7 @@ pub(super) fn find_table(
 ) -> Result<MySqlTableMetadata, DbOperationError> {
     tables
         .iter()
-        .find(|candidate| candidate.schema.eq_ignore_ascii_case(schema) && candidate.name == table)
+        .find(|candidate| candidate.schema == schema && candidate.name == table)
         .cloned()
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
@@ -233,7 +233,7 @@ pub(super) fn validate_selected_schema_name(
     database: &str,
     schema: &str,
 ) -> Result<(), DbOperationError> {
-    if !schema.eq_ignore_ascii_case(database) {
+    if schema != database {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
@@ -388,7 +388,7 @@ pub(super) fn foreign_keys_from_metadata(
     });
     let mut foreign_keys = Vec::new();
     for column in raw {
-        let reference_resolved = column.to_schema.eq_ignore_ascii_case(database);
+        let reference_resolved = column.to_schema == database;
         if let Some(foreign_key) = foreign_keys
             .iter_mut()
             .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
@@ -608,7 +608,7 @@ mod tests {
     #[test]
     fn metadata_snapshot_uses_server_schema() {
         let snapshot = metadata_snapshot_from_result(
-            "APP",
+            "app",
             Some("app"),
             &result(
                 &[
@@ -634,6 +634,18 @@ mod tests {
     }
 
     #[test]
+    fn metadata_rejects_database_with_different_case() {
+        let error =
+            metadata_snapshot_from_result("app", Some("APP"), &result(&[], vec![])).unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::UnsupportedOperation(message)
+                if message == "MySQL metadata is limited to the selected database"
+        ));
+    }
+
+    #[test]
     fn metadata_schema_mismatch_rejects_before_parsing() {
         let error =
             metadata_snapshot_from_result("app", Some("other"), &result(&[], vec![])).unwrap_err();
@@ -643,6 +655,24 @@ mod tests {
             DbOperationError::UnsupportedOperation(message)
                 if message == "MySQL metadata is limited to the selected database"
         ));
+    }
+
+    #[test]
+    fn find_table_rejects_schema_with_different_case() {
+        let error = find_table(
+            "APP",
+            "users",
+            &[MySqlTableMetadata {
+                schema: "app".to_string(),
+                name: "users".to_string(),
+                kind: TableKind::Table,
+                row_count_estimate: None,
+                comment: None,
+            }],
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
     }
 
     #[test]
@@ -873,7 +903,7 @@ mod tests {
         assert!(foreign_keys[0].is_reference_resolved());
 
         let unresolved =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "other")
+            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "SABIQL_TEST")
                 .unwrap();
         assert!(!unresolved[0].is_reference_resolved());
     }

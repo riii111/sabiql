@@ -918,12 +918,128 @@ mod query_preview {
 mod write_operations {
 
     use crate::tests::harness::mysql::with_mysql_test_db;
-    use sabiql_app::ports::outbound::{AccessMode, MetadataProvider, QueryExecutor, SqlDialect};
+    use sabiql_app::ports::outbound::{
+        AccessMode, DbOperationError, MetadataProvider, QueryExecutor, SqlDialect,
+    };
     use sabiql_domain::{CommandTag, DatabaseType, QueryValue};
 
+    const MYSQL_CASE_SCOPE_CHILD: &str = "mysql_case_scope_child";
+    const MYSQL_CASE_SCOPE_PARENT: &str = "mysql_case_scope_parent";
     const MYSQL_INVISIBLE_PK_TABLE: &str = "mysql_edit_invisible_pk";
     const MYSQL_INVISIBLE_COMPOSITE_TABLE: &str = "mysql_edit_invisible_composite";
     const MYSQL_FUNCTIONAL_INDEX: &str = "mysql_metadata_functional";
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn enforces_case_sensitive_database_scope_on_oracle_mysql_84() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let lower_case_table_names = db
+                    .run_cli_script("SELECT @@lower_case_table_names")
+                    .await
+                    .map_err(|error| format!("failed to inspect MySQL name case mode: {error}"))?;
+                if lower_case_table_names.trim() != "0" {
+                    return Err(format!(
+                        "case-sensitive MySQL server is required, got lower_case_table_names={lower_case_table_names:?}"
+                    ));
+                }
+
+                let external_database = db
+                    .run_cli_script(&format!(
+                        "SELECT COUNT(*) FROM SABIQL_TEST.{MYSQL_CASE_SCOPE_PARENT}"
+                    ))
+                    .await
+                    .map_err(|error| format!("case-sensitive database fixture is missing: {error}"))?;
+                if external_database.trim() != "1" {
+                    return Err(format!(
+                        "unexpected case-sensitive database fixture result: {external_database:?}"
+                    ));
+                }
+
+                for query in [
+                    format!(
+                        "INSERT INTO SABIQL_TEST.{MYSQL_CASE_SCOPE_PARENT} (id) VALUES (2)"
+                    ),
+                    format!(
+                        "UPDATE SABIQL_TEST.{MYSQL_CASE_SCOPE_PARENT} SET id = 2 WHERE id = 1"
+                    ),
+                    format!(
+                        "DELETE FROM SABIQL_TEST.{MYSQL_CASE_SCOPE_PARENT} WHERE id = 1"
+                    ),
+                    format!(
+                        "ALTER TABLE SABIQL_TEST.{MYSQL_CASE_SCOPE_PARENT} ADD COLUMN blocked INT"
+                    ),
+                ] {
+                    let result = db
+                        .adapter()
+                        .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
+                        .await;
+                    if !matches!(
+                        &result,
+                        Err(DbOperationError::UnsupportedOperation(details))
+                            if details.contains("selected database")
+                    ) {
+                        return Err(format!(
+                            "cross-database mutation was not rejected before execution: query={query:?}, result={result:?}"
+                        ));
+                    }
+                }
+
+                let qualified_same_database = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "INSERT INTO sabiql_test.{MYSQL_CASE_SCOPE_CHILD} (parent_id, payload) VALUES (1, 'temporary'); UPDATE sabiql_test.{MYSQL_CASE_SCOPE_CHILD} SET payload = 'temporary updated' WHERE parent_id = 1 AND payload = 'temporary'; DELETE FROM sabiql_test.{MYSQL_CASE_SCOPE_CHILD} WHERE parent_id = 1 AND payload = 'temporary updated'"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| {
+                        format!(
+                            "same-database qualified DML was rejected on Oracle MySQL: {error:?}"
+                        )
+                    })?;
+                if qualified_same_database.refresh_scope != sabiql_domain::RefreshScope::Data {
+                    return Err(format!(
+                        "same-database qualified DML had unexpected refresh scope: {qualified_same_database:?}"
+                    ));
+                }
+
+                let child = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_CASE_SCOPE_CHILD)
+                    .await
+                    .map_err(|error| format!("failed to fetch case-sensitive FK metadata: {error:?}"))?;
+                if child.foreign_keys.len() != 1
+                    || child.foreign_keys[0].is_reference_resolved()
+                    || child.foreign_keys[0].to_schema != "SABIQL_TEST"
+                {
+                    return Err(format!(
+                        "case-sensitive external FK was resolved incorrectly: {:?}",
+                        child.foreign_keys
+                    ));
+                }
+
+                let wrong_schema = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "SABIQL_TEST", MYSQL_CASE_SCOPE_PARENT)
+                    .await;
+                if !matches!(
+                    &wrong_schema,
+                    Err(DbOperationError::UnsupportedOperation(details))
+                        if details.contains("limited to the selected database")
+                ) {
+                    return Err(format!(
+                        "case-only metadata schema was not rejected: {wrong_schema:?}"
+                    ));
+                }
+
+                Ok(())
+            })
+        })
+        .await;
+    }
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]

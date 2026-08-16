@@ -324,7 +324,7 @@ fn classify_mysql_ddl_statement(
                     MySqlLexError("RENAME TABLE destination is ambiguous".to_string())
                 })?;
             let effective_database = match (database.as_deref(), destination_database.as_deref()) {
-                (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
+                (Some(source), Some(destination)) if source != destination => {
                     return Err(MySqlLexError(
                         "RENAME TABLE cannot move a table across databases".to_string(),
                     ));
@@ -417,7 +417,7 @@ fn classify_alter_table_target(
         .ok_or_else(|| MySqlLexError("MySQL statement target is ambiguous".to_string()))?;
     let destination_database = alter_table_rename_database(tokens, after_target)?;
     let effective_database = match (source_database.as_deref(), destination_database.as_deref()) {
-        (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
+        (Some(source), Some(destination)) if source != destination => {
             return Err(MySqlLexError(
                 "ALTER TABLE RENAME cannot move a table across databases".to_string(),
             ));
