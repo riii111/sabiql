@@ -7,8 +7,7 @@ use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, val
 use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    finish_mysql_session_after_result, read_one_mysql_resultset, run_mysql_process_with_timeout,
-    write_mysql_statement,
+    read_one_mysql_resultset, run_mysql_process_with_timeout, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
@@ -41,11 +40,7 @@ pub(super) async fn run_mysql_single_statement_process(
 
     #[cfg(unix)]
     let stdout = read_one_mysql_resultset(process).await?;
-    let result = if access_mode.is_read_only() {
-        finish_mysql_session_after_result(process).await?
-    } else {
-        finish_mysql_session(process).await?
-    };
+    let result = finish_mysql_session(process).await?;
     if has_mysql_cli_error(&result.error_bytes) {
         return Err(classify_mysql_query_failure(&result.error_bytes));
     }
