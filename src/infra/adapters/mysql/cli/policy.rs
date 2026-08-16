@@ -421,6 +421,9 @@ mod tests {
             "SELECT value FROM items FOR UPDATE",
             "SELECT GET_LOCK('sabiql', 0)",
             "SELECT @value := 1",
+            "SELECT value FROM items WHERE FALSE FOR UPDATE",
+            "SELECT GET_LOCK('sabiql', 0) WHERE FALSE",
+            "SELECT @value := 1 WHERE FALSE",
         ] {
             assert!(
                 mysql_metadata_select_query(query, "__source", "__marker").is_err(),

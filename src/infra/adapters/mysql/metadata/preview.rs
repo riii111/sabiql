@@ -159,7 +159,7 @@ async fn execute_preview_with_session(
         limit,
         offset,
     );
-    session.finish().await?;
+    session.finish_preview().await?;
 
     Ok(PreviewExecution {
         metadata,
@@ -461,7 +461,10 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn fake_preview_mysql(metadata_failure: bool) -> (tempfile::TempDir, PathBuf, PathBuf) {
+    fn fake_preview_mysql(
+        metadata_failure: bool,
+        delayed_preview_error: bool,
+    ) -> (tempfile::TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let program = directory.path().join("mysql");
         let log_path = directory.path().join("mysql.log");
@@ -498,12 +501,22 @@ while IFS= read -r line; do
       ;;
     *"LIMIT 2 OFFSET 1"*)
       printf '%s\n' '<resultset><row><field name="payload">0x00FF</field><field name="__sabiql_row_identity_0">1</field></row></resultset>'
+      {delayed_preview_error}
+      ;;
+    *__sabiql_preview_completion*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_preview_completion.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_preview_completion">'"$marker"'</field></row></resultset>'
       ;;
   esac
 done
 "#,
             log = log_path.display(),
             columns_result = columns_result,
+            delayed_preview_error = if delayed_preview_error {
+                "sleep 0.05\nprintf '%s\\n' 'ERROR 1054 (42S22): delayed preview error' >&2"
+            } else {
+                ""
+            },
         );
         fs::write(&program, script).expect("fake MySQL program");
         let mut permissions = fs::metadata(&program)
@@ -535,7 +548,7 @@ done
     #[cfg(unix)]
     #[tokio::test]
     async fn preview_metadata_and_rows_share_one_mysql_session() {
-        let (_directory, program, log_path) = fake_preview_mysql(false);
+        let (_directory, program, log_path) = fake_preview_mysql(false, false);
         let execution = execute_preview_with_program(
             "mysql://preview:secret@localhost:3306/sabiql_test",
             "sabiql_test",
@@ -594,6 +607,7 @@ done
             "INFORMATION_SCHEMA.COLUMNS",
             "INFORMATION_SCHEMA.STATISTICS",
             "LIMIT 2 OFFSET 1",
+            "__sabiql_preview_completion",
         ]
         .into_iter()
         .map(|query| log.find(query).expect("query in transcript"))
@@ -604,7 +618,7 @@ done
     #[cfg(unix)]
     #[tokio::test]
     async fn preview_metadata_failure_never_sends_user_select() {
-        let (_directory, program, log_path) = fake_preview_mysql(true);
+        let (_directory, program, log_path) = fake_preview_mysql(true, false);
         let result = execute_preview_with_program(
             "mysql://preview:secret@localhost:3306/sabiql_test",
             "sabiql_test",
@@ -623,6 +637,28 @@ done
         let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
         assert!(log.contains("INFORMATION_SCHEMA.COLUMNS"));
         assert!(!log.contains("LIMIT 2 OFFSET 1"), "{log}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn delayed_error_between_preview_and_completion_frames_is_classified() {
+        let (_directory, program, _log_path) = fake_preview_mysql(false, true);
+        let result = execute_preview_with_program(
+            "mysql://preview:secret@localhost:3306/sabiql_test",
+            "sabiql_test",
+            "items",
+            2,
+            1,
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::ObjectMissing(details))
+                if details.contains("delayed preview error")
+        ));
     }
 
     #[test]
