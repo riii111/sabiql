@@ -1454,7 +1454,7 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn preserves_empty_result_columns_for_select_show_describe_and_table() {
+    async fn preserves_empty_select_columns_without_reexecution() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let select = db
@@ -1564,6 +1564,17 @@ mod query_execution {
                     ));
                 }
 
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn rejects_unsafe_empty_selects_before_execution() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let duplicate_aliases = db
                     .adapter()
                     .execute_adhoc(
@@ -1597,7 +1608,17 @@ mod query_execution {
                         ));
                     }
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
 
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn preserves_empty_show_columns() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let show = db
                     .adapter()
                     .execute_adhoc(
@@ -1612,7 +1633,17 @@ mod query_execution {
                 {
                     return Err(format!("unexpected empty SHOW result: {show:?}"));
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
 
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn preserves_empty_describe_columns() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let describe = db
                     .adapter()
                     .execute_adhoc(
@@ -1627,7 +1658,17 @@ mod query_execution {
                 {
                     return Err(format!("unexpected empty DESCRIBE result: {describe:?}"));
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
 
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn preserves_empty_table_columns() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let table = db
                     .adapter()
                     .execute_adhoc(

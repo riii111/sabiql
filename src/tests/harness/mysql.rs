@@ -2,10 +2,9 @@ use std::process::Stdio;
 
 use sabiql_app::ports::outbound::{ConnectionProbe, DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
-use sabiql_infra::adapters::mysql::MySqlAdapter;
 #[cfg(unix)]
 use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
-use tempfile::NamedTempFile;
+use sabiql_infra::adapters::mysql::{MySqlAdapter, create_mysql_option_file_for_test};
 use tokio::process::Command;
 
 pub const MYSQL_FIXTURE_TABLE: &str = "mysql_cli_fixture";
@@ -15,7 +14,6 @@ type MySqlFixtureTest<'db> = std::pin::Pin<Box<dyn Future<Output = Result<(), St
 pub struct MySqlTestDb {
     adapter: MySqlAdapter,
     dsn: String,
-    config: MySqlConnectionConfig,
 }
 
 impl MySqlTestDb {
@@ -34,11 +32,7 @@ impl MySqlTestDb {
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         adapter.probe(&dsn).await?;
-        Ok(Self {
-            adapter,
-            dsn,
-            config,
-        })
+        Ok(Self { adapter, dsn })
     }
 
     pub fn adapter(&self) -> &MySqlAdapter {
@@ -63,9 +57,8 @@ impl MySqlTestDb {
     }
 
     async fn run_cli(&self, query: &str) -> Result<String, String> {
-        let option_file = NamedTempFile::new().map_err(|error| error.to_string())?;
-        std::fs::write(option_file.path(), serialize_option_file(&self.config))
-            .map_err(|error| error.to_string())?;
+        let option_file =
+            create_mysql_option_file_for_test(&self.dsn).map_err(|error| error.to_string())?;
         let output = Command::new("mysql")
             .args([
                 format!("--defaults-file={}", option_file.path().display()),
@@ -157,29 +150,4 @@ pub fn mysql_tls_config() -> MySqlConnectionConfig {
         Some(std::env::var("SABIQL_MYSQL_TEST_SSL_CERT").expect("TLS client certificate path")),
         Some(std::env::var("SABIQL_MYSQL_TEST_SSL_KEY").expect("TLS client key path")),
     )
-}
-
-fn serialize_option_file(config: &MySqlConnectionConfig) -> String {
-    let mut contents = String::from("[client]\n");
-    push_option(&mut contents, "host", &config.host);
-    push_option(&mut contents, "port", &config.port.to_string());
-    push_option(&mut contents, "user", &config.username);
-    push_option(&mut contents, "password", &config.password);
-    if let Some(database) = config.database.as_deref() {
-        push_option(&mut contents, "database", database);
-    }
-    contents
-}
-
-fn push_option(contents: &mut String, key: &str, value: &str) {
-    contents.push_str(key);
-    contents.push_str(" = \"");
-    for character in value.chars() {
-        match character {
-            '\\' => contents.push_str("\\\\"),
-            '"' => contents.push_str("\\\""),
-            _ => contents.push(character),
-        }
-    }
-    contents.push_str("\"\n");
 }

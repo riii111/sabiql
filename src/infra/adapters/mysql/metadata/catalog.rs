@@ -666,6 +666,29 @@ mod tests {
     }
 
     #[test]
+    fn metadata_parser_marks_invisible_columns_hidden_and_read_only() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text("hidden_value".to_string()),
+                QueryValue::Text("varchar(20)".to_string()),
+                QueryValue::Text("YES".to_string()),
+                QueryValue::Null,
+                QueryValue::Text("INVISIBLE".to_string()),
+                QueryValue::Null,
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+            ]],
+        ))
+        .expect("metadata parses");
+
+        let column = column_from_metadata(&parsed[0]);
+
+        assert!(column.is_hidden());
+        assert!(column.is_read_only());
+    }
+
+    #[test]
     fn empty_columns_result_maps_to_missing_table() {
         let result = result(COLUMN_METADATA_RESULT_COLUMNS, Vec::new());
 

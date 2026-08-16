@@ -295,6 +295,19 @@ mod tests {
     }
 
     #[test]
+    fn preview_conversion_decodes_bit_hex_as_binary() {
+        let result = result(
+            &["bit_value"],
+            vec![vec![QueryValue::Text("0x05".to_string())]],
+        );
+        let columns = vec![column("bit_value", "bit(3)")];
+
+        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
+
+        assert_eq!(values.visible[0][0], QueryValue::Blob(vec![5]));
+    }
+
+    #[test]
     fn preview_conversion_decodes_spatial_hex_as_binary() {
         let result = result(
             &["location"],
