@@ -13,7 +13,7 @@ pub enum InputInteraction {
 }
 
 pub fn resolve_input_interaction(state: &AppState) -> InputInteraction {
-    // Readline belongs to self-contained form fields. SQL and JSONB document editors keep
+    // Readline belongs to self-contained form fields. SQL and JSON document editors keep
     // their Vim contexts so Ctrl/Alt bindings never create a hybrid editing model.
     match state.input_mode() {
         InputMode::CommandLine => InputInteraction::FormEditing(InputTarget::CommandLine),

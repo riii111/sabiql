@@ -659,7 +659,7 @@ pub enum Action {
         error: DbOperationError,
     },
 
-    // JSONB detail
+    // JSON detail
     JsonYankAll,
     JsonYankSuccess,
     JsonEnterEdit,

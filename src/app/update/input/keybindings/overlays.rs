@@ -916,7 +916,7 @@ pub const CONFIRM_DIALOG_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
-// JSONB Detail (Viewing)
+// JSON Detail (Viewing)
 // =============================================================================
 
 pub mod json_detail {
@@ -1464,7 +1464,7 @@ pub const ROW_DETAIL_FOOTER_ROWS: &[ModeRow] =
     &[row_detail::YANK, row_detail::YANK_JSON, row_detail::CLOSE];
 
 // =============================================================================
-// JSONB Search (active search input)
+// JSON Search (active search input)
 // =============================================================================
 
 pub mod json_search {
@@ -1544,7 +1544,7 @@ pub const CELL_DETAIL_SEARCH_KEYS: &[KeyBinding] = &[
 ];
 
 // =============================================================================
-// JSONB Edit
+// JSON Edit
 // =============================================================================
 
 pub mod json_edit {
