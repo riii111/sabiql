@@ -529,14 +529,25 @@ impl CompletionEngine {
             return self.keyword_candidates_for_database(&current_token, scope.database_type);
         }
 
+        let mysql_database_names: HashSet<String> = if scope.database_type == DatabaseType::MySQL {
+            candidates
+                .iter()
+                .filter(|candidate| candidate.kind == CompletionKind::Database)
+                .map(|candidate| candidate.text.clone())
+                .collect()
+        } else {
+            HashSet::new()
+        };
         let mut seen = HashSet::new();
         candidates.retain(|c| {
-            let key =
-                if scope.database_type == DatabaseType::MySQL && c.kind == CompletionKind::Table {
-                    c.text.clone()
-                } else {
-                    c.text.to_uppercase()
-                };
+            let key = if scope.database_type == DatabaseType::MySQL
+                && c.kind == CompletionKind::Table
+                && !mysql_database_names.contains(&c.text)
+            {
+                c.text.clone()
+            } else {
+                c.text.to_uppercase()
+            };
             seen.insert(key)
         });
         quote_mysql_identifiers(&mut candidates, scope.database_type);
@@ -1047,15 +1058,7 @@ impl CompletionEngine {
         prefix: &str,
         database_type: DatabaseType,
     ) -> Vec<CompletionCandidate> {
-        let alias_lower = alias.to_lowercase();
-
-        // Find the table reference matching this alias
-        let table_ref = sql_context.tables.iter().find(|t| {
-            t.alias
-                .as_ref()
-                .is_some_and(|a| a.to_lowercase() == alias_lower)
-                || t.table.to_lowercase() == alias_lower
-        });
+        let table_ref = self.table_reference_for_qualifier(alias, sql_context, database_type);
 
         let Some(table_ref) = table_ref else {
             return vec![];
@@ -1073,6 +1076,53 @@ impl CompletionEngine {
 
         // If not in cache, return empty (caller should request table details)
         vec![]
+    }
+
+    fn table_reference_for_qualifier<'a>(
+        &self,
+        qualifier: &str,
+        sql_context: &'a SqlContext,
+        database_type: DatabaseType,
+    ) -> Option<&'a TableReference> {
+        if database_type != DatabaseType::MySQL {
+            let qualifier_lower = qualifier.to_lowercase();
+            return sql_context.tables.iter().find(|table_ref| {
+                table_ref
+                    .alias
+                    .as_ref()
+                    .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
+                    || table_ref.table.to_lowercase() == qualifier_lower
+            });
+        }
+
+        let qualifier_lower = qualifier.to_lowercase();
+        let matches: Vec<_> = sql_context
+            .tables
+            .iter()
+            .filter(|table_ref| {
+                table_ref
+                    .alias
+                    .as_ref()
+                    .is_some_and(|alias| alias.to_lowercase() == qualifier_lower)
+                    || table_ref.table.to_lowercase() == qualifier_lower
+            })
+            .collect();
+        let exact_matches: Vec<_> = matches
+            .iter()
+            .copied()
+            .filter(|table_ref| {
+                table_ref.alias.as_deref() == Some(qualifier) || table_ref.table == qualifier
+            })
+            .collect();
+
+        match exact_matches.as_slice() {
+            [table_ref] => Some(*table_ref),
+            [] => match matches.as_slice() {
+                [table_ref] => Some(*table_ref),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     #[cfg(test)]
@@ -1158,7 +1208,32 @@ impl CompletionEngine {
         database_type: DatabaseType,
     ) -> Option<String> {
         if let Some(ref schema) = table_ref.schema {
-            return Some(format!("{}.{}", schema, table_ref.table));
+            if database_type != DatabaseType::MySQL {
+                return Some(format!("{}.{}", schema, table_ref.table));
+            }
+
+            let Some(metadata) = metadata else {
+                return Some(format!("{}.{}", schema, table_ref.table));
+            };
+
+            if let Some(table) = metadata
+                .table_summaries
+                .iter()
+                .find(|t| t.schema == *schema && t.name == table_ref.table)
+            {
+                return Some(table.qualified_name());
+            }
+
+            let schema_lower = schema.to_lowercase();
+            let table_lower = table_ref.table.to_lowercase();
+            let mut case_insensitive = metadata.table_summaries.iter().filter(|t| {
+                t.schema.to_lowercase() == schema_lower && t.name.to_lowercase() == table_lower
+            });
+            let table = case_insensitive.next()?;
+            return case_insensitive
+                .next()
+                .is_none()
+                .then(|| table.qualified_name());
         }
 
         let Some(metadata) = metadata else {
@@ -1174,10 +1249,11 @@ impl CompletionEngine {
                 return Some(table.qualified_name());
             }
 
+            let table_lower = table_ref.table.to_lowercase();
             let mut case_insensitive = metadata
                 .table_summaries
                 .iter()
-                .filter(|t| t.name.eq_ignore_ascii_case(&table_ref.table));
+                .filter(|t| t.name.to_lowercase() == table_lower);
             let table = case_insensitive.next()?;
             return case_insensitive
                 .next()
@@ -1185,11 +1261,13 @@ impl CompletionEngine {
                 .then(|| table.qualified_name());
         }
 
-        metadata
-            .table_summaries
-            .iter()
-            .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
-            .map(TableSummary::qualified_name)
+        Some(
+            metadata
+                .table_summaries
+                .iter()
+                .find(|t| t.name.to_lowercase() == table_ref.table.to_lowercase())
+                .map_or_else(|| table_ref.table.clone(), TableSummary::qualified_name),
+        )
     }
 }
 
@@ -1730,6 +1808,44 @@ mod tests {
         }
 
         #[test]
+        fn mysql_qualifier_prefers_exact_table_reference_when_references_overlap() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.foo".to_string(),
+                create_table("app", "foo", &["wrong_column"]),
+            );
+            e.cache_table_detail(
+                "app.Foo".to_string(),
+                create_table("app", "Foo", &["exact_column"]),
+            );
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![
+                TableSummary::new("app".to_string(), "foo".to_string(), None, false),
+                TableSummary::new("app".to_string(), "Foo".to_string(), None, false),
+            ];
+
+            let sql = "SELECT Foo.ex FROM foo JOIN Foo";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                "SELECT Foo.ex".chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`exact_column`" && candidate.kind == CompletionKind::Column
+            }));
+            assert!(!candidates.iter().any(|candidate| {
+                candidate.text == "`wrong_column`" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
         fn mysql_table_reference_falls_back_to_unique_case_insensitive_match() {
             let mut e = engine();
             e.cache_table_detail(
@@ -1760,6 +1876,106 @@ mod tests {
             assert!(candidates.iter().any(|candidate| {
                 candidate.text == "`fallback_column`" && candidate.kind == CompletionKind::Column
             }));
+        }
+
+        #[test]
+        fn mysql_qualified_table_reference_falls_back_to_unique_case_insensitive_match() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.Foo".to_string(),
+                create_table("app", "Foo", &["qualified_fallback_column"]),
+            );
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "app".to_string(),
+                "Foo".to_string(),
+                None,
+                false,
+            )];
+
+            let sql = "SELECT f.qu FROM app.foo AS f";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                "SELECT f.qu".chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`qualified_fallback_column`"
+                    && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
+        fn mysql_unique_case_insensitive_fallback_supports_non_ascii_names() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.ÄFoo".to_string(),
+                create_table("app", "ÄFoo", &["unicode_column"]),
+            );
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "app".to_string(),
+                "ÄFoo".to_string(),
+                None,
+                false,
+            )];
+
+            let sql = "SELECT f.uni FROM äfoo AS f";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                "SELECT f.uni".chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`unicode_column`" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
+        fn mysql_database_and_table_candidates_do_not_duplicate_exact_text() {
+            let e = engine();
+            let mut metadata = DatabaseMetadata::new("app".to_string());
+            metadata.table_summaries = vec![TableSummary::new(
+                "app".to_string(),
+                "app".to_string(),
+                None,
+                false,
+            )];
+
+            let sql = "SELECT * FROM app";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert_eq!(
+                candidates
+                    .iter()
+                    .filter(|candidate| candidate.text == "`app`")
+                    .count(),
+                1
+            );
         }
 
         #[test]
