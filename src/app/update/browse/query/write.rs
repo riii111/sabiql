@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::RefreshScope;
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -15,10 +16,12 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::ports::outbound::AccessMode;
+use crate::ports::outbound::{AccessMode, DbOperationError};
 use crate::services::AppServices;
 use crate::update::action::Action;
-use crate::update::browse::query::preview_effect_for_current_table;
+use crate::update::browse::query::{
+    execution::refresh_effects_for_scope, preview_effect_for_current_table,
+};
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base, ensure_column_writable,
@@ -395,14 +398,25 @@ pub fn reduce_write(
                 .result_interaction
                 .pending_write_preview()
                 .map_or(WriteOperation::Update, |p| p.operation);
+            let refresh_scope = match error {
+                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
+                _ => RefreshScope::None,
+            };
             state.result_interaction.clear_write_preview();
             state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.user_message(), now);
-            state.modal.set_mode(match operation {
-                WriteOperation::Update => InputMode::CellEdit,
-                WriteOperation::Delete => InputMode::Normal,
-            });
-            DispatchResult::handled()
+            if refresh_scope == RefreshScope::None {
+                state.modal.set_mode(match operation {
+                    WriteOperation::Update => InputMode::CellEdit,
+                    WriteOperation::Delete => InputMode::Normal,
+                });
+                DispatchResult::handled()
+            } else {
+                state.result_interaction.clear_cell_edit();
+                state.result_interaction.clear_staged_deletes();
+                state.modal.set_mode(InputMode::Normal);
+                DispatchResult::handled_with(refresh_effects_for_scope(state, refresh_scope, now))
+            }
         }
 
         _ => DispatchResult::pass(),
@@ -1303,6 +1317,92 @@ mod tests {
         }
 
         #[test]
+        fn execute_write_failure_after_data_change_refreshes_and_discards_draft() {
+            let mut state = editable_state();
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Data,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview { table, .. } if table == "users"
+            )));
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ExecuteWrite { .. }))
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_after_metadata_change_refreshes_and_discards_draft() {
+            let mut state = editable_state();
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "metadata marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Metadata,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(!state.result_interaction.cell_edit().is_active());
+            assert!(state.session.table_detail().is_none());
+            assert_eq!(state.query.status(), QueryStatus::Idle);
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CacheInvalidate { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ExecuteWrite { .. }))
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_before_change_preserves_draft() {
+            let mut state = editable_state();
+            state.result_interaction.stage_row(0);
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailed("before write".to_string()),
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::CellEdit);
+            assert!(state.result_interaction.cell_edit().is_active());
+            assert_eq!(state.result_interaction.cell_edit().draft_value(), "Bob");
+            assert!(state.result_interaction.staged_delete_rows().contains(&0));
+        }
+
+        #[test]
         fn stale_write_success_does_not_refresh_or_set_message() {
             let mut state = editable_state();
             let old_run_id = begin_query_run(&mut state);
@@ -1470,6 +1570,36 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("Query failed: boom. Review the database error details and SQL.")
+            );
+        }
+
+        #[test]
+        fn execute_write_failure_after_data_change_clears_staged_delete_and_refreshes() {
+            let mut state = create_test_state();
+            state.query.pagination.reset_for_table("public", "users");
+            state.query.set_delete_refresh_target(0, Some(2), 1);
+            state.result_interaction.stage_row(2);
+            state.result_interaction.set_write_preview(delete_preview());
+            let action = write_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::QueryFailed(
+                        "marker read failed".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Data,
+                },
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+            assert!(state.query.pending_delete_refresh_target().is_none());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ExecutePreview { .. }))
             );
         }
 
