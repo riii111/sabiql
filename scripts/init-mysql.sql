@@ -162,6 +162,27 @@ CREATE TABLE mysql_preview_empty (
 CREATE VIEW mysql_preview_view AS
 SELECT id, unicode_text FROM mysql_cli_fixture;
 
+CREATE DATABASE SABIQL_TEST CHARACTER SET utf8mb4;
+
+CREATE TABLE SABIQL_TEST.mysql_case_scope_parent (
+    id INT PRIMARY KEY
+) CHARACTER SET utf8mb4;
+
+INSERT INTO SABIQL_TEST.mysql_case_scope_parent (id)
+VALUES (1);
+
+CREATE TABLE sabiql_test.mysql_case_scope_child (
+    parent_id INT NOT NULL,
+    payload TEXT NOT NULL,
+    CONSTRAINT fk_mysql_case_scope_parent
+        FOREIGN KEY (parent_id)
+        REFERENCES SABIQL_TEST.mysql_case_scope_parent (id)
+) CHARACTER SET utf8mb4;
+
+INSERT INTO sabiql_test.mysql_case_scope_child (parent_id, payload)
+VALUES (1, 'case-sensitive foreign key');
+
 CREATE USER 'sabiql_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word';
 GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_test_runner'@'%';
+GRANT ALL PRIVILEGES ON SABIQL_TEST.* TO 'sabiql_test_runner'@'%';
 GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'sabiql'@'%', 'sabiql_test_runner'@'%';

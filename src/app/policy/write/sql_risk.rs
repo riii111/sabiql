@@ -440,6 +440,51 @@ mod mysql_tests {
     }
 
     #[test]
+    fn qualified_mysql_mutations_require_exact_selected_database() {
+        for sql in [
+            "INSERT INTO other.items VALUES (1)",
+            "UPDATE other.items SET value = 1",
+            "DELETE FROM other.items WHERE id = 1",
+            "INSERT INTO APP.items VALUES (1)",
+            "UPDATE APP.items SET value = 1",
+            "DELETE FROM APP.items WHERE id = 1",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+                "{sql}"
+            );
+        }
+
+        for sql in [
+            "INSERT INTO items VALUES (1)",
+            "UPDATE items SET value = 1",
+            "DELETE FROM items WHERE id = 1",
+            "INSERT INTO app.items VALUES (1)",
+            "UPDATE app.items SET value = 1",
+            "DELETE FROM app.items WHERE id = 1",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Allow { .. }),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rename_rejects_database_names_that_differ_only_by_case() {
+        for sql in [
+            "ALTER TABLE APP.items ADD COLUMN value INT",
+            "ALTER TABLE app.items RENAME TO APP.archived_items",
+            "RENAME TABLE app.items TO APP.archived_items",
+        ] {
+            assert!(
+                matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
     fn transaction_modifiers_are_rejected() {
         for sql in [
             "START TRANSACTION READ ONLY",
@@ -666,8 +711,7 @@ fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>)
             .target_database
             .as_deref()
             .or(selected_database)
-            .unwrap_or_default()
-            .to_ascii_uppercase(),
+            .unwrap_or_default(),
         statement.target.as_deref()?.to_ascii_uppercase()
     ))
 }
@@ -823,11 +867,12 @@ pub fn evaluate_mysql_multi_statement(
                 reason: "MySQL SELECT INTO clauses are not supported".to_string(),
             };
         }
-        if mysql_statement_is_schema_modifying(&statement.kind)
+        if (mysql_statement_is_schema_modifying(&statement.kind)
+            || mysql_statement_is_data_modifying(&statement.kind))
             && !target_is_selected_database(&statement, selected_database)
         {
             return MultiStatementDecision::Block {
-                reason: "MySQL DDL target must be in the selected database".to_string(),
+                reason: "MySQL target must be in the selected database".to_string(),
             };
         }
         let decision = mysql_statement_risk(&statement);

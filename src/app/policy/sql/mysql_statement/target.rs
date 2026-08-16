@@ -38,7 +38,7 @@ pub(super) fn target_is_selected_database(
     selected_database: Option<&str>,
 ) -> bool {
     match (statement.target_database.as_deref(), selected_database) {
-        (Some(target_database), Some(selected)) => target_database.eq_ignore_ascii_case(selected),
+        (Some(target_database), Some(selected)) => target_database == selected,
         (None, Some(_)) => true,
         (Some(_) | None, None) => false,
     }
