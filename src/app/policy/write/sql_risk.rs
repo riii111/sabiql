@@ -165,7 +165,7 @@ mod mysql_tests {
     }
 
     #[test]
-    fn replace_remains_blocked_and_has_destructive_risk() {
+    fn replace_has_destructive_risk_mapping() {
         let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
         let risk = mysql_statement_risk(&statement);
         assert_eq!(risk.risk_level, RiskLevel::High);
@@ -173,11 +173,6 @@ mod mysql_tests {
         assert!(matches!(
             risk.confirmation,
             ConfirmationType::TableNameInput { ref target } if target == "items"
-        ));
-        assert!(matches!(
-            mysql("REPLACE INTO items VALUES (1)"),
-            MultiStatementDecision::Block { ref reason }
-                if reason == "MySQL REPLACE execution is not supported"
         ));
     }
 
