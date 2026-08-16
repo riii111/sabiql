@@ -1,9 +1,11 @@
 use super::write_guardrails::{self, RiskLevel};
-use crate::domain::DatabaseType;
-use crate::policy::sql::mysql_statement::{
-    MySqlLexError, MySqlStatement, MySqlStatementKind, classify_mysql_statement,
-    has_mysql_read_only_side_effect, has_top_level_into_clause, split_mysql_statements,
-    statement_contains_unsupported_mysql_control, target_is_selected_database,
+use crate::domain::{
+    DatabaseType,
+    mysql_sql::{
+        MySqlLexError, MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
+        classify_mysql_statement, has_mysql_read_only_side_effect, split_mysql_statements,
+        statement_contains_unsupported_mysql_control,
+    },
 };
 use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
 use crate::policy::sql::sqlite_transaction::{
@@ -35,6 +37,10 @@ pub enum AcknowledgeReason {
 
 #[cfg(test)]
 mod mysql_tests {
+    use crate::domain::mysql_sql::{
+        mysql_statement_is_persistent_schema_change, mysql_statement_is_schema_modifying,
+    };
+
     use super::*;
     use rstest::rstest;
 
@@ -730,219 +736,21 @@ pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     }
 }
 
-pub fn mysql_statement_is_schema_modifying(kind: &MySqlStatementKind) -> bool {
-    matches!(
-        kind,
-        MySqlStatementKind::CreateTable { .. }
-            | MySqlStatementKind::AlterTable
-            | MySqlStatementKind::RenameTable
-            | MySqlStatementKind::DropTable { .. }
-            | MySqlStatementKind::TruncateTable
-            | MySqlStatementKind::CreateView
-            | MySqlStatementKind::AlterView
-            | MySqlStatementKind::DropView
-            | MySqlStatementKind::CreateIndex
-            | MySqlStatementKind::DropIndex
-    )
-}
-
-pub fn mysql_statement_is_data_modifying(kind: &MySqlStatementKind) -> bool {
-    matches!(
-        kind,
-        MySqlStatementKind::Insert
-            | MySqlStatementKind::Replace
-            | MySqlStatementKind::Update { .. }
-            | MySqlStatementKind::Delete { .. }
-    )
-}
-
-pub fn mysql_statement_is_persistent_schema_change(kind: &MySqlStatementKind) -> bool {
-    mysql_statement_is_schema_modifying(kind)
-        && !matches!(
-            kind,
-            MySqlStatementKind::CreateTable { temporary: true }
-                | MySqlStatementKind::DropTable { temporary: true }
-        )
-}
-
-fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
-    Some(format!(
-        "{}:{}",
-        statement
-            .target_database
-            .as_deref()
-            .or(selected_database)
-            .unwrap_or_default(),
-        statement.target.as_deref()?.to_ascii_uppercase()
-    ))
-}
-
-fn mysql_validate_submission_state(
-    planned: &[(MySqlStatement, SqlRiskDecision)],
-    selected_database: Option<&str>,
-) -> Result<(), String> {
-    let mut transaction_open = false;
-    let mut savepoints = Vec::<String>::new();
-    let mut temporary_tables = Vec::<String>::new();
-
-    for (statement, _) in planned {
-        match &statement.kind {
-            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
-                if transaction_open {
-                    return Err("nested MySQL transactions are not supported".to_string());
-                }
-                transaction_open = true;
-                savepoints.clear();
-            }
-            MySqlStatementKind::Commit | MySqlStatementKind::Rollback => {
-                transaction_open = false;
-                savepoints.clear();
-            }
-            MySqlStatementKind::Savepoint => {
-                if !transaction_open {
-                    return Err("MySQL SAVEPOINT requires an explicit transaction".to_string());
-                }
-                let name = statement
-                    .target
-                    .as_deref()
-                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
-                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
-                savepoints.push(name.to_string());
-            }
-            MySqlStatementKind::RollbackToSavepoint => {
-                if !transaction_open {
-                    return Err(
-                        "MySQL ROLLBACK TO SAVEPOINT requires an explicit transaction".to_string(),
-                    );
-                }
-                let name = statement
-                    .target
-                    .as_deref()
-                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
-                let Some(index) = savepoints
-                    .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
-                else {
-                    return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
-                };
-                savepoints.truncate(index + 1);
-            }
-            MySqlStatementKind::ReleaseSavepoint => {
-                if !transaction_open {
-                    return Err(
-                        "MySQL RELEASE SAVEPOINT requires an explicit transaction".to_string()
-                    );
-                }
-                let name = statement
-                    .target
-                    .as_deref()
-                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
-                let Some(index) = savepoints
-                    .iter()
-                    .position(|current| current.eq_ignore_ascii_case(name))
-                else {
-                    return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
-                };
-                savepoints.remove(index);
-            }
-            MySqlStatementKind::CreateTable { temporary: true } => {
-                let key = mysql_target_key(statement, selected_database)
-                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
-                if temporary_tables.iter().any(|current| current == &key) {
-                    return Err("MySQL temporary table is created more than once".to_string());
-                }
-                temporary_tables.push(key);
-            }
-            MySqlStatementKind::DropTable { temporary: true } => {
-                let key = mysql_target_key(statement, selected_database)
-                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
-                let Some(index) = temporary_tables.iter().position(|current| current == &key)
-                else {
-                    return Err(
-                        "MySQL temporary tables must be created and dropped in one submission"
-                            .to_string(),
-                    );
-                };
-                temporary_tables.remove(index);
-            }
-            kind if transaction_open && mysql_statement_is_persistent_schema_change(kind) => {
-                return Err(
-                    "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
-                        .to_string(),
-                );
-            }
-            _ => {}
-        }
-    }
-
-    if transaction_open {
-        return Err("MySQL explicit transaction must finish in one submission".to_string());
-    }
-    Ok(())
-}
-
 pub fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
 ) -> MultiStatementDecision<MySqlStatement> {
-    if statement_contains_unsupported_mysql_control(sql) {
-        return MultiStatementDecision::Block {
-            reason: "unsupported MySQL session or table-lock statement".to_string(),
-        };
-    }
-    let statements = match split_mysql_statements(sql) {
-        Ok(statements) if !statements.is_empty() => statements,
-        Ok(_) => {
-            return MultiStatementDecision::Block {
-                reason: "Empty MySQL input".to_string(),
-            };
-        }
-        Err(error) => {
-            return MultiStatementDecision::Block {
-                reason: error.to_string(),
-            };
-        }
+    let statements = match classify_mysql_multi_statement(sql, selected_database) {
+        Ok(statements) => statements,
+        Err(reason) => return MultiStatementDecision::Block { reason },
     };
-
-    let mut planned = Vec::with_capacity(statements.len());
-    for statement_sql in statements {
-        let statement = match classify_mysql_statement(&statement_sql) {
-            Ok(statement) => statement,
-            Err(error) => {
-                return MultiStatementDecision::Block {
-                    reason: error.to_string(),
-                };
-            }
-        };
-        if matches!(statement.kind, MySqlStatementKind::Replace) {
-            return MultiStatementDecision::Block {
-                reason: "MySQL REPLACE execution is not supported".to_string(),
-            };
-        }
-        if matches!(
-            statement.kind,
-            MySqlStatementKind::Select | MySqlStatementKind::Table
-        ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
-        {
-            return MultiStatementDecision::Block {
-                reason: "MySQL SELECT INTO clauses are not supported".to_string(),
-            };
-        }
-        if (mysql_statement_is_schema_modifying(&statement.kind)
-            || mysql_statement_is_data_modifying(&statement.kind))
-            && !target_is_selected_database(&statement, selected_database)
-        {
-            return MultiStatementDecision::Block {
-                reason: "MySQL target must be in the selected database".to_string(),
-            };
-        }
-        let decision = mysql_statement_risk(&statement);
-        planned.push((statement, decision));
-    }
-
-    if let Err(reason) = mysql_validate_submission_state(&planned, selected_database) {
-        return MultiStatementDecision::Block { reason };
-    }
+    let planned = statements
+        .into_iter()
+        .map(|statement| {
+            let decision = mysql_statement_risk(&statement);
+            (statement, decision)
+        })
+        .collect::<Vec<_>>();
 
     let max_risk = planned
         .iter()

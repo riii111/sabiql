@@ -1,6 +1,4 @@
-use crate::app::policy::sql::mysql_statement::{
-    mysql_explain_rejection_message, mysql_tree_explain_query_kind,
-};
+use crate::domain::mysql_sql::{mysql_explain_rejection_message, mysql_tree_explain_query_kind};
 
 pub(super) fn build_explain_sql(query: &str) -> Option<String> {
     if mysql_explain_rejection_message(query).is_some() {

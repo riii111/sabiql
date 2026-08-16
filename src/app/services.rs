@@ -15,7 +15,7 @@ impl AppServices {
     #[cfg(any(test, feature = "test-support"))]
     #[doc(hidden)]
     pub fn stub() -> Self {
-        use crate::policy::sql::mysql_statement::{
+        use crate::domain::mysql_sql::{
             mysql_explain_rejection_message, mysql_tree_explain_query_kind,
         };
         use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;

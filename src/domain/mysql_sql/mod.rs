@@ -1,10 +1,13 @@
 use std::fmt;
 
 mod classifier;
+mod export;
 mod lexer;
 mod side_effect;
 mod target;
 mod transaction;
+
+pub use export::{MySqlExportPlan, mysql_export_plan};
 
 use lexer::TokenKind;
 
@@ -99,6 +102,197 @@ pub fn target_is_selected_database(
 
 pub fn statement_contains_unsupported_mysql_control(sql: &str) -> bool {
     side_effect::statement_contains_unsupported_mysql_control(sql)
+}
+
+pub fn mysql_statement_is_schema_modifying(kind: &MySqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MySqlStatementKind::CreateTable { .. }
+            | MySqlStatementKind::AlterTable
+            | MySqlStatementKind::RenameTable
+            | MySqlStatementKind::DropTable { .. }
+            | MySqlStatementKind::TruncateTable
+            | MySqlStatementKind::CreateView
+            | MySqlStatementKind::AlterView
+            | MySqlStatementKind::DropView
+            | MySqlStatementKind::CreateIndex
+            | MySqlStatementKind::DropIndex
+    )
+}
+
+pub fn mysql_statement_is_data_modifying(kind: &MySqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MySqlStatementKind::Insert
+            | MySqlStatementKind::Replace
+            | MySqlStatementKind::Update { .. }
+            | MySqlStatementKind::Delete { .. }
+    )
+}
+
+pub fn mysql_statement_is_persistent_schema_change(kind: &MySqlStatementKind) -> bool {
+    mysql_statement_is_schema_modifying(kind)
+        && !matches!(
+            kind,
+            MySqlStatementKind::CreateTable { temporary: true }
+                | MySqlStatementKind::DropTable { temporary: true }
+        )
+}
+
+pub fn classify_mysql_multi_statement(
+    sql: &str,
+    selected_database: Option<&str>,
+) -> Result<Vec<MySqlStatement>, String> {
+    if statement_contains_unsupported_mysql_control(sql) {
+        return Err("unsupported MySQL session or table-lock statement".to_string());
+    }
+    let statements = match split_mysql_statements(sql) {
+        Ok(statements) if !statements.is_empty() => statements,
+        Ok(_) => return Err("Empty MySQL input".to_string()),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    let mut classified = Vec::with_capacity(statements.len());
+    for statement_sql in statements {
+        let statement =
+            classify_mysql_statement(&statement_sql).map_err(|error| error.to_string())?;
+        if matches!(statement.kind, MySqlStatementKind::Replace) {
+            return Err("MySQL REPLACE execution is not supported".to_string());
+        }
+        if matches!(
+            statement.kind,
+            MySqlStatementKind::Select | MySqlStatementKind::Table
+        ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
+        {
+            return Err("MySQL SELECT INTO clauses are not supported".to_string());
+        }
+        if (mysql_statement_is_schema_modifying(&statement.kind)
+            || mysql_statement_is_data_modifying(&statement.kind))
+            && !target_is_selected_database(&statement, selected_database)
+        {
+            return Err("MySQL target must be in the selected database".to_string());
+        }
+        classified.push(statement);
+    }
+
+    validate_mysql_submission_state(&classified, selected_database)?;
+    Ok(classified)
+}
+
+fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
+    Some(format!(
+        "{}:{}",
+        statement
+            .target_database
+            .as_deref()
+            .or(selected_database)
+            .unwrap_or_default(),
+        statement.target.as_deref()?.to_ascii_uppercase()
+    ))
+}
+
+fn validate_mysql_submission_state(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+) -> Result<(), String> {
+    let mut transaction_open = false;
+    let mut savepoints = Vec::<String>::new();
+    let mut temporary_tables = Vec::<String>::new();
+
+    for statement in statements {
+        match &statement.kind {
+            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
+                if transaction_open {
+                    return Err("nested MySQL transactions are not supported".to_string());
+                }
+                transaction_open = true;
+                savepoints.clear();
+            }
+            MySqlStatementKind::Commit | MySqlStatementKind::Rollback => {
+                transaction_open = false;
+                savepoints.clear();
+            }
+            MySqlStatementKind::Savepoint => {
+                if !transaction_open {
+                    return Err("MySQL SAVEPOINT requires an explicit transaction".to_string());
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
+                savepoints.push(name.to_string());
+            }
+            MySqlStatementKind::RollbackToSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL ROLLBACK TO SAVEPOINT requires an explicit transaction".to_string(),
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.truncate(index + 1);
+            }
+            MySqlStatementKind::ReleaseSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL RELEASE SAVEPOINT requires an explicit transaction".to_string()
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.remove(index);
+            }
+            MySqlStatementKind::CreateTable { temporary: true } => {
+                let key = mysql_target_key(statement, selected_database)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                if temporary_tables.iter().any(|current| current == &key) {
+                    return Err("MySQL temporary table is created more than once".to_string());
+                }
+                temporary_tables.push(key);
+            }
+            MySqlStatementKind::DropTable { temporary: true } => {
+                let key = mysql_target_key(statement, selected_database)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                let Some(index) = temporary_tables.iter().position(|current| current == &key)
+                else {
+                    return Err(
+                        "MySQL temporary tables must be created and dropped in one submission"
+                            .to_string(),
+                    );
+                };
+                temporary_tables.remove(index);
+            }
+            kind if transaction_open && mysql_statement_is_persistent_schema_change(kind) => {
+                return Err(
+                    "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    if transaction_open {
+        return Err("MySQL explicit transaction must finish in one submission".to_string());
+    }
+    Ok(())
 }
 
 pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {

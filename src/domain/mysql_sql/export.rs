@@ -1,5 +1,4 @@
-use super::mysql_statement::MySqlStatementKind;
-use crate::policy::write::sql_risk::{MultiStatementDecision, evaluate_mysql_multi_statement};
+use super::{MySqlStatementKind, classify_mysql_multi_statement, has_mysql_read_only_side_effect};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MySqlExportPlan {
@@ -8,17 +7,21 @@ pub enum MySqlExportPlan {
 }
 
 pub fn mysql_export_plan(query: &str) -> Option<MySqlExportPlan> {
-    let MultiStatementDecision::Allow { statements, risk } =
-        evaluate_mysql_multi_statement(query, None)
-    else {
-        return None;
-    };
-    if !risk.read_only_allowed {
-        return None;
-    }
+    let statements = classify_mysql_multi_statement(query, None).ok()?;
     let [statement] = statements.as_slice() else {
         return None;
     };
+
+    if !matches!(
+        statement.kind,
+        MySqlStatementKind::Select
+            | MySqlStatementKind::Table
+            | MySqlStatementKind::Show
+            | MySqlStatementKind::Describe
+    ) || has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true)
+    {
+        return None;
+    }
 
     match statement.kind {
         MySqlStatementKind::Select => Some(MySqlExportPlan::CountRows {

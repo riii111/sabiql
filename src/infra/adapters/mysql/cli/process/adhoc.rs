@@ -4,9 +4,11 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use crate::app::policy::sql::mysql_statement::{MySqlStatement, MySqlStatementKind};
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::RefreshScope;
+use crate::domain::{
+    RefreshScope,
+    mysql_sql::{MySqlStatement, MySqlStatementKind},
+};
 
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 use super::super::policy::{

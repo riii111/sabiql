@@ -2,11 +2,13 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{DatabaseType, QuerySource, QueryValue};
+use crate::domain::{
+    DatabaseType, QuerySource, QueryValue,
+    mysql_sql::{MySqlExportPlan, mysql_export_plan},
+};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
-use crate::policy::sql::mysql_export::{MySqlExportPlan, mysql_export_plan};
 use crate::policy::sql::sqlite_export::{SqliteExportPlan, sqlite_export_plan};
 use crate::services::AppServices;
 use crate::update::action::Action;
