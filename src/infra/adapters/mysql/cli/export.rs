@@ -20,7 +20,8 @@ use super::pipe::MysqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    finish_mysql_session, mysql_metadata_columns, read_one_mysql_resultset, write_mysql_statement,
+    finish_mysql_session_after_result, mysql_metadata_columns, read_one_mysql_resultset,
+    write_mysql_statement,
 };
 #[cfg(unix)]
 use super::pty::MysqlExportPtySource;
@@ -92,7 +93,7 @@ pub(super) async fn run_mysql_export_process(
         csv_writer.write_record(columns.iter()).await?;
     }
 
-    let result = finish_mysql_session(process).await?;
+    let result = finish_mysql_session_after_result(process).await?;
     validate_mysql_export_exit(result.status, result.forcibly_stopped, &result.error_bytes)?;
 
     csv_writer.finish().await
