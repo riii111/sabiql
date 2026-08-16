@@ -421,6 +421,29 @@ pub(super) async fn cleanup_mysql_process(process: &mut MysqlProcess) {
     let _ = process.child.wait().await;
 }
 
+pub(super) async fn run_mysql_process_with_timeout<T, F>(
+    execution_timeout: Duration,
+    process: &mut MysqlProcess,
+    execute: F,
+) -> Result<T, DbOperationError>
+where
+    F: AsyncFnOnce(&mut MysqlProcess) -> Result<T, DbOperationError>,
+{
+    match tokio::time::timeout(execution_timeout, execute(process)).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(error)) => {
+            cleanup_mysql_process(process).await;
+            Err(error)
+        }
+        Err(_) => {
+            cleanup_mysql_process(process).await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    }
+}
+
 pub(super) async fn read_one_mysql_resultset(
     process: &mut MysqlProcess,
 ) -> Result<Vec<u8>, DbOperationError> {
@@ -488,13 +511,6 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::adapters::csv_export::export_to_path;
-    use crate::app::policy::sql::mysql_statement::{
-        classify_mysql_statement, split_mysql_statements,
-    };
-    use crate::domain::{CommandTag, QueryValue, RefreshScope};
-    use tokio::time::timeout;
-
     use super::super::export::run_mysql_export_process;
     use super::super::xml::MysqlResultSet;
     use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
@@ -504,6 +520,11 @@ mod tests {
     };
     use super::single::run_mysql_single_statement_process;
     use super::*;
+    use crate::adapters::csv_export::export_to_path;
+    use crate::app::policy::sql::mysql_statement::{
+        classify_mysql_statement, split_mysql_statements,
+    };
+    use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
     async fn export_mysql_csv_with_program(
         program: &OsStr,
@@ -513,26 +534,12 @@ mod tests {
         execution_timeout: Duration,
     ) -> Result<(), DbOperationError> {
         let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-        let result = timeout(
-            execution_timeout,
-            run_mysql_export_process(&mut process, option_file, query, path),
-        )
-        .await;
-        match result {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => {
-                cleanup_mysql_process(&mut process).await;
-                Err(error)
-            }
-            Err(_) => {
-                cleanup_mysql_process(&mut process).await;
-                Err(DbOperationError::Timeout(
-                    "mysql query exceeded the execution timeout".to_string(),
-                ))
-            }
-        }
+        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
+            run_mysql_export_process(process, option_file, query, path).await
+        })
+        .await
     }
-    async fn run_mysql_adhoc_with_program(
+    async fn run_mysql_single_statement_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
         query: &str,
@@ -540,24 +547,10 @@ mod tests {
         execution_timeout: Duration,
     ) -> Result<MysqlResultSet, DbOperationError> {
         let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-        let result = timeout(
-            execution_timeout,
-            run_mysql_single_statement_process(&mut process, query, access_mode),
-        )
-        .await;
-        match result {
-            Ok(Ok(result_set)) => Ok(result_set),
-            Ok(Err(error)) => {
-                cleanup_mysql_process(&mut process).await;
-                Err(error)
-            }
-            Err(_) => {
-                cleanup_mysql_process(&mut process).await;
-                Err(DbOperationError::Timeout(
-                    "mysql query exceeded the execution timeout".to_string(),
-                ))
-            }
-        }
+        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
+            run_mysql_single_statement_process(process, query, access_mode).await
+        })
+        .await
     }
 
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
@@ -816,7 +809,7 @@ done
         let (_directory, program, log_file) = fake_mysql("success");
         let option_file = log_file.with_extension("cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_adhoc_with_program(
+        let result = run_mysql_single_statement_with_program(
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
@@ -959,7 +952,7 @@ done
         let (_directory, program, log_file) = fake_mysql("read_only_failure");
         let option_file = log_file.with_extension("cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_adhoc_with_program(
+        let result = run_mysql_single_statement_with_program(
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
@@ -1220,7 +1213,7 @@ done
             let (_directory, program, log_file) = fake_mysql(mode);
             let option_file = log_file.with_extension("cnf");
             fs::write(&option_file, "[client]\n").unwrap();
-            let result = run_mysql_adhoc_with_program(
+            let result = run_mysql_single_statement_with_program(
                 OsStr::new(&program),
                 &option_file,
                 "SELECT 123",
@@ -1240,7 +1233,7 @@ done
         let (_directory, program, log_file) = fake_mysql("timeout");
         let option_file = log_file.with_extension("cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_adhoc_with_program(
+        let result = run_mysql_single_statement_with_program(
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
@@ -1259,7 +1252,7 @@ done
         let (_directory, program, log_file) = fake_mysql("failure");
         let option_file = log_file.with_extension("cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_adhoc_with_program(
+        let result = run_mysql_single_statement_with_program(
             OsStr::new(&program),
             &option_file,
             "SELECT 123",
@@ -1276,7 +1269,7 @@ done
         let (_directory, program, log_file) = fake_mysql("no_result_failure");
         let option_file = log_file.with_extension("cnf");
         fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_adhoc_with_program(
+        let result = run_mysql_single_statement_with_program(
             OsStr::new(&program),
             &option_file,
             "SELECT 123",

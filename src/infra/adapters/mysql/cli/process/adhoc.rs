@@ -18,8 +18,8 @@ use super::super::policy::{
 use super::super::xml::MysqlResultSet;
 use super::metadata::mysql_metadata_columns;
 use super::{
-    MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    finish_mysql_session, finish_mysql_session_after_result, read_one_mysql_resultset,
+    MYSQL_QUERY_TIMEOUT, MysqlProcess, configure_mysql_session, finish_mysql_session,
+    finish_mysql_session_after_result, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
 
@@ -54,31 +54,17 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
         ));
     }
     let mut process = MysqlProcess::spawn_with_program(program, option_file)?;
-    let result = tokio::time::timeout(
-        execution_timeout,
+    run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
         run_mysql_adhoc_process(
-            &mut process,
+            process,
             option_file,
             statements,
             access_mode,
             expected_columns,
-        ),
-    )
-    .await;
-
-    match result {
-        Ok(Ok(result_set)) => Ok(result_set),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
+        )
+        .await
+    })
+    .await
 }
 
 struct MysqlStatementExecution {

@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
@@ -7,8 +6,8 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 use super::super::xml::{MysqlResultSet, parse_mysql_xml};
 use super::{
-    MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    finish_mysql_session, finish_mysql_session_after_result, read_one_mysql_resultset,
+    MYSQL_QUERY_TIMEOUT, MysqlProcess, configure_mysql_session, finish_mysql_session,
+    finish_mysql_session_after_result, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
 
@@ -18,24 +17,10 @@ pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
     access_mode: AccessMode,
 ) -> Result<MysqlResultSet, DbOperationError> {
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
-    let result = timeout(
-        MYSQL_QUERY_TIMEOUT,
-        run_mysql_single_statement_process(&mut process, query, access_mode),
-    )
-    .await;
-    match result {
-        Ok(Ok(result_set)) => Ok(result_set),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
+    run_mysql_process_with_timeout(MYSQL_QUERY_TIMEOUT, &mut process, async |process| {
+        run_mysql_single_statement_process(process, query, access_mode).await
+    })
+    .await
 }
 
 pub(super) async fn run_mysql_single_statement_process(
