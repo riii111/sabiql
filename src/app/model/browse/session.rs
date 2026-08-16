@@ -274,6 +274,13 @@ impl BrowseSession {
         self.connection_save_guard.store(0, Ordering::Release);
     }
 
+    pub fn cancel_connection_save_and_disconnect(&mut self) {
+        if self.connection_save_run.active_id().is_some() {
+            self.cancel_connection_save();
+            self.mark_disconnected();
+        }
+    }
+
     pub fn connection_save_guard(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.connection_save_guard)
     }
@@ -456,7 +463,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
-        self.cancel_connection_save();
+        self.cancel_connection_save_and_disconnect();
         self.clear_mysql_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }

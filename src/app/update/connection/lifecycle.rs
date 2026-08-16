@@ -22,7 +22,7 @@ pub fn reduce_connection_lifecycle(
 ) -> DispatchResult {
     match action {
         Action::TryConnect => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
@@ -74,7 +74,7 @@ pub fn reduce_connection_lifecycle(
         }
 
         Action::SwitchConnection(target) => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_error.clear();
             let ConnectionTarget {
                 id,

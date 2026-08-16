@@ -392,6 +392,48 @@ fn connection_error_collapsed() {
     insta::assert_snapshot!(output);
 }
 
+fn render_service_error_without_service_file_hint(save_and_connect: bool) -> String {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    state.session.activate_connection_with_dsn(
+        &sabiql_domain::ConnectionId::from_string("service"),
+        "service",
+        DatabaseType::PostgreSQL,
+        "service=mydb",
+    );
+    state
+        .runtime
+        .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
+    if save_and_connect {
+        state.connection_error.set_save_and_connect_error(
+            ConnectionErrorInfo::new("mysql save failed"),
+            DatabaseType::MySQL,
+        );
+    } else {
+        state.connection_error.set_connection_switch_error(
+            ConnectionErrorInfo::new("mysql switch failed"),
+            DatabaseType::MySQL,
+        );
+    }
+    state.modal.set_mode(InputMode::ConnectionError);
+
+    render_to_string(&mut terminal, &mut state)
+}
+
+#[test]
+fn connection_error_omits_service_file_hint_for_mysql_save() {
+    let output = render_service_error_without_service_file_hint(true);
+
+    assert!(!output.contains("pg_service.conf"));
+}
+
+#[test]
+fn connection_error_omits_service_file_hint_for_mysql_switch() {
+    let output = render_service_error_without_service_file_hint(false);
+
+    assert!(!output.contains("pg_service.conf"));
+}
+
 #[test]
 fn connection_error_expanded() {
     let mut state = create_test_state();

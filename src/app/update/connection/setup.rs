@@ -30,7 +30,7 @@ pub fn reduce_connection_setup(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_setup.reset();
             if !state.connections().is_empty() || state.session.dsn().is_some() {
                 state.connection_setup.set_first_run(false);
@@ -42,7 +42,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
         }
         Action::ConnectionEditLoaded(profile) => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
@@ -52,7 +52,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -225,7 +225,7 @@ pub fn reduce_connection_setup(
             ))
         }
         Action::ConnectionSetupCancel => {
-            state.session.cancel_connection_save();
+            state.session.cancel_connection_save_and_disconnect();
             if state.connection_setup.is_first_run() {
                 state.confirm_dialog.open(
                     "Confirm",
@@ -674,6 +674,67 @@ mod tests {
                 ConnectionState::Connecting
             );
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
+        }
+
+        #[test]
+        fn cancelled_save_can_be_submitted_again() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            assert!(state.session.connection_state().is_connecting());
+
+            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+            assert!(state.session.connection_state().is_not_connected());
+
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                .expect("second save handled");
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::SaveAndConnect { .. }))
+            );
+        }
+
+        #[test]
+        fn cancelled_save_can_retry_previous_connection() {
+            let mut state = AppState::new("test".to_string());
+            let previous_id = ConnectionId::from_string("previous");
+            state.session.activate_connection_with_dsn(
+                &previous_id,
+                "previous",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/previous",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            state.connection_setup.set_first_run(false);
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+
+            assert!(state.session.connection_state().is_not_connected());
+            assert_eq!(state.session.active_connection_id(), Some(&previous_id));
+            assert_eq!(state.session.dsn(), Some("postgres://localhost/previous"));
+
+            let effects = reduce_connection_lifecycle(
+                &mut state,
+                &Action::TryConnect,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("retry handled");
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(state.session.connection_state().is_connecting());
         }
 
         #[test]

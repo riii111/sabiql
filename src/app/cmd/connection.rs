@@ -442,7 +442,7 @@ mod tests {
         use super::*;
         use mockall::predicate::eq;
         use std::fs;
-        use std::sync::atomic::AtomicU64;
+        use std::sync::atomic::{AtomicU64, Ordering};
         use tempfile::tempdir;
 
         struct SqliteDsnBuilder;
@@ -605,6 +605,61 @@ mod tests {
                     run_id: 1,
                 } if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
             ));
+        }
+
+        #[tokio::test]
+        async fn mysql_profile_is_not_saved_when_run_is_cancelled_after_probe() {
+            let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
+            let run_guard = Arc::new(AtomicU64::new(1));
+            let guard_for_probe = Arc::clone(&run_guard);
+            let mut probe = MockMySqlConnectionProbe::new();
+            probe
+                .expect_probe()
+                .with(eq(dsn.to_string()))
+                .once()
+                .returning(move |_| {
+                    guard_for_probe.store(0, Ordering::Release);
+                    Ok(())
+                });
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                tx,
+                Arc::new(MySqlDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut renderer = NoopRenderer;
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "MySQL".to_string(),
+                        config: mysql_config(Some("app")),
+                        run_id: 1,
+                        run_guard,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                    .await
+                    .is_err()
+            );
         }
 
         #[tokio::test]
