@@ -66,6 +66,10 @@ case "${1:-}" in
                     ;;
             esac
         done
+        if [[ ! "$project" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            printf 'invalid fake Compose project name: %s\n' "$project" >&2
+            exit 1
+        fi
         printf '%s|%s|%s\n' "$project" "$command" "$*" >>"$compose_log"
         if [[ "$command" == port ]]; then
             port="$(printf '%s' "$project" | cksum | awk '{ print 30000 + ($1 % 20000) }')"

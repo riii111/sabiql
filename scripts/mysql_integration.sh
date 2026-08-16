@@ -17,6 +17,7 @@ readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
 readonly mysql_client_label_key='com.sabiql.mysql.integration'
 
 run_dir=''
+run_id=''
 temp_dir=''
 tls_dir=''
 compose_project=''
@@ -30,7 +31,7 @@ mysql_client_label=''
 cleanup_failed=0
 
 create_client_container_label() {
-    mysql_run_label="run-${repo_hash}-$(basename "$run_dir")"
+    mysql_run_label="run-${repo_hash}-${run_id}"
     mysql_client_label="${mysql_client_label_key}=${mysql_run_label}"
 }
 
@@ -43,11 +44,12 @@ prepare_run() {
 
     mkdir -p -- "$temp_root"
     run_dir="$(mktemp -d "$temp_root/run-XXXXXX")"
+    run_id="$(basename "$run_dir" | tr '[:upper:]' '[:lower:]')-$$"
     temp_dir="$run_dir"
     tls_dir="$temp_dir/tls"
     repo_hash_value="$(printf '%s' "$repo_root" | cksum | awk '{print $1}')"
     repo_hash="$repo_hash_value"
-    compose_project="sabiql-mysql-${repo_hash}-${run_dir##*/}"
+    compose_project="sabiql-mysql-${repo_hash}-${run_id}"
     compose_args=(
         --project-name "$compose_project"
         --file "$compose_file"
