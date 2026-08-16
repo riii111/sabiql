@@ -125,10 +125,23 @@ impl<R> MySqlXmlFieldLimitReader<R> {
                     }
                     true
                 } else {
-                    let pending_len = self.pending.len();
-                    self.pending.clear();
-                    self.pending_kind = None;
-                    self.count_field_bytes(pending_len)
+                    let keep = (1..target.len().min(self.pending.len()))
+                        .rev()
+                        .find(|&length| self.pending.ends_with(&target[..length]))
+                        .unwrap_or(0);
+                    let count = self.pending.len() - keep;
+                    if !self.count_field_bytes(count) {
+                        return false;
+                    }
+                    if keep == 0 {
+                        self.pending.clear();
+                        self.pending_kind = None;
+                    } else {
+                        let start = self.pending.len() - keep;
+                        self.pending.copy_within(start.., 0);
+                        self.pending.truncate(keep);
+                    }
+                    true
                 }
             }
             Some(MySqlXmlPendingKind::Entity) => {
@@ -729,6 +742,26 @@ line2]]></field>
         ];
 
         for xml in cases {
+            let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
+            let mut output = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut source, &mut output)
+                .await
+                .unwrap();
+            assert_eq!(output, xml.as_bytes());
+        }
+    }
+
+    #[tokio::test]
+    async fn handles_cdata_values_ending_in_brackets_before_the_next_field() {
+        let cases = [
+            format!("{}]", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 1)),
+            format!("{}]]", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 2)),
+        ];
+
+        for value in cases {
+            let xml = format!(
+                "<resultset><row><field name=\"payload\"><![CDATA[{value}]]></field><field name=\"next\">ok</field></row></resultset>"
+            );
             let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
             let mut output = Vec::new();
             tokio::io::AsyncReadExt::read_to_end(&mut source, &mut output)
