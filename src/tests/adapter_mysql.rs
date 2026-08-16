@@ -276,7 +276,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_tables_only_and_preserves_view_details() {
+    async fn loads_mysql_table_catalog_and_preserves_view_details() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
