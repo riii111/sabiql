@@ -250,7 +250,7 @@ pub fn reduce_execution(
     }
 }
 
-fn refresh_effects_for_scope(
+pub(super) fn refresh_effects_for_scope(
     state: &mut AppState,
     refresh_scope: RefreshScope,
     now: Instant,
