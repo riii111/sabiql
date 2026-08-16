@@ -125,18 +125,18 @@ pub(super) fn restore_current_mysql_cache(state: &mut AppState) {
         return;
     }
 
-    let target = ConnectionTarget {
-        id,
-        dsn,
-        name: state
-            .session
-            .active_connection_name()
-            .unwrap_or_default()
-            .to_string(),
-        database_type: DatabaseType::MySQL,
-        database,
-    };
-    restore_cache(state, &cache, &target);
+    match &cache.query_result {
+        Some(result) => state.query.set_current_result(result.clone()),
+        None => state.query.clear_current_result(),
+    }
+    state.query.restore_history(cache.result_history.clone());
+    state
+        .session
+        .mark_effective_user_loaded(cache.effective_user.clone());
+    state
+        .ui
+        .set_explorer_selection(Some(cache.explorer_selected));
+    state.ui.set_inspector_tab(cache.inspector_tab);
 }
 
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
