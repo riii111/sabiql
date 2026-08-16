@@ -250,24 +250,14 @@ impl AppState {
     }
 
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
-        if self.session.active_database_type() == Some(DatabaseType::MySQL) {
-            InspectorViewModel::build_with_detail_state(
-                self.session.active_engine_feature_profile(),
-                self.ui.inspector_tab(),
-                self.session.table_detail(),
-                self.session.table_detail_state(),
-                DatabaseType::MySQL,
-                ddl_generator,
-            )
-        } else {
-            InspectorViewModel::build(
-                self.session.active_engine_feature_profile(),
-                self.ui.inspector_tab(),
-                self.session.table_detail(),
-                self.session.active_database_type_or_default(),
-                ddl_generator,
-            )
-        }
+        InspectorViewModel::build_with_detail_state(
+            self.session.active_engine_feature_profile(),
+            self.ui.inspector_tab(),
+            self.session.table_detail(),
+            self.session.table_detail_state(),
+            self.session.active_database_type_or_default(),
+            ddl_generator,
+        )
     }
 
     pub fn json_detail_editor_visible_rows(&self) -> usize {
@@ -532,13 +522,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn non_mysql_inspector_keeps_legacy_no_table_state() {
+    #[rstest]
+    fn inspector_view_model_exposes_not_selected_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
         let mut state = make_state();
-        activate_postgres_connection(&mut state, "postgres://localhost/test");
-        let _ = state
-            .session
-            .select_table("public", "users", &mut state.query);
+        activate_database_connection(&mut state, database_type);
 
         let services = AppServices::stub();
         let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
@@ -551,6 +541,83 @@ mod tests {
             view_model.empty_state(),
             Some(InspectorEmptyState::NoTableSelected)
         );
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_loading_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(view_model.load_state(), &InspectorLoadState::Loading);
+        assert_eq!(view_model.empty_state(), None);
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_error_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        assert!(state.session.mark_table_detail_failed(
+            state.session.selection_generation(),
+            "permission denied".to_string()
+        ));
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(
+            view_model.load_state(),
+            &InspectorLoadState::Error("permission denied".to_string())
+        );
+        assert_eq!(view_model.empty_state(), None);
+    }
+
+    #[rstest]
+    fn inspector_view_model_exposes_loaded_for_each_database_type(
+        #[values(DatabaseType::MySQL, DatabaseType::PostgreSQL, DatabaseType::SQLite)]
+        database_type: DatabaseType,
+    ) {
+        let mut state = make_state();
+        activate_database_connection(&mut state, database_type);
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        assert!(
+            state
+                .session
+                .set_table_detail(make_table_detail(), generation)
+        );
+
+        let services = AppServices::stub();
+        let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
+
+        assert_eq!(view_model.load_state(), &InspectorLoadState::Success);
+        assert!(view_model.section().is_some());
+    }
+
+    fn activate_database_connection(state: &mut AppState, database_type: DatabaseType) {
+        let (name, dsn) = match database_type {
+            DatabaseType::MySQL => ("mysql", "mysql://localhost/test"),
+            DatabaseType::PostgreSQL => ("postgres", "postgres://localhost/test"),
+            DatabaseType::SQLite => ("sqlite", "sqlite:///tmp/app.db"),
+        };
+        state
+            .session
+            .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
     }
 
     #[test]
