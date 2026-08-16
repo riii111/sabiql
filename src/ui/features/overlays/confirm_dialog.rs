@@ -7,7 +7,7 @@ use crate::app::model::shared::render_output::ConfirmPreviewLayout;
 use crate::app::policy::json::json_diff::JsonDiffLine;
 use crate::app::policy::write::write_guardrails::{RiskLevel, WriteOperation};
 use crate::app::policy::write::write_update::escape_preview_value;
-use crate::domain::QueryValue;
+use crate::domain::{DatabaseType, QueryValue};
 use crate::primitives::atoms::highlight_sql;
 use crate::primitives::molecules::{FooterHintBar, render_modal, render_modal_with_border_color};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -181,9 +181,10 @@ impl ConfirmDialog {
             "SQL Preview",
             Style::default().fg(theme.semantic.text.secondary),
         )]));
+        let database_type = state.session.active_database_type_or_default();
         for sql_line in preview.sql.lines() {
             let indented = format!("  {sql_line}");
-            content_lines.push(Self::highlight_sql_line(&indented, theme));
+            content_lines.push(Self::highlight_sql_line(&indented, database_type, theme));
         }
 
         content_lines.push(Line::from(""));
@@ -315,8 +316,12 @@ impl ConfirmDialog {
         }
     }
 
-    fn highlight_sql_line(line: &str, theme: &ThemePalette) -> Line<'static> {
-        highlight_sql(line, theme)
+    fn highlight_sql_line(
+        line: &str,
+        database_type: DatabaseType,
+        theme: &ThemePalette,
+    ) -> Line<'static> {
+        highlight_sql(line, database_type, theme)
             .into_iter()
             .next()
             .unwrap_or_else(|| Line::from(""))
