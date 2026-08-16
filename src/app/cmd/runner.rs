@@ -300,7 +300,7 @@ mod tests {
     use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseMetadata, TableSummary};
     use crate::model::shared::render_output::{
-        BrowseLayout, DetailLayout, ExplorerLayout, JsonbDetailLayout,
+        BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
     };
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -323,13 +323,13 @@ mod tests {
 
     mod render {
         use super::*;
-        use crate::model::browse::jsonb_detail::JsonbDetailState;
+        use crate::model::browse::json_detail::JsonDetailState;
 
         struct ExplorerWidthRenderer {
             explorer_content_width: usize,
         }
 
-        struct JsonbVisibleRowsRenderer {
+        struct JsonVisibleRowsRenderer {
             visible_rows: usize,
         }
 
@@ -353,7 +353,7 @@ mod tests {
             }
         }
 
-        impl Renderer for JsonbVisibleRowsRenderer {
+        impl Renderer for JsonVisibleRowsRenderer {
             fn draw(
                 &mut self,
                 _state: &AppState,
@@ -362,7 +362,7 @@ mod tests {
             ) -> RenderResult<RenderOutput> {
                 Ok(RenderOutput {
                     details: DetailLayout {
-                        jsonb: Some(JsonbDetailLayout {
+                        json: Some(JsonDetailLayout {
                             editor_visible_rows: self.visible_rows,
                         }),
                         ..DetailLayout::default()
@@ -443,7 +443,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn recomputes_jsonb_editor_scroll_when_visible_rows_change() {
+        async fn recomputes_json_editor_scroll_when_visible_rows_change() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
@@ -454,20 +454,20 @@ mod tests {
             );
 
             let state = &mut AppState::new("test".to_string());
-            state.jsonb_detail = JsonbDetailState::open_pretty(
+            state.json_detail = JsonDetailState::open_pretty(
                 0,
                 0,
                 "settings".to_string(),
                 "{}".to_string(),
                 "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
             );
-            state.jsonb_detail.editor_mut().set_content_with_cursor(
+            state.json_detail.editor_mut().set_content_with_cursor(
                 "{\n  \"a\": 1,\n  \"b\": 2,\n  \"c\": 3\n}".to_string(),
                 29,
             );
 
             let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = JsonbVisibleRowsRenderer { visible_rows: 2 };
+            let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
 
             runner
                 .run(
@@ -480,9 +480,9 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(state.ui.jsonb_detail_editor_visible_rows(), 2);
-            assert_eq!(state.jsonb_detail.editor().cursor_to_position().0, 3);
-            assert_eq!(state.jsonb_detail.editor().scroll_row(), 2);
+            assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
+            assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
+            assert_eq!(state.json_detail.editor().scroll_row(), 2);
         }
     }
 

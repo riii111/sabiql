@@ -1,6 +1,6 @@
 use super::handling::PreviewCellTextDiffHandling;
 
-fn normalize_jsonb_for_diff(value: &str) -> String {
+fn normalize_json_for_diff(value: &str) -> String {
     normalize_structured_json_for_write(value)
         .ok()
         .unwrap_or_else(|| value.to_string())
@@ -12,7 +12,7 @@ pub fn normalize_structured_json_for_write(value: &str) -> Result<String, serde_
 
 pub fn normalize_for_write_diff(value: &str, handling: PreviewCellTextDiffHandling) -> String {
     match handling {
-        PreviewCellTextDiffHandling::StructuredJson => normalize_jsonb_for_diff(value),
+        PreviewCellTextDiffHandling::StructuredJson => normalize_json_for_diff(value),
         PreviewCellTextDiffHandling::RawText => value.to_string(),
     }
 }
@@ -29,7 +29,7 @@ mod tests {
     use super::super::handling::CellPresentationPolicy;
 
     #[test]
-    fn jsonb_column_normalizes_key_order() {
+    fn json_column_normalizes_key_order() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
@@ -75,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_declared_type_stays_raw() {
+    fn sqlite_json_declared_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;

@@ -150,7 +150,7 @@ fn confirm_dialog_delete_preview_low_risk() {
 }
 
 #[test]
-fn confirm_dialog_update_preview_long_jsonb() {
+fn confirm_dialog_update_preview_long_json() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
@@ -167,7 +167,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
     let json_diff = compute_json_diff(long_before, long_after, 1);
     assert!(
         json_diff.is_some(),
-        "expected structured JSON diff for long_jsonb snapshot"
+        "expected structured JSON diff for long_json snapshot"
     );
     state
         .result_interaction
@@ -188,7 +188,7 @@ fn confirm_dialog_update_preview_long_jsonb() {
 }
 
 #[test]
-fn confirm_dialog_update_preview_jsonb_key_order_normalized() {
+fn confirm_dialog_update_preview_json_key_order_normalized() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
@@ -367,7 +367,7 @@ fn confirm_dialog_update_preview_multi_column() {
 }
 
 #[test]
-fn confirm_dialog_update_preview_jsonb_structured_diff_with_ellipsis() {
+fn confirm_dialog_update_preview_json_structured_diff_with_ellipsis() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 
@@ -409,7 +409,7 @@ fn confirm_dialog_update_preview_jsonb_structured_diff_with_ellipsis() {
 }
 
 #[test]
-fn confirm_dialog_update_preview_jsonb_and_string_mixed() {
+fn confirm_dialog_update_preview_json_and_string_mixed() {
     let mut state = connected_state();
     let mut terminal = create_test_terminal();
 

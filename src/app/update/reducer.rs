@@ -332,7 +332,7 @@ mod tests {
                 .set_success_at("existing message".to_string(), now);
             state.result_interaction.start_yank_operator();
             let er_status = state.er_preparation.status();
-            let jsonb_flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
+            let json_flash_active = state.flash_timers.is_active(FlashId::JsonDetail, now);
 
             let effects = reduce(state, action, now, &AppServices::stub());
 
@@ -343,8 +343,8 @@ mod tests {
             assert!(state.result_interaction.is_yank_operator_pending());
             assert_eq!(state.er_preparation.status(), er_status);
             assert_eq!(
-                state.flash_timers.is_active(FlashId::JsonbDetail, now),
-                jsonb_flash_active
+                state.flash_timers.is_active(FlashId::JsonDetail, now),
+                json_flash_active
             );
         }
 
@@ -367,11 +367,11 @@ mod tests {
         }
 
         #[test]
-        fn unsupported_jsonb_and_analyze_actions_are_total_noops() {
-            let mut jsonb_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_state, "sqlite://test.db");
-            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbYankSuccess);
-            assert_unsupported_action_is_a_noop(&mut jsonb_state, Action::JsonbEnterEdit);
+        fn unsupported_json_and_analyze_actions_are_total_noops() {
+            let mut json_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_state, "sqlite://test.db");
+            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonYankSuccess);
+            assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
             let mut er_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut er_state, "sqlite://test.db");
@@ -380,27 +380,27 @@ mod tests {
             assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
             assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
 
-            let mut jsonb_edit_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_edit_state, "sqlite://test.db");
-            jsonb_edit_state.modal.set_mode(InputMode::JsonbEdit);
-            jsonb_edit_state
-                .jsonb_detail
+            let mut json_edit_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_edit_state, "sqlite://test.db");
+            json_edit_state.modal.set_mode(InputMode::JsonEdit);
+            json_edit_state
+                .json_detail
                 .editor_mut()
                 .set_content("before".to_string());
             assert_unsupported_action_is_a_noop(
-                &mut jsonb_edit_state,
+                &mut json_edit_state,
                 Action::Paste("after".to_string()),
             );
-            assert_eq!(jsonb_edit_state.jsonb_detail.editor().content(), "before");
+            assert_eq!(json_edit_state.json_detail.editor().content(), "before");
 
-            let mut jsonb_detail_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut jsonb_detail_state, "sqlite://test.db");
-            jsonb_detail_state.modal.set_mode(InputMode::JsonbDetail);
+            let mut json_detail_state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut json_detail_state, "sqlite://test.db");
+            json_detail_state.modal.set_mode(InputMode::JsonDetail);
             assert_unsupported_action_is_a_noop(
-                &mut jsonb_detail_state,
+                &mut json_detail_state,
                 Action::BeginKeySequence(Prefix::G),
             );
-            assert_eq!(jsonb_detail_state.ui.key_sequence(), KeySequenceState::Idle);
+            assert_eq!(json_detail_state.ui.key_sequence(), KeySequenceState::Idle);
 
             let mut analyze_state = create_test_state();
             test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");

@@ -1,5 +1,5 @@
 use crate::model::app_state::AppState;
-use crate::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::shared::help::HelpMode;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::SqlModalStatus;
@@ -39,12 +39,12 @@ pub fn resolve_input_interaction(state: &AppState) -> InputInteraction {
             }
             _ => InputInteraction::Viewing,
         },
-        InputMode::JsonbDetail => match state.jsonb_detail.mode() {
-            JsonbDetailMode::Viewing => InputInteraction::Viewing,
-            JsonbDetailMode::Editing => InputInteraction::VimEditing(InputTarget::JsonbEdit),
-            JsonbDetailMode::Searching => InputInteraction::FormEditing(InputTarget::JsonbSearch),
+        InputMode::JsonDetail => match state.json_detail.mode() {
+            JsonDetailMode::Viewing => InputInteraction::Viewing,
+            JsonDetailMode::Editing => InputInteraction::VimEditing(InputTarget::JsonEdit),
+            JsonDetailMode::Searching => InputInteraction::FormEditing(InputTarget::JsonSearch),
         },
-        InputMode::JsonbEdit => InputInteraction::VimEditing(InputTarget::JsonbEdit),
+        InputMode::JsonEdit => InputInteraction::VimEditing(InputTarget::JsonEdit),
         InputMode::Help => match state.ui.help().mode() {
             HelpMode::Viewing => InputInteraction::Viewing,
             HelpMode::EditingFilter => InputInteraction::FormEditing(InputTarget::HelpFilter),
@@ -63,24 +63,24 @@ mod tests {
         sql.modal.set_mode(InputMode::SqlModal);
         sql.sql_modal.enter_editing();
 
-        let mut jsonb_detail = AppState::new("test".to_string());
-        jsonb_detail.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_detail.jsonb_detail.set_mode(JsonbDetailMode::Editing);
+        let mut json_detail = AppState::new("test".to_string());
+        json_detail.modal.set_mode(InputMode::JsonDetail);
+        json_detail.json_detail.set_mode(JsonDetailMode::Editing);
 
-        let mut jsonb_editor = AppState::new("test".to_string());
-        jsonb_editor.modal.set_mode(InputMode::JsonbEdit);
+        let mut json_editor = AppState::new("test".to_string());
+        json_editor.modal.set_mode(InputMode::JsonEdit);
 
         assert_eq!(
             resolve_input_interaction(&sql),
             InputInteraction::VimEditing(InputTarget::SqlModal)
         );
         assert_eq!(
-            resolve_input_interaction(&jsonb_detail),
-            InputInteraction::VimEditing(InputTarget::JsonbEdit)
+            resolve_input_interaction(&json_detail),
+            InputInteraction::VimEditing(InputTarget::JsonEdit)
         );
         assert_eq!(
-            resolve_input_interaction(&jsonb_editor),
-            InputInteraction::VimEditing(InputTarget::JsonbEdit)
+            resolve_input_interaction(&json_editor),
+            InputInteraction::VimEditing(InputTarget::JsonEdit)
         );
     }
 }

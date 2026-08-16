@@ -3,28 +3,28 @@ use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::TextInputLike;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum JsonbDetailMode {
+pub enum JsonDetailMode {
     #[default]
     Viewing,
     Editing,
     Searching,
 }
 
-pub type JsonbSearchState = DetailSearchState;
+pub type JsonSearchState = DetailSearchState;
 
 #[derive(Debug, Clone, Default)]
-pub struct JsonbDetailState {
+pub struct JsonDetailState {
     detail: DetailContentState,
-    mode: JsonbDetailMode,
+    mode: JsonDetailMode,
     editor: MultiLineInputState,
     search: DetailSearchState,
     validation_error: Option<String>,
     pub(crate) active: bool,
 }
 
-impl JsonbDetailState {
+impl JsonDetailState {
     #[cfg(test)]
-    pub fn set_mode(&mut self, mode: JsonbDetailMode) {
+    pub fn set_mode(&mut self, mode: JsonDetailMode) {
         self.mode = mode;
     }
 
@@ -45,7 +45,7 @@ impl JsonbDetailState {
             ),
             editor: MultiLineInputState::new(pretty_original, 0),
             search: DetailSearchState::default(),
-            mode: JsonbDetailMode::Viewing,
+            mode: JsonDetailMode::Viewing,
             validation_error: None,
             active: true,
         }
@@ -67,7 +67,7 @@ impl JsonbDetailState {
         self.active
     }
 
-    pub fn mode(&self) -> JsonbDetailMode {
+    pub fn mode(&self) -> JsonDetailMode {
         self.mode
     }
 
@@ -103,33 +103,33 @@ impl JsonbDetailState {
         self.validation_error.as_deref()
     }
 
-    pub fn search(&self) -> &JsonbSearchState {
+    pub fn search(&self) -> &JsonSearchState {
         &self.search
     }
 
-    pub fn search_mut(&mut self) -> &mut JsonbSearchState {
+    pub fn search_mut(&mut self) -> &mut JsonSearchState {
         &mut self.search
     }
 
     pub fn enter_search(&mut self) {
-        self.mode = JsonbDetailMode::Searching;
+        self.mode = JsonDetailMode::Searching;
         self.search.reset();
         self.search.activate();
     }
 
     pub fn exit_search(&mut self) {
         self.search.deactivate();
-        self.mode = JsonbDetailMode::Viewing;
+        self.mode = JsonDetailMode::Viewing;
     }
 
     pub fn enter_edit(&mut self) {
         self.search.deactivate();
         self.validation_error = None;
-        self.mode = JsonbDetailMode::Editing;
+        self.mode = JsonDetailMode::Editing;
     }
 
     pub fn exit_edit(&mut self) {
-        self.mode = JsonbDetailMode::Viewing;
+        self.mode = JsonDetailMode::Viewing;
     }
 
     pub fn current_json_for_yank(&self) -> String {
@@ -160,12 +160,12 @@ impl JsonbDetailState {
 
 #[cfg(test)]
 mod tests {
-    use super::{JsonbDetailMode, JsonbDetailState};
+    use super::{JsonDetailMode, JsonDetailState};
     use crate::model::shared::text_input::TextInputLike;
 
     #[test]
     fn open_prettifies_valid_json_into_editor() {
-        let state = JsonbDetailState::open(
+        let state = JsonDetailState::open(
             0,
             0,
             "settings".to_string(),
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn open_pretty_uses_provided_pretty_content() {
-        let state = JsonbDetailState::open_pretty(
+        let state = JsonDetailState::open_pretty(
             0,
             0,
             "settings".to_string(),
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn open_falls_back_to_original_input_when_json_is_invalid() {
         let state =
-            JsonbDetailState::open(0, 0, "settings".to_string(), "{invalid json}".to_string());
+            JsonDetailState::open(0, 0, "settings".to_string(), "{invalid json}".to_string());
 
         assert_eq!(state.editor().cursor(), 0);
         assert_eq!(state.editor().content(), "{invalid json}");
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn enter_edit_deactivates_search() {
-        let mut state = JsonbDetailState::open(
+        let mut state = JsonDetailState::open(
             0,
             0,
             "settings".to_string(),
@@ -215,6 +215,6 @@ mod tests {
         state.enter_edit();
 
         assert!(!state.search().is_active());
-        assert_eq!(state.mode(), JsonbDetailMode::Editing);
+        assert_eq!(state.mode(), JsonDetailMode::Editing);
     }
 }

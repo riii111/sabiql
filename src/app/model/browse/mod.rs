@@ -1,7 +1,7 @@
 pub mod cell_detail;
 pub mod cell_edit;
 pub mod inspector_view_model;
-pub mod jsonb_detail;
+pub mod json_detail;
 pub mod query_execution;
 pub mod result_history;
 pub mod result_interaction;

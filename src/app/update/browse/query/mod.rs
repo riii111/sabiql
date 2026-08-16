@@ -153,7 +153,7 @@ pub(super) mod tests {
         }
     }
 
-    pub fn jsonb_table_detail() -> Table {
+    pub fn json_table_detail() -> Table {
         let mut detail = users_table_detail();
         detail
             .columns
@@ -163,7 +163,7 @@ pub(super) mod tests {
         detail
     }
 
-    pub fn editable_preview_result_with_jsonb() -> Arc<QueryResult> {
+    pub fn editable_preview_result_with_json() -> Arc<QueryResult> {
         Arc::new(QueryResult::success(
             "SELECT * FROM users".to_string(),
             vec!["id".to_string(), "name".to_string(), "metadata".to_string()],

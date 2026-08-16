@@ -15,7 +15,7 @@ use crate::app::services::AppServices;
 use crate::features::browse::cell_detail::{CellDetail, CellDetailRenderMetrics};
 use crate::features::browse::explorer::Explorer;
 use crate::features::browse::inspector::Inspector;
-use crate::features::browse::jsonb_detail::JsonbDetail;
+use crate::features::browse::json_detail::JsonDetail;
 use crate::features::browse::result::ResultPane;
 use crate::features::browse::row_detail::RowDetail;
 use crate::features::connections::error::ConnectionError;
@@ -123,9 +123,9 @@ impl MainLayout {
             None
         };
 
-        let jsonb_detail = match state.input_mode() {
-            InputMode::JsonbDetail | InputMode::JsonbEdit => {
-                JsonbDetail::render(frame, state, now, theme)
+        let json_detail = match state.input_mode() {
+            InputMode::JsonDetail | InputMode::JsonEdit => {
+                JsonDetail::render(frame, state, now, theme)
             }
             _ => None,
         };
@@ -181,7 +181,7 @@ impl MainLayout {
                 query_history: query_history_picker,
             },
             details: DetailLayout {
-                jsonb: jsonb_detail,
+                json: json_detail,
                 cell: cell_detail,
                 row: row_detail,
             },
