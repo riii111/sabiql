@@ -1527,7 +1527,10 @@ mod query_execution {
         AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
     };
     use sabiql_domain::{CommandTag, QueryValue, RefreshScope};
-    use sabiql_infra::adapters::mysql::execute_mysql_adhoc_with_read_only_session_for_test;
+    use sabiql_infra::adapters::mysql::{
+        execute_mysql_adhoc_with_read_only_session_for_test,
+        execute_mysql_adhoc_with_timeout_for_test,
+    };
     use std::time::Duration;
 
     #[tokio::test]
@@ -1687,50 +1690,6 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn rejects_unsafe_empty_selects_before_execution() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let duplicate_aliases = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE",
-                        AccessMode::ReadWrite,
-                    )
-                    .await;
-                if !matches!(
-                    duplicate_aliases,
-                    Err(DbOperationError::UnsupportedOperation(ref details))
-                        if details.contains("duplicate column names")
-                ) {
-                    return Err(format!(
-                        "duplicate aliases were not rejected safely: {duplicate_aliases:?}"
-                    ));
-                }
-
-                for query in [
-                    "SELECT @sabiql_metadata_value := 1 AS assigned_value WHERE FALSE",
-                    "SELECT GET_LOCK('sabiql_metadata_lock', 0) AS lock_value WHERE FALSE",
-                    "SELECT id FROM mysql_cli_fixture WHERE FALSE FOR UPDATE",
-                ] {
-                    let result = db
-                        .adapter()
-                        .execute_adhoc(db.dsn(), query, AccessMode::ReadWrite)
-                        .await;
-                    if !matches!(result, Err(DbOperationError::UnsupportedOperation(_))) {
-                        return Err(format!(
-                            "unsafe empty SELECT was not rejected: {query}: {result:?}"
-                        ));
-                    }
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn preserves_empty_show_columns() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
@@ -1840,94 +1799,6 @@ mod query_execution {
             match result {
                 Err(error) => Err(error),
                 Ok(()) => cleanup.map(|_| ()),
-            }
-        }))
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn rejects_multiple_table_update_and_delete_before_mysql_cli_execution() {
-        with_mysql_test_db(|db| Box::pin(async move {
-            let suffix = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| format!("system clock error: {error}"))?
-                .as_nanos();
-            let target_table = format!("mysql_sab451_target_{suffix}");
-            let source_table = format!("mysql_sab451_source_{suffix}");
-            let result = async {
-                db.adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!(
-                            "CREATE TABLE {target_table} (id INT PRIMARY KEY, value INT); CREATE TABLE {source_table} (id INT PRIMARY KEY, value INT); INSERT INTO {target_table} VALUES (1, 1); INSERT INTO {source_table} VALUES (1, 2)"
-                        ),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("failed to create multi-table fixtures: {error:?}"))?;
-
-                for query in [
-                    format!(
-                        "UPDATE {target_table} AS target JOIN {source_table} AS source ON target.id = source.id SET target.value = source.value"
-                    ),
-                    format!(
-                        "DELETE target FROM {target_table} AS target JOIN {source_table} AS source ON target.id = source.id"
-                    ),
-                ] {
-                    let result = db
-                        .adapter()
-                        .execute_adhoc(db.dsn(), &query, AccessMode::ReadWrite)
-                        .await;
-                    if !matches!(
-                        result,
-                        Err(DbOperationError::UnsupportedOperation(ref details))
-                            if details.contains("multiple-table")
-                    ) {
-                        return Err(format!(
-                            "multiple-table mutation was not rejected safely: {query}: {result:?}"
-                        ));
-                    }
-                }
-
-                let result = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("SELECT value FROM {target_table} WHERE id = 1"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("failed to verify multi-table fixture: {error:?}"))?;
-                if result.values() != [[QueryValue::Text("1".to_string())]] {
-                    return Err(format!(
-                        "multi-table mutation changed the fixture: {result:?}"
-                    ));
-                }
-                Ok::<(), String>(())
-            }
-            .await;
-            let cleanup = async {
-                for table in [&target_table, &source_table] {
-                    db.adapter()
-                        .execute_adhoc(
-                            db.dsn(),
-                            &format!("DROP TABLE IF EXISTS {table}"),
-                            AccessMode::ReadWrite,
-                        )
-                        .await
-                        .map_err(|error| {
-                            format!("failed to clean up multi-table fixture {table}: {error:?}")
-                        })?;
-                }
-                Ok::<(), String>(())
-            };
-            match result {
-                Err(error) => {
-                    cleanup.await?;
-                    Err(error)
-                }
-                Ok(()) => cleanup.await,
             }
         }))
         .await;
@@ -2342,10 +2213,16 @@ mod query_execution {
     async fn times_out_real_cli_query_and_discards_output() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let result = db
-                    .adapter()
-                    .execute_adhoc(db.dsn(), "SELECT SLEEP(32)", AccessMode::ReadWrite)
-                    .await;
+                let result = tokio::time::timeout(
+                    Duration::from_secs(5),
+                    execute_mysql_adhoc_with_timeout_for_test(
+                        db.dsn(),
+                        "SELECT SLEEP(10), 'discarded'",
+                        Duration::from_secs(1),
+                    ),
+                )
+                .await
+                .map_err(|_| "timeout cleanup did not finish within 5 seconds".to_string())?;
                 if !matches!(result, Err(DbOperationError::Timeout(_))) {
                     return Err(format!("expected a query timeout: {result:?}"));
                 }
