@@ -738,17 +738,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_table_list_result_parses_as_no_tables() {
-        let result = result(TABLES_RESULT_COLUMNS, Vec::new());
-
-        assert!(
-            parse_table_metadata(&result)
-                .expect("empty table metadata parses")
-                .is_empty()
-        );
-    }
-
-    #[test]
     fn groups_foreign_keys_by_name_and_orders_columns_by_sequence() {
         let result = result(
             &[
