@@ -17,7 +17,7 @@ pub struct MySqlTestDb {
 }
 
 impl MySqlTestDb {
-    pub async fn setup() -> Result<Self, DbOperationError> {
+    pub fn setup() -> Result<Self, DbOperationError> {
         let config = mysql_integration_config();
         let profile = ConnectionProfile::new_mysql(
             "mysql-integration",
@@ -99,7 +99,7 @@ pub async fn with_mysql_test_db<F>(test: F)
 where
     F: for<'db> FnOnce(&'db MySqlTestDb) -> MySqlFixtureTest<'db>,
 {
-    let db = MySqlTestDb::setup().await.unwrap();
+    let db = MySqlTestDb::setup().unwrap();
     let result = test(&db).await;
     if let Err(error) = result {
         panic!("{error}");
