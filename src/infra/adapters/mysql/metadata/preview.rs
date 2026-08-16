@@ -1,9 +1,22 @@
-use crate::app::ports::outbound::DbOperationError;
+use std::ffi::OsStr;
+use std::time::Duration;
+
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{Column, QueryValue};
 
-use super::super::cli::MysqlResultSet;
-use super::super::sql::preview_identity_alias;
-use super::catalog::{column_from_metadata, fetch_columns, primary_key_names};
+use super::super::{
+    cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet, validate_mysql_multi_query},
+    dsn::parse_and_validate_mysql_dsn,
+    option_file::MySqlOptionFile,
+    sql::{
+        COLUMN_METADATA_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS, build_preview_query,
+        columns_query, preview_identity_alias, unique_columns_query,
+    },
+};
+use super::catalog::{
+    MysqlColumnMetadata, column_from_metadata, mark_single_column_unique, parse_columns_for_table,
+    parse_unique_column_metadata, primary_key_names, validate_selected_schema_name,
+};
 
 #[derive(Debug, Clone)]
 pub(in crate::adapters::mysql) struct PreviewMetadata {
@@ -18,12 +31,145 @@ pub(in crate::adapters::mysql) struct ConvertedPreviewValues {
     pub(in crate::adapters::mysql) identity: Option<Vec<Vec<QueryValue>>>,
 }
 
-pub(in crate::adapters::mysql) async fn fetch_preview_metadata(
+pub(in crate::adapters::mysql) struct PreviewExecution {
+    pub(in crate::adapters::mysql) metadata: PreviewMetadata,
+    pub(in crate::adapters::mysql) result_set: MysqlResultSet,
+    pub(in crate::adapters::mysql) display_query: String,
+}
+
+pub(in crate::adapters::mysql) async fn execute_preview(
     dsn: &str,
     schema: &str,
     table: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<PreviewExecution, DbOperationError> {
+    execute_preview_with_program(
+        dsn,
+        schema,
+        table,
+        limit,
+        offset,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn execute_preview_with_program(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    limit: usize,
+    offset: usize,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<PreviewExecution, DbOperationError> {
+    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let database = target.database.as_deref().ok_or_else(|| {
+        DbOperationError::UnsupportedOperation(
+            "MySQL metadata requires a selected database".to_string(),
+        )
+    })?;
+    validate_selected_schema_name(database, schema)?;
+
+    let option_file = MySqlOptionFile::create(&target)?;
+    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let result = tokio::time::timeout(
+        timeout,
+        execute_preview_with_session(&mut session, database, schema, table, limit, offset),
+    )
+    .await;
+    let result = match result {
+        Ok(Ok(execution)) => Ok(execution),
+        Ok(Err(error)) => {
+            session.cleanup().await;
+            Err(error)
+        }
+        Err(_) => {
+            session.cleanup().await;
+            Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            ))
+        }
+    };
+    drop(option_file);
+    result
+}
+
+async fn execute_preview_with_session(
+    session: &mut MysqlMetadataSession,
+    database: &str,
+    schema: &str,
+    table: &str,
+    limit: usize,
+    offset: usize,
+) -> Result<PreviewExecution, DbOperationError> {
+    session.probe().await?;
+    session.prepare_read_only().await?;
+
+    let column_result = session
+        .execute_with_expected_columns(
+            &columns_query(schema, table),
+            COLUMN_METADATA_RESULT_COLUMNS,
+        )
+        .await?;
+    let unique_result = session
+        .execute_with_expected_columns(
+            &unique_columns_query(schema, table),
+            UNIQUE_COLUMN_RESULT_COLUMNS,
+        )
+        .await?;
+    let mut column_metadata = parse_columns_for_table(&column_result, schema, table)?;
+    mark_single_column_unique(
+        &mut column_metadata,
+        &parse_unique_column_metadata(&unique_result)?,
+    );
+    let metadata = preview_metadata_from_columns(&column_metadata, schema, table)?;
+    let query = build_preview_query(
+        schema,
+        table,
+        &metadata.order_columns,
+        &metadata.visible_columns,
+        &metadata.identity_columns,
+        limit,
+        offset,
+    );
+    validate_mysql_multi_query(&query, Some(database), AccessMode::ReadOnly)?;
+    let expected_columns =
+        preview_result_columns(&metadata.visible_columns, &metadata.identity_columns);
+    let result_set = session
+        .execute_with_expected_columns(
+            &query,
+            &expected_columns
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+        )
+        .await?;
+    let display_query = build_preview_query(
+        schema,
+        table,
+        &metadata.order_columns,
+        &metadata.visible_columns,
+        &[],
+        limit,
+        offset,
+    );
+    session.finish().await?;
+
+    Ok(PreviewExecution {
+        metadata,
+        result_set,
+        display_query,
+    })
+}
+
+fn preview_metadata_from_columns(
+    column_metadata: &[MysqlColumnMetadata],
+    schema: &str,
+    table: &str,
 ) -> Result<PreviewMetadata, DbOperationError> {
-    let column_metadata = fetch_columns(dsn, schema, table).await?;
     let columns = column_metadata
         .iter()
         .map(column_from_metadata)
@@ -38,7 +184,7 @@ pub(in crate::adapters::mysql) async fn fetch_preview_metadata(
             "MySQL object has no visible columns: {schema}.{table}"
         )));
     }
-    let primary_key_names = primary_key_names(&column_metadata);
+    let primary_key_names = primary_key_names(column_metadata);
     let identity_columns = if primary_key_names.iter().any(|name| {
         columns
             .iter()
@@ -253,8 +399,69 @@ fn is_sql_numeric_literal(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
+    use std::path::PathBuf;
+
     use super::*;
     use crate::domain::ColumnAttributes;
+
+    #[cfg(unix)]
+    fn fake_preview_mysql(metadata_failure: bool) -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let program = directory.path().join("mysql");
+        let log_path = directory.path().join("mysql.log");
+        let columns_result = if metadata_failure {
+            r#"printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'"#
+        } else {
+            r#"printf '%s\n' '<resultset><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA">INVISIBLE</field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row><row><field name="COLUMN_NAME">payload</field><field name="COLUMN_TYPE">varbinary(16)</field><field name="IS_NULLABLE">YES</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT"></field><field name="ORDINAL_POSITION">2</field><field name="PRIMARY_KEY_POSITION" xsi:nil="true"/></row></resultset>'"#
+        };
+        let script = format!(
+            r#"#!/bin/sh
+log='{log}'
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+printf 'process=%s option=%s\n' "$$" "$option" >> "$log"
+eof=$(printf '\004')
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  [ "$line" = "$eof" ] && exit 0
+  case "$line" in
+    ";") ;;
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    *"SET SESSION TRANSACTION READ ONLY"*) ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
+    *INFORMATION_SCHEMA.COLUMNS*)
+      {columns_result}
+      ;;
+    *INFORMATION_SCHEMA.STATISTICS*)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+    *"LIMIT 2 OFFSET 1"*)
+      printf '%s\n' '<resultset><row><field name="payload">0x00FF</field><field name="__sabiql_row_identity_0">1</field></row></resultset>'
+      ;;
+  esac
+done
+"#,
+            log = log_path.display(),
+            columns_result = columns_result,
+        );
+        fs::write(&program, script).expect("fake MySQL program");
+        let mut permissions = fs::metadata(&program)
+            .expect("fake MySQL metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&program, permissions).expect("fake MySQL permissions");
+        (directory, program, log_path)
+    }
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
         MysqlResultSet {
@@ -272,6 +479,99 @@ mod tests {
             comment: None,
             ordinal_position: 1,
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn preview_metadata_and_rows_share_one_mysql_session() {
+        let (_directory, program, log_path) = fake_preview_mysql(false);
+        let execution = execute_preview_with_program(
+            "mysql://preview:secret@localhost:3306/sabiql_test",
+            "sabiql_test",
+            "items",
+            2,
+            1,
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("preview execution");
+
+        assert_eq!(
+            execution
+                .metadata
+                .visible_columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["payload"]
+        );
+        assert_eq!(execution.metadata.order_columns, ["id"]);
+        assert_eq!(
+            execution
+                .metadata
+                .identity_columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .collect::<Vec<_>>(),
+            ["id"]
+        );
+        assert_eq!(execution.result_set.values.len(), 1);
+        assert_eq!(
+            execution.result_set.values[0][0],
+            QueryValue::Text("0x00FF".into())
+        );
+        assert_eq!(
+            execution.result_set.values[0][1],
+            QueryValue::Text("1".into())
+        );
+        assert_eq!(
+            execution.display_query,
+            "SELECT `payload` FROM `sabiql_test`.`items` ORDER BY `id` LIMIT 2 OFFSET 1"
+        );
+
+        let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
+        assert_eq!(
+            log.lines()
+                .filter(|line| line.starts_with("process="))
+                .count(),
+            1
+        );
+        let positions = [
+            "__sabiql_probe",
+            "SET SESSION TRANSACTION READ ONLY",
+            "INFORMATION_SCHEMA.COLUMNS",
+            "INFORMATION_SCHEMA.STATISTICS",
+            "LIMIT 2 OFFSET 1",
+        ]
+        .into_iter()
+        .map(|query| log.find(query).expect("query in transcript"))
+        .collect::<Vec<_>>();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn preview_metadata_failure_never_sends_user_select() {
+        let (_directory, program, log_path) = fake_preview_mysql(true);
+        let result = execute_preview_with_program(
+            "mysql://preview:secret@localhost:3306/sabiql_test",
+            "sabiql_test",
+            "items",
+            2,
+            1,
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await;
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::MetadataParseFailed(_))
+        ));
+        let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
+        assert!(log.contains("INFORMATION_SCHEMA.COLUMNS"));
+        assert!(!log.contains("LIMIT 2 OFFSET 1"), "{log}");
     }
 
     #[test]
@@ -384,5 +684,18 @@ mod tests {
             values.identity,
             Some(vec![vec![QueryValue::SqlLiteral("42".to_string())]])
         );
+    }
+
+    #[test]
+    fn preview_conversion_preserves_empty_result_shape_with_identity_columns() {
+        let columns = vec![column("payload", "text")];
+        let identity_columns = vec![column("id", "int")];
+        let result = result(&["payload", "__sabiql_row_identity_0"], Vec::new());
+
+        let values = convert_preview_values(&result, &columns, &identity_columns)
+            .expect("empty result conversion");
+
+        assert!(values.visible.is_empty());
+        assert_eq!(values.identity, Some(Vec::new()));
     }
 }
