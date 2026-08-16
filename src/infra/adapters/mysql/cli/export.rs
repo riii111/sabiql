@@ -12,8 +12,8 @@ use tokio::io::{AsyncRead, BufReader, ReadBuf};
 use uuid::Uuid;
 
 use crate::adapters::csv_export::CsvFileWriter;
-use crate::app::policy::sql::mysql_statement::classify_mysql_statement;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
+use crate::domain::mysql_sql::classify_mysql_statement;
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};

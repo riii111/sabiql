@@ -1,11 +1,10 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::DatabaseType;
+use crate::domain::{DatabaseType, mysql_sql::mysql_explain_rejection_message};
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::model::sql_editor::modal::SqlModalStatus;
-use crate::policy::sql::mysql_statement::mysql_explain_rejection_message;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;

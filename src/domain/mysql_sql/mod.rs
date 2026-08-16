@@ -1,10 +1,13 @@
 use std::fmt;
 
 mod classifier;
+mod export;
 mod lexer;
 mod side_effect;
 mod target;
 mod transaction;
+
+pub use export::{MySqlExportPlan, mysql_export_plan};
 
 use lexer::TokenKind;
 
@@ -99,6 +102,197 @@ pub fn target_is_selected_database(
 
 pub fn statement_contains_unsupported_mysql_control(sql: &str) -> bool {
     side_effect::statement_contains_unsupported_mysql_control(sql)
+}
+
+pub fn mysql_statement_is_schema_modifying(kind: &MySqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MySqlStatementKind::CreateTable { .. }
+            | MySqlStatementKind::AlterTable
+            | MySqlStatementKind::RenameTable
+            | MySqlStatementKind::DropTable { .. }
+            | MySqlStatementKind::TruncateTable
+            | MySqlStatementKind::CreateView
+            | MySqlStatementKind::AlterView
+            | MySqlStatementKind::DropView
+            | MySqlStatementKind::CreateIndex
+            | MySqlStatementKind::DropIndex
+    )
+}
+
+pub fn mysql_statement_is_data_modifying(kind: &MySqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MySqlStatementKind::Insert
+            | MySqlStatementKind::Replace
+            | MySqlStatementKind::Update { .. }
+            | MySqlStatementKind::Delete { .. }
+    )
+}
+
+pub fn mysql_statement_is_persistent_schema_change(kind: &MySqlStatementKind) -> bool {
+    mysql_statement_is_schema_modifying(kind)
+        && !matches!(
+            kind,
+            MySqlStatementKind::CreateTable { temporary: true }
+                | MySqlStatementKind::DropTable { temporary: true }
+        )
+}
+
+pub fn classify_mysql_multi_statement(
+    sql: &str,
+    selected_database: Option<&str>,
+) -> Result<Vec<MySqlStatement>, String> {
+    if statement_contains_unsupported_mysql_control(sql) {
+        return Err("unsupported MySQL session or table-lock statement".to_string());
+    }
+    let statements = match split_mysql_statements(sql) {
+        Ok(statements) if !statements.is_empty() => statements,
+        Ok(_) => return Err("Empty MySQL input".to_string()),
+        Err(error) => return Err(error.to_string()),
+    };
+
+    let mut classified = Vec::with_capacity(statements.len());
+    for statement_sql in statements {
+        let statement =
+            classify_mysql_statement(&statement_sql).map_err(|error| error.to_string())?;
+        if matches!(statement.kind, MySqlStatementKind::Replace) {
+            return Err("MySQL REPLACE execution is not supported".to_string());
+        }
+        if matches!(
+            statement.kind,
+            MySqlStatementKind::Select | MySqlStatementKind::Table
+        ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
+        {
+            return Err("MySQL SELECT INTO clauses are not supported".to_string());
+        }
+        if (mysql_statement_is_schema_modifying(&statement.kind)
+            || mysql_statement_is_data_modifying(&statement.kind))
+            && !target_is_selected_database(&statement, selected_database)
+        {
+            return Err("MySQL target must be in the selected database".to_string());
+        }
+        classified.push(statement);
+    }
+
+    validate_mysql_submission_state(&classified, selected_database)?;
+    Ok(classified)
+}
+
+fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
+    Some(format!(
+        "{}:{}",
+        statement
+            .target_database
+            .as_deref()
+            .or(selected_database)
+            .unwrap_or_default(),
+        statement.target.as_deref()?.to_ascii_uppercase()
+    ))
+}
+
+fn validate_mysql_submission_state(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+) -> Result<(), String> {
+    let mut transaction_open = false;
+    let mut savepoints = Vec::<String>::new();
+    let mut temporary_tables = Vec::<String>::new();
+
+    for statement in statements {
+        match &statement.kind {
+            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
+                if transaction_open {
+                    return Err("nested MySQL transactions are not supported".to_string());
+                }
+                transaction_open = true;
+                savepoints.clear();
+            }
+            MySqlStatementKind::Commit | MySqlStatementKind::Rollback => {
+                transaction_open = false;
+                savepoints.clear();
+            }
+            MySqlStatementKind::Savepoint => {
+                if !transaction_open {
+                    return Err("MySQL SAVEPOINT requires an explicit transaction".to_string());
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
+                savepoints.push(name.to_string());
+            }
+            MySqlStatementKind::RollbackToSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL ROLLBACK TO SAVEPOINT requires an explicit transaction".to_string(),
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL ROLLBACK TO SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.truncate(index + 1);
+            }
+            MySqlStatementKind::ReleaseSavepoint => {
+                if !transaction_open {
+                    return Err(
+                        "MySQL RELEASE SAVEPOINT requires an explicit transaction".to_string()
+                    );
+                }
+                let name = statement
+                    .target
+                    .as_deref()
+                    .ok_or_else(|| "MySQL SAVEPOINT name is ambiguous".to_string())?;
+                let Some(index) = savepoints
+                    .iter()
+                    .position(|current| current.eq_ignore_ascii_case(name))
+                else {
+                    return Err("MySQL RELEASE SAVEPOINT name is unknown".to_string());
+                };
+                savepoints.remove(index);
+            }
+            MySqlStatementKind::CreateTable { temporary: true } => {
+                let key = mysql_target_key(statement, selected_database)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                if temporary_tables.iter().any(|current| current == &key) {
+                    return Err("MySQL temporary table is created more than once".to_string());
+                }
+                temporary_tables.push(key);
+            }
+            MySqlStatementKind::DropTable { temporary: true } => {
+                let key = mysql_target_key(statement, selected_database)
+                    .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
+                let Some(index) = temporary_tables.iter().position(|current| current == &key)
+                else {
+                    return Err(
+                        "MySQL temporary tables must be created and dropped in one submission"
+                            .to_string(),
+                    );
+                };
+                temporary_tables.remove(index);
+            }
+            kind if transaction_open && mysql_statement_is_persistent_schema_change(kind) => {
+                return Err(
+                    "MySQL persistent DDL causes an implicit commit and cannot be rolled back with the surrounding transaction"
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    if transaction_open {
+        return Err("MySQL explicit transaction must finish in one submission".to_string());
+    }
+    Ok(())
 }
 
 pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
@@ -424,6 +618,275 @@ mod tests {
         ] {
             let error = classify_mysql_statement(sql).unwrap_err();
             assert!(error.0.contains("multiple-table"), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn classifies_mysql_multi_statement_for_execution() {
+        let statements =
+            classify_mysql_multi_statement("UPDATE items SET value = 1; SELECT 2", Some("app"))
+                .expect("valid MySQL statements");
+
+        assert!(matches!(
+            statements[0].kind,
+            MySqlStatementKind::Update { has_where: false }
+        ));
+        assert_eq!(statements[1].sql, "SELECT 2");
+    }
+
+    #[test]
+    fn accepts_comments_hints_and_version_comments() {
+        assert!(
+            classify_mysql_multi_statement(
+                "SELECT /*+ MAX_EXECUTION_TIME(1000) */ 1 # trailing\n",
+                Some("app")
+            )
+            .is_ok()
+        );
+        assert!(classify_mysql_multi_statement("/*!80000 SELECT 1 */", Some("app")).is_ok());
+    }
+
+    #[test]
+    fn distinguishes_persistent_mysql_schema_changes_from_temporary_tables() {
+        assert!(mysql_statement_is_persistent_schema_change(
+            &MySqlStatementKind::CreateTable { temporary: false }
+        ));
+        assert!(!mysql_statement_is_persistent_schema_change(
+            &MySqlStatementKind::CreateTable { temporary: true }
+        ));
+        assert!(!mysql_statement_is_persistent_schema_change(
+            &MySqlStatementKind::DropTable { temporary: true }
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_mysql_scripts_before_execution() {
+        for sql in [
+            "SELECT 'unfinished",
+            "SELECT 1 /* unfinished",
+            "MERGE INTO items USING source ON items.id = source.id",
+            "REPLACE INTO items VALUES (1)",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_mysql_split_errors_for_callers() {
+        assert!(classify_mysql_multi_statement("SELECT 'unfinished", Some("app")).is_err());
+        assert!(classify_mysql_multi_statement("SELECT 1 /* unfinished", Some("app")).is_err());
+    }
+
+    #[test]
+    fn rejects_top_level_into_clauses_before_execution() {
+        for sql in [
+            "SELECT id INTO OUTFILE '/tmp/result' FROM items",
+            "SELECT id INTO DUMPFILE '/tmp/result' FROM items",
+            "SELECT id INTO @value FROM items",
+            "TABLE items INTO OUTFILE '/tmp/result'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
+        ] {
+            let error = classify_mysql_multi_statement(sql, Some("app")).unwrap_err();
+            assert!(error.contains("SELECT INTO clauses"), "{sql}: {error}");
+        }
+        assert!(
+            classify_mysql_multi_statement(
+                "WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows",
+                Some("app")
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn rejects_unsupported_controls_and_statements_before_execution() {
+        for sql in [
+            "USE app",
+            "SET sql_mode = 'ANSI_QUOTES'",
+            "LOCK TABLES items READ",
+            "UNLOCK TABLES",
+            "REPLACE INTO items VALUES (1)",
+            "CALL do_work()",
+            "LOAD DATA INFILE 'x' INTO TABLE items",
+            "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
+            "SELECT 1 /*!40101 + 1 */",
+            "DELIMITER //\nSELECT 1//",
+            "charset utf8mb4\nSELECT 1",
+            "source ./script.sql",
+            "system echo unsafe",
+            "\\C /tmp/other.sock\nSELECT 1",
+            "SELECT 1\n\\! echo unsafe",
+            "SELECT 1\nsystem echo unsafe",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "SELECT 'source ./script.sql\\n'",
+            "SELECT /* source ./script.sql */ 1",
+            "SELECT `system echo unsafe`",
+            "UPDATE items\nSET value = 1 WHERE id = 1",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_ambiguous_mysql_mutation_targets() {
+        for sql in [
+            "ALTER TABLE",
+            "ALTER TABLE ADD COLUMN value INT",
+            "ALTER TABLE ALTER COLUMN value DROP DEFAULT",
+            "ALTER TABLE DROP COLUMN value",
+            "ALTER TABLE MODIFY COLUMN value INT",
+            "ALTER TABLE RENAME TO archived_items",
+            "ALTER TABLE TRUNCATE PARTITION p0",
+            "ALTER TABLE LOCK=EXCLUSIVE",
+            "ALTER TABLE PARTITION BY HASH(id)",
+            "ALTER TABLE FORCE",
+            "ALTER TABLE ORDER BY value",
+            "ALTER TABLE SECONDARY_LOAD",
+            "ALTER TABLE SECONDARY_LOAD PARTITION (p0)",
+            "ALTER TABLE SECONDARY_UNLOAD",
+            "ALTER TABLE SECONDARY_UNLOAD PARTITION (p0)",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn ddl_rejects_a_different_database() {
+        for sql in [
+            "ALTER TABLE other.items ADD COLUMN value INT",
+            "ALTER TABLE app.items RENAME TO other.archived_items",
+            "ALTER TABLE items RENAME TO other.archived_items",
+            "ALTER TABLE app.items RENAME AS other.archived_items",
+            "RENAME TABLE app.items TO other.archived_items",
+            "DROP TABLE app.keep, other.drop_me",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "ALTER TABLE app.items ADD COLUMN value INT",
+            "RENAME TABLE items TO app.archived_items",
+            "ALTER TABLE app.items RENAME TO app.archived_items",
+            "ALTER TABLE app.items RENAME AS app.archived_items",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                "{sql}"
+            );
+        }
+        assert!(classify_mysql_multi_statement("CREATE TABLE items (id INT)", None).is_err());
+    }
+
+    #[test]
+    fn qualified_mysql_mutations_require_exact_selected_database() {
+        for sql in [
+            "INSERT INTO other.items VALUES (1)",
+            "UPDATE other.items SET value = 1",
+            "DELETE FROM other.items WHERE id = 1",
+            "INSERT INTO APP.items VALUES (1)",
+            "UPDATE APP.items SET value = 1",
+            "DELETE FROM APP.items WHERE id = 1",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+
+        for sql in [
+            "INSERT INTO items VALUES (1)",
+            "UPDATE items SET value = 1",
+            "DELETE FROM items WHERE id = 1",
+            "INSERT INTO app.items VALUES (1)",
+            "UPDATE app.items SET value = 1",
+            "DELETE FROM app.items WHERE id = 1",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rename_rejects_database_names_that_differ_only_by_case() {
+        for sql in [
+            "ALTER TABLE APP.items ADD COLUMN value INT",
+            "ALTER TABLE app.items RENAME TO APP.archived_items",
+            "RENAME TABLE app.items TO APP.archived_items",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn transaction_modifiers_are_rejected() {
+        for sql in [
+            "START TRANSACTION READ ONLY",
+            "COMMIT AND CHAIN",
+            "ROLLBACK AND NO CHAIN",
+            "ROLLBACK TO SAVEPOINT named extra",
+            "RELEASE SAVEPOINT named extra",
+            "BEGIN",
+            "BEGIN; UPDATE items SET value = 1",
+            "SAVEPOINT named",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_err(),
+                "{sql}"
+            );
+        }
+        for sql in [
+            "COMMIT",
+            "ROLLBACK",
+            "BEGIN; COMMIT",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ROLLBACK",
+            "START TRANSACTION; ROLLBACK",
+            "BEGIN; SAVEPOINT named; ROLLBACK TO named; RELEASE SAVEPOINT named; COMMIT",
+            "CREATE TEMPORARY TABLE temp_items (id INT); INSERT INTO temp_items VALUES (1); SELECT * FROM temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE app.temp_items",
+        ] {
+            assert!(
+                classify_mysql_multi_statement(sql, Some("app")).is_ok(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_persistent_ddl_inside_an_explicit_transaction() {
+        for sql in [
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE TABLE new_items (id INT); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; ALTER TABLE items ADD COLUMN extra INT; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; TRUNCATE TABLE items; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE VIEW item_view AS SELECT 1; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP VIEW item_view; ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; CREATE INDEX item_index ON items (value); ROLLBACK",
+            "BEGIN; UPDATE items SET value = 1 WHERE id = 1; DROP INDEX item_index ON items; ROLLBACK",
+        ] {
+            let error = classify_mysql_multi_statement(sql, Some("app")).unwrap_err();
+            assert!(error.contains("implicit commit"), "{sql}: {error}");
         }
     }
 

@@ -1,9 +1,10 @@
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::policy::sql::mysql_statement::mysql_tree_explain_query_kind;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
-use crate::domain::{QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{
+    QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
+};
 use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;

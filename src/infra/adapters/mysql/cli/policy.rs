@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use crate::app::policy::sql::mysql_export::mysql_export_plan;
-use crate::app::policy::sql::mysql_statement::{
-    MySqlStatement, MySqlStatementKind, has_mysql_read_only_side_effect,
-};
-use crate::app::policy::write::sql_risk::{
-    MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
-    mysql_statement_is_persistent_schema_change,
-};
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::{CommandTag, QueryValue, RefreshScope};
+use crate::domain::{
+    CommandTag, QueryValue, RefreshScope,
+    mysql_sql::{
+        MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
+        has_mysql_read_only_side_effect, mysql_export_plan, mysql_statement_is_data_modifying,
+        mysql_statement_is_persistent_schema_change,
+    },
+};
 
 use super::super::sql;
 use super::xml::MySqlResultSet;
@@ -42,19 +41,24 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
     selected_database: Option<&str>,
     access_mode: AccessMode,
 ) -> Result<Vec<MySqlStatement>, DbOperationError> {
-    let decision = evaluate_mysql_multi_statement(query, selected_database);
-    let (statements, risk) = match decision {
-        MultiStatementDecision::Allow { statements, risk } => (statements, risk),
-        MultiStatementDecision::Block { reason } => {
-            return Err(DbOperationError::UnsupportedOperation(reason));
-        }
-    };
-    if access_mode.is_read_only() && !risk.read_only_allowed {
+    let statements = classify_mysql_multi_statement(query, selected_database)
+        .map_err(DbOperationError::UnsupportedOperation)?;
+    if access_mode.is_read_only() && !statements.iter().all(mysql_statement_is_read_only_allowed) {
         return Err(DbOperationError::PermissionDenied(
             "read-only mode blocks MySQL write statements".to_string(),
         ));
     }
     Ok(statements)
+}
+
+fn mysql_statement_is_read_only_allowed(statement: &MySqlStatement) -> bool {
+    matches!(
+        statement.kind,
+        MySqlStatementKind::Select
+            | MySqlStatementKind::Table
+            | MySqlStatementKind::Show
+            | MySqlStatementKind::Describe
+    ) && !has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true)
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_export_query(

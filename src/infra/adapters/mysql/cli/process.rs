@@ -536,9 +536,7 @@ mod tests {
     use super::single::run_mysql_single_statement_process;
     use super::*;
     use crate::adapters::csv_export::export_to_path;
-    use crate::app::policy::sql::mysql_statement::{
-        classify_mysql_statement, split_mysql_statements,
-    };
+    use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
     use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
     #[tokio::test]
