@@ -7,3 +7,33 @@ store-failure-output = true
 path = "junit-no-default-features.xml"
 store-success-output = false
 store-failure-output = true
+
+[test-groups]
+mysql-read-only = { max-threads = "num-cpus" }
+mysql-task-owned = { max-threads = "num-cpus" }
+mysql-shared-fixture = { max-threads = 1 }
+mysql-ddl-catalog = { max-threads = 1 }
+mysql-global-state = { max-threads = 1 }
+
+# These groups classify every ignored Oracle MySQL integration test. The first
+# two groups are safe to run together; the remaining groups are run separately
+# by scripts/mysql_integration.sh so they cannot overlap with any other class.
+[[profile.default.overrides]]
+filter = 'test(/^tests::adapter_mysql::connection::/) | test(/^tests::adapter_mysql::query_preview::/) | test(/^tests::adapter_mysql::metadata_fetch::registry_fetches_mysql_effective_user_for_the_connection_header$/) | test(/^tests::adapter_mysql::query_execution::preserves_xml_value_boundaries_for_real_mysql_results$/) | test(/^tests::adapter_mysql::query_execution::preserves_empty_select_columns_without_reexecution$/) | test(/^tests::adapter_mysql::query_execution::preserves_empty_show_columns$/) | test(/^tests::adapter_mysql::query_execution::preserves_empty_describe_columns$/) | test(/^tests::adapter_mysql::query_execution::preserves_empty_table_columns$/) | test(/^tests::adapter_mysql::query_execution::discards_real_cli_results_when_query_fails$/) | test(/^tests::adapter_mysql::query_execution::times_out_real_cli_query_and_discards_output$/) | test(/^tests::adapter_mysql::csv_export::exports_each_supported_mysql_result_statement$/) | test(/^tests::adapter_mysql::csv_export::exports_resultset_field_error_text_verbatim_through_real_mysql_cli$/) | test(/^tests::adapter_mysql::csv_export::exports_a_header_only_csv_for_an_empty_result$/)'
+test-group = 'mysql-read-only'
+
+[[profile.default.overrides]]
+filter = 'test(/^tests::adapter_mysql::write_operations::updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys$/) | test(/^tests::adapter_mysql::write_operations::updates_mysql_json_documents_as_whole_values$/) | test(/^tests::adapter_mysql::query_execution::keeps_temporary_table_state_inside_one_submission$/) | test(/^tests::adapter_mysql::query_execution::classifies_real_mysql_server_errors_by_server_code$/)'
+test-group = 'mysql-task-owned'
+
+[[profile.default.overrides]]
+filter = 'test(/^tests::adapter_mysql::metadata_fetch::reflects_single_column_unique_metadata_in_columns_and_signatures$/) | test(/^tests::adapter_mysql::write_operations::loads_and_updates_mysql_functional_index_table$/) | test(/^tests::adapter_mysql::write_operations::previews_and_writes_rows_using_hidden_mysql_primary_keys$/) | test(/^tests::adapter_mysql::query_execution::executes_multiple_statements_and_returns_only_the_last_result$/) | test(/^tests::adapter_mysql::query_execution::keeps_refresh_scope_and_discards_partial_result_after_a_later_failure$/) | test(/^tests::adapter_mysql::query_execution::preserves_explicit_transaction_order_and_scope$/) | test(/^tests::adapter_mysql::query_execution::rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior$/) | test(/^tests::adapter_mysql::query_execution::applies_read_only_session_before_adhoc_sql_and_preserves_fixture$/) | test(/^tests::adapter_mysql::csv_export::exports_with_a_read_only_session_and_rejects_writes$/)'
+test-group = 'mysql-shared-fixture'
+
+[[profile.default.overrides]]
+filter = 'test(/^tests::adapter_mysql::metadata_fetch::loads_mysql_tables_only_and_preserves_view_details$/) | test(/^tests::adapter_mysql::write_operations::executes_supported_mysql_ddl_forms_on_oracle_mysql_84$/) | test(/^tests::adapter_mysql::query_execution::reports_metadata_scope_when_a_later_ddl_statement_fails$/)'
+test-group = 'mysql-ddl-catalog'
+
+[[profile.default.overrides]]
+filter = 'test(/^tests::adapter_mysql::query_execution::rejects_next_process_when_global_sql_mode_is_unsupported$/)'
+test-group = 'mysql-global-state'

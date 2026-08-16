@@ -263,11 +263,19 @@ run_tests() {
     export SABIQL_MYSQL_TEST_SSL_CERT="$tls_dir/client-cert.pem"
     export SABIQL_MYSQL_TEST_SSL_KEY="$tls_dir/client-key.pem"
     export SABIQL_MYSQL_TRANSCRIPT=1
-    cargo nextest run -p sabiql --run-ignored ignored-only \
-        -E 'test(tests::adapter_mysql)' \
-        --test-threads 1 \
-        --no-fail-fast \
-        --hide-progress-bar
+    run_nextest_filter() {
+        local filter="$1"
+
+        cargo nextest run -p sabiql --run-ignored ignored-only \
+            -E "$filter" \
+            --no-fail-fast \
+            --hide-progress-bar
+    }
+
+    run_nextest_filter 'test(/^tests::adapter_mysql::connection::/) | test(/^tests::adapter_mysql::query_preview::/) | test(/^tests::adapter_mysql::metadata_fetch::registry_fetches_mysql_effective_user_for_the_connection_header$/) | test(/^tests::adapter_mysql::query_execution::preserves_xml_value_boundaries_for_real_mysql_results$/) | test(/^tests::adapter_mysql::query_execution::preserves_empty_/) | test(/^tests::adapter_mysql::query_execution::discards_real_cli_results_when_query_fails$/) | test(/^tests::adapter_mysql::query_execution::times_out_real_cli_query_and_discards_output$/) | test(/^tests::adapter_mysql::csv_export::exports_each_supported_mysql_result_statement$/) | test(/^tests::adapter_mysql::csv_export::exports_resultset_field_error_text_verbatim_through_real_mysql_cli$/) | test(/^tests::adapter_mysql::csv_export::exports_a_header_only_csv_for_an_empty_result$/) | test(/^tests::adapter_mysql::write_operations::updates_and_bulk_deletes_mysql_rows_with_visible_composite_primary_keys$/) | test(/^tests::adapter_mysql::write_operations::updates_mysql_json_documents_as_whole_values$/) | test(/^tests::adapter_mysql::query_execution::keeps_temporary_table_state_inside_one_submission$/) | test(/^tests::adapter_mysql::query_execution::classifies_real_mysql_server_errors_by_server_code$/)'
+    run_nextest_filter 'test(/^tests::adapter_mysql::metadata_fetch::reflects_single_column_unique_metadata_in_columns_and_signatures$/) | test(/^tests::adapter_mysql::write_operations::loads_and_updates_mysql_functional_index_table$/) | test(/^tests::adapter_mysql::write_operations::previews_and_writes_rows_using_hidden_mysql_primary_keys$/) | test(/^tests::adapter_mysql::query_execution::executes_multiple_statements_and_returns_only_the_last_result$/) | test(/^tests::adapter_mysql::query_execution::keeps_refresh_scope_and_discards_partial_result_after_a_later_failure$/) | test(/^tests::adapter_mysql::query_execution::preserves_explicit_transaction_order_and_scope$/) | test(/^tests::adapter_mysql::query_execution::rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior$/) | test(/^tests::adapter_mysql::query_execution::applies_read_only_session_before_adhoc_sql_and_preserves_fixture$/) | test(/^tests::adapter_mysql::csv_export::exports_with_a_read_only_session_and_rejects_writes$/)'
+    run_nextest_filter 'test(/^tests::adapter_mysql::metadata_fetch::loads_mysql_tables_only_and_preserves_view_details$/) | test(/^tests::adapter_mysql::write_operations::executes_supported_mysql_ddl_forms_on_oracle_mysql_84$/) | test(/^tests::adapter_mysql::query_execution::reports_metadata_scope_when_a_later_ddl_statement_fails$/)'
+    run_nextest_filter 'test(/^tests::adapter_mysql::query_execution::rejects_next_process_when_global_sql_mode_is_unsupported$/)'
 }
 
 case "${1:-test}" in
