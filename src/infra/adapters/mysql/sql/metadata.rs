@@ -53,7 +53,7 @@ pub(in crate::adapters::mysql) fn columns_query(schema: &str, table: &str) -> St
 
 pub(in crate::adapters::mysql) fn unique_columns_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.INDEX_NAME",
+        "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' AND s.SUB_PART IS NULL GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.INDEX_NAME",
         quote_string(schema),
         quote_string(table),
     )
@@ -81,7 +81,7 @@ pub(in crate::adapters::mysql) const SIGNATURE_COLUMNS_RESULT_COLUMNS: &[&str] =
     "ORDINAL_POSITION",
     "PRIMARY_KEY_POSITION",
 ];
-pub(in crate::adapters::mysql) const SIGNATURE_UNIQUE_COLUMNS_QUERY: &str = "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = DATABASE() AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.TABLE_NAME, s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.TABLE_NAME, s.INDEX_NAME";
+pub(in crate::adapters::mysql) const SIGNATURE_UNIQUE_COLUMNS_QUERY: &str = "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = DATABASE() AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' AND s.SUB_PART IS NULL GROUP BY s.TABLE_NAME, s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.TABLE_NAME, s.INDEX_NAME";
 pub(in crate::adapters::mysql) const SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS: &[&str] =
     &["TABLE_NAME", "COLUMN_NAME"];
 pub(in crate::adapters::mysql) const SIGNATURE_FOREIGN_KEYS_QUERY: &str = "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION";
@@ -92,6 +92,7 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
     "INDEX_TYPE",
     "SEQ_IN_INDEX",
     "COLUMN_NAME",
+    "SUB_PART",
     "EXPRESSION",
     "IS_PRIMARY",
 ];
@@ -105,16 +106,19 @@ pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
 const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
 const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
-pub(in crate::adapters::mysql) fn indexes_query(table: &str) -> String {
+pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        quote_string(schema),
         quote_string(table),
     )
 }
 
-pub(in crate::adapters::mysql) fn triggers_query(table: &str) -> String {
+pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+        quote_string(schema),
+        quote_string(schema),
         quote_string(table),
     )
 }
@@ -285,6 +289,7 @@ mod tests {
                 &format!("AND s.TABLE_NAME = {quoted_table}"),
                 "AND s.NON_UNIQUE = 0",
                 "AND s.INDEX_NAME <> 'PRIMARY'",
+                "AND s.SUB_PART IS NULL",
                 "GROUP BY s.INDEX_NAME",
                 "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
                 "ORDER BY s.INDEX_NAME",
@@ -307,27 +312,27 @@ mod tests {
             ],
         );
 
-        let indexes_sql = indexes_query(table);
+        let indexes_sql = indexes_query(schema, table);
         assert_contains_in_order(
             &indexes_sql,
             &[
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION",
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION",
                 "CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY",
                 "FROM INFORMATION_SCHEMA.STATISTICS AS s",
-                "WHERE s.TABLE_SCHEMA = DATABASE()",
+                &format!("WHERE s.TABLE_SCHEMA = {quoted_schema}"),
                 &format!("AND s.TABLE_NAME = {quoted_table}"),
                 "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
             ],
         );
 
-        let triggers_sql = triggers_query(table);
+        let triggers_sql = triggers_query(schema, table);
         assert_contains_in_order(
             &triggers_sql,
             &[
                 "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER",
                 "FROM INFORMATION_SCHEMA.TRIGGERS",
-                "WHERE TRIGGER_SCHEMA = DATABASE()",
-                "AND EVENT_OBJECT_SCHEMA = DATABASE()",
+                &format!("WHERE TRIGGER_SCHEMA = {quoted_schema}"),
+                &format!("AND EVENT_OBJECT_SCHEMA = {quoted_schema}"),
                 &format!("AND EVENT_OBJECT_TABLE = {quoted_table}"),
                 "ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
             ],
@@ -362,6 +367,7 @@ mod tests {
                 "WHERE s.TABLE_SCHEMA = DATABASE()",
                 "AND s.NON_UNIQUE = 0",
                 "AND s.INDEX_NAME <> 'PRIMARY'",
+                "AND s.SUB_PART IS NULL",
                 "GROUP BY s.TABLE_NAME, s.INDEX_NAME",
                 "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
                 "ORDER BY s.TABLE_NAME, s.INDEX_NAME",
@@ -388,8 +394,8 @@ mod tests {
             &columns_query(schema, table),
             &unique_columns_query(schema, table),
             &foreign_keys_query(schema, table),
-            &indexes_query(table),
-            &triggers_query(table),
+            &indexes_query(schema, table),
+            &triggers_query(schema, table),
         ] {
             assert!(!query.contains("UNION ALL SELECT NULL"));
         }
@@ -460,6 +466,7 @@ mod tests {
                 "INDEX_TYPE",
                 "SEQ_IN_INDEX",
                 "COLUMN_NAME",
+                "SUB_PART",
                 "EXPRESSION",
                 "IS_PRIMARY",
             ]

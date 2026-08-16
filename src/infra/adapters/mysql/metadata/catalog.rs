@@ -509,6 +509,26 @@ pub(super) fn parse_positive_i32(value: &QueryValue, field: &str) -> Result<i32,
     parse_positive_i32_text(required_text(value, field)?, field)
 }
 
+pub(super) fn parse_optional_positive_i32(
+    value: &QueryValue,
+    field: &str,
+) -> Result<Option<i32>, DbOperationError> {
+    optional_text(value, field)?
+        .map(|value| {
+            let value = value.parse::<i32>().map_err(|_| {
+                DbOperationError::MetadataParseFailed(format!(
+                    "invalid MySQL metadata integer: {field}"
+                ))
+            })?;
+            (value > 0).then_some(value).ok_or_else(|| {
+                DbOperationError::MetadataParseFailed(format!(
+                    "invalid MySQL metadata integer: {field}"
+                ))
+            })
+        })
+        .transpose()
+}
+
 fn parse_positive_i32_text(value: &str, field: &str) -> Result<i32, DbOperationError> {
     let value = value.parse::<i32>().map_err(|_| {
         DbOperationError::MetadataParseFailed(format!("invalid MySQL metadata integer: {field}"))
