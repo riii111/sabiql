@@ -344,12 +344,24 @@ mod tests {
         assert_eq!(
             spans
                 .iter()
-                .find(|span| span.content.as_ref().starts_with("#"))
+                .find(|span| span.content.as_ref().starts_with('#'))
                 .expect("MySQL hash comment should be highlighted")
                 .style
                 .fg,
             Some(DEFAULT_THEME.component.syntax.sql_comment)
         );
+
+        let backtick_lines = highlight_sql("SELECT `select`", DatabaseType::MySQL, &DEFAULT_THEME);
+        let backtick_span = backtick_lines[0]
+            .spans
+            .iter()
+            .find(|span| span.content.as_ref() == "`select`")
+            .expect("MySQL backtick identifier should remain one span");
+        assert_eq!(
+            backtick_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_text)
+        );
+        assert!(!backtick_span.style.add_modifier.contains(Modifier::BOLD));
     }
 
     #[test]
