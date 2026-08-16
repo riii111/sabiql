@@ -83,6 +83,14 @@ impl MetadataProvider for DbAdapterRegistry {
         }
     }
 
+    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => self.postgres.fetch_effective_user(dsn).await,
+            DatabaseType::SQLite => self.sqlite.fetch_effective_user(dsn).await,
+            DatabaseType::MySQL => self.mysql.fetch_effective_user(dsn).await,
+        }
+    }
+
     async fn fetch_table_detail(
         &self,
         dsn: &str,
@@ -512,6 +520,31 @@ mod tests {
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
 
         assert_eq!(metadata.table_summaries[0].qualified_name(), "main.users");
+    }
+
+    #[tokio::test]
+    async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
+
+        assert_eq!(effective_user, None);
+    }
+
+    #[tokio::test]
+    async fn mysql_effective_user_dispatch_does_not_expose_password_on_validation_failure() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let error = registry
+            .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, DbOperationError::ConnectionFailed(details) if !details.contains("header-secret"))
+        );
     }
 
     #[tokio::test]

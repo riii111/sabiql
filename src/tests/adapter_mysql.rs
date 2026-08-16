@@ -176,13 +176,43 @@ mod connection {
 
 mod metadata_fetch {
 
+    use std::sync::Arc;
+
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
-    use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
+    use crate::tests::harness::mysql::{
+        MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
+    };
     use sabiql_app::ports::outbound::{AccessMode, DdlGenerator, MetadataProvider, QueryExecutor};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
+    use sabiql_infra::adapters::{DbAdapterRegistry, PostgresAdapter};
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn registry_fetches_mysql_effective_user_for_the_connection_header() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+                let effective_user = registry
+                    .fetch_effective_user(db.dsn())
+                    .await
+                    .map_err(|error| format!("{error:?}"))?
+                    .ok_or_else(|| "MySQL effective user was empty".to_string())?;
+                let config = mysql_integration_config();
+
+                if !effective_user.starts_with(&format!("{}@", config.username)) {
+                    return Err(format!("unexpected MySQL effective user: {effective_user}"));
+                }
+                if effective_user.contains(&config.password) {
+                    return Err("MySQL effective user exposed the connection password".to_string());
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
