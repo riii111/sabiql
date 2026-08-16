@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_json_declared_type_stays_raw() {
+    fn sqlite_declared_json_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "json", r#"{"b":2,"a":1}"#)
                 .display_handling();
@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_declared_type_stays_raw() {
+    fn sqlite_declared_non_text_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", r#"{"b":2,"a":1}"#)
                 .display_handling();

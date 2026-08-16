@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::connection::list as connection_list;
 use crate::app::model::connection::setup::ConnectionField;
 use crate::app::model::er_state::ErStatus;
@@ -18,10 +18,9 @@ use crate::app::update::input::keybindings::{
     ModeRow, ROW_DETAIL_FOOTER_ROWS, cell_detail, cell_detail_search, cell_edit, command_palette,
     command_palette as command_palette_key, connection_error, connection_selector,
     connection_setup, connection_setup_save, csv_export, er_picker, er_picker_select_all,
-    exit_read_only, footer_nav, global, help, inspector_ddl, jsonb_detail, jsonb_edit,
-    jsonb_search, overlay, query_history, query_history_picker, read_only, result_active, settings,
-    sql_modal, sql_modal_confirming, sqlite_diagnostics, table_picker,
-    table_picker as table_picker_key,
+    exit_read_only, footer_nav, global, help, inspector_ddl, json_detail, json_edit, json_search,
+    overlay, query_history, query_history_picker, read_only, result_active, settings, sql_modal,
+    sql_modal_confirming, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
 };
 use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
@@ -348,42 +347,42 @@ impl Footer {
                 query_history_picker::TYPE_FILTER.as_hint(),
                 query_history_picker::ESC_CLOSE.as_hint(),
             ],
-            InputMode::JsonbDetail => {
+            InputMode::JsonDetail => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
                 if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
-                    vec![jsonb_detail::CLOSE.as_hint()]
-                } else if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
+                    vec![json_detail::CLOSE.as_hint()]
+                } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
                     vec![
-                        jsonb_search::TYPE_SEARCH.as_hint(),
-                        jsonb_search::CONFIRM.as_hint(),
-                        jsonb_search::CANCEL.as_hint(),
+                        json_search::TYPE_SEARCH.as_hint(),
+                        json_search::CONFIRM.as_hint(),
+                        json_search::CANCEL.as_hint(),
                     ]
                 } else {
-                    let mut hints = vec![jsonb_detail::YANK.as_hint()];
+                    let mut hints = vec![json_detail::YANK.as_hint()];
                     if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
-                        hints.push(jsonb_detail::INSERT.as_hint());
+                        hints.push(json_detail::INSERT.as_hint());
                     }
                     hints.extend([
-                        jsonb_detail::SEARCH.as_hint(),
-                        jsonb_detail::NEXT_PREV.as_hint(),
-                        jsonb_detail::MOVE.as_hint(),
-                        jsonb_detail::CLOSE.as_hint(),
+                        json_detail::SEARCH.as_hint(),
+                        json_detail::NEXT_PREV.as_hint(),
+                        json_detail::MOVE.as_hint(),
+                        json_detail::CLOSE.as_hint(),
                     ]);
                     hints
                 }
             }
-            InputMode::JsonbEdit => {
+            InputMode::JsonEdit => {
                 let feature_policy =
                     FeaturePolicy::new(state.session.active_engine_feature_profile());
                 if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
                     vec![
-                        jsonb_edit::ESC_NORMAL.as_hint(),
-                        jsonb_edit::MOVE.as_hint(),
-                        jsonb_edit::HOME_END.as_hint(),
+                        json_edit::ESC_NORMAL.as_hint(),
+                        json_edit::MOVE.as_hint(),
+                        json_edit::HOME_END.as_hint(),
                     ]
                 } else {
-                    vec![jsonb_edit::ESC_NORMAL.as_hint()]
+                    vec![json_edit::ESC_NORMAL.as_hint()]
                 }
             }
             InputMode::CellDetail => {
@@ -462,7 +461,7 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::update::input::keybindings::{
-        connection_setup, global, help, jsonb_detail, jsonb_edit, result_active, row_detail,
+        connection_setup, global, help, json_detail, json_edit, result_active, row_detail,
     };
     use rstest::rstest;
 
@@ -535,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_jsonb_modes_keep_exit_hints() {
+    fn unsupported_json_modes_keep_exit_hints() {
         let mut state = AppState::new("test".to_string());
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -544,16 +543,16 @@ mod tests {
             "sqlite://test.db",
         );
 
-        state.modal.set_mode(InputMode::JsonbDetail);
+        state.modal.set_mode(InputMode::JsonDetail);
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![jsonb_detail::CLOSE.as_hint()]
+            vec![json_detail::CLOSE.as_hint()]
         );
 
-        state.modal.set_mode(InputMode::JsonbEdit);
+        state.modal.set_mode(InputMode::JsonEdit);
         assert_eq!(
             Footer::get_context_hints(&state),
-            vec![jsonb_edit::ESC_NORMAL.as_hint()]
+            vec![json_edit::ESC_NORMAL.as_hint()]
         );
     }
 
@@ -566,13 +565,13 @@ mod tests {
             DatabaseType::MySQL,
             "mysql://test",
         );
-        state.modal.set_mode(InputMode::JsonbDetail);
+        state.modal.set_mode(InputMode::JsonDetail);
 
         let hints = Footer::get_context_hints(&state);
 
-        assert!(hints.contains(&jsonb_detail::INSERT.as_hint()));
-        assert!(hints.contains(&jsonb_detail::YANK.as_hint()));
-        assert!(hints.contains(&jsonb_detail::SEARCH.as_hint()));
+        assert!(hints.contains(&json_detail::INSERT.as_hint()));
+        assert!(hints.contains(&json_detail::YANK.as_hint()));
+        assert!(hints.contains(&json_detail::SEARCH.as_hint()));
     }
 
     #[test]

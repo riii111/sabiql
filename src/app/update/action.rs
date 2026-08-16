@@ -6,7 +6,7 @@ use crate::domain::connection::{
 };
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
-use crate::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::model::browse::json_detail::JsonDetailMode;
 use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
@@ -97,7 +97,7 @@ pub enum ScrollTarget {
     ExplainCompare,
     ExplainConfirm,
     Explorer,
-    JsonbDetail,
+    JsonDetail,
     CellDetail,
     SqliteDiagnostics,
     RowDetail,
@@ -172,8 +172,8 @@ pub enum InputTarget {
     ErFilter,
     SettingsErBrowser,
     QueryHistoryFilter,
-    JsonbEdit,
-    JsonbSearch,
+    JsonEdit,
+    JsonSearch,
     CellDetailSearch,
     HelpFilter,
 }
@@ -224,7 +224,7 @@ pub enum ModalKind {
     SqlModal,
     ErTablePicker,
     QueryHistoryPicker,
-    JsonbDetail,
+    JsonDetail,
     CellDetail,
     RowDetail,
     ConnectionSetup,
@@ -659,17 +659,17 @@ pub enum Action {
         error: DbOperationError,
     },
 
-    // JSONB detail
-    JsonbYankAll,
-    JsonbYankSuccess,
-    JsonbEnterEdit,
-    JsonbAppendInsert,
-    JsonbExitEdit,
-    JsonbEnterSearch,
-    JsonbExitSearch,
-    JsonbSearchNext,
-    JsonbSearchPrev,
-    JsonbSearchSubmit,
+    // JSON detail
+    JsonYankAll,
+    JsonYankSuccess,
+    JsonEnterEdit,
+    JsonAppendInsert,
+    JsonExitEdit,
+    JsonEnterSearch,
+    JsonExitSearch,
+    JsonSearchNext,
+    JsonSearchPrev,
+    JsonSearchSubmit,
 
     // Cell detail
     CellDetailYankAll,
@@ -760,55 +760,55 @@ impl Action {
                 target: ScrollTarget::SqliteDiagnostics,
                 ..
             } => SqliteDiagnostics,
-            Self::OpenModal(ModalKind::JsonbDetail)
-            | Self::ToggleModal(ModalKind::JsonbDetail)
-            | Self::JsonbYankAll
-            | Self::JsonbYankSuccess
-            | Self::JsonbEnterSearch
-            | Self::JsonbExitSearch
-            | Self::JsonbSearchNext
-            | Self::JsonbSearchPrev
-            | Self::JsonbSearchSubmit
+            Self::OpenModal(ModalKind::JsonDetail)
+            | Self::ToggleModal(ModalKind::JsonDetail)
+            | Self::JsonYankAll
+            | Self::JsonYankSuccess
+            | Self::JsonEnterSearch
+            | Self::JsonExitSearch
+            | Self::JsonSearchNext
+            | Self::JsonSearchPrev
+            | Self::JsonSearchSubmit
             | Self::TextInput {
-                target: InputTarget::JsonbSearch,
+                target: InputTarget::JsonSearch,
                 ..
             }
             | Self::TextBackspace {
-                target: InputTarget::JsonbSearch,
+                target: InputTarget::JsonSearch,
             }
             | Self::TextDelete {
-                target: InputTarget::JsonbSearch,
+                target: InputTarget::JsonSearch,
             }
             | Self::TextKill {
-                target: InputTarget::JsonbSearch,
+                target: InputTarget::JsonSearch,
                 ..
             }
             | Self::TextYank {
-                target: InputTarget::JsonbSearch,
+                target: InputTarget::JsonSearch,
             }
             | Self::TextMoveCursor {
-                target: InputTarget::JsonbEdit | InputTarget::JsonbSearch,
+                target: InputTarget::JsonEdit | InputTarget::JsonSearch,
                 ..
             } => JsonDocumentDetail,
-            Self::JsonbEnterEdit
-            | Self::JsonbAppendInsert
-            | Self::JsonbExitEdit
+            Self::JsonEnterEdit
+            | Self::JsonAppendInsert
+            | Self::JsonExitEdit
             | Self::TextInput {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
                 ..
             }
             | Self::TextBackspace {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
             }
             | Self::TextDelete {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
             }
             | Self::TextKill {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
                 ..
             }
             | Self::TextYank {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
             } => JsonDocumentEdit,
             Self::ExplainRequest
             | Self::Scroll {
@@ -866,25 +866,25 @@ impl Action {
 
     pub fn feature_requirement_for_state(&self, state: &AppState) -> FeatureRequirement {
         match self {
-            Self::JsonbExitEdit if state.input_mode() == InputMode::JsonbEdit => {
+            Self::JsonExitEdit if state.input_mode() == InputMode::JsonEdit => {
                 FeatureRequirement::None
             }
-            Self::JsonbExitSearch
-                if state.input_mode() == InputMode::JsonbDetail
-                    && state.jsonb_detail.mode() == JsonbDetailMode::Searching =>
+            Self::JsonExitSearch
+                if state.input_mode() == InputMode::JsonDetail
+                    && state.json_detail.mode() == JsonDetailMode::Searching =>
             {
                 FeatureRequirement::None
             }
             Self::Paste(_) => match state.input_mode() {
                 InputMode::ErTablePicker => FeatureRequirement::ErDiagram,
-                InputMode::JsonbDetail => FeatureRequirement::JsonDocumentDetail,
-                InputMode::JsonbEdit => FeatureRequirement::JsonDocumentEdit,
+                InputMode::JsonDetail => FeatureRequirement::JsonDocumentDetail,
+                InputMode::JsonEdit => FeatureRequirement::JsonDocumentEdit,
                 _ => FeatureRequirement::None,
             },
             Self::BeginKeySequence(Prefix::G)
                 if matches!(
                     state.input_mode(),
-                    InputMode::JsonbDetail | InputMode::JsonbEdit
+                    InputMode::JsonDetail | InputMode::JsonEdit
                 ) =>
             {
                 FeatureRequirement::JsonDocumentDetail
@@ -1010,25 +1010,25 @@ mod tests {
     }
 
     #[test]
-    fn jsonb_cleanup_actions_are_allowed_on_preserved_surfaces() {
+    fn json_cleanup_actions_are_allowed_on_preserved_surfaces() {
         let mut edit_state = AppState::new("test".to_string());
-        edit_state.modal.set_mode(InputMode::JsonbEdit);
+        edit_state.modal.set_mode(InputMode::JsonEdit);
         assert_eq!(
-            Action::JsonbExitEdit.feature_requirement_for_state(&edit_state),
+            Action::JsonExitEdit.feature_requirement_for_state(&edit_state),
             FeatureRequirement::None
         );
 
         let mut search_state = AppState::new("test".to_string());
-        search_state.modal.set_mode(InputMode::JsonbDetail);
-        search_state.jsonb_detail.enter_search();
+        search_state.modal.set_mode(InputMode::JsonDetail);
+        search_state.json_detail.enter_search();
         assert_eq!(
-            Action::JsonbExitSearch.feature_requirement_for_state(&search_state),
+            Action::JsonExitSearch.feature_requirement_for_state(&search_state),
             FeatureRequirement::None
         );
 
         let normal_state = AppState::new("test".to_string());
         assert_eq!(
-            Action::JsonbExitEdit.feature_requirement_for_state(&normal_state),
+            Action::JsonExitEdit.feature_requirement_for_state(&normal_state),
             FeatureRequirement::JsonDocumentEdit
         );
     }

@@ -63,12 +63,12 @@ pub struct PickerLayout {
 
 #[derive(Default)]
 pub struct DetailLayout {
-    pub jsonb: Option<JsonbDetailLayout>,
+    pub json: Option<JsonDetailLayout>,
     pub cell: Option<CellDetailViewport>,
     pub row: Option<RowDetailLayout>,
 }
 
-pub struct JsonbDetailLayout {
+pub struct JsonDetailLayout {
     pub editor_visible_rows: usize,
 }
 

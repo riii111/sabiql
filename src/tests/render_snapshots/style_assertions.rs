@@ -57,7 +57,7 @@ fn help_modal_origin() -> (u16, u16) {
     (area.x, area.y)
 }
 
-fn jsonb_detail_state() -> (AppState, Instant) {
+fn json_detail_state() -> (AppState, Instant) {
     let now = test_instant();
     let mut state = create_test_state();
     state
@@ -98,13 +98,13 @@ fn jsonb_detail_state() -> (AppState, Instant) {
     state.result_interaction.activate_cell(0, 3);
     dispatch_result(
         &mut state,
-        &Action::OpenModal(ModalKind::JsonbDetail),
+        &Action::OpenModal(ModalKind::JsonDetail),
         &AppServices::stub(),
         now,
     );
     dispatch_result(
         &mut state,
-        &Action::JsonbEnterEdit,
+        &Action::JsonEnterEdit,
         &AppServices::stub(),
         now,
     );
@@ -797,8 +797,8 @@ fn sql_modal_insert_cursor_advances_visual_row_when_line_wraps() {
 }
 
 #[test]
-fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
-    let (mut state, now) = jsonb_detail_state();
+fn json_edit_uses_terminal_cursor_without_fake_glyph() {
+    let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
 
     let head_buffer = render_and_get_buffer(&mut terminal, &mut state);
@@ -808,7 +808,7 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
     dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
+            target: InputTarget::JsonEdit,
             direction: CursorMove::Right,
         },
         &AppServices::stub(),
@@ -826,18 +826,13 @@ fn jsonb_edit_uses_terminal_cursor_without_fake_glyph() {
 }
 
 #[test]
-fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
-    let (mut state, now) = jsonb_detail_state();
+fn json_search_cursor_uses_display_width_for_wide_chars() {
+    let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
+    dispatch_result(&mut state, &Action::JsonExitEdit, &AppServices::stub(), now);
     dispatch_result(
         &mut state,
-        &Action::JsonbExitEdit,
-        &AppServices::stub(),
-        now,
-    );
-    dispatch_result(
-        &mut state,
-        &Action::JsonbEnterSearch,
+        &Action::JsonEnterSearch,
         &AppServices::stub(),
         now,
     );
@@ -847,7 +842,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
     dispatch_result(
         &mut state,
         &Action::TextInput {
-            target: InputTarget::JsonbSearch,
+            target: InputTarget::JsonSearch,
             ch: 'a',
         },
         &AppServices::stub(),
@@ -856,7 +851,7 @@ fn jsonb_search_cursor_uses_display_width_for_wide_chars() {
     dispatch_result(
         &mut state,
         &Action::TextInput {
-            target: InputTarget::JsonbSearch,
+            target: InputTarget::JsonSearch,
             ch: '語',
         },
         &AppServices::stub(),

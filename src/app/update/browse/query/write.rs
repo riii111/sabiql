@@ -999,15 +999,15 @@ mod tests {
             );
         }
 
-        fn editable_state_with_jsonb() -> AppState {
+        fn editable_state_with_json() -> AppState {
             let mut state = AppState::new("test_project".to_string());
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
                 .query
-                .set_current_result(editable_preview_result_with_jsonb());
+                .set_current_result(editable_preview_result_with_json());
             state
                 .session
-                .set_table_detail_raw(Some(jsonb_table_detail()));
+                .set_table_detail_raw(Some(json_table_detail()));
             state.query.pagination.reset_for_table("public", "users");
             state.modal.set_mode(InputMode::CellEdit);
             // col 2 = metadata (jsonb)
@@ -1021,8 +1021,8 @@ mod tests {
         }
 
         #[test]
-        fn jsonb_column_produces_structured_diff() {
-            let mut state = editable_state_with_jsonb();
+        fn json_column_produces_structured_diff() {
+            let mut state = editable_state_with_json();
 
             let effects = dispatch_query(
                 &mut state,
@@ -1046,9 +1046,9 @@ mod tests {
         }
 
         #[test]
-        fn jsonb_diff_uses_visible_column_name_after_hidden_primary_key() {
-            let mut state = editable_state_with_jsonb();
-            let mut detail = jsonb_table_detail();
+        fn json_diff_uses_visible_column_name_after_hidden_primary_key() {
+            let mut state = editable_state_with_json();
+            let mut detail = json_table_detail();
             detail.columns[0].attributes = detail.columns[0].attributes
                 | ColumnAttributes::HIDDEN
                 | ColumnAttributes::READ_ONLY;
@@ -1093,15 +1093,15 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_jsonb_declared_type_preserves_string_diff_in_write_preview() {
-            let mut state = editable_state_with_jsonb();
+        fn sqlite_json_declared_type_preserves_string_diff_in_write_preview() {
+            let mut state = editable_state_with_json();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
                 DatabaseType::SQLite,
                 "sqlite:///tmp/app.db",
             );
-            let mut detail = jsonb_table_detail();
+            let mut detail = json_table_detail();
             detail.schema = "main".to_string();
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");

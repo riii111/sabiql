@@ -106,11 +106,11 @@ pub const SETTINGS: ModeBindings = ModeBindings {
 pub const CONNECTION_SELECTOR: ModeBindings = ModeBindings {
     rows: CONNECTION_SELECTOR_ROWS,
 };
-pub const JSONB_DETAIL: ModeBindings = ModeBindings {
-    rows: JSONB_DETAIL_ROWS,
+pub const JSON_DETAIL: ModeBindings = ModeBindings {
+    rows: JSON_DETAIL_ROWS,
 };
-pub const JSONB_EDIT: ModeBindings = ModeBindings {
-    rows: JSONB_EDIT_ROWS,
+pub const JSON_EDIT: ModeBindings = ModeBindings {
+    rows: JSON_EDIT_ROWS,
 };
 pub const CELL_DETAIL: ModeBindings = ModeBindings {
     rows: CELL_DETAIL_ROWS,
@@ -131,8 +131,8 @@ pub const ALL_MODE_BINDINGS: &[(&str, &ModeBindings)] = &[
     ("COMMAND_PALETTE", &COMMAND_PALETTE),
     ("SETTINGS", &SETTINGS),
     ("CONNECTION_SELECTOR", &CONNECTION_SELECTOR),
-    ("JSONB_DETAIL", &JSONB_DETAIL),
-    ("JSONB_EDIT", &JSONB_EDIT),
+    ("JSON_DETAIL", &JSON_DETAIL),
+    ("JSON_EDIT", &JSON_EDIT),
     ("CELL_DETAIL", &CELL_DETAIL),
     ("SQLITE_DIAGNOSTICS", &SQLITE_DIAGNOSTICS),
     ("ROW_DETAIL", &ROW_DETAIL),
@@ -310,7 +310,7 @@ mod tests {
                 check_non_none_have_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_non_none_have_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
                 check_non_none_have_combos(CELL_EDIT_KEYS, "CELL_EDIT_KEYS");
-                check_non_none_have_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_non_none_have_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
                 check_non_none_have_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
             }
 
@@ -376,7 +376,7 @@ mod tests {
                     "CONNECTION_SETUP_KEYS",
                 );
                 check_none_action_entries_have_no_combos(RESULT_ACTIVE_KEYS, "RESULT_ACTIVE_KEYS");
-                check_none_action_entries_have_no_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_none_action_entries_have_no_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
                 check_none_action_entries_have_no_combos(
                     CELL_DETAIL_SEARCH_KEYS,
                     "CELL_DETAIL_SEARCH_KEYS",
@@ -444,7 +444,7 @@ mod tests {
             fn no_duplicate_combos_in_simple_modes() {
                 check_no_duplicate_combos(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_no_duplicate_combos(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-                check_no_duplicate_combos(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_no_duplicate_combos(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
                 check_no_duplicate_combos(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_no_conflicting_combos(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_no_conflicting_combos(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
@@ -501,7 +501,7 @@ mod tests {
             fn keymap_resolve_roundtrip_for_simple_modes() {
                 check_keymap_roundtrip(CONFIRM_DIALOG_KEYS, "CONFIRM_DIALOG_KEYS");
                 check_keymap_roundtrip(COMMAND_LINE_KEYS, "COMMAND_LINE_KEYS");
-                check_keymap_roundtrip(JSONB_SEARCH_KEYS, "JSONB_SEARCH_KEYS");
+                check_keymap_roundtrip(JSON_SEARCH_KEYS, "JSON_SEARCH_KEYS");
                 check_keymap_roundtrip(CELL_DETAIL_SEARCH_KEYS, "CELL_DETAIL_SEARCH_KEYS");
                 check_keymap_roundtrip(GLOBAL_KEYS, "GLOBAL_KEYS");
                 check_keymap_roundtrip(IDE_GLOBAL_KEYS, "IDE_GLOBAL_KEYS");
@@ -636,7 +636,7 @@ mod tests {
             FeatureRequirement::PlanComparison
         );
         assert_eq!(
-            JSONB_DETAIL_ROWS[0].feature_requirement(),
+            JSON_DETAIL_ROWS[0].feature_requirement(),
             FeatureRequirement::JsonDocumentDetail
         );
     }

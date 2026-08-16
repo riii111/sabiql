@@ -5,7 +5,7 @@ use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
-use crate::model::shared::help::{HelpOrigin, JsonbHelpMode, SqlHelpMode};
+use crate::model::shared::help::{HelpOrigin, JsonHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
 use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
@@ -322,8 +322,8 @@ fn current_section(origin: HelpOrigin, feature_policy: &FeaturePolicy) -> HelpSe
             rows_from_mode_rows_if_visible(er_picker_rows(keymap_preset), feature_policy)
         }
         HelpOrigin::QueryHistoryPicker => rows_from_mode_rows(QUERY_HISTORY_PICKER_ROWS),
-        HelpOrigin::JsonbDetail { mode } => jsonb_current_rows(mode, feature_policy),
-        HelpOrigin::JsonbEdit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
+        HelpOrigin::JsonDetail { mode } => json_current_rows(mode, feature_policy),
+        HelpOrigin::JsonEdit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
         HelpOrigin::CellDetail { searching: true } => rows_from_bindings(CELL_DETAIL_SEARCH_KEYS),
         HelpOrigin::CellDetail { searching: false } => rows_from_mode_rows(CELL_DETAIL_ROWS),
         HelpOrigin::RowDetail => rows_from_mode_rows(ROW_DETAIL_ROWS),
@@ -372,11 +372,11 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_visible(jsonb_detail::YANK.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_visible(json_detail::YANK.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         data_action_rows.extend(rows_from_mode_row_refs_if_visible(
-            &[&jsonb_detail::YANK],
+            &[&json_detail::YANK],
             feature_policy,
         ));
     }
@@ -388,11 +388,11 @@ fn reference_sections(
     if feature_policy.is_visible(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if feature_policy.is_visible(jsonb_search::TYPE_SEARCH.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+    if feature_policy.is_visible(json_search::TYPE_SEARCH.feature_requirement())
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         search_filter_rows.extend(rows_from_bindings_if_visible(
-            JSONB_SEARCH_KEYS,
+            JSON_SEARCH_KEYS,
             feature_policy,
         ));
     }
@@ -405,10 +405,10 @@ fn reference_sections(
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
     if feature_policy.is_visible(FeatureRequirement::JsonDocumentEdit)
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         editing_rows.extend(rows_from_mode_rows_if_visible(
-            JSONB_EDIT_ROWS,
+            JSON_EDIT_ROWS,
             feature_policy,
         ));
     }
@@ -435,10 +435,10 @@ fn reference_sections(
         ));
     }
     if feature_policy.is_visible(FeatureRequirement::JsonDocumentDetail)
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_jsonb_detail_modal)
+        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
-            JSONB_DETAIL_ROWS,
+            JSON_DETAIL_ROWS,
             feature_policy,
         ));
     }
@@ -595,11 +595,11 @@ fn connection_setup_current_rows(
     rows
 }
 
-fn jsonb_current_rows(mode: JsonbHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
+fn json_current_rows(mode: JsonHelpMode, feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     match mode {
-        JsonbHelpMode::Detail => rows_from_mode_rows_if_visible(JSONB_DETAIL_ROWS, feature_policy),
-        JsonbHelpMode::Search => rows_from_bindings_if_visible(JSONB_SEARCH_KEYS, feature_policy),
-        JsonbHelpMode::Edit => rows_from_mode_rows_if_visible(JSONB_EDIT_ROWS, feature_policy),
+        JsonHelpMode::Detail => rows_from_mode_rows_if_visible(JSON_DETAIL_ROWS, feature_policy),
+        JsonHelpMode::Search => rows_from_bindings_if_visible(JSON_SEARCH_KEYS, feature_policy),
+        JsonHelpMode::Edit => rows_from_mode_rows_if_visible(JSON_EDIT_ROWS, feature_policy),
     }
 }
 
@@ -733,7 +733,7 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 mod tests {
     use super::*;
     use crate::domain::ConnectionId;
-    use crate::model::browse::jsonb_detail::JsonbDetailMode;
+    use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
 
@@ -1021,14 +1021,12 @@ mod tests {
             "Current: SQL Editor Plan"
         );
 
-        let mut jsonb_state = AppState::new("test".to_string());
-        jsonb_state.modal.set_mode(InputMode::JsonbDetail);
-        jsonb_state
-            .jsonb_detail
-            .set_mode(JsonbDetailMode::Searching);
-        let jsonb_document = HelpDocument::new(HelpOrigin::from_state(&jsonb_state), "");
+        let mut json_state = AppState::new("test".to_string());
+        json_state.modal.set_mode(InputMode::JsonDetail);
+        json_state.json_detail.set_mode(JsonDetailMode::Searching);
+        let json_document = HelpDocument::new(HelpOrigin::from_state(&json_state), "");
 
-        assert_eq!(jsonb_document.sections()[0].title(), "Current: JSON Search");
+        assert_eq!(json_document.sections()[0].title(), "Current: JSON Search");
     }
 
     #[test]
@@ -1101,7 +1099,7 @@ mod tests {
                 "jsonb"
             };
             let policy_allows_json =
-                CellPresentationPolicy::new(database_type, data_type, "").uses_jsonb_detail_modal();
+                CellPresentationPolicy::new(database_type, data_type, "").uses_json_detail_modal();
 
             assert_eq!(help_includes_json, policy_allows_json);
             assert!(

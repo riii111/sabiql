@@ -1,39 +1,37 @@
 use crate::update::action::{Action, CursorMove, InputTarget, ModalKind};
 
 use crate::update::input::vim::types::{
-    JsonbDetailVimContext, SearchContinuation, VimCommand, VimModeTransition, VimNavigation,
+    JsonDetailVimContext, SearchContinuation, VimCommand, VimModeTransition, VimNavigation,
     VimOperator,
 };
 
 pub(in crate::update::input::vim) fn command(
     command: VimCommand,
-    ctx: JsonbDetailVimContext,
+    ctx: JsonDetailVimContext,
 ) -> Option<Action> {
     match ctx {
-        JsonbDetailVimContext::Viewing => match command {
+        JsonDetailVimContext::Viewing => match command {
             VimCommand::Navigation(navigation) => navigation_action(navigation),
             VimCommand::ModeTransition(VimModeTransition::Escape) => {
-                Some(Action::CloseModal(ModalKind::JsonbDetail))
+                Some(Action::CloseModal(ModalKind::JsonDetail))
             }
-            VimCommand::ModeTransition(VimModeTransition::Insert) => Some(Action::JsonbEnterEdit),
-            VimCommand::ModeTransition(VimModeTransition::Append) => {
-                Some(Action::JsonbAppendInsert)
-            }
+            VimCommand::ModeTransition(VimModeTransition::Insert) => Some(Action::JsonEnterEdit),
+            VimCommand::ModeTransition(VimModeTransition::Append) => Some(Action::JsonAppendInsert),
             VimCommand::SearchContinuation(SearchContinuation::Next) => {
-                Some(Action::JsonbSearchNext)
+                Some(Action::JsonSearchNext)
             }
             VimCommand::SearchContinuation(SearchContinuation::Prev) => {
-                Some(Action::JsonbSearchPrev)
+                Some(Action::JsonSearchPrev)
             }
-            VimCommand::Operator(VimOperator::Yank) => Some(Action::JsonbYankAll),
+            VimCommand::Operator(VimOperator::Yank) => Some(Action::JsonYankAll),
             VimCommand::ModeTransition(VimModeTransition::ConfirmOrEnter)
             | VimCommand::Operator(VimOperator::Delete) => None,
         },
-        JsonbDetailVimContext::Editing => match command {
-            VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::JsonbExitEdit),
+        JsonDetailVimContext::Editing => match command {
+            VimCommand::ModeTransition(VimModeTransition::Escape) => Some(Action::JsonExitEdit),
             _ => None,
         },
-        JsonbDetailVimContext::Searching => None,
+        JsonDetailVimContext::Searching => None,
     }
 }
 
@@ -56,7 +54,7 @@ fn navigation_action(navigation: VimNavigation) -> Option<Action> {
     };
 
     Some(Action::TextMoveCursor {
-        target: InputTarget::JsonbEdit,
+        target: InputTarget::JsonEdit,
         direction,
     })
 }
@@ -75,7 +73,7 @@ mod tests {
 
     #[test]
     fn enter_is_ignored_in_viewing_mode() {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Enter), ctx);
 
@@ -84,11 +82,11 @@ mod tests {
 
     #[test]
     fn append_opens_edit_mode() {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Char('A')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonbAppendInsert)));
+        assert!(matches!(action, Some(Action::JsonAppendInsert)));
     }
 
     #[rstest]
@@ -101,14 +99,14 @@ mod tests {
     #[case(Key::Char('M'), CursorMove::ViewportMiddle)]
     #[case(Key::Char('L'), CursorMove::ViewportBottom)]
     fn extended_navigation_maps_to_cursor_moves(#[case] key: Key, #[case] expected: CursorMove) {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(key), ctx);
 
         assert!(matches!(
             action,
             Some(Action::TextMoveCursor {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
                 direction,
             }) if direction == expected
         ));
@@ -119,13 +117,13 @@ mod tests {
         let action = action_for_input(
             &combo(Key::Char('g')),
             Some(Prefix::G),
-            VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing),
+            VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing),
         );
 
         assert!(matches!(
             action,
             Some(Action::TextMoveCursor {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
                 direction: CursorMove::FirstLine,
             })
         ));
@@ -133,32 +131,32 @@ mod tests {
 
     #[test]
     fn search_next_moves_to_match() {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Char('n')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonbSearchNext)));
+        assert!(matches!(action, Some(Action::JsonSearchNext)));
     }
 
     #[test]
     fn yank_copies_full_json() {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Char('y')), ctx);
 
-        assert!(matches!(action, Some(Action::JsonbYankAll)));
+        assert!(matches!(action, Some(Action::JsonYankAll)));
     }
 
     #[test]
     fn left_navigation_moves_text_cursor_left() {
-        let ctx = VimSurfaceContext::JsonbDetail(JsonbDetailVimContext::Viewing);
+        let ctx = VimSurfaceContext::JsonDetail(JsonDetailVimContext::Viewing);
 
         let action = action_for_key(&combo(Key::Char('h')), ctx);
 
         assert!(matches!(
             action,
             Some(Action::TextMoveCursor {
-                target: InputTarget::JsonbEdit,
+                target: InputTarget::JsonEdit,
                 direction: CursorMove::Left,
             })
         ));

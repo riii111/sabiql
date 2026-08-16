@@ -61,7 +61,7 @@ impl CellPresentationPolicy {
         self.display_handling
     }
 
-    pub fn uses_jsonb_detail_modal(self) -> bool {
+    pub fn uses_json_detail_modal(self) -> bool {
         self.display_handling == PreviewCellTextDisplayHandling::StructuredJson
     }
 }
@@ -96,19 +96,19 @@ mod tests {
         );
         assert!(
             !CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "")
-                .uses_jsonb_detail_modal()
+                .uses_json_detail_modal()
         );
     }
 
     #[test]
-    fn postgresql_jsonb_uses_semantic_handling() {
+    fn postgresql_json_uses_semantic_handling() {
         assert_eq!(
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling(),
             PreviewCellTextDiffHandling::StructuredJson
         );
         assert!(
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "")
-                .uses_jsonb_detail_modal()
+                .uses_json_detail_modal()
         );
     }
 
@@ -124,7 +124,7 @@ mod tests {
             policy.display_handling(),
             PreviewCellTextDisplayHandling::StructuredJson
         );
-        assert!(policy.uses_jsonb_detail_modal());
+        assert!(policy.uses_json_detail_modal());
     }
 
     #[test]
@@ -136,7 +136,7 @@ mod tests {
             policy.display_handling(),
             PreviewCellTextDisplayHandling::RawText
         );
-        assert!(!policy.uses_jsonb_detail_modal());
+        assert!(!policy.uses_json_detail_modal());
     }
 
     #[test]

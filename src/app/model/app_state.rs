@@ -6,7 +6,7 @@ use crate::domain::connection::{ConnectionProfile, ServiceEntry};
 use crate::domain::{Column, DatabaseType, TableSummary};
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
-use crate::model::browse::jsonb_detail::JsonbDetailState;
+use crate::model::browse::json_detail::JsonDetailState;
 use crate::model::browse::query_execution::QueryExecution;
 use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::row_detail::RowDetailState;
@@ -59,7 +59,7 @@ pub struct AppState {
     pub confirm_dialog: ConfirmDialogState,
     pub result_interaction: ResultInteraction,
     pub cell_detail: CellDetailState,
-    pub jsonb_detail: JsonbDetailState,
+    pub json_detail: JsonDetailState,
     pub row_detail: RowDetailState,
     pub query_history_picker: QueryHistoryPickerState,
     pub settings: SettingsState,
@@ -93,7 +93,7 @@ impl AppState {
             confirm_dialog: ConfirmDialogState::default(),
             result_interaction: ResultInteraction::default(),
             cell_detail: CellDetailState::default(),
-            jsonb_detail: JsonbDetailState::default(),
+            json_detail: JsonDetailState::default(),
             row_detail: RowDetailState::default(),
             query_history_picker: QueryHistoryPickerState::default(),
             settings: SettingsState::default(),
@@ -206,12 +206,12 @@ impl AppState {
     }
 
     fn apply_detail_layout(&mut self, layout: DetailLayout) {
-        if let Some(jsonb) = layout.jsonb {
+        if let Some(json) = layout.json {
             self.ui
-                .set_jsonb_detail_editor_visible_rows(jsonb.editor_visible_rows);
-            self.jsonb_detail
+                .set_json_detail_editor_visible_rows(json.editor_visible_rows);
+            self.json_detail
                 .editor_mut()
-                .update_scroll(jsonb.editor_visible_rows);
+                .update_scroll(json.editor_visible_rows);
         }
         if let Some(viewport) = layout.cell {
             self.cell_detail
@@ -270,8 +270,8 @@ impl AppState {
         }
     }
 
-    pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
-        self.ui.jsonb_detail_editor_visible_rows()
+    pub fn json_detail_editor_visible_rows(&self) -> usize {
+        self.ui.json_detail_editor_visible_rows()
     }
 
     pub fn row_detail_content_visible_rows(&self) -> usize {
@@ -451,7 +451,7 @@ impl AppState {
             column.data_type.as_str(),
             value.as_str().unwrap_or_default(),
         );
-        if policy.uses_jsonb_detail_modal() {
+        if policy.uses_json_detail_modal() {
             return true;
         }
 

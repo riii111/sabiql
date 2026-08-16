@@ -5,9 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::flash_timer::FlashId;
-use crate::app::model::shared::render_output::JsonbDetailLayout;
+use crate::app::model::shared::render_output::JsonDetailLayout;
 use crate::app::model::shared::text_input::TextInputLike;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::features::browse::detail_view::render_detail_search;
@@ -21,29 +21,29 @@ use crate::primitives::atoms::{
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::theme::ThemePalette;
 
-pub struct JsonbDetail;
+pub struct JsonDetail;
 
-impl JsonbDetail {
+impl JsonDetail {
     pub fn render(
         frame: &mut Frame,
         state: &AppState,
         now: std::time::Instant,
         theme: &ThemePalette,
-    ) -> Option<JsonbDetailLayout> {
-        if !state.jsonb_detail.is_active() {
+    ) -> Option<JsonDetailLayout> {
+        if !state.json_detail.is_active() {
             return None;
         }
 
-        let is_editing = matches!(state.jsonb_detail.mode(), JsonbDetailMode::Editing);
+        let is_editing = matches!(state.json_detail.mode(), JsonDetailMode::Editing);
         let title = if is_editing {
             format!(
                 " JSON Edit \u{2500}\u{2500} {} (json) ",
-                state.jsonb_detail.column_name()
+                state.json_detail.column_name()
             )
         } else {
             format!(
                 " JSON Detail \u{2500}\u{2500} {}",
-                state.jsonb_detail.column_name()
+                state.json_detail.column_name()
             )
         };
         let hints = if is_editing {
@@ -69,7 +69,7 @@ impl JsonbDetail {
         );
 
         let (editor_area, status_area, search_area) =
-            if matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching) {
+            if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
                 let [editor_area, status_area, search_area] = Layout::vertical([
                     Constraint::Min(1),
                     Constraint::Length(1),
@@ -89,7 +89,7 @@ impl JsonbDetail {
             Self::render_search(frame, search_area, state, theme);
         }
 
-        Some(JsonbDetailLayout {
+        Some(JsonDetailLayout {
             editor_visible_rows: editor_area.height as usize,
         })
     }
@@ -102,7 +102,7 @@ impl JsonbDetail {
         now: std::time::Instant,
         theme: &ThemePalette,
     ) {
-        let editor = state.jsonb_detail.editor();
+        let editor = state.json_detail.editor();
         let content = editor.content();
         let total_lines = content.lines().count().max(1);
         let has_vertical_scrollbar = total_lines > area.height as usize;
@@ -141,7 +141,7 @@ impl JsonbDetail {
             .collect();
         let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
-        let flash_active = state.flash_timers.is_active(FlashId::JsonbDetail, now);
+        let flash_active = state.flash_timers.is_active(FlashId::JsonDetail, now);
         apply_yank_flash(&mut lines, flash_active, theme);
 
         render_modal_text_surface(frame, content_area, surface, lines);
@@ -164,14 +164,14 @@ impl JsonbDetail {
     fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
         let mut spans = Vec::new();
 
-        if state.jsonb_detail.has_pending_changes() {
+        if state.json_detail.has_pending_changes() {
             spans.push(Span::styled(
                 "\u{25cf} Modified  ",
                 Style::default().fg(theme.semantic.status.pending),
             ));
         }
 
-        if let Some(err) = state.jsonb_detail.validation_error() {
+        if let Some(err) = state.json_detail.validation_error() {
             spans.push(Span::styled(
                 format!("\u{2717} {err}"),
                 Style::default().fg(theme.semantic.status.error),
@@ -187,6 +187,6 @@ impl JsonbDetail {
     }
 
     fn render_search(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
-        render_detail_search(frame, area, state.jsonb_detail.search(), theme);
+        render_detail_search(frame, area, state.json_detail.search(), theme);
     }
 }

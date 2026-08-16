@@ -15,9 +15,9 @@ use crate::update::helpers::find_text_matches;
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultOpenCellDetail => {
-            if selected_cell_uses_jsonb_detail_modal(state) {
+            if selected_cell_uses_json_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenModal(ModalKind::JsonbDetail),
+                    Action::OpenModal(ModalKind::JsonDetail),
                 ])]);
             }
 
@@ -158,7 +158,7 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     Some((row_idx, col_idx, column_name, cell_value, data_type))
 }
 
-fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
+fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -170,7 +170,7 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
         column_data_type,
         "",
     );
-    policy.uses_jsonb_detail_modal()
+    policy.uses_json_detail_modal()
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_cell_opens_raw_cell_detail() {
+    fn sqlite_json_cell_opens_raw_cell_detail() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
         state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
@@ -423,11 +423,11 @@ mod tests {
         assert!(state.cell_detail.is_active());
         assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
         assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
-        assert!(!state.jsonb_detail.is_active());
+        assert!(!state.json_detail.is_active());
     }
 
     #[test]
-    fn jsonb_cell_dispatches_to_existing_jsonb_modal() {
+    fn json_cell_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
 
         let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
@@ -435,7 +435,7 @@ mod tests {
         assert!(matches!(
             result.expect("jsonb dispatch should be handled").as_slice(),
             [Effect::DispatchActions(actions)]
-                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
+                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
         ));
         assert!(!state.cell_detail.is_active());
     }

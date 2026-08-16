@@ -5,7 +5,7 @@ use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, DatabaseMetadata, QueryResult, TableSummary};
 
-fn jsonb_detail_state() -> (AppState, std::time::Instant) {
+fn json_detail_state() -> (AppState, std::time::Instant) {
     let now = test_instant();
     let mut state = create_test_state();
     state
@@ -476,17 +476,17 @@ fn result_pane_staged_delete_row() {
 }
 
 #[test]
-fn result_pane_jsonb_detail_mode() {
-    let (mut state, now) = jsonb_detail_state();
+fn result_pane_json_detail_mode() {
+    let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
         &mut state,
-        &Action::OpenModal(ModalKind::JsonbDetail),
+        &Action::OpenModal(ModalKind::JsonDetail),
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+    assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -530,8 +530,8 @@ fn result_pane_sqlite_json_text_cell_detail_mode() {
 }
 
 #[test]
-fn result_pane_jsonb_detail_shows_vertical_scrollbar() {
-    let (mut state, now) = jsonb_detail_state();
+fn result_pane_json_detail_shows_vertical_scrollbar() {
+    let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal_sized(100, 25);
     let long_json = format!(
         "{{{}}}",
@@ -563,11 +563,11 @@ fn result_pane_jsonb_detail_shows_vertical_scrollbar() {
 
     dispatch_result(
         &mut state,
-        &Action::OpenModal(ModalKind::JsonbDetail),
+        &Action::OpenModal(ModalKind::JsonDetail),
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+    assert_eq!(state.input_mode(), InputMode::JsonDetail);
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -575,21 +575,21 @@ fn result_pane_jsonb_detail_shows_vertical_scrollbar() {
 }
 
 #[test]
-fn result_pane_jsonb_edit_mode() {
-    let (mut state, now) = jsonb_detail_state();
+fn result_pane_json_edit_mode() {
+    let (mut state, now) = json_detail_state();
     let mut terminal = create_test_terminal();
 
     dispatch_result(
         &mut state,
-        &Action::OpenModal(ModalKind::JsonbDetail),
+        &Action::OpenModal(ModalKind::JsonDetail),
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::JsonbDetail);
+    assert_eq!(state.input_mode(), InputMode::JsonDetail);
     dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
+            target: InputTarget::JsonEdit,
             direction: CursorMove::Down,
         },
         &AppServices::stub(),
@@ -598,7 +598,7 @@ fn result_pane_jsonb_edit_mode() {
     dispatch_result(
         &mut state,
         &Action::TextMoveCursor {
-            target: InputTarget::JsonbEdit,
+            target: InputTarget::JsonEdit,
             direction: CursorMove::Right,
         },
         &AppServices::stub(),
@@ -606,11 +606,11 @@ fn result_pane_jsonb_edit_mode() {
     );
     dispatch_result(
         &mut state,
-        &Action::JsonbEnterEdit,
+        &Action::JsonEnterEdit,
         &AppServices::stub(),
         now,
     );
-    assert_eq!(state.input_mode(), InputMode::JsonbEdit);
+    assert_eq!(state.input_mode(), InputMode::JsonEdit);
 
     let output = render_to_string(&mut terminal, &mut state);
 

@@ -10,7 +10,7 @@ use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::write::inline_cell_edit::text_for_inline_edit;
 use crate::update::helpers::{EditGuardrailError, editable_preview_base, ensure_column_writable};
 
-fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
+fn cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -28,7 +28,7 @@ fn cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
         column.data_type.as_str(),
         "",
     );
-    policy.uses_jsonb_detail_modal()
+    policy.uses_json_detail_modal()
 }
 
 fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), EditGuardrailError> {
@@ -78,10 +78,9 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                 return DispatchResult::handled();
             }
 
-            // JSONB columns open the dedicated detail modal instead of inline edit
-            if cell_uses_jsonb_detail_modal(state) {
+            if cell_uses_json_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenModal(ModalKind::JsonbDetail),
+                    Action::OpenModal(ModalKind::JsonDetail),
                 ])]);
             }
 
@@ -453,12 +452,12 @@ mod tests {
         }
     }
 
-    mod jsonb_dispatch {
+    mod json_dispatch {
         use crate::test_support;
 
         use super::*;
 
-        fn state_with_jsonb_column() -> AppState {
+        fn state_with_json_column() -> AppState {
             let mut state = cell_edit_entry_guardrails::preview_state_with_selection();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
@@ -478,7 +477,7 @@ mod tests {
             state
         }
 
-        fn state_with_hidden_primary_key_jsonb_column() -> AppState {
+        fn state_with_hidden_primary_key_json_column() -> AppState {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::new(),
@@ -520,8 +519,8 @@ mod tests {
         }
 
         #[test]
-        fn jsonb_cell_returns_dispatch_to_open_jsonb_detail() {
-            let mut state = state_with_jsonb_column();
+        fn json_cell_returns_dispatch_to_open_json_detail() {
+            let mut state = state_with_json_column();
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -530,13 +529,13 @@ mod tests {
             assert_eq!(effects.len(), 1);
             assert!(matches!(
                 &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
             ));
         }
 
         #[test]
-        fn jsonb_cell_after_hidden_primary_key_dispatches_to_detail() {
-            let mut state = state_with_hidden_primary_key_jsonb_column();
+        fn json_cell_after_hidden_primary_key_dispatches_to_detail() {
+            let mut state = state_with_hidden_primary_key_json_column();
 
             let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
                 .into_effects()
@@ -544,13 +543,13 @@ mod tests {
 
             assert!(matches!(
                 &effects[0],
-                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
+                Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
             ));
         }
 
         #[test]
-        fn sqlite_jsonb_cell_opens_inline_edit() {
-            let mut state = state_with_jsonb_column();
+        fn sqlite_json_cell_opens_inline_edit() {
+            let mut state = state_with_json_column();
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
                 "sqlite",
