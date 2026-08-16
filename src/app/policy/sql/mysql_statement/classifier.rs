@@ -449,9 +449,10 @@ fn alter_table_target_is_ambiguous(tokens: &[Token], table_index: usize) -> bool
     if matches!(
         target::word(tokens, table_index),
         Some("SECONDARY_LOAD" | "SECONDARY_UNLOAD")
-    ) && tokens[table_index + 1..]
-        .iter()
-        .all(|token| matches!(token.kind, TokenKind::Symbol(';')))
+    ) && (matches!(target::word(tokens, table_index + 1), Some("PARTITION"))
+        || tokens[table_index + 1..]
+            .iter()
+            .all(|token| matches!(token.kind, TokenKind::Symbol(';'))))
     {
         return true;
     }

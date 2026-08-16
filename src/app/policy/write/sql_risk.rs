@@ -213,7 +213,13 @@ mod mysql_tests {
     #[case::missing_target_before_force("ALTER TABLE FORCE")]
     #[case::missing_target_before_order("ALTER TABLE ORDER BY value")]
     #[case::missing_target_before_secondary_load("ALTER TABLE SECONDARY_LOAD")]
+    #[case::missing_target_before_secondary_load_partition(
+        "ALTER TABLE SECONDARY_LOAD PARTITION (p0)"
+    )]
     #[case::missing_target_before_secondary_unload("ALTER TABLE SECONDARY_UNLOAD")]
+    #[case::missing_target_before_secondary_unload_partition(
+        "ALTER TABLE SECONDARY_UNLOAD PARTITION (p0)"
+    )]
     fn alter_table_with_ambiguous_target_is_blocked(#[case] sql: &str) {
         assert!(
             matches!(mysql(sql), MultiStatementDecision::Block { .. }),
