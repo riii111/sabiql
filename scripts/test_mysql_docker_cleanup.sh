@@ -402,10 +402,7 @@ if ! grep -q -- '--force --volumes' "$rm_log"; then
     exit 1
 fi
 
-PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" stop >/dev/null 2>&1
-assert_only_unrelated_container_remains
-if ! grep -Fq 'default|rm|rm --force --stop --volumes mysql' "$compose_log" || \
-    grep -Fq 'default|down|' "$compose_log"; then
-    printf 'stop did not remain scoped to the MySQL service:\n%s\n' "$(<"$compose_log")" >&2
+if grep -Fq 'default|' "$compose_log"; then
+    printf 'unowned default Compose project was accessed:\n%s\n' "$(<"$compose_log")" >&2
     exit 1
 fi

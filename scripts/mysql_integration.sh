@@ -281,11 +281,8 @@ case "${1:-test}" in
         assert_versions
         run_tests
         ;;
-    stop)
-        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql
-        ;;
     *)
-        echo "usage: $0 [test|stop]" >&2
+        echo "usage: $0 [test]" >&2
         exit 2
         ;;
 esac
