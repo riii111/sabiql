@@ -457,10 +457,6 @@ fn alter_table_target_is_ambiguous(tokens: &[Token], table_index: usize) -> bool
         return true;
     }
 
-    if alter_table_remainder_is_ambiguous(tokens, table_index) {
-        return true;
-    }
-
     matches!(
         (
             target::word(tokens, table_index),
@@ -484,52 +480,6 @@ fn alter_table_target_is_ambiguous(tokens: &[Token], table_index: usize) -> bool
             | (Some("REMOVE" | "UPGRADE"), Some("PARTITIONING"))
             | (Some("WITH" | "WITHOUT"), Some("VALIDATION"))
     )
-}
-
-fn alter_table_remainder_is_ambiguous(tokens: &[Token], table_index: usize) -> bool {
-    let remainder_start = table_index + 1;
-    let remainder_end = tokens
-        .iter()
-        .rposition(|token| !matches!(token.kind, TokenKind::Symbol(';')))
-        .map_or(remainder_start, |index| index + 1);
-    let Some(remainder) = tokens.get(remainder_start..remainder_end) else {
-        return true;
-    };
-
-    let [token] = remainder else {
-        return false;
-    };
-    match &token.kind {
-        TokenKind::Word(word) => !is_known_alter_table_action_word(word),
-        TokenKind::Identifier(_)
-        | TokenKind::StringLiteral
-        | TokenKind::Number
-        | TokenKind::Symbol(_) => true,
-    }
-}
-
-fn is_known_alter_table_action_word(word: &str) -> bool {
-    is_mysql_reserved_alter_word(word)
-        || matches!(
-            word,
-            "COALESCE"
-                | "DISABLE"
-                | "DISCARD"
-                | "ENABLE"
-                | "EXCHANGE"
-                | "IMPORT"
-                | "MODIFY"
-                | "OPTIMIZE"
-                | "REBUILD"
-                | "REORGANIZE"
-                | "REPAIR"
-                | "REMOVE"
-                | "SECONDARY_LOAD"
-                | "SECONDARY_UNLOAD"
-                | "TRUNCATE"
-                | "UPGRADE"
-                | "WITHOUT"
-        )
 }
 
 fn is_mysql_reserved_alter_word(word: &str) -> bool {
