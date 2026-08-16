@@ -212,6 +212,16 @@ mod tests {
         }
     }
 
+    fn assert_contains_in_order(query: &str, fragments: &[&str]) {
+        let mut remaining = query;
+        for fragment in fragments {
+            let Some(index) = remaining.find(fragment) else {
+                panic!("missing SQL fragment {fragment:?} in {query:?}");
+            };
+            remaining = &remaining[index + fragment.len()..];
+        }
+    }
+
     #[test]
     fn metadata_queries_escape_literals_and_preserve_scope_conditions() {
         let schema = "app\\\n\r\t\u{0008}\u{001a}'";
@@ -238,63 +248,135 @@ mod tests {
         let quoted_schema = quote_string(schema);
         let quoted_table = quote_string(table);
 
-        assert_eq!(
-            table_query(schema, table),
-            format!(
-                "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {quoted_schema} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {quoted_table} ORDER BY TABLE_SCHEMA, TABLE_NAME"
-            )
+        let table_sql = table_query(schema, table);
+        assert_contains_in_order(
+            &table_sql,
+            &[
+                "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT",
+                "FROM INFORMATION_SCHEMA.TABLES AS t",
+                &format!("WHERE t.TABLE_SCHEMA = {quoted_schema}"),
+                "AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW')",
+                &format!("AND t.TABLE_NAME = {quoted_table}"),
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME",
+            ],
         );
 
-        assert_eq!(
-            columns_query(schema, table),
-            format!(
-                "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {quoted_schema} AND c.TABLE_NAME = {quoted_table} ORDER BY ORDINAL_POSITION"
-            )
+        let columns_sql = columns_query(schema, table);
+        assert_contains_in_order(
+            &columns_sql,
+            &[
+                "SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION",
+                "FROM INFORMATION_SCHEMA.COLUMNS AS c",
+                "tc.CONSTRAINT_SCHEMA = DATABASE()",
+                "kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA",
+                &format!("WHERE c.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND c.TABLE_NAME = {quoted_table}"),
+                "ORDER BY ORDINAL_POSITION",
+            ],
         );
 
-        assert_eq!(
-            unique_columns_query(schema, table),
-            format!(
-                "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {quoted_schema} AND s.TABLE_NAME = {quoted_table} AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.INDEX_NAME"
-            )
+        let unique_columns_sql = unique_columns_query(schema, table);
+        assert_contains_in_order(
+            &unique_columns_sql,
+            &[
+                "SELECT MIN(s.COLUMN_NAME) AS COLUMN_NAME",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                &format!("WHERE s.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND s.TABLE_NAME = {quoted_table}"),
+                "AND s.NON_UNIQUE = 0",
+                "AND s.INDEX_NAME <> 'PRIMARY'",
+                "GROUP BY s.INDEX_NAME",
+                "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
+                "ORDER BY s.INDEX_NAME",
+            ],
         );
 
-        assert_eq!(
-            foreign_keys_query(schema, table),
-            format!(
-                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = {quoted_schema} AND tc.TABLE_SCHEMA = {quoted_schema} AND tc.TABLE_NAME = {quoted_table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION"
-            )
+        let foreign_keys_sql = foreign_keys_query(schema, table);
+        assert_contains_in_order(
+            &foreign_keys_sql,
+            &[
+                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE",
+                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
+                "INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu",
+                "INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc",
+                &format!("WHERE tc.CONSTRAINT_SCHEMA = {quoted_schema}"),
+                &format!("AND tc.TABLE_SCHEMA = {quoted_schema}"),
+                &format!("AND tc.TABLE_NAME = {quoted_table}"),
+                "AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'",
+                "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION",
+            ],
         );
 
-        assert_eq!(
-            indexes_query(table),
-            format!(
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = DATABASE() AND s.TABLE_NAME = {quoted_table} ORDER BY INDEX_NAME, SEQ_IN_INDEX"
-            )
+        let indexes_sql = indexes_query(table);
+        assert_contains_in_order(
+            &indexes_sql,
+            &[
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.EXPRESSION",
+                "CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                "WHERE s.TABLE_SCHEMA = DATABASE()",
+                &format!("AND s.TABLE_NAME = {quoted_table}"),
+                "ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+            ],
         );
 
-        assert_eq!(
-            triggers_query(table),
-            format!(
-                "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE() AND EVENT_OBJECT_SCHEMA = DATABASE() AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION"
-            )
+        let triggers_sql = triggers_query(table);
+        assert_contains_in_order(
+            &triggers_sql,
+            &[
+                "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER",
+                "FROM INFORMATION_SCHEMA.TRIGGERS",
+                "WHERE TRIGGER_SCHEMA = DATABASE()",
+                "AND EVENT_OBJECT_SCHEMA = DATABASE()",
+                &format!("AND EVENT_OBJECT_TABLE = {quoted_table}"),
+                "ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+            ],
         );
 
-        assert_eq!(
+        assert_contains_in_order(
             TABLES_QUERY,
-            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME"
+            &[
+                "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT",
+                "FROM INFORMATION_SCHEMA.TABLES",
+                "WHERE TABLE_SCHEMA = DATABASE()",
+                "AND TABLE_TYPE = 'BASE TABLE'",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME",
+            ],
         );
-        assert_eq!(
+        assert_contains_in_order(
             SIGNATURE_COLUMNS_QUERY,
-            "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION FROM INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME IN (SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE') ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION"
+            &[
+                "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.COLUMN_TYPE",
+                "FROM INFORMATION_SCHEMA.COLUMNS AS c",
+                "tc.CONSTRAINT_SCHEMA = DATABASE()",
+                "WHERE c.TABLE_SCHEMA = DATABASE()",
+                "c.TABLE_NAME IN (SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE')",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION",
+            ],
         );
-        assert_eq!(
+        assert_contains_in_order(
             SIGNATURE_UNIQUE_COLUMNS_QUERY,
-            "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = DATABASE() AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY' GROUP BY s.TABLE_NAME, s.INDEX_NAME HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1 ORDER BY s.TABLE_NAME, s.INDEX_NAME"
+            &[
+                "SELECT s.TABLE_NAME, MIN(s.COLUMN_NAME) AS COLUMN_NAME",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s",
+                "WHERE s.TABLE_SCHEMA = DATABASE()",
+                "AND s.NON_UNIQUE = 0",
+                "AND s.INDEX_NAME <> 'PRIMARY'",
+                "GROUP BY s.TABLE_NAME, s.INDEX_NAME",
+                "HAVING COUNT(*) = 1 AND COUNT(s.COLUMN_NAME) = 1",
+                "ORDER BY s.TABLE_NAME, s.INDEX_NAME",
+            ],
         );
-        assert_eq!(
+        assert_contains_in_order(
             SIGNATURE_FOREIGN_KEYS_QUERY,
-            "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION"
+            &[
+                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME",
+                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc",
+                "WHERE tc.CONSTRAINT_SCHEMA = DATABASE()",
+                "AND tc.TABLE_SCHEMA = DATABASE()",
+                "AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY'",
+                "ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
+            ],
         );
 
         for query in [

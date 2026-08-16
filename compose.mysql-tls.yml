@@ -1,7 +1,7 @@
 services:
   mysql:
     volumes:
-      - ./.tmp/mysql/tls:/etc/mysql/tls:ro
+      - "${SABIQL_MYSQL_TLS_DIR:-./.tmp/mysql/tls}:/etc/mysql/tls:ro"
     command:
       - mysqld
       - --ssl-ca=/etc/mysql/tls/ca.pem

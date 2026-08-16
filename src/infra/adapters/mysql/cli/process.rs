@@ -31,9 +31,7 @@ use super::xml::{MysqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statem
 mod session;
 pub(in crate::adapters::mysql) use session::MysqlMetadataSession;
 mod adhoc;
-pub(in crate::adapters::mysql) use adhoc::{
-    run_mysql_adhoc, run_mysql_adhoc_with_expected_columns,
-};
+pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
 mod single;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 mod metadata;

@@ -20,13 +20,15 @@ services:
 
   mysql:
     image: mysql:8.4.10
+    labels:
+      com.sabiql.mysql.integration: "${SABIQL_MYSQL_RUN_LABEL:-manual}"
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: sabiql_test
       MYSQL_USER: sabiql
       MYSQL_PASSWORD: sabiql
     ports:
-      - "3306:3306"
+      - "${SABIQL_MYSQL_HOST_PORT:-3306}:3306"
     volumes:
       - ./scripts/init-mysql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
       - ./scripts/seed-mysql.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro

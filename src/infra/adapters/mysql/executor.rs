@@ -8,13 +8,12 @@ use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
-    export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_adhoc_with_expected_columns,
-    run_mysql_single_statement, validate_mysql_export_query, validate_mysql_multi_query,
+    export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
+    validate_mysql_export_query, validate_mysql_multi_query,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
 use super::option_file::MySqlOptionFile;
-use super::sql;
 
 #[cfg(feature = "test-support")]
 pub(super) mod test_support {
@@ -107,57 +106,17 @@ impl QueryExecutor for MySqlAdapter {
             reason = "infra measures mysql execution time at the I/O boundary"
         )]
         let start = Instant::now();
-        let preview = metadata::fetch_preview_metadata(dsn, schema, table).await?;
-        let query = sql::build_preview_query(
-            schema,
-            table,
-            &preview.order_columns,
-            &preview.visible_columns,
-            &preview.identity_columns,
-            limit,
-            offset,
-        );
-        let display_query = sql::build_preview_query(
-            schema,
-            table,
-            &preview.order_columns,
-            &preview.visible_columns,
-            &[],
-            limit,
-            offset,
-        );
-        let target = parse_and_validate_mysql_dsn(dsn)?;
-        let statements =
-            validate_mysql_multi_query(&query, target.database.as_deref(), AccessMode::ReadOnly)?;
-        let expected_columns =
-            metadata::preview_result_columns(&preview.visible_columns, &preview.identity_columns);
-        let expected_columns = expected_columns
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc_with_expected_columns(
-            &option_file.path,
-            &statements,
-            AccessMode::ReadOnly,
-            &expected_columns,
-        )
-        .await;
-        drop(option_file);
-        let result_set = result?.result_set.ok_or_else(|| {
-            DbOperationError::MetadataParseFailed(
-                "MySQL preview query returned no result set".to_string(),
-            )
-        })?;
+        let execution = metadata::execute_preview(dsn, schema, table, limit, offset).await?;
+        let preview = execution.metadata;
         let values = metadata::convert_preview_values(
-            &result_set,
+            &execution.result_set,
             &preview.visible_columns,
             &preview.identity_columns,
         )?;
         let elapsed = start.elapsed().as_millis() as u64;
 
         let mut query_result = QueryResult::success_with_values(
-            display_query,
+            execution.display_query,
             preview
                 .visible_columns
                 .iter()

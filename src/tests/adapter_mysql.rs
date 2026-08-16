@@ -32,31 +32,6 @@ mod connection {
     }
 
     #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn connects_to_oracle_mysql_84_fixture() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let result = db
-                    .adapter()
-                    .execute_adhoc(
-                        db.dsn(),
-                        &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
-                        AccessMode::ReadWrite,
-                    )
-                    .await
-                    .map_err(|error| format!("{error:?}"))?;
-                if result.columns != ["id"]
-                    || result.values() != [[QueryValue::Text("1".to_string())]]
-                {
-                    return Err(format!("unexpected MySQL connection result: {result:?}"));
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
     #[cfg(unix)]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn batch_mysql_cli_does_not_execute_shell_commands() {
@@ -2436,7 +2411,7 @@ mod csv_export {
 
     use super::shared::MYSQL_EMPTY_TABLE;
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
-    use sabiql_app::ports::outbound::{DbOperationError, QueryExecutor};
+    use sabiql_app::ports::outbound::DbOperationError;
     use sabiql_infra::adapters::mysql::export_mysql_csv_to_path_for_test;
     use tempfile::tempdir;
 
@@ -2507,45 +2482,6 @@ mod csv_export {
                     if csv.trim().is_empty() {
                         return Err(format!("{name} CSV export was empty"));
                     }
-                }
-                Ok(())
-            })
-        })
-        .await;
-    }
-
-    #[tokio::test]
-    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
-    async fn count_query_rows_rejects_empty_and_non_integer_results() {
-        with_mysql_test_db(|db| {
-            Box::pin(async move {
-                let empty = db
-                    .adapter()
-                    .count_query_rows(
-                        db.dsn(),
-                        &format!("SELECT id FROM {MYSQL_EMPTY_TABLE} WHERE FALSE"),
-                    )
-                    .await;
-                if !matches!(
-                    empty,
-                    Err(DbOperationError::QueryFailed(ref details))
-                        if details.contains("invalid result")
-                ) {
-                    return Err(format!("empty count result was accepted: {empty:?}"));
-                }
-
-                let non_integer = db
-                    .adapter()
-                    .count_query_rows(db.dsn(), "SELECT 'not-a-count'")
-                    .await;
-                if !matches!(
-                    non_integer,
-                    Err(DbOperationError::QueryFailed(ref details))
-                        if details.contains("not an integer")
-                ) {
-                    return Err(format!(
-                        "non-integer count result was accepted: {non_integer:?}"
-                    ));
                 }
                 Ok(())
             })

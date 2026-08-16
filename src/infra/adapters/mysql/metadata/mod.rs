@@ -12,7 +12,7 @@ mod preview;
 mod signature;
 mod table_detail;
 
-pub(super) use preview::{convert_preview_values, fetch_preview_metadata, preview_result_columns};
+pub(super) use preview::{convert_preview_values, execute_preview};
 
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {
