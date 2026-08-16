@@ -167,20 +167,15 @@ impl MysqlProcess {
 }
 
 #[cfg(unix)]
-async fn stop_mysql_process(
-    process: &mut MysqlProcess,
-) -> Result<(ExitStatus, bool), DbOperationError> {
-    if let Some(status) = process
-        .child
+async fn stop_mysql_process(child: &mut Child) -> Result<(ExitStatus, bool), DbOperationError> {
+    if let Some(status) = child
         .try_wait()
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?
     {
         return Ok((status, false));
     }
-    // Normal session completion drains the PTY first because mysql --binary-mode does not accept quit commands.
-    let _ = process.child.kill().await;
-    let status = process
-        .child
+    let _ = child.kill().await;
+    let status = child
         .wait()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -235,7 +230,7 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
     };
 
     #[cfg(unix)]
-    let (status, forcibly_stopped) = stop_mysql_process(process).await?;
+    let (status, forcibly_stopped) = stop_mysql_process(&mut process.child).await?;
     #[cfg(not(unix))]
     let forcibly_stopped = false;
 
@@ -246,6 +241,32 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
         stdout,
         error_bytes,
     })
+}
+
+pub(in crate::adapters::mysql::cli) async fn finish_mysql_session_after_result(
+    process: &mut MysqlProcess,
+) -> Result<MysqlSessionResult, DbOperationError> {
+    #[cfg(unix)]
+    {
+        shutdown_mysql_input(process).await?;
+        // The caller has consumed the expected final resultset, so the client can be
+        // terminated explicitly while the PTY is drained for already-produced diagnostics.
+        let (error_bytes, status) = tokio::join!(
+            read_pty_all(&mut process.pty),
+            stop_mysql_process(&mut process.child),
+        );
+        let error_bytes =
+            error_bytes.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        let (status, forcibly_stopped) = status?;
+        Ok(MysqlSessionResult {
+            status,
+            forcibly_stopped,
+            error_bytes,
+        })
+    }
+
+    #[cfg(not(unix))]
+    finish_mysql_session(process).await
 }
 
 pub(super) async fn configure_mysql_session(
@@ -455,7 +476,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
     if result.is_err() {
         cleanup_mysql_process(&mut process).await;
     } else {
-        let _ = stop_mysql_process(&mut process).await;
+        let _ = stop_mysql_process(&mut process.child).await;
     }
     result
 }
