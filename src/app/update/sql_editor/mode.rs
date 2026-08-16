@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
@@ -15,13 +14,7 @@ pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) 
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.open_sql_tab();
             state.flash_timers.clear(FlashId::SqlModal);
-            if !state.sql_modal.is_prefetch_started() && state.session.metadata().is_some() {
-                DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::StartPrefetchAll,
-                ])])
-            } else {
-                DispatchResult::handled()
-            }
+            DispatchResult::handled()
         }
         Action::SqlModalAppendInsert => {
             state.sql_modal.editor.move_cursor(CursorMove::LineEnd);

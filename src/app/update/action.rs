@@ -504,6 +504,9 @@ pub enum Action {
     StartPrefetchScoped {
         tables: Vec<String>,
     },
+    StartCompletionPrefetch {
+        tables: Vec<String>,
+    },
     ExpandPrefetchWithFkNeighbors {
         run_id: u64,
     },

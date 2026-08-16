@@ -91,6 +91,7 @@ pub struct SqlModalContext {
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     pub(crate) prefetch_started: bool,
+    prefetch_tracks_er: bool,
     pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
@@ -121,20 +122,39 @@ impl SqlModalContext {
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
+        self.prefetch_tracks_er = false;
         self.prefetch_run.clear_active();
     }
 
-    // Preserves `prefetching_tables` so in-flight requests drain naturally.
     #[must_use]
     pub fn begin_prefetch(&mut self) -> u64 {
+        if self.prefetch_run.active_id().is_some() && !self.prefetch_tracks_er {
+            // Responses from the replaced completion run are stale and will be discarded.
+            self.prefetching_tables.clear();
+        }
         self.prefetch_started = true;
+        self.prefetch_tracks_er = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
         self.prefetch_run.begin()
     }
 
+    #[must_use]
+    pub fn begin_completion_prefetch(&mut self) -> u64 {
+        self.prefetch_started = true;
+        self.prefetch_tracks_er = false;
+        self.prefetch_queue.clear();
+        self.failed_prefetch_tables.clear();
+        self.prefetch_run.begin()
+    }
+
+    pub fn prefetch_tracks_er(&self) -> bool {
+        self.prefetch_tracks_er
+    }
+
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
+        self.prefetch_tracks_er = false;
         self.prefetching_tables.clear();
         self.prefetch_run.clear_active();
     }

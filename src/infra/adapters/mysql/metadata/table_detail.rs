@@ -20,12 +20,12 @@ use super::super::{
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata,
-    execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
-    mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result, optional_text,
-    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata,
-    parse_optional_positive_i32, parse_positive_i32, parse_unique_column_metadata,
-    primary_key_names, required_text, selected_database, validate_selected_schema_name,
+    MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata, expect_columns, find_table,
+    foreign_keys_from_metadata, mark_single_column_unique, metadata_shape_error,
+    metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_columns_for_table,
+    parse_foreign_key_metadata, parse_optional_positive_i32, parse_positive_i32,
+    parse_unique_column_metadata, primary_key_names, required_text, selected_database,
+    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -83,13 +83,30 @@ pub(super) async fn fetch_table_columns_and_fks(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
+    fetch_table_columns_and_fks_with_program(
+        dsn,
+        schema,
+        table,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn fetch_table_columns_and_fks_with_program(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Table, DbOperationError> {
     let database = selected_database(dsn)?;
     validate_selected_schema_name(&database, schema)?;
     let table_query = table_query(schema, table);
     let columns_query = columns_query(schema, table);
     let unique_columns_query = unique_columns_query(schema, table);
     let foreign_keys_query = foreign_keys_query(schema, table);
-    let results = execute_metadata_queries_in_session(
+    let results = super::catalog::execute_metadata_queries_in_session_with_program(
         dsn,
         &[
             (table_query.as_str(), TABLES_RESULT_COLUMNS),
@@ -97,6 +114,8 @@ pub(super) async fn fetch_table_columns_and_fks(
             (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
             (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
         ],
+        program,
+        timeout,
     )
     .await?;
     let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
@@ -687,6 +706,48 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn completion_detail_prefetch_uses_one_process_and_four_metadata_queries() {
+        let (_directory, program, transcript) = fake_metadata_cli("table");
+        let detail = fetch_table_columns_and_fks_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "fake completion metadata CLI failed: {error:?}\n{}",
+                std::fs::read_to_string(&transcript).unwrap()
+            )
+        });
+
+        assert_eq!(detail.name, "items");
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| line.starts_with("process="))
+                .count(),
+            1
+        );
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| {
+                    line.starts_with("query=")
+                        && (line.contains("INFORMATION_SCHEMA")
+                            || line.contains("REFERENTIAL_CONSTRAINTS"))
+                })
+                .count(),
+            4
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]

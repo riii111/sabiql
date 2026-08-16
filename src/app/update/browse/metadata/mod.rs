@@ -60,6 +60,7 @@ mod tests {
     use crate::domain::{ConnectionId, DatabaseType, Table};
     use crate::model::app_state::AppState;
     use crate::model::browse::session::TableDetailState;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
     use crate::ports::outbound::DbOperationError;
     use crate::update::action::{Action, TableTarget};
@@ -1027,6 +1028,112 @@ mod tests {
                     Effect::ProcessPrefetchQueue { .. }
                 ]
             ));
+        }
+    }
+
+    mod start_completion_prefetch {
+        use super::*;
+
+        #[test]
+        fn queues_only_referenced_tables_without_er_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::StartCompletionPrefetch { tables },
+                Instant::now(),
+            )
+            .expect("completion prefetch should be handled");
+
+            assert!(state.sql_modal.is_prefetch_started());
+            assert!(!state.sql_modal.prefetch_tracks_er());
+            assert!(state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.orders"));
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ProcessPrefetchQueue { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ResizeCompletionCache { .. }))
+            );
+        }
+
+        #[test]
+        fn cached_table_retriggers_sql_completion_without_er_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.modal.set_mode(InputMode::SqlModal);
+            let run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: empty_table("public", "users"),
+                },
+                Instant::now(),
+            )
+            .expect("cached detail should be handled");
+
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CacheTableInCompletionEngine { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::TriggerCompletion))
+            );
+        }
+
+        #[test]
+        fn er_prefetch_replaces_an_active_completion_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let completion_run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped {
+                    tables: vec!["public.orders".to_string()],
+                },
+                Instant::now(),
+            )
+            .expect("ER prefetch should be handled");
+
+            let er_run_id = state
+                .sql_modal
+                .active_prefetch_run_id()
+                .expect("ER prefetch should have an active run");
+            assert_ne!(completion_run_id, er_run_id);
+            assert!(state.sql_modal.prefetch_tracks_er());
+            assert!(!state.sql_modal.is_table_prefetching("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.orders"));
+            assert!(!state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.orders")
+            );
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ProcessPrefetchQueue { run_id } if *run_id == er_run_id
+            )));
         }
     }
 
