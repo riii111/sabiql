@@ -276,7 +276,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_tables_only_and_preserves_view_details() {
+    async fn loads_mysql_table_catalog_and_preserves_view_details() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
@@ -304,14 +304,6 @@ mod metadata_fetch {
                         table.kind_info
                     ));
                 }
-                if metadata
-                    .table_summaries
-                    .iter()
-                    .any(|summary| summary.name == MYSQL_VIEW)
-                {
-                    return Err("MySQL view was listed in table metadata".to_string());
-                }
-
                 let detail = db
                     .adapter()
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)

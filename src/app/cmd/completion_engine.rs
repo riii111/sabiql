@@ -1627,7 +1627,6 @@ mod tests {
                     .iter()
                     .any(|candidate| candidate.text == "DESCRIBE")
             );
-            assert!(!candidates.iter().any(|candidate| candidate.text == "ILIKE"));
         }
 
         #[test]

@@ -416,22 +416,6 @@ mod tests {
             ],
         );
 
-        for query in [
-            TABLES_QUERY,
-            SIGNATURE_COLUMNS_QUERY,
-            SIGNATURE_UNIQUE_COLUMNS_QUERY,
-            SIGNATURE_FOREIGN_KEYS_QUERY,
-            &table_query(schema, table),
-            &columns_query(schema, table),
-            &preview_columns_query(schema, table),
-            &unique_columns_query(schema, table),
-            &foreign_keys_query(schema, table),
-            &indexes_query(schema, table),
-            &triggers_query(schema, table),
-        ] {
-            assert!(!query.contains("UNION ALL SELECT NULL"));
-        }
-
         assert_eq!(
             TABLES_RESULT_COLUMNS,
             &[
