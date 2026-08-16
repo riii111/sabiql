@@ -162,6 +162,26 @@ mod tests {
         }
 
         #[tokio::test]
+        async fn preserves_cached_rows_larger_than_mysql_field_limit() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("large_cached_export.csv");
+            let big_value = "x".repeat(16 * 1024 * 1024 + 1);
+
+            write_cached_result_csv(
+                path.clone(),
+                vec!["data".to_string()],
+                vec![vec![QueryValue::Text(big_value.clone())]],
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                std::fs::metadata(path).unwrap().len(),
+                ("data\n".len() + big_value.len() + 1) as u64
+            );
+        }
+
+        #[tokio::test]
         async fn returns_error_when_file_cannot_be_created() {
             let dir = tempdir().unwrap();
             let path = dir.path().join("missing").join("export.csv");
