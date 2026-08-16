@@ -278,7 +278,7 @@ case "${1:-test}" in
         run_tests
         ;;
     stop)
-        docker compose --file "$compose_file" --file "$tls_compose_file" down --volumes --remove-orphans
+        docker compose --file "$compose_file" --file "$tls_compose_file" rm --force --stop --volumes mysql
         ;;
     *)
         echo "usage: $0 [test|stop]" >&2

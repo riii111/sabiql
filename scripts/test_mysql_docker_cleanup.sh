@@ -57,7 +57,7 @@ case "${1:-}" in
                 --file)
                     shift 2
                     ;;
-                up|port|down)
+                up|port|down|rm)
                     command="$1"
                     break
                     ;;
@@ -389,3 +389,8 @@ fi
 
 PATH="$fake_bin:$PATH" "$script_dir/mysql_integration.sh" stop >/dev/null 2>&1
 assert_only_unrelated_container_remains
+if ! grep -Fq 'default|rm|rm --force --stop --volumes mysql' "$compose_log" || \
+    grep -Fq 'default|down|' "$compose_log"; then
+    printf 'stop did not remain scoped to the MySQL service:\n%s\n' "$(<"$compose_log")" >&2
+    exit 1
+fi
