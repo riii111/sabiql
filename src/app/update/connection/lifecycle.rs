@@ -22,6 +22,7 @@ pub fn reduce_connection_lifecycle(
 ) -> DispatchResult {
     match action {
         Action::TryConnect => {
+            state.session.cancel_connection_save_and_disconnect();
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
@@ -73,6 +74,7 @@ pub fn reduce_connection_lifecycle(
         }
 
         Action::SwitchConnection(target) => {
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_error.clear();
             let ConnectionTarget {
                 id,
@@ -213,8 +215,9 @@ pub fn reduce_connection_lifecycle(
                     .mark_table_detail_probe_failed(&target.dsn, message.clone());
                 state.session.mark_connection_failed(message);
             }
-            state.connection_error.set_error(
+            state.connection_error.set_connection_switch_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
+                target.database_type,
             );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())
@@ -267,6 +270,152 @@ mod tests {
             database_type: DatabaseType::PostgreSQL,
             database: None,
         })
+    }
+
+    mod metadata_reload_race {
+        use super::*;
+
+        fn mysql_target(id: &str, database: &str) -> ConnectionTarget {
+            ConnectionTarget {
+                id: ConnectionId::from_string(id),
+                dsn: format!("mysql://user@localhost:3306/{database}"),
+                name: id.to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some(database.to_string()),
+            }
+        }
+
+        fn active_mysql_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let current = mysql_target("mysql-a", "a");
+            state.session.activate_connection_with_target(
+                &current.id,
+                &current.name,
+                current.database_type,
+                &current.dsn,
+                current.database.as_deref(),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state
+        }
+
+        #[test]
+        fn reload_during_switch_preserves_probe_until_success() {
+            let mut state = active_mysql_state();
+            let target = mysql_target("mysql-b", "b");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch should include the probe run");
+
+            let reload_effects = reduce_app(
+                &mut state,
+                Action::ReloadMetadata,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(reload_effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
+
+            let completion_effects = reduce_app(
+                &mut state,
+                Action::MySqlConnectionProbeCompleted {
+                    target: target.clone(),
+                    run_id: probe_run_id,
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.active_connection_id(), Some(&target.id));
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(completion_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+            )));
+        }
+
+        #[test]
+        fn reload_during_switch_preserves_probe_until_failure() {
+            let mut state = active_mysql_state();
+            let target = mysql_target("mysql-b", "b");
+            let probe_effects = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .expect("switch should start a probe");
+            let probe_run_id = probe_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("switch should include the probe run");
+
+            let reload_effects = reduce_app(
+                &mut state,
+                Action::ReloadMetadata,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(reload_effects.is_empty());
+            let failure_effects = reduce_app(
+                &mut state,
+                Action::MySqlConnectionProbeFailed {
+                    target: target.clone(),
+                    run_id: probe_run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(failure_effects.is_empty());
+            assert_eq!(
+                state.session.active_connection_id(),
+                Some(&ConnectionId::from_string("mysql-a"))
+            );
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
+            assert!(state.connection_error.can_retry());
+
+            let retry_effects = reduce_connection_error(
+                &mut state,
+                &Action::RetryConnection,
+                std::time::Instant::now(),
+            )
+            .into_effects()
+            .unwrap();
+            assert!(retry_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ProbeMySqlConnection { target: retry_target, .. }
+                    if retry_target.id == target.id
+                        && retry_target.dsn == target.dsn
+                        && retry_target.database == target.database
+            )));
+        }
     }
 
     mod cache_tests {

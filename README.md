@@ -20,7 +20,7 @@ Safety follows a plan-before-apply flow familiar from Terraform: inline edits an
 
 ![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
 
-- **Browse and inspect** — Find tables with fuzzy search, inspect columns, constraints, indexes, foreign keys, triggers, and DDL, or switch MySQL databases without reconnecting
+- **Browse and inspect** — Find tables with fuzzy search, inspect columns, constraints, indexes, foreign keys, triggers, and DDL
 - **Run SQL** — Write ad-hoc queries with completion for tables, columns, and keywords, then recall them from query history
 - **Edit with previews** — Update cells or delete rows only after reviewing the SQL and its risk level
 - **Browse in read-only mode** (`Ctrl+R`) — Block writes while investigating data

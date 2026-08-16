@@ -30,6 +30,8 @@ pub enum ConnectionProfileError {
     MissingMySqlField(&'static str),
     #[error("MySQL connection host is invalid")]
     InvalidMySqlHost,
+    #[error("MySQL connection port must be > 0")]
+    InvalidMySqlPort,
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
 }
@@ -140,8 +142,13 @@ impl ConnectionProfile {
         name: impl Into<String>,
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
-        if matches!(&config, ConnectionConfig::MySQL(config) if !config.is_valid()) {
-            return Err(ConnectionProfileError::InvalidMySqlHost);
+        if let ConnectionConfig::MySQL(mysql) = &config {
+            if mysql.port == 0 {
+                return Err(ConnectionProfileError::InvalidMySqlPort);
+            }
+            if !mysql.is_valid() {
+                return Err(ConnectionProfileError::InvalidMySqlHost);
+            }
         }
         Ok(Self {
             id,
@@ -227,6 +234,24 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(ConnectionProfileError::InvalidMySqlHost)
+            ));
+        }
+
+        #[test]
+        fn zero_mysql_port_returns_error() {
+            let result = ConnectionProfile::new_mysql(
+                "MySQL",
+                "localhost",
+                0,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Preferred,
+            );
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::InvalidMySqlPort)
             ));
         }
     }

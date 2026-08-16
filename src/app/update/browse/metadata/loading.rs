@@ -11,6 +11,8 @@ use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::query_context::termination_effects;
 
+const CONNECTION_SWITCH_IN_PROGRESS: &str = "Connection switch in progress";
+
 pub(super) fn reduce_loading(
     state: &mut AppState,
     action: &Action,
@@ -82,12 +84,6 @@ pub(super) fn reduce_loading(
                 state.session.finish_reload();
             }
 
-            if state.modal.active_mode() == InputMode::SqlModal
-                && !state.sql_modal.is_prefetch_started()
-            {
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchAll]));
-            }
-
             if state.ui.take_pending_er_picker() && state.modal.active_mode() == InputMode::Normal {
                 effects.push(Effect::DispatchActions(vec![Action::OpenModal(
                     ModalKind::ErTablePicker,
@@ -139,6 +135,12 @@ pub(super) fn reduce_loading(
             })
         }
         Action::LoadMetadata => {
+            if state.session.has_pending_connection_switch() {
+                state
+                    .messages
+                    .set_error_at(CONNECTION_SWITCH_IN_PROGRESS.to_string(), now);
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_metadata_refresh();
                 DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
@@ -147,6 +149,12 @@ pub(super) fn reduce_loading(
             }
         }
         Action::ReloadMetadata => {
+            if state.session.has_pending_connection_switch() {
+                state
+                    .messages
+                    .set_error_at(CONNECTION_SWITCH_IN_PROGRESS.to_string(), now);
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();

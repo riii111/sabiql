@@ -185,4 +185,12 @@ VALUES (1, 'case-sensitive foreign key');
 CREATE USER 'sabiql_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word';
 GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_test_runner'@'%';
 GRANT ALL PRIVILEGES ON SABIQL_TEST.* TO 'sabiql_test_runner'@'%';
-GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO 'sabiql'@'%', 'sabiql_test_runner'@'%';
+
+CREATE USER 'sabiql_tls_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word' REQUIRE X509;
+GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_tls_test_runner'@'%';
+GRANT ALL PRIVILEGES ON SABIQL_TEST.* TO 'sabiql_tls_test_runner'@'%';
+
+GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO
+    'sabiql'@'%',
+    'sabiql_test_runner'@'%',
+    'sabiql_tls_test_runner'@'%';

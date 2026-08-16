@@ -618,6 +618,23 @@ mod tests {
 
             assert!(!state.has_validation_error(ConnectionField::Name));
         }
+
+        #[test]
+        fn zero_port_sets_error() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state
+                .input_mut(ConnectionField::Port)
+                .unwrap()
+                .set_content("0".to_string());
+
+            validate_field(&mut state, ConnectionField::Port);
+
+            assert_eq!(
+                state.validation_error(ConnectionField::Port),
+                Some("Port must be > 0")
+            );
+        }
     }
 
     mod validate_sqlite_path {

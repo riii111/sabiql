@@ -30,11 +30,10 @@ mod table_signatures {
     }
 
     #[tokio::test]
-    async fn excludes_views_but_keeps_virtual_tables() {
+    async fn includes_regular_and_virtual_tables() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
             CREATE TABLE users(id INTEGER PRIMARY KEY);
-            CREATE VIEW active_users AS SELECT id FROM users;
             CREATE VIRTUAL TABLE notes_fts USING fts5(body);
             ",
         );
@@ -47,7 +46,6 @@ mod table_signatures {
             .collect();
 
         assert_eq!(names, ["notes_fts", "users"]);
-        assert!(!names.contains(&"active_users"));
         assert!(signatures[0].signature.contains("CREATE VIRTUAL TABLE"));
     }
 

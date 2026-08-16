@@ -82,7 +82,6 @@ mod metadata {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
         CREATE TABLE users(id INTEGER PRIMARY KEY AUTOINCREMENT);
-        CREATE VIEW active_users AS SELECT id FROM users;
         ",
         );
         let adapter = SqliteAdapter::new();

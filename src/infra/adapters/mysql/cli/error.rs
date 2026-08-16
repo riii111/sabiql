@@ -128,6 +128,7 @@ fn classify_mysql_server_error(
         {
             DbOperationError::Timeout(details.to_string())
         }
+        2003 => DbOperationError::ConnectionFailed(details.to_string()),
         _ => return None,
     })
 }
@@ -169,6 +170,12 @@ mod tests {
                 b"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)"
             ),
             DbOperationError::Timeout(_)
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
+            ),
+            DbOperationError::ConnectionFailed(_)
         ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1049 (42000): schema selection failed"),

@@ -2042,17 +2042,21 @@ mod tests {
                 .connection_setup
                 .database
                 .set_content("mydb".to_string());
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted(ConnectionTarget {
-                    id: ConnectionId::new(),
-                    dsn: "postgres://db.example.com/mydb".to_string(),
-                    name: "Test Connection".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
+                Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://db.example.com/mydb".to_string(),
+                        name: "Test Connection".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2071,13 +2075,18 @@ mod tests {
         fn save_failed_sets_error_message() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveFailed(ConnectionSaveError::Store(ConnectionStoreError::Io(
-                    Arc::new(std::io::Error::other("Write error")),
-                ))),
+                Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Store(ConnectionStoreError::Io(Arc::new(
+                        std::io::Error::other("Write error"),
+                    ))),
+                    database_type: DatabaseType::PostgreSQL,
+                    run_id,
+                },
                 now,
                 &AppServices::stub(),
             );
@@ -2560,17 +2569,21 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::NotConnected);
             state.session.set_metadata_state(MetadataState::NotLoaded);
+            let run_id = state.session.begin_connection_save();
             let now = Instant::now();
 
             let effects = reduce(
                 &mut state,
-                Action::ConnectionSaveCompleted(ConnectionTarget {
-                    id: ConnectionId::new(),
-                    dsn: "postgres://localhost/test".to_string(),
-                    name: "Test".to_string(),
-                    database_type: DatabaseType::PostgreSQL,
-                    database: None,
-                }),
+                Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://localhost/test".to_string(),
+                        name: "Test".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id,
+                },
                 now,
                 &AppServices::stub(),
             );

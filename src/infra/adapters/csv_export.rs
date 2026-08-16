@@ -7,6 +7,10 @@ use tokio::io::{AsyncWriteExt, BufWriter};
 
 pub const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
 
+fn new_csv_writer() -> csv::Writer<Vec<u8>> {
+    csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD))
+}
+
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
@@ -119,8 +123,7 @@ impl CsvFileWriter {
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         Ok(Self {
             file: BufWriter::new(file),
-            csv_writer: csv::WriterBuilder::new()
-                .from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD)),
+            csv_writer: new_csv_writer(),
             bytes_since_flush: 0,
         })
     }
@@ -157,7 +160,10 @@ impl CsvFileWriter {
     }
 
     async fn flush_buffer(&mut self) -> Result<(), DbOperationError> {
-        let encoded = self.csv_writer.get_ref().as_slice().to_vec();
+        let csv_writer = std::mem::replace(&mut self.csv_writer, new_csv_writer());
+        let encoded = csv_writer
+            .into_inner()
+            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
         self.file
             .write_all(&encoded)
             .await
@@ -166,8 +172,6 @@ impl CsvFileWriter {
             .flush()
             .await
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        self.csv_writer =
-            csv::WriterBuilder::new().from_writer(Vec::with_capacity(CSV_FLUSH_THRESHOLD));
         self.bytes_since_flush = 0;
         Ok(())
     }
@@ -209,6 +213,24 @@ mod tests {
     use tokio::sync::oneshot;
 
     use super::*;
+
+    const MEMORY_MEASUREMENT_FIELD_BYTES: usize = 8 * 1024 * 1024;
+
+    #[tokio::test]
+    async fn writes_large_record_without_changing_csv_bytes() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("large-record.csv");
+        let value = "x".repeat(MEMORY_MEASUREMENT_FIELD_BYTES);
+        let mut writer = CsvFileWriter::create(path.clone()).await.unwrap();
+
+        writer.write_record([value.as_str()]).await.unwrap();
+        writer.finish().await.unwrap();
+
+        assert_eq!(
+            tokio::fs::metadata(path).await.unwrap().len(),
+            (MEMORY_MEASUREMENT_FIELD_BYTES + 1) as u64
+        );
+    }
 
     #[tokio::test]
     async fn cancellation_removes_partial_temporary_file() {

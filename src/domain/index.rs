@@ -20,6 +20,7 @@ impl IndexAttributes {
     pub const HAS_AUXILIARY_COLUMNS: Self = Self(0b1_0000);
     pub const DESCENDING: Self = Self(0b10_0000);
     pub const NON_BINARY_COLLATION: Self = Self(0b100_0000);
+    pub const INVISIBLE: Self = Self(0b1000_0000);
 
     pub const fn empty() -> Self {
         Self(0)
@@ -81,12 +82,17 @@ impl Index {
             .contains(IndexAttributes::NON_BINARY_COLLATION)
     }
 
+    pub const fn is_invisible(&self) -> bool {
+        self.attributes.contains(IndexAttributes::INVISIBLE)
+    }
+
     pub const fn has_index_detail(&self) -> bool {
         self.is_partial()
             || self.has_expression()
             || self.has_auxiliary_columns()
             || self.has_descending_key()
             || self.has_non_binary_collation()
+            || self.is_invisible()
     }
 
     pub const fn needs_source_definition_detail(&self) -> bool {

@@ -26,6 +26,8 @@ mod connection {
     #[cfg(unix)]
     use tempfile::NamedTempFile;
 
+    const MYSQL_TLS_TEST_USER: &str = "sabiql_tls_test_runner";
+
     fn mysql_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
         ConnectionProfile::with_id_and_config(
             ConnectionId::new(),
@@ -98,10 +100,16 @@ mod connection {
         .await;
     }
 
+    fn mysql_tls_test_config() -> MySqlConnectionConfig {
+        let mut config = mysql_tls_config();
+        config.username = MYSQL_TLS_TEST_USER.to_string();
+        config
+    }
+
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
-        let config = mysql_tls_config();
+        let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
@@ -116,6 +124,30 @@ mod connection {
             .await
             .unwrap();
         assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn rejects_oracle_mysql_84_fixture_without_client_certificate() {
+        let mut config = mysql_tls_test_config();
+        config.ssl_cert = None;
+        config.ssl_key = None;
+        let profile = mysql_profile("mysql-tls-missing-client-certificate", config);
+        let adapter = MySqlAdapter::new();
+        let dsn = adapter.build_dsn(&profile);
+        let error = adapter.probe(&dsn).await.unwrap_err();
+        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        assert_eq!(
+            error_info.kind,
+            ConnectionErrorKind::AuthFailed,
+            "masked connection error details: {}",
+            error_info.masked_details()
+        );
+        assert!(
+            error_info.masked_details().contains("ERROR 1045 (28000)"),
+            "missing client certificate must be rejected by the REQUIRE X509 account: {}",
+            error_info.masked_details()
+        );
     }
 
     #[tokio::test]
@@ -215,6 +247,7 @@ mod metadata_fetch {
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
+    const MYSQL_INDEX_METADATA: &str = "mysql_metadata_index_parts";
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -243,7 +276,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_tables_only_and_preserves_view_details() {
+    async fn loads_mysql_table_catalog_and_preserves_view_details() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
@@ -271,14 +304,6 @@ mod metadata_fetch {
                         table.kind_info
                     ));
                 }
-                if metadata
-                    .table_summaries
-                    .iter()
-                    .any(|summary| summary.name == MYSQL_VIEW)
-                {
-                    return Err("MySQL view was listed in table metadata".to_string());
-                }
-
                 let detail = db
                     .adapter()
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)
@@ -634,6 +659,84 @@ mod metadata_fetch {
         })
         .await;
     }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn reflects_mysql_index_prefix_direction_visibility_and_functional_parts() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE TABLE {MYSQL_INDEX_METADATA} (email VARCHAR(255) NOT NULL, created_at DATETIME NOT NULL, status VARCHAR(32) NOT NULL, KEY idx_normal_status (status), KEY idx_email_prefix_desc (email(8) DESC, created_at), KEY idx_invisible_created_at (created_at) INVISIBLE, KEY idx_functional_email ((LOWER(email))) INVISIBLE) ENGINE=InnoDB"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create index metadata fixture: {error:?}"))?;
+
+                let detail = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_INDEX_METADATA)
+                    .await
+                    .map_err(|error| format!("failed to fetch index metadata fixture: {error:?}"))?;
+
+                let normal = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_normal_status")
+                    .ok_or_else(|| "normal MySQL index was not returned".to_string())?;
+                if normal.columns != ["status"] || normal.is_unique() {
+                    return Err(format!("unexpected normal index: {normal:?}"));
+                }
+
+                let prefix_desc = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_email_prefix_desc")
+                    .ok_or_else(|| "prefix descending MySQL index was not returned".to_string())?;
+                if prefix_desc.columns != ["email(8) DESC", "created_at"]
+                    || !prefix_desc.has_descending_key()
+                {
+                    return Err(format!(
+                        "unexpected prefix descending index: {prefix_desc:?}"
+                    ));
+                }
+
+                let invisible = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_invisible_created_at")
+                    .ok_or_else(|| "invisible MySQL index was not returned".to_string())?;
+                if invisible.columns != ["created_at"] || !invisible.is_invisible() {
+                    return Err(format!("unexpected invisible index: {invisible:?}"));
+                }
+
+                let functional = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_functional_email")
+                    .ok_or_else(|| "functional MySQL index was not returned".to_string())?;
+                if !functional.has_expression() || !functional.is_invisible() {
+                    return Err(format!(
+                        "functional invisible index lost metadata: {functional:?}"
+                    ));
+                }
+
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("DROP TABLE {MYSQL_INDEX_METADATA}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to drop index metadata fixture: {error:?}"))?;
+                Ok(())
+            })
+        })
+        .await;
+    }
 }
 
 mod query_preview {
@@ -719,11 +822,17 @@ mod query_preview {
                     .execute_preview(db.dsn(), "sabiql_test", MYSQL_NO_PK_TABLE, 1, 1)
                     .await
                     .map_err(|error| format!("{error:?}"))?;
-                if !page
-                    .query
-                    .contains("ORDER BY `duplicate_value`, `payload` LIMIT 1 OFFSET 1")
+                if page.query
+                    != "SELECT `duplicate_value`, `payload` FROM `sabiql_test`.`mysql_preview_no_pk` LIMIT 1 OFFSET 1"
                 {
                     return Err(format!("unexpected no-PK preview SQL: {}", page.query));
+                }
+                let plan = db
+                    .run_cli_script(&format!("EXPLAIN {}", page.query))
+                    .await
+                    .map_err(|error| format!("failed to explain no-PK preview: {error}"))?;
+                if plan.contains("Using filesort") {
+                    return Err(format!("no-PK preview unexpectedly used filesort: {plan:?}"));
                 }
 
                 let composite = db

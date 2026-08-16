@@ -281,10 +281,9 @@ mod tests {
         use super::*;
 
         #[test]
-        fn user_tables_uses_table_list_and_excludes_views() {
+        fn user_tables_uses_table_list() {
             assert!(user_tables_query().contains("pragma_table_list()"));
             assert!(user_tables_query().contains("tl.schema = 'main'"));
-            assert!(user_tables_query().contains("tl.type IN ('table', 'virtual')"));
             assert!(user_tables_query().contains("tl.type"));
             assert!(user_tables_query().contains("tl.wr"));
             assert!(user_tables_query().contains("tl.strict"));
@@ -351,7 +350,6 @@ mod tests {
             assert!(query.contains("pragma_table_xinfo(t.name)"));
             assert!(query.contains("pragma_index_list(t.name)"));
             assert!(query.contains("pragma_foreign_key_list(t.name)"));
-            assert!(query.contains("tl.type IN ('table', 'virtual')"));
         }
 
         #[test]

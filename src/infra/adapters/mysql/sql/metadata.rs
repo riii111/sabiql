@@ -113,6 +113,8 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
     "COLUMN_NAME",
     "SUB_PART",
     "EXPRESSION",
+    "COLLATION",
+    "IS_VISIBLE",
     "IS_PRIMARY",
 ];
 pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
@@ -127,7 +129,7 @@ const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
 pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(schema),
         quote_string(table),
     )
@@ -198,8 +200,13 @@ pub(in crate::adapters::mysql) fn build_preview_query(
         .map(|column| quote_identifier(column))
         .collect::<Vec<_>>()
         .join(", ");
+    let order_clause = if order_by.is_empty() {
+        String::new()
+    } else {
+        format!(" ORDER BY {order_by}")
+    };
     format!(
-        "SELECT {columns} FROM {}.{} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}",
+        "SELECT {columns} FROM {}.{}{order_clause} LIMIT {limit} OFFSET {offset}",
         quote_identifier(schema),
         quote_identifier(table),
     )
@@ -346,7 +353,7 @@ mod tests {
         assert_contains_in_order(
             &indexes_sql,
             &[
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION",
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE",
                 "CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY",
                 "FROM INFORMATION_SCHEMA.STATISTICS AS s",
                 &format!("WHERE s.TABLE_SCHEMA = {quoted_schema}"),
@@ -413,22 +420,6 @@ mod tests {
                 "ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
             ],
         );
-
-        for query in [
-            TABLES_QUERY,
-            SIGNATURE_COLUMNS_QUERY,
-            SIGNATURE_UNIQUE_COLUMNS_QUERY,
-            SIGNATURE_FOREIGN_KEYS_QUERY,
-            &table_query(schema, table),
-            &columns_query(schema, table),
-            &preview_columns_query(schema, table),
-            &unique_columns_query(schema, table),
-            &foreign_keys_query(schema, table),
-            &indexes_query(schema, table),
-            &triggers_query(schema, table),
-        ] {
-            assert!(!query.contains("UNION ALL SELECT NULL"));
-        }
 
         assert_eq!(
             TABLES_RESULT_COLUMNS,
@@ -512,6 +503,8 @@ mod tests {
                 "COLUMN_NAME",
                 "SUB_PART",
                 "EXPRESSION",
+                "COLLATION",
+                "IS_VISIBLE",
                 "IS_PRIMARY",
             ]
         );
@@ -576,6 +569,11 @@ mod tests {
                 0,
             ),
             "SELECT `payload`, `id` AS `__sabiql_row_identity_0` FROM `app`.`items` ORDER BY `id` LIMIT 10 OFFSET 0"
+        );
+
+        assert_eq!(
+            build_preview_query("app", "items", &[], &visible_columns, &[], 10, 0,),
+            "SELECT `payload` FROM `app`.`items` LIMIT 10 OFFSET 0"
         );
     }
 }

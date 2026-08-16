@@ -1,5 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
@@ -98,6 +99,8 @@ pub struct BrowseSession {
     effective_user: Option<String>,
     effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
+    connection_save_run: AsyncRun,
+    connection_save_guard: Arc<AtomicU64>,
 
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
@@ -125,6 +128,8 @@ impl Default for BrowseSession {
             effective_user: None,
             effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
+            connection_save_run: AsyncRun::default(),
+            connection_save_guard: Arc::new(AtomicU64::new(0)),
             dsn: None,
             active_connection: None,
             mysql_connection_probe_run: AsyncRun::default(),
@@ -251,6 +256,33 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loading;
         self.effective_user = None;
         self.effective_user_run.clear_active();
+    }
+
+    #[must_use]
+    pub fn begin_connection_save(&mut self) -> u64 {
+        let run_id = self.connection_save_run.begin();
+        self.connection_save_guard.store(run_id, Ordering::Release);
+        run_id
+    }
+
+    pub fn is_current_connection_save(&self, run_id: u64) -> bool {
+        self.connection_save_run.is_current(run_id)
+    }
+
+    pub fn cancel_connection_save(&mut self) {
+        self.connection_save_run.clear_active();
+        self.connection_save_guard.store(0, Ordering::Release);
+    }
+
+    pub fn cancel_connection_save_and_disconnect(&mut self) {
+        if self.connection_save_run.active_id().is_some() {
+            self.cancel_connection_save();
+            self.mark_disconnected();
+        }
+    }
+
+    pub fn connection_save_guard(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.connection_save_guard)
     }
 
     #[must_use]
@@ -431,6 +463,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
+        self.cancel_connection_save_and_disconnect();
         self.clear_mysql_connection_probe();
         self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }

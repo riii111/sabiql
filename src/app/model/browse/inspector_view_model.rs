@@ -127,28 +127,6 @@ pub enum InspectorUnavailableReason {
 }
 
 impl InspectorViewModel {
-    pub fn build(
-        profile: &EngineFeatureProfile,
-        selected_tab: InspectorTab,
-        table: Option<&Table>,
-        database_type: DatabaseType,
-        ddl_generator: &dyn DdlGenerator,
-    ) -> Self {
-        let table_detail_state = if table.is_some() {
-            TableDetailState::Loaded
-        } else {
-            TableDetailState::NotSelected
-        };
-        Self::build_with_detail_state(
-            profile,
-            selected_tab,
-            table,
-            &table_detail_state,
-            database_type,
-            ddl_generator,
-        )
-    }
-
     pub fn build_with_detail_state(
         profile: &EngineFeatureProfile,
         selected_tab: InspectorTab,
@@ -432,7 +410,11 @@ fn index_detail(index: &Index) -> String {
     if index.needs_source_definition_detail()
         && let Some(definition) = &index.definition
     {
-        return definition.clone();
+        let mut detail = definition.clone();
+        if index.is_invisible() {
+            detail.push_str("; invisible");
+        }
+        return detail;
     }
 
     let mut details = Vec::new();
@@ -447,6 +429,9 @@ fn index_detail(index: &Index) -> String {
     }
     if index.has_non_binary_collation() {
         details.push("collation");
+    }
+    if index.is_invisible() {
+        details.push("invisible");
     }
     details.join("; ")
 }
@@ -573,12 +558,30 @@ mod tests {
         }
     }
 
+    fn build_loaded(
+        profile: &EngineFeatureProfile,
+        selected_tab: InspectorTab,
+        table: &Table,
+        database_type: DatabaseType,
+        ddl_generator: &dyn DdlGenerator,
+    ) -> InspectorViewModel {
+        InspectorViewModel::build_with_detail_state(
+            profile,
+            selected_tab,
+            Some(table),
+            &TableDetailState::Loaded,
+            database_type,
+            ddl_generator,
+        )
+    }
+
     #[test]
     fn no_table_exposes_empty_state_without_display_rows() {
-        let model = InspectorViewModel::build(
+        let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Info,
             None,
+            &TableDetailState::NotSelected,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -640,17 +643,17 @@ mod tests {
             ),
         }];
 
-        let info = InspectorViewModel::build(
+        let info = build_loaded(
             &EngineFeatureProfile::mysql_like(),
             InspectorTab::Info,
-            Some(&table),
+            &table,
             DatabaseType::MySQL,
             &TestDdlGenerator,
         );
-        let indexes = InspectorViewModel::build(
+        let indexes = build_loaded(
             &EngineFeatureProfile::mysql_like(),
             InspectorTab::Indexes,
-            Some(&table),
+            &table,
             DatabaseType::MySQL,
             &TestDdlGenerator,
         );
@@ -687,10 +690,10 @@ mod tests {
         ];
 
         for (tab, expected_rows) in cases {
-            let model = InspectorViewModel::build(
+            let model = build_loaded(
                 &EngineFeatureProfile::postgres_like(),
                 tab,
-                Some(&table),
+                &table,
                 DatabaseType::PostgreSQL,
                 &TestDdlGenerator,
             );
@@ -710,20 +713,20 @@ mod tests {
         table.columns.clear();
         table.rls = None;
 
-        let empty = InspectorViewModel::build(
+        let empty = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Columns,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
         assert_eq!(empty.row_count(), 0);
         assert_eq!(empty.empty_state(), Some(InspectorEmptyState::NoColumns));
 
-        let unavailable = InspectorViewModel::build(
+        let unavailable = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Rls,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -744,10 +747,10 @@ mod tests {
         ];
 
         for (tab, expected_rows) in cases {
-            let model = InspectorViewModel::build(
+            let model = build_loaded(
                 &EngineFeatureProfile::postgres_like(),
                 tab,
-                Some(&table),
+                &table,
                 DatabaseType::PostgreSQL,
                 &TestDdlGenerator,
             );
@@ -766,10 +769,10 @@ mod tests {
         let mut table = table();
         let column = table.columns[0].clone();
         table.columns.resize(6, column);
-        let model = InspectorViewModel::build(
+        let model = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Columns,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -800,10 +803,10 @@ mod tests {
             },
         ];
 
-        let model = InspectorViewModel::build(
+        let model = build_loaded(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Indexes,
-            Some(&table),
+            &table,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
         );
@@ -815,6 +818,47 @@ mod tests {
                 assert!(*show_details);
                 assert!(rows[0].detail.is_some());
                 assert_eq!(rows[1].detail, None);
+            }
+            section => panic!("expected index section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_index_rows_show_prefix_direction_and_visibility() {
+        let mut table = table();
+        table.indexes = vec![
+            Index {
+                name: "users_email_idx".to_string(),
+                columns: vec!["email(8) DESC".to_string()],
+                attributes: IndexAttributes::DESCENDING | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: None,
+            },
+            Index {
+                name: "users_email_functional_idx".to_string(),
+                columns: vec!["lower(email)".to_string()],
+                attributes: IndexAttributes::EXPRESSION | IndexAttributes::INVISIBLE,
+                index_type: IndexType::BTree,
+                definition: Some("lower(email)".to_string()),
+            },
+        ];
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Indexes,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Indexes {
+                rows, show_details, ..
+            }) => {
+                assert!(*show_details);
+                assert_eq!(rows[0].columns, "email(8) DESC");
+                assert_eq!(rows[0].detail.as_deref(), Some("descending; invisible"));
+                assert_eq!(rows[1].detail.as_deref(), Some("lower(email); invisible"));
             }
             section => panic!("expected index section, got {section:?}"),
         }

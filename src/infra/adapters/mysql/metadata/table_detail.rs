@@ -20,12 +20,12 @@ use super::super::{
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata,
-    execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
-    mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result, optional_text,
-    parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata,
-    parse_optional_positive_i32, parse_positive_i32, parse_unique_column_metadata,
-    primary_key_names, required_text, selected_database, validate_selected_schema_name,
+    MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata, expect_columns, find_table,
+    foreign_keys_from_metadata, mark_single_column_unique, metadata_shape_error,
+    metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_columns_for_table,
+    parse_foreign_key_metadata, parse_optional_positive_i32, parse_positive_i32,
+    parse_unique_column_metadata, primary_key_names, required_text, selected_database,
+    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -37,7 +37,21 @@ struct MySqlIndexMetadata {
     column_name: String,
     sub_part: Option<i32>,
     expression: Option<String>,
+    descending: bool,
+    visibility: MySqlIndexVisibility,
     primary: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum MySqlIndexVisibility {
+    Visible,
+    Invisible,
+}
+
+impl MySqlIndexVisibility {
+    const fn is_invisible(self) -> bool {
+        matches!(self, Self::Invisible)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -69,13 +83,30 @@ pub(super) async fn fetch_table_columns_and_fks(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
+    fetch_table_columns_and_fks_with_program(
+        dsn,
+        schema,
+        table,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+async fn fetch_table_columns_and_fks_with_program(
+    dsn: &str,
+    schema: &str,
+    table: &str,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<Table, DbOperationError> {
     let database = selected_database(dsn)?;
     validate_selected_schema_name(&database, schema)?;
     let table_query = table_query(schema, table);
     let columns_query = columns_query(schema, table);
     let unique_columns_query = unique_columns_query(schema, table);
     let foreign_keys_query = foreign_keys_query(schema, table);
-    let results = execute_metadata_queries_in_session(
+    let results = super::catalog::execute_metadata_queries_in_session_with_program(
         dsn,
         &[
             (table_query.as_str(), TABLES_RESULT_COLUMNS),
@@ -83,6 +114,8 @@ pub(super) async fn fetch_table_columns_and_fks(
             (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
             (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
         ],
+        program,
+        timeout,
     )
     .await?;
     let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
@@ -337,12 +370,27 @@ fn parse_index_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 8 {
+            if row.len() != 10 {
                 return Err(metadata_shape_error("STATISTICS row"));
             }
             let column_name = optional_text(&row[4], "COLUMN_NAME")?;
             let sub_part = parse_optional_positive_i32(&row[5], "SUB_PART")?;
             let expression = optional_text(&row[6], "EXPRESSION")?;
+            let descending = match optional_text(&row[7], "COLLATION")? {
+                None => false,
+                Some(value) if value.eq_ignore_ascii_case("A") => false,
+                Some(value) if value.eq_ignore_ascii_case("D") => true,
+                Some(_) => {
+                    return Err(DbOperationError::MetadataParseFailed(
+                        "invalid MySQL metadata collation".to_string(),
+                    ));
+                }
+            };
+            let visibility = if parse_boolean_flag(&row[8], "IS_VISIBLE")? {
+                MySqlIndexVisibility::Visible
+            } else {
+                MySqlIndexVisibility::Invisible
+            };
             let (column_name, expression) = match (column_name, expression) {
                 (Some(column_name), None) => (column_name.to_string(), None),
                 (None, Some(expression)) => {
@@ -369,7 +417,9 @@ fn parse_index_metadata(
                 column_name,
                 sub_part,
                 expression,
-                primary: parse_boolean_flag(&row[7], "IS_PRIMARY")?,
+                descending,
+                visibility,
+                primary: parse_boolean_flag(&row[9], "IS_PRIMARY")?,
             })
         })
         .collect()
@@ -383,11 +433,12 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
     });
     let mut indexes = Vec::new();
     for column in raw {
+        let column_name = index_column_name(&column);
         if let Some(index) = indexes
             .iter_mut()
             .find(|index: &&mut Index| index.name == column.name)
         {
-            index.columns.push(column.column_name);
+            index.columns.push(column_name);
             if let Some(expression) = column.expression {
                 index.attributes = index.attributes | IndexAttributes::EXPRESSION;
                 index.definition = Some(match index.definition.take() {
@@ -395,15 +446,27 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
                     None => expression,
                 });
             }
+            if column.descending {
+                index.attributes = index.attributes | IndexAttributes::DESCENDING;
+            }
+            if column.visibility.is_invisible() {
+                index.attributes = index.attributes | IndexAttributes::INVISIBLE;
+            }
             continue;
         }
         let mut attributes = IndexAttributes::from_parts(!column.non_unique, column.primary);
         if column.expression.is_some() {
             attributes = attributes | IndexAttributes::EXPRESSION;
         }
+        if column.descending {
+            attributes = attributes | IndexAttributes::DESCENDING;
+        }
+        if column.visibility.is_invisible() {
+            attributes = attributes | IndexAttributes::INVISIBLE;
+        }
         indexes.push(Index {
             name: column.name,
-            columns: vec![column.column_name],
+            columns: vec![column_name],
             attributes,
             index_type: column
                 .index_type
@@ -414,6 +477,19 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
         });
     }
     indexes
+}
+
+fn index_column_name(column: &MySqlIndexMetadata) -> String {
+    let mut name = column.column_name.clone();
+    if column.expression.is_none()
+        && let Some(sub_part) = column.sub_part
+    {
+        name = format!("{name}({sub_part})");
+    }
+    if column.descending {
+        name.push_str(" DESC");
+    }
+    name
 }
 
 fn unique_single_columns_from_metadata(raw: &[MySqlIndexMetadata]) -> HashSet<String> {
@@ -507,7 +583,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset></resultset>'
       ;;
     *STATISTICS*)
-      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="SUB_PART" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="IS_PRIMARY">YES</field></row></resultset>'
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="INDEX_NAME">PRIMARY</field><field name="NON_UNIQUE">0</field><field name="INDEX_TYPE">BTREE</field><field name="SEQ_IN_INDEX">1</field><field name="COLUMN_NAME" xsi:nil="true"/><field name="SUB_PART" xsi:nil="true"/><field name="EXPRESSION">expr</field><field name="COLLATION" xsi:nil="true"/><field name="IS_VISIBLE">YES</field><field name="IS_PRIMARY">YES</field></row></resultset>'
       ;;
     *FOREIGN*)
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
@@ -633,6 +709,48 @@ done
     }
 
     #[tokio::test]
+    async fn completion_detail_prefetch_uses_one_process_and_four_metadata_queries() {
+        let (_directory, program, transcript) = fake_metadata_cli("table");
+        let detail = fetch_table_columns_and_fks_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "fake completion metadata CLI failed: {error:?}\n{}",
+                std::fs::read_to_string(&transcript).unwrap()
+            )
+        });
+
+        assert_eq!(detail.name, "items");
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| line.starts_with("process="))
+                .count(),
+            1
+        );
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| {
+                    line.starts_with("query=")
+                        && (line.contains("INFORMATION_SCHEMA")
+                            || line.contains("REFERENTIAL_CONSTRAINTS"))
+                })
+                .count(),
+            4
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
+    }
+
+    #[tokio::test]
     async fn inspector_detail_read_only_setup_failure_never_sends_metadata_sql() {
         let (_directory, program, transcript) = fake_metadata_cli("read-only-failure");
         let result = fetch_table_detail_in_session_with_program(
@@ -648,29 +766,6 @@ done
         assert!(result.is_err(), "result={result:?}\n{transcript_text}");
         assert!(transcript_text.contains("SET SESSION TRANSACTION READ ONLY"));
         assert!(!transcript_text.contains("INFORMATION_SCHEMA.TABLES"));
-        assert_process_stopped(&transcript);
-        assert_option_file_removed(&transcript);
-    }
-
-    #[tokio::test]
-    async fn inspector_detail_sends_foreign_key_query_without_sentinel() {
-        let (_directory, program, transcript) = fake_metadata_cli("table");
-        fetch_table_detail_in_session_with_program(
-            "mysql://user:password@localhost:3306/app",
-            "app",
-            "items",
-            OsStr::new(&program),
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
-        let foreign_key_query = transcript_text
-            .lines()
-            .find(|line| line.contains("REFERENTIAL_CONSTRAINTS"))
-            .expect("foreign key metadata query");
-        assert!(!foreign_key_query.contains("UNION ALL SELECT NULL"));
         assert_process_stopped(&transcript);
         assert_option_file_removed(&transcript);
     }
@@ -878,6 +973,8 @@ mod tests {
                 "COLUMN_NAME",
                 "SUB_PART",
                 "EXPRESSION",
+                "COLLATION",
+                "IS_VISIBLE",
                 "IS_PRIMARY",
             ],
             vec![
@@ -889,6 +986,8 @@ mod tests {
                     QueryValue::Text("second_key".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -899,6 +998,8 @@ mod tests {
                     QueryValue::Text("first_key".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -909,6 +1010,8 @@ mod tests {
                     QueryValue::Text("body".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
             ],
@@ -927,6 +1030,48 @@ mod tests {
     }
 
     #[test]
+    fn maps_prefix_descending_and_invisible_key_parts() {
+        let result = result(
+            INDEX_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("idx_email_created".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Text("8".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("D".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("idx_email_created".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("BTREE".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("created_at".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("A".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                ],
+            ],
+        );
+
+        let index = indexes_from_metadata(parse_index_metadata(&result).unwrap())
+            .into_iter()
+            .next()
+            .unwrap();
+
+        assert_eq!(index.columns, ["email(8) DESC", "created_at"]);
+        assert!(index.has_descending_key());
+        assert!(index.is_invisible());
+    }
+
+    #[test]
     fn single_column_unique_indexes_exclude_prefix_and_non_single_indexes() {
         let result = result(
             INDEX_RESULT_COLUMNS,
@@ -939,6 +1084,8 @@ mod tests {
                     QueryValue::Text("email".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -949,6 +1096,8 @@ mod tests {
                     QueryValue::Text("email".to_string()),
                     QueryValue::Text("8".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -959,6 +1108,8 @@ mod tests {
                     QueryValue::Text("email".to_string()),
                     QueryValue::Text("8".to_string()),
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -969,6 +1120,8 @@ mod tests {
                     QueryValue::Text("id".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -979,6 +1132,8 @@ mod tests {
                     QueryValue::Text("first_key".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -989,6 +1144,8 @@ mod tests {
                     QueryValue::Text("second_key".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -999,6 +1156,8 @@ mod tests {
                     QueryValue::Text("id".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("YES".to_string()),
                 ],
                 vec![
@@ -1009,6 +1168,8 @@ mod tests {
                     QueryValue::Text("email".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -1019,6 +1180,8 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`email`)".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
             ],
@@ -1050,6 +1213,8 @@ mod tests {
                 "COLUMN_NAME",
                 "SUB_PART",
                 "EXPRESSION",
+                "COLLATION",
+                "IS_VISIBLE",
                 "IS_PRIMARY",
             ],
             vec![
@@ -1061,6 +1226,8 @@ mod tests {
                     QueryValue::Text("sort_key".to_string()),
                     QueryValue::Null,
                     QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -1071,6 +1238,8 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
                 vec![
@@ -1081,6 +1250,8 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Null,
                     QueryValue::Text("lower(`payload`->>'$.code')".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("YES".to_string()),
                     QueryValue::Text("NO".to_string()),
                 ],
             ],
@@ -1126,6 +1297,8 @@ mod tests {
                 "COLUMN_NAME",
                 "SUB_PART",
                 "EXPRESSION",
+                "COLLATION",
+                "IS_VISIBLE",
                 "IS_PRIMARY",
             ],
             vec![vec![
@@ -1136,6 +1309,8 @@ mod tests {
                 QueryValue::Null,
                 QueryValue::Null,
                 QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Text("YES".to_string()),
                 QueryValue::Text("NO".to_string()),
             ]],
         );

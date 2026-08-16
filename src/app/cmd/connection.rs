@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -23,6 +24,12 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
+fn claim_save_run(run_guard: &AtomicU64, run_id: u64) -> bool {
+    run_guard
+        .compare_exchange(run_id, 0, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
 pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
@@ -32,14 +39,25 @@ pub(crate) async fn run(
     state: &AppState,
 ) -> Result<()> {
     match effect {
-        Effect::SaveAndConnect { id, name, config } => {
+        Effect::SaveAndConnect {
+            id,
+            name,
+            config,
+            run_id,
+            run_guard,
+        } => {
+            let database_type = config.database_type();
             let id = id.unwrap_or_else(ConnectionId::new);
             let profile = ConnectionProfile::with_id_and_config(id, name, config);
             let profile = match profile {
                 Ok(p) => p,
                 Err(e) => {
                     action_tx
-                        .send(Action::ConnectionSaveFailed(e.into()))
+                        .send(Action::ConnectionSaveFailed {
+                            error: e.into(),
+                            database_type,
+                            run_id,
+                        })
                         .await
                         .ok();
                     return Ok(());
@@ -58,7 +76,11 @@ pub(crate) async fn run(
                     Ok(profile) => profile,
                     Err(error) => {
                         action_tx
-                            .send(Action::ConnectionSaveFailed(error.into()))
+                            .send(Action::ConnectionSaveFailed {
+                                error: error.into(),
+                                database_type,
+                                run_id,
+                            })
                             .await
                             .ok();
                         return Ok(());
@@ -69,20 +91,32 @@ pub(crate) async fn run(
                 let name = profile.name.as_str().to_string();
                 let database_type = profile.database_type();
 
-                tokio::task::spawn_blocking(move || match store.save(&profile) {
-                    Ok(()) => {
-                        tx.blocking_send(Action::ConnectionSaveCompleted(ConnectionTarget {
-                            id,
-                            dsn,
-                            name,
-                            database_type,
-                            database: None,
-                        }))
-                        .ok();
+                tokio::task::spawn_blocking(move || {
+                    if !claim_save_run(&run_guard, run_id) {
+                        return;
                     }
-                    Err(e) => {
-                        tx.blocking_send(Action::ConnectionSaveFailed(e.into()))
+                    match store.save(&profile) {
+                        Ok(()) => {
+                            tx.blocking_send(Action::ConnectionSaveCompleted {
+                                target: ConnectionTarget {
+                                    id,
+                                    dsn,
+                                    name,
+                                    database_type,
+                                    database: None,
+                                },
+                                run_id,
+                            })
                             .ok();
+                        }
+                        Err(e) => {
+                            tx.blocking_send(Action::ConnectionSaveFailed {
+                                error: e.into(),
+                                database_type,
+                                run_id,
+                            })
+                            .ok();
+                        }
                     }
                 });
                 return Ok(());
@@ -107,22 +141,39 @@ pub(crate) async fn run(
                 let probe = Arc::clone(&connection.mysql_connection_probe);
                 tokio::spawn(async move {
                     match probe.probe(&target.dsn).await {
-                        Ok(()) => match tokio::task::spawn_blocking(move || store.save(&profile))
+                        Ok(()) => {
+                            let save_result = tokio::task::spawn_blocking(move || {
+                                claim_save_run(&run_guard, run_id).then(|| store.save(&profile))
+                            })
                             .await
-                            .expect("connection store save task panicked")
-                        {
-                            Ok(()) => {
-                                tx.send(Action::ConnectionSaveCompleted(target)).await.ok();
+                            .expect("connection store save task panicked");
+                            match save_result {
+                                Some(Ok(())) => {
+                                    tx.send(Action::ConnectionSaveCompleted { target, run_id })
+                                        .await
+                                        .ok();
+                                }
+                                Some(Err(e)) => {
+                                    tx.send(Action::ConnectionSaveFailed {
+                                        error: e.into(),
+                                        database_type,
+                                        run_id,
+                                    })
+                                    .await
+                                    .ok();
+                                }
+                                None => {}
                             }
-                            Err(e) => {
-                                tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
-                            }
-                        },
+                        }
                         Err(e) => {
-                            tx.send(Action::ConnectionSaveFailed(ConnectionSaveError::Probe {
-                                error: e,
-                                dsn: target.dsn.clone(),
-                            }))
+                            tx.send(Action::ConnectionSaveFailed {
+                                error: ConnectionSaveError::Probe {
+                                    error: e,
+                                    dsn: target.dsn.clone(),
+                                },
+                                database_type,
+                                run_id,
+                            })
                             .await
                             .ok();
                         }
@@ -137,29 +188,47 @@ pub(crate) async fn run(
                 match provider.fetch_metadata(&dsn).await {
                     Ok(metadata) => {
                         cache.set(dsn.clone(), Arc::new(metadata)).await;
-                        match tokio::task::spawn_blocking(move || store.save(&profile))
-                            .await
-                            .expect("connection store save task panicked")
-                        {
-                            Ok(()) => {
-                                tx.send(Action::ConnectionSaveCompleted(ConnectionTarget {
-                                    id,
-                                    dsn: dsn.clone(),
-                                    name,
-                                    database_type,
-                                    database: None,
-                                }))
+                        let save_result = tokio::task::spawn_blocking(move || {
+                            claim_save_run(&run_guard, run_id).then(|| store.save(&profile))
+                        })
+                        .await
+                        .expect("connection store save task panicked");
+                        match save_result {
+                            Some(Ok(())) => {
+                                tx.send(Action::ConnectionSaveCompleted {
+                                    target: ConnectionTarget {
+                                        id,
+                                        dsn: dsn.clone(),
+                                        name,
+                                        database_type,
+                                        database: None,
+                                    },
+                                    run_id,
+                                })
                                 .await
                                 .ok();
                             }
-                            Err(e) => {
+                            Some(Err(e)) => {
                                 cache.invalidate(&dsn).await;
-                                tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
+                                tx.send(Action::ConnectionSaveFailed {
+                                    error: e.into(),
+                                    database_type,
+                                    run_id,
+                                })
+                                .await
+                                .ok();
                             }
+                            None => {}
                         }
                     }
                     Err(e) => {
-                        tx.send(Action::ConnectionSaveFailed(e.into())).await.ok();
+                        tx.send(Action::ConnectionSaveFailed {
+                            error: e.into(),
+                            database_type,
+                            run_id,
+                        })
+                        .await
+                        .ok();
                     }
                 }
             });
@@ -373,6 +442,7 @@ mod tests {
         use super::*;
         use mockall::predicate::eq;
         use std::fs;
+        use std::sync::atomic::{AtomicU64, Ordering};
         use tempfile::tempdir;
 
         struct SqliteDsnBuilder;
@@ -448,6 +518,8 @@ mod tests {
                         id: None,
                         name: "MySQL".to_string(),
                         config: mysql_config(Some("app")),
+                        run_id: 1,
+                        run_guard: Arc::new(AtomicU64::new(1)),
                     }],
                     &mut renderer,
                     &mut state,
@@ -463,11 +535,14 @@ mod tests {
                 .unwrap();
             assert!(matches!(
                 action,
-                Action::ConnectionSaveCompleted(ConnectionTarget {
-                    database: Some(database),
-                    database_type: DatabaseType::MySQL,
-                    ..
-                }) if database == "app"
+                Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        database: Some(database),
+                        database_type: DatabaseType::MySQL,
+                        ..
+                    },
+                    run_id: 1,
+                } if database == "app"
             ));
         }
 
@@ -507,6 +582,8 @@ mod tests {
                         id: None,
                         name: "MySQL".to_string(),
                         config: mysql_config(None),
+                        run_id: 1,
+                        run_guard: Arc::new(AtomicU64::new(1)),
                     }],
                     &mut renderer,
                     &mut state,
@@ -522,9 +599,67 @@ mod tests {
                 .unwrap();
             assert!(matches!(
                 action,
-                Action::ConnectionSaveFailed(ConnectionSaveError::Probe { dsn, .. })
-                    if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
+                Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Probe { dsn, .. },
+                    database_type: DatabaseType::MySQL,
+                    run_id: 1,
+                } if dsn == "mysql://user:secret@localhost:3306?ssl-mode=REQUIRED"
             ));
+        }
+
+        #[tokio::test]
+        async fn mysql_profile_is_not_saved_when_run_is_cancelled_after_probe() {
+            let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
+            let run_guard = Arc::new(AtomicU64::new(1));
+            let guard_for_probe = Arc::clone(&run_guard);
+            let mut probe = MockMySqlConnectionProbe::new();
+            probe
+                .expect_probe()
+                .with(eq(dsn.to_string()))
+                .once()
+                .returning(move |_| {
+                    guard_for_probe.store(0, Ordering::Release);
+                    Ok(())
+                });
+
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                tx,
+                Arc::new(MySqlDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut renderer = NoopRenderer;
+            let mut state = AppState::new("test".to_string());
+            let ce = RefCell::new(CompletionEngine::new());
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "MySQL".to_string(),
+                        config: mysql_config(Some("app")),
+                        run_id: 1,
+                        run_guard,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
+                    .await
+                    .is_err()
+            );
         }
 
         #[tokio::test]
@@ -571,6 +706,8 @@ mod tests {
                         config: ConnectionConfig::SQLite(
                             SqliteConnectionConfig::new(input_path).unwrap(),
                         ),
+                        run_id: 1,
+                        run_guard: Arc::new(AtomicU64::new(1)),
                     }],
                     &mut renderer,
                     state,
@@ -585,7 +722,13 @@ mod tests {
                 .expect("action timeout")
                 .expect("channel closed");
             assert!(
-                matches!(action, Action::ConnectionSaveCompleted(ConnectionTarget { ref dsn, .. }) if dsn == &expected_dsn),
+                matches!(
+                    action,
+                    Action::ConnectionSaveCompleted {
+                        target: ConnectionTarget { ref dsn, .. },
+                        run_id: 1,
+                    } if dsn == &expected_dsn
+                ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"
             );
         }
@@ -622,6 +765,8 @@ mod tests {
                         config: ConnectionConfig::SQLite(
                             SqliteConnectionConfig::new(path_str).unwrap(),
                         ),
+                        run_id: 1,
+                        run_guard: Arc::new(AtomicU64::new(1)),
                     }],
                     &mut renderer,
                     state,
@@ -638,9 +783,13 @@ mod tests {
             assert!(
                 matches!(
                     action,
-                    Action::ConnectionSaveFailed(ConnectionSaveError::Validation(
-                        ConnectionProfileError::SqlitePath(SqlitePathError::FileNotFound(_))
-                    ))
+                    Action::ConnectionSaveFailed {
+                        error: ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(
+                            SqlitePathError::FileNotFound(_)
+                        ),),
+                        database_type: DatabaseType::SQLite,
+                        run_id: 1,
+                    }
                 ),
                 "expected sqlite path validation failure, got {action:?}"
             );

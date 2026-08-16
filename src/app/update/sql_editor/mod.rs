@@ -25,7 +25,7 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -34,6 +34,7 @@ mod tests {
     use crate::policy::write::write_guardrails::{AdhocRiskDecision, RiskLevel};
     use crate::update::action::{CursorMove, InputTarget, ModalKind};
     use crate::update::test_fixtures;
+    use std::sync::Arc;
     use std::time::Instant;
 
     fn reduce_sql_modal(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
@@ -1047,6 +1048,28 @@ mod tests {
             );
 
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Sql);
+        }
+
+        #[test]
+        fn opening_sql_modal_does_not_prefetch_catalog_details() {
+            let mut state = AppState::new("test".to_string());
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = (0..1_000)
+                .map(|index| {
+                    TableSummary::new("public".to_string(), format!("table_{index}"), None, false)
+                })
+                .collect();
+            state.session.set_metadata(Some(Arc::new(metadata)));
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            )
+            .expect("SQL modal open should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.sql_modal.is_prefetch_started());
         }
 
         #[test]

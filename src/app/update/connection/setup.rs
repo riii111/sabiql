@@ -30,6 +30,7 @@ pub fn reduce_connection_setup(
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_setup.reset();
             if !state.connections().is_empty() || state.session.dsn().is_some() {
                 state.connection_setup.set_first_run(false);
@@ -41,6 +42,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
         }
         Action::ConnectionEditLoaded(profile) => {
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
@@ -50,6 +52,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
+            state.session.cancel_connection_save_and_disconnect();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled()
         }
@@ -198,6 +201,8 @@ pub fn reduce_connection_setup(
             if state.session.connection_state() == ConnectionState::Connected {
                 save_current_connection_cache(state);
             }
+            let run_id = state.session.begin_connection_save();
+            let run_guard = state.session.connection_save_guard();
             state.query.reset_for_context_change();
             state.session.clear_mysql_connection_probe();
             state.session.invalidate_connection_generation();
@@ -214,10 +219,13 @@ pub fn reduce_connection_setup(
                         .trim()
                         .to_string(),
                     config,
+                    run_id,
+                    run_guard,
                 }],
             ))
         }
         Action::ConnectionSetupCancel => {
+            state.session.cancel_connection_save_and_disconnect();
             if state.connection_setup.is_first_run() {
                 state.confirm_dialog.open(
                     "Confirm",
@@ -233,13 +241,18 @@ pub fn reduce_connection_setup(
                 ])])
             }
         }
-        Action::ConnectionSaveCompleted(ConnectionTarget {
-            id,
-            dsn,
-            name,
-            database_type,
-            database,
-        }) => {
+        Action::ConnectionSaveCompleted { target, run_id } => {
+            if !state.session.is_current_connection_save(*run_id) {
+                return DispatchResult::handled();
+            }
+            state.session.cancel_connection_save();
+            let ConnectionTarget {
+                id,
+                dsn,
+                name,
+                database_type,
+                database,
+            } = target;
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
             state.connection_caches.remove(id);
@@ -258,8 +271,16 @@ pub fn reduce_connection_setup(
                 *database_type,
             ))
         }
-        Action::ConnectionSaveFailed(e) => {
-            if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = &e {
+        Action::ConnectionSaveFailed {
+            error: e,
+            database_type,
+            run_id,
+        } => {
+            if !state.session.is_current_connection_save(*run_id) {
+                return DispatchResult::handled();
+            }
+            state.session.cancel_connection_save();
+            if let ConnectionSaveError::Validation(ConnectionProfileError::SqlitePath(error)) = e {
                 state
                     .connection_setup
                     .record_sqlite_path_error(error.clone());
@@ -269,21 +290,21 @@ pub fn reduce_connection_setup(
             }
             let mysql_error = match e {
                 ConnectionSaveError::Probe { error, dsn }
-                    if state.connection_setup.database_type() == DatabaseType::MySQL =>
+                    if *database_type == DatabaseType::MySQL =>
                 {
                     Some(ConnectionErrorInfo::from_db_operation_error_with_dsn(
                         error, dsn,
                     ))
                 }
-                ConnectionSaveError::Metadata(error)
-                    if state.connection_setup.database_type() == DatabaseType::MySQL =>
-                {
+                ConnectionSaveError::Metadata(error) if *database_type == DatabaseType::MySQL => {
                     Some(ConnectionErrorInfo::from_db_operation_error(error))
                 }
                 _ => None,
             };
             if let Some(error_info) = mysql_error {
-                state.connection_error.set_error(error_info);
+                state
+                    .connection_error
+                    .set_save_and_connect_error(error_info, *database_type);
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
@@ -344,6 +365,7 @@ mod tests {
     use crate::model::er_state::ErStatus;
     use crate::services::AppServices;
     use crate::update::action::TextKillDirection;
+    use crate::update::connection::error::reduce_connection_error;
     use crate::update::connection::lifecycle::reduce_connection_lifecycle;
     use crate::update::test_fixtures;
     fn reduce(state: &mut AppState, action: &Action, now: Instant) -> Option<Vec<Effect>> {
@@ -655,6 +677,67 @@ mod tests {
         }
 
         #[test]
+        fn cancelled_save_can_be_submitted_again() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            assert!(state.session.connection_state().is_connecting());
+
+            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+            assert!(state.session.connection_state().is_not_connected());
+
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                .expect("second save handled");
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::SaveAndConnect { .. }))
+            );
+        }
+
+        #[test]
+        fn cancelled_save_can_retry_previous_connection() {
+            let mut state = AppState::new("test".to_string());
+            let previous_id = ConnectionId::from_string("previous");
+            state.session.activate_connection_with_dsn(
+                &previous_id,
+                "previous",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/previous",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            state.modal.set_mode(InputMode::ConnectionSetup);
+            state.connection_setup.set_first_run(false);
+            fill_valid_form(&mut state);
+
+            reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
+            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+
+            assert!(state.session.connection_state().is_not_connected());
+            assert_eq!(state.session.active_connection_id(), Some(&previous_id));
+            assert_eq!(state.session.dsn(), Some("postgres://localhost/previous"));
+
+            let effects = reduce_connection_lifecycle(
+                &mut state,
+                &Action::TryConnect,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("retry handled");
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+            );
+            assert!(state.session.connection_state().is_connecting());
+        }
+
+        #[test]
         fn mysql_probe_failure_uses_tls_mode_to_classify_hostname_verification() {
             let mut state = AppState::new("test".to_string());
             state
@@ -668,10 +751,15 @@ mod tests {
             };
             let dsn =
                 "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY".to_string();
+            let run_id = state.session.begin_connection_save();
 
             reduce(
                 &mut state,
-                &Action::ConnectionSaveFailed(ConnectionSaveError::Probe { error, dsn }),
+                &Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Probe { error, dsn },
+                    database_type: DatabaseType::MySQL,
+                    run_id,
+                },
                 Instant::now(),
             );
 
@@ -702,14 +790,19 @@ mod tests {
                 state
                     .connection_setup
                     .set_database_type(DatabaseType::MySQL);
+                let run_id = state.session.begin_connection_save();
 
                 reduce(
                     &mut state,
-                    &Action::ConnectionSaveFailed(ConnectionSaveError::Probe {
-                        error: DbOperationError::ConnectionFailed(stderr.to_string()),
-                        dsn: "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED"
-                            .to_string(),
-                    }),
+                    &Action::ConnectionSaveFailed {
+                        error: ConnectionSaveError::Probe {
+                            error: DbOperationError::ConnectionFailed(stderr.to_string()),
+                            dsn: "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED"
+                                .to_string(),
+                        },
+                        database_type: DatabaseType::MySQL,
+                        run_id,
+                    },
                     Instant::now(),
                 );
 
@@ -763,6 +856,128 @@ mod tests {
 
             assert_eq!(state.session.active_connection_id(), Some(&current_id));
             assert!(state.session.pending_mysql_connection_probe().is_none());
+        }
+
+        #[test]
+        fn cancelled_save_completion_is_ignored() {
+            let mut state = AppState::new("test".to_string());
+            fill_valid_form(&mut state);
+            let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now())
+                .expect("save handled");
+            let run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::SaveAndConnect { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("save run id");
+
+            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://localhost/stale".to_string(),
+                        name: "stale".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.session.active_connection_id().is_none());
+        }
+
+        #[test]
+        fn starting_switch_invalidates_previous_save_completion() {
+            let mut state = AppState::new("test".to_string());
+            let save_run_id = state.session.begin_connection_save();
+            let target = ConnectionTarget {
+                id: ConnectionId::from_string("mysql-b"),
+                dsn: "mysql://user@localhost:3306/b?ssl-mode=PREFERRED".to_string(),
+                name: "mysql-b".to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("b".to_string()),
+            };
+
+            reduce_connection_lifecycle(
+                &mut state,
+                &Action::SwitchConnection(target.clone()),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveCompleted {
+                    target: ConnectionTarget {
+                        id: ConnectionId::new(),
+                        dsn: "postgres://localhost/stale".to_string(),
+                        name: "stale".to_string(),
+                        database_type: DatabaseType::PostgreSQL,
+                        database: None,
+                    },
+                    run_id: save_run_id,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| &pending.id),
+                Some(&target.id)
+            );
+            assert!(state.session.active_connection_id().is_none());
+        }
+
+        #[test]
+        fn mysql_save_failure_keeps_retry_from_using_previous_service() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("service:mydb"),
+                "mydb",
+                DatabaseType::PostgreSQL,
+                "service=mydb",
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let run_id = state.session.begin_connection_save();
+
+            reduce(
+                &mut state,
+                &Action::ConnectionSaveFailed {
+                    error: ConnectionSaveError::Probe {
+                        error: DbOperationError::ConnectionFailed("connection refused".to_string()),
+                        dsn: "mysql://user@localhost:3306/app?ssl-mode=PREFERRED".to_string(),
+                    },
+                    database_type: DatabaseType::MySQL,
+                    run_id,
+                },
+                Instant::now(),
+            );
+
+            assert!(state.connection_error.is_save_and_connect_failure());
+            assert_eq!(
+                state.connection_error.target_database_type(),
+                Some(DatabaseType::MySQL)
+            );
+            let effects =
+                reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+                    .into_effects()
+                    .expect("retry action handled");
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::ConnectionError);
+
+            reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
+            assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
         }
 
         #[test]
@@ -900,14 +1115,18 @@ mod tests {
         fn save_completed_resets_read_only() {
             let mut state = AppState::new("test".to_string());
             state.session.enable_read_only();
+            let run_id = state.session.begin_connection_save();
 
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "postgres://localhost/new_db".to_string(),
-                name: "new_db".to_string(),
-                database_type: DatabaseType::PostgreSQL,
-                database: None,
-            });
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: ConnectionId::new(),
+                    dsn: "postgres://localhost/new_db".to_string(),
+                    name: "new_db".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
+                    database: None,
+                },
+                run_id,
+            };
             reduce(&mut state, &action, Instant::now());
 
             assert!(!state.session.is_read_only());
@@ -941,13 +1160,17 @@ mod tests {
                     QuerySource::Preview,
                 )));
 
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "sqlite:///tmp/new.db".to_string(),
-                name: "new.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
-            });
+            let run_id = state.session.begin_connection_save();
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: ConnectionId::new(),
+                    dsn: "sqlite:///tmp/new.db".to_string(),
+                    name: "new.db".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database: None,
+                },
+                run_id,
+            };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
             assert!(state.session.metadata().is_none());
@@ -1010,13 +1233,17 @@ mod tests {
                 },
             );
 
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: saved_id.clone(),
-                dsn: "sqlite:///tmp/new.db".to_string(),
-                name: "new.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
-            });
+            let run_id = state.session.begin_connection_save();
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: saved_id.clone(),
+                    dsn: "sqlite:///tmp/new.db".to_string(),
+                    name: "new.db".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database: None,
+                },
+                run_id,
+            };
             reduce(&mut state, &action, Instant::now());
 
             assert!(state.connection_caches.get(&saved_id).is_none());
@@ -1026,13 +1253,17 @@ mod tests {
         fn sqlite_save_completed_fetches_metadata() {
             let mut state = AppState::new("test".to_string());
 
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
-            });
+            let run_id = state.session.begin_connection_save();
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: ConnectionId::new(),
+                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    name: "app.db".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database: None,
+                },
+                run_id,
+            };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
             assert_eq!(effects.len(), 1);
@@ -1056,14 +1287,18 @@ mod tests {
             state
                 .er_preparation
                 .queue_pending_table("public.users".to_string());
+            let run_id = state.session.begin_connection_save();
 
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "sqlite:///tmp/app.db".to_string(),
-                name: "app.db".to_string(),
-                database_type: DatabaseType::SQLite,
-                database: None,
-            });
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: ConnectionId::new(),
+                    dsn: "sqlite:///tmp/app.db".to_string(),
+                    name: "app.db".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database: None,
+                },
+                run_id,
+            };
             reduce(&mut state, &action, Instant::now());
 
             assert!(!state.ui.pending_er_picker());
@@ -1074,13 +1309,17 @@ mod tests {
         #[test]
         fn mysql_save_completed_fetches_metadata_for_selected_database() {
             let mut state = AppState::new("test".to_string());
-            let action = Action::ConnectionSaveCompleted(ConnectionTarget {
-                id: ConnectionId::new(),
-                dsn: "mysql://user@localhost:3306/app".to_string(),
-                name: "mysql".to_string(),
-                database_type: DatabaseType::MySQL,
-                database: Some("app".to_string()),
-            });
+            let run_id = state.session.begin_connection_save();
+            let action = Action::ConnectionSaveCompleted {
+                target: ConnectionTarget {
+                    id: ConnectionId::new(),
+                    dsn: "mysql://user@localhost:3306/app".to_string(),
+                    name: "mysql".to_string(),
+                    database_type: DatabaseType::MySQL,
+                    database: Some("app".to_string()),
+                },
+                run_id,
+            };
 
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
