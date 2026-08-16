@@ -386,8 +386,15 @@ pub enum Action {
     ConnectionSetupDropdownCancel,
     ConnectionSetupSave,
     ConnectionSetupCancel,
-    ConnectionSaveCompleted(ConnectionTarget),
-    ConnectionSaveFailed(ConnectionSaveError),
+    ConnectionSaveCompleted {
+        target: ConnectionTarget,
+        run_id: u64,
+    },
+    ConnectionSaveFailed {
+        error: ConnectionSaveError,
+        database_type: DatabaseType,
+        run_id: u64,
+    },
     MySqlConnectionProbeCompleted {
         target: ConnectionTarget,
         run_id: u64,

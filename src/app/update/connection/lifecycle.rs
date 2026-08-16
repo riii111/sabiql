@@ -22,6 +22,7 @@ pub fn reduce_connection_lifecycle(
 ) -> DispatchResult {
     match action {
         Action::TryConnect => {
+            state.session.cancel_connection_save_and_disconnect();
             if state.session.connection_state().is_not_connected()
                 && state.modal.active_mode() == InputMode::Normal
             {
@@ -73,6 +74,7 @@ pub fn reduce_connection_lifecycle(
         }
 
         Action::SwitchConnection(target) => {
+            state.session.cancel_connection_save_and_disconnect();
             state.connection_error.clear();
             let ConnectionTarget {
                 id,
@@ -213,8 +215,9 @@ pub fn reduce_connection_lifecycle(
                     .mark_table_detail_probe_failed(&target.dsn, message.clone());
                 state.session.mark_connection_failed(message);
             }
-            state.connection_error.set_error(
+            state.connection_error.set_connection_switch_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
+                target.database_type,
             );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())

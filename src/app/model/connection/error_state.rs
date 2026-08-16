@@ -1,6 +1,19 @@
 use std::time::{Duration, Instant};
 
 use super::error::ConnectionErrorInfo;
+use crate::domain::DatabaseType;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum ConnectionErrorSource {
+    #[default]
+    ActiveConnection,
+    SaveAndConnect {
+        database_type: DatabaseType,
+    },
+    ConnectionSwitch {
+        database_type: DatabaseType,
+    },
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct ConnectionErrorState {
@@ -8,16 +21,44 @@ pub struct ConnectionErrorState {
     pub(crate) details_expanded: bool,
     pub(crate) scroll_offset: usize,
     pub(crate) copied_feedback_expires: Option<Instant>,
+    source: ConnectionErrorSource,
 }
 
 impl ConnectionErrorState {
     const FEEDBACK_TIMEOUT_SECS: u64 = 3;
 
     pub fn set_error(&mut self, info: ConnectionErrorInfo) {
+        self.set_error_with_source(info, ConnectionErrorSource::ActiveConnection);
+    }
+
+    pub fn set_save_and_connect_error(
+        &mut self,
+        info: ConnectionErrorInfo,
+        database_type: DatabaseType,
+    ) {
+        self.set_error_with_source(
+            info,
+            ConnectionErrorSource::SaveAndConnect { database_type },
+        );
+    }
+
+    pub fn set_connection_switch_error(
+        &mut self,
+        info: ConnectionErrorInfo,
+        database_type: DatabaseType,
+    ) {
+        self.set_error_with_source(
+            info,
+            ConnectionErrorSource::ConnectionSwitch { database_type },
+        );
+    }
+
+    fn set_error_with_source(&mut self, info: ConnectionErrorInfo, source: ConnectionErrorSource) {
         self.error_info = Some(info);
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.copied_feedback_expires = None;
+        self.source = source;
     }
 
     pub fn error_info(&self) -> Option<&ConnectionErrorInfo> {
@@ -26,6 +67,18 @@ impl ConnectionErrorState {
 
     pub fn has_error(&self) -> bool {
         self.error_info.is_some()
+    }
+
+    pub fn is_save_and_connect_failure(&self) -> bool {
+        matches!(self.source, ConnectionErrorSource::SaveAndConnect { .. })
+    }
+
+    pub fn target_database_type(&self) -> Option<DatabaseType> {
+        match self.source {
+            ConnectionErrorSource::ActiveConnection => None,
+            ConnectionErrorSource::SaveAndConnect { database_type }
+            | ConnectionErrorSource::ConnectionSwitch { database_type } => Some(database_type),
+        }
     }
 
     pub fn can_retry(&self) -> bool {
@@ -56,6 +109,7 @@ impl ConnectionErrorState {
         self.details_expanded = false;
         self.scroll_offset = 0;
         self.copied_feedback_expires = None;
+        self.source = ConnectionErrorSource::ActiveConnection;
     }
 
     pub fn toggle_details(&mut self) {
