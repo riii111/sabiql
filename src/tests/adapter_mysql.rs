@@ -215,6 +215,7 @@ mod metadata_fetch {
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
+    const MYSQL_INDEX_METADATA: &str = "mysql_metadata_index_parts";
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
@@ -629,6 +630,84 @@ mod metadata_fetch {
                 if before != after_drop {
                     return Err("dropping the single unique index did not restore the signature".to_string());
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn reflects_mysql_index_prefix_direction_visibility_and_functional_parts() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "CREATE TABLE {MYSQL_INDEX_METADATA} (email VARCHAR(255) NOT NULL, created_at DATETIME NOT NULL, status VARCHAR(32) NOT NULL, KEY idx_normal_status (status), KEY idx_email_prefix_desc (email(8) DESC, created_at), KEY idx_invisible_created_at (created_at) INVISIBLE, KEY idx_functional_email ((LOWER(email))) INVISIBLE) ENGINE=InnoDB"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to create index metadata fixture: {error:?}"))?;
+
+                let detail = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_INDEX_METADATA)
+                    .await
+                    .map_err(|error| format!("failed to fetch index metadata fixture: {error:?}"))?;
+
+                let normal = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_normal_status")
+                    .ok_or_else(|| "normal MySQL index was not returned".to_string())?;
+                if normal.columns != ["status"] || normal.is_unique() {
+                    return Err(format!("unexpected normal index: {normal:?}"));
+                }
+
+                let prefix_desc = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_email_prefix_desc")
+                    .ok_or_else(|| "prefix descending MySQL index was not returned".to_string())?;
+                if prefix_desc.columns != ["email(8) DESC", "created_at"]
+                    || !prefix_desc.has_descending_key()
+                {
+                    return Err(format!(
+                        "unexpected prefix descending index: {prefix_desc:?}"
+                    ));
+                }
+
+                let invisible = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_invisible_created_at")
+                    .ok_or_else(|| "invisible MySQL index was not returned".to_string())?;
+                if invisible.columns != ["created_at"] || !invisible.is_invisible() {
+                    return Err(format!("unexpected invisible index: {invisible:?}"));
+                }
+
+                let functional = detail
+                    .indexes
+                    .iter()
+                    .find(|index| index.name == "idx_functional_email")
+                    .ok_or_else(|| "functional MySQL index was not returned".to_string())?;
+                if !functional.has_expression() || !functional.is_invisible() {
+                    return Err(format!(
+                        "functional invisible index lost metadata: {functional:?}"
+                    ));
+                }
+
+                db.adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!("DROP TABLE {MYSQL_INDEX_METADATA}"),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("failed to drop index metadata fixture: {error:?}"))?;
                 Ok(())
             })
         })

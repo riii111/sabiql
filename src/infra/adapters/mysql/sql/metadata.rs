@@ -113,6 +113,8 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
     "COLUMN_NAME",
     "SUB_PART",
     "EXPRESSION",
+    "COLLATION",
+    "IS_VISIBLE",
     "IS_PRIMARY",
 ];
 pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
@@ -127,7 +129,7 @@ const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
 
 pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
+        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s LEFT JOIN INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON tc.CONSTRAINT_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_SCHEMA = s.TABLE_SCHEMA AND tc.TABLE_NAME = s.TABLE_NAME AND tc.CONSTRAINT_NAME = s.INDEX_NAME WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
         quote_string(schema),
         quote_string(table),
     )
@@ -346,7 +348,7 @@ mod tests {
         assert_contains_in_order(
             &indexes_sql,
             &[
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION",
+                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE",
                 "CASE WHEN tc.CONSTRAINT_TYPE = 'PRIMARY KEY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY",
                 "FROM INFORMATION_SCHEMA.STATISTICS AS s",
                 &format!("WHERE s.TABLE_SCHEMA = {quoted_schema}"),
@@ -512,6 +514,8 @@ mod tests {
                 "COLUMN_NAME",
                 "SUB_PART",
                 "EXPRESSION",
+                "COLLATION",
+                "IS_VISIBLE",
                 "IS_PRIMARY",
             ]
         );
