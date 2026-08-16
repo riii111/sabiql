@@ -127,6 +127,7 @@ fn dispatch_rerunnable_csv_export(
     export_query: String,
     file_name: String,
     row_count: RerunnableCsvRowCount,
+    count_query_statement: Option<String>,
 ) -> DispatchResult {
     if let RerunnableCsvRowCount::Known(row_count) = row_count {
         return dispatch_counted_rerunnable_csv_export(
@@ -139,8 +140,12 @@ fn dispatch_rerunnable_csv_export(
         );
     }
 
-    let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-    let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+    let count_query = if let Some(statement) = count_query_statement {
+        format!("SELECT COUNT(*) FROM (\n{statement}\n) AS _export_count")
+    } else {
+        let stripped = export_query.trim_end().trim_end_matches(';').to_string();
+        format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count")
+    };
     DispatchResult::handled_with(vec![Effect::CountRowsForExport {
         dsn,
         run_id,
@@ -187,6 +192,7 @@ pub fn reduce_pagination(
                             query,
                             file_name,
                             RerunnableCsvRowCount::QueryDatabase,
+                            None,
                         );
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
@@ -210,9 +216,13 @@ pub fn reduce_pagination(
                 let Some(plan) = mysql_export_plan(&export_query) else {
                     return DispatchResult::handled();
                 };
-                let row_count = match plan {
-                    MySqlExportPlan::CountRows => RerunnableCsvRowCount::QueryDatabase,
-                    MySqlExportPlan::UseResultRowCount => RerunnableCsvRowCount::Known(row_count),
+                let (row_count, count_query_statement) = match plan {
+                    MySqlExportPlan::CountRows { statement } => {
+                        (RerunnableCsvRowCount::QueryDatabase, Some(statement))
+                    }
+                    MySqlExportPlan::UseResultRowCount { .. } => {
+                        (RerunnableCsvRowCount::Known(row_count), None)
+                    }
                 };
                 let run_id = state.query.begin_running(now);
                 return dispatch_rerunnable_csv_export(
@@ -222,6 +232,7 @@ pub fn reduce_pagination(
                     export_query,
                     file_name,
                     row_count,
+                    count_query_statement,
                 );
             }
 
@@ -233,6 +244,7 @@ pub fn reduce_pagination(
                 export_query,
                 file_name,
                 RerunnableCsvRowCount::QueryDatabase,
+                None,
             )
         }
 
@@ -1051,6 +1063,42 @@ mod tests {
                         }
                     ),
                     !expects_count
+                );
+            }
+
+            #[rstest]
+            #[case::semicolon_comment(
+                "SELECT id FROM users; -- trailing comment",
+                "SELECT id FROM users"
+            )]
+            #[case::dash_comment(
+                "SELECT id FROM users -- trailing comment",
+                "SELECT id FROM users -- trailing comment"
+            )]
+            #[case::hash_comment(
+                "SELECT id FROM users # trailing comment",
+                "SELECT id FROM users # trailing comment"
+            )]
+            fn count_query_wraps_mysql_statement_with_newlines(
+                #[case] query: &str,
+                #[case] normalized_statement: &str,
+            ) {
+                let mut state = mysql_state(query);
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::CountRowsForExport { count_query, .. } = &effects[0] else {
+                    panic!("expected CountRowsForExport effect");
+                };
+                assert_eq!(
+                    count_query,
+                    &format!("SELECT COUNT(*) FROM (\n{normalized_statement}\n) AS _export_count")
                 );
             }
         }

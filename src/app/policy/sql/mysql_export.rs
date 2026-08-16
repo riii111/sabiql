@@ -1,24 +1,33 @@
-use super::mysql_statement::{
-    MySqlStatementKind, classify_mysql_statement, split_mysql_statements,
-};
+use super::mysql_statement::MySqlStatementKind;
+use crate::policy::write::sql_risk::{MultiStatementDecision, evaluate_mysql_multi_statement};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MySqlExportPlan {
-    CountRows,
-    UseResultRowCount,
+    CountRows { statement: String },
+    UseResultRowCount { statement: String },
 }
 
 pub fn mysql_export_plan(query: &str) -> Option<MySqlExportPlan> {
-    let statements = split_mysql_statements(query).ok()?;
+    let MultiStatementDecision::Allow { statements, risk } =
+        evaluate_mysql_multi_statement(query, None)
+    else {
+        return None;
+    };
+    if !risk.read_only_allowed {
+        return None;
+    }
     let [statement] = statements.as_slice() else {
         return None;
     };
-    let statement = classify_mysql_statement(statement).ok()?;
 
     match statement.kind {
-        MySqlStatementKind::Select => Some(MySqlExportPlan::CountRows),
+        MySqlStatementKind::Select => Some(MySqlExportPlan::CountRows {
+            statement: statement.sql.clone(),
+        }),
         MySqlStatementKind::Table | MySqlStatementKind::Show | MySqlStatementKind::Describe => {
-            Some(MySqlExportPlan::UseResultRowCount)
+            Some(MySqlExportPlan::UseResultRowCount {
+                statement: statement.sql.clone(),
+            })
         }
         _ => None,
     }
@@ -30,10 +39,10 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case::select("SELECT id FROM users", MySqlExportPlan::CountRows)]
-    #[case::table("TABLE users", MySqlExportPlan::UseResultRowCount)]
-    #[case::show("SHOW TABLES", MySqlExportPlan::UseResultRowCount)]
-    #[case::describe("DESCRIBE users", MySqlExportPlan::UseResultRowCount)]
+    #[case::select("SELECT id FROM users", MySqlExportPlan::CountRows { statement: "SELECT id FROM users".to_string() })]
+    #[case::table("TABLE users", MySqlExportPlan::UseResultRowCount { statement: "TABLE users".to_string() })]
+    #[case::show("SHOW TABLES", MySqlExportPlan::UseResultRowCount { statement: "SHOW TABLES".to_string() })]
+    #[case::describe("DESCRIBE users", MySqlExportPlan::UseResultRowCount { statement: "DESCRIBE users".to_string() })]
     fn plans_supported_mysql_export_queries(
         #[case] query: &str,
         #[case] expected: MySqlExportPlan,
@@ -45,7 +54,19 @@ mod tests {
     #[case::insert("INSERT INTO users VALUES (1)")]
     #[case::multiple_statements("SELECT 1; SELECT 2")]
     #[case::unknown("GRANT SELECT ON users TO 'user'")]
+    #[case::side_effect("SELECT GET_LOCK('sabiql', 0)")]
+    #[case::client_control("SET sql_mode = 'STRICT_TRANS_TABLES'")]
     fn rejects_queries_without_a_safe_mysql_export_plan(#[case] query: &str) {
         assert_eq!(mysql_export_plan(query), None);
+    }
+
+    #[test]
+    fn plan_uses_the_single_normalized_statement_after_a_trailing_comment() {
+        assert_eq!(
+            mysql_export_plan("SELECT id FROM users; -- trailing comment"),
+            Some(MySqlExportPlan::CountRows {
+                statement: "SELECT id FROM users".to_string(),
+            })
+        );
     }
 }
