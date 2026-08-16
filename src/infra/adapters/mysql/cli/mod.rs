@@ -16,6 +16,9 @@ pub(super) use probe::{check_mysql_cli_version, probe_mysql_server};
 pub(super) use process::{
     MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, run_mysql_adhoc, run_mysql_single_statement,
 };
+
+#[cfg(feature = "test-support")]
+pub(super) use process::run_mysql_adhoc_with_timeout_for_test;
 pub(super) use xml::MySqlResultSet;
 
 #[cfg(all(unix, feature = "test-support"))]
