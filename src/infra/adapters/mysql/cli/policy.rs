@@ -445,6 +445,21 @@ mod tests {
     }
 
     #[test]
+    fn metadata_fallback_wraps_source_query_with_limit_zero() {
+        let source_query = "SELECT SLEEP(10) AS sleep_value WHERE FALSE";
+
+        let fallback_query =
+            mysql_metadata_select_query(source_query, "__source", "__marker").unwrap();
+
+        assert!(
+            fallback_query.contains(
+                "SELECT * FROM ((SELECT SLEEP(10) AS sleep_value WHERE FALSE\n) LIMIT 0)"
+            )
+        );
+        assert_eq!(fallback_query.matches("SELECT SLEEP(10)").count(), 1);
+    }
+
+    #[test]
     fn failure_before_a_change_keeps_original_error() {
         let error = query_failed_after_change(
             DbOperationError::ForeignKeyViolation("foreign key failed".to_string()),
