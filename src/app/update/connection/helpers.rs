@@ -97,6 +97,19 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     )
 }
 
+pub(super) fn save_current_non_mysql_cache(state: &mut AppState) {
+    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+        return;
+    }
+
+    let Some(current_id) = state.session.active_connection_id().cloned() else {
+        return;
+    };
+
+    let cache = save_current_cache(state);
+    state.connection_caches.save(&current_id, cache);
+}
+
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
     reset_active_connection_state_inner(state);

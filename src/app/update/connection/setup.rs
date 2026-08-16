@@ -17,7 +17,7 @@ use crate::update::action::{
 };
 use crate::update::connection::helpers::{
     connection_save_fetch_effects, mysql_connection_completion_effects, reset_for_new_connection,
-    save_current_cache,
+    save_current_non_mysql_cache,
 };
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
@@ -195,12 +195,8 @@ pub fn reduce_connection_setup(
                     return DispatchResult::handled();
                 }
             };
-            if state.session.connection_state() == ConnectionState::Connected
-                && state.session.active_database_type() != Some(DatabaseType::MySQL)
-                && let Some(current_id) = state.session.active_connection_id().cloned()
-            {
-                let cache = save_current_cache(state);
-                state.connection_caches.save(&current_id, cache);
+            if state.session.connection_state() == ConnectionState::Connected {
+                save_current_non_mysql_cache(state);
             }
             state.query.reset_for_context_change();
             state.session.clear_connection_probe();
