@@ -25,7 +25,7 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -251,6 +251,32 @@ mod tests {
                 .sql_modal
                 .editor
                 .set_content("DROP TABLE users".to_string());
+
+            reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
+
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::ConfirmingHigh {
+                    target_name,
+                    ..
+                } if target_name == "users"
+            ));
+        }
+
+        #[test]
+        fn submit_mysql_alter_table_enters_confirming_high() {
+            let mut state = sql_modal_state();
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://test",
+                Some("app"),
+            );
+            state
+                .sql_modal
+                .editor
+                .set_content("ALTER TABLE users DROP COLUMN obsolete".to_string());
 
             reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 

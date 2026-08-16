@@ -166,6 +166,67 @@ mod mysql_tests {
         }
     }
 
+    #[rstest]
+    #[case::add_column("ALTER TABLE items ADD COLUMN value INT", "items")]
+    #[case::table_named_comment("ALTER TABLE comment ADD COLUMN value INT", "comment")]
+    #[case::table_named_repair("ALTER TABLE repair ADD COLUMN value INT", "repair")]
+    #[case::table_named_secondary_load(
+        "ALTER TABLE secondary_load ADD COLUMN value INT",
+        "secondary_load"
+    )]
+    #[case::table_named_secondary_unload(
+        "ALTER TABLE secondary_unload ADD COLUMN value INT",
+        "secondary_unload"
+    )]
+    #[case::table_option("ALTER TABLE items AVG_ROW_LENGTH=100", "items")]
+    #[case::no_op("ALTER TABLE items", "items")]
+    #[case::tablespace("ALTER TABLE items TABLESPACE ts", "items")]
+    #[case::check_partition("ALTER TABLE items CHECK PARTITION p0", "items")]
+    #[case::drop_column("ALTER TABLE items DROP COLUMN value", "items")]
+    #[case::drop_partition("ALTER TABLE items DROP PARTITION p0", "items")]
+    #[case::truncate_partition("ALTER TABLE items TRUNCATE PARTITION p0", "items")]
+    fn alter_table_requires_table_name_confirmation(#[case] sql: &str, #[case] target: &str) {
+        let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+            panic!("expected Allow: {sql}");
+        };
+
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert_eq!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput {
+                target: target.to_string()
+            }
+        );
+    }
+
+    #[rstest]
+    #[case::missing_target("ALTER TABLE")]
+    #[case::missing_target_before_add("ALTER TABLE ADD COLUMN value INT")]
+    #[case::missing_target_before_alter("ALTER TABLE ALTER COLUMN value DROP DEFAULT")]
+    #[case::missing_target_before_drop("ALTER TABLE DROP COLUMN value")]
+    #[case::missing_target_before_modify("ALTER TABLE MODIFY COLUMN value INT")]
+    #[case::missing_target_before_rename("ALTER TABLE RENAME TO archived_items")]
+    #[case::missing_target_before_truncate("ALTER TABLE TRUNCATE PARTITION p0")]
+    #[case::missing_target_before_lock("ALTER TABLE LOCK=EXCLUSIVE")]
+    #[case::missing_target_before_partition("ALTER TABLE PARTITION BY HASH(id)")]
+    #[case::missing_target_before_force("ALTER TABLE FORCE")]
+    #[case::missing_target_before_order("ALTER TABLE ORDER BY value")]
+    #[case::missing_target_before_secondary_load("ALTER TABLE SECONDARY_LOAD")]
+    #[case::missing_target_before_secondary_load_partition(
+        "ALTER TABLE SECONDARY_LOAD PARTITION (p0)"
+    )]
+    #[case::missing_target_before_secondary_unload("ALTER TABLE SECONDARY_UNLOAD")]
+    #[case::missing_target_before_secondary_unload_partition(
+        "ALTER TABLE SECONDARY_UNLOAD PARTITION (p0)"
+    )]
+    fn alter_table_with_ambiguous_target_is_blocked(#[case] sql: &str) {
+        assert!(
+            matches!(mysql(sql), MultiStatementDecision::Block { .. }),
+            "{sql}"
+        );
+    }
+
     #[test]
     fn replace_remains_blocked_and_has_destructive_risk() {
         let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
@@ -618,14 +679,14 @@ fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
         | MySqlStatementKind::CreateIndex => mysql_low(false),
         MySqlStatementKind::Update { has_where: true }
         | MySqlStatementKind::Delete { has_where: true }
-        | MySqlStatementKind::AlterTable
         | MySqlStatementKind::RenameTable
         | MySqlStatementKind::AlterView => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Immediate,
             read_only_allowed: false,
         },
-        MySqlStatementKind::Replace
+        MySqlStatementKind::AlterTable
+        | MySqlStatementKind::Replace
         | MySqlStatementKind::Update { has_where: false }
         | MySqlStatementKind::Delete { has_where: false }
         | MySqlStatementKind::DropTable { .. }
