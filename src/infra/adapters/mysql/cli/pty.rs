@@ -107,20 +107,24 @@ pub(super) async fn read_pty_all(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
 pub(super) async fn read_pty_until_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
-    read_pty_until_idle_from(&mut pty.output, output, false).await
+    read_pty_until_idle_from(&mut pty.output, output, false, None).await
 }
 
 #[cfg(all(unix, feature = "test-support"))]
-pub(super) async fn read_pty_until_first_byte_then_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
+pub(super) async fn read_pty_until_first_byte_then_idle(
+    pty: &mut MySqlPty,
+    first_byte_timeout: Duration,
+) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
-    read_pty_until_idle_from(&mut pty.output, output, true).await
+    read_pty_until_idle_from(&mut pty.output, output, true, Some(first_byte_timeout)).await
 }
 
 async fn read_pty_until_idle_from<R>(
     reader: &mut R,
     mut output: Vec<u8>,
     wait_for_first_byte: bool,
+    first_byte_timeout: Option<Duration>,
 ) -> io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
@@ -128,7 +132,19 @@ where
     let mut chunk = [0; 4096];
     loop {
         if wait_for_first_byte && output.is_empty() {
-            match reader.read(&mut chunk).await {
+            let read = if let Some(timeout) = first_byte_timeout {
+                tokio::time::timeout(timeout, reader.read(&mut chunk))
+                    .await
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "initial MySQL PTY output wait timed out",
+                        )
+                    })?
+            } else {
+                reader.read(&mut chunk).await
+            };
+            match read {
                 Ok(0) => return Ok(output),
                 Ok(count) => output.extend_from_slice(&chunk[..count]),
                 Err(error) if matches!(error.raw_os_error(), Some(libc::EIO | libc::EPERM)) => {
@@ -460,10 +476,9 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     #[tokio::test(start_paused = true)]
     async fn keeps_zero_byte_idle_timeout_for_production_pty_reads() {
         let (_writer, mut reader) = tokio::io::duplex(1);
-        let read_task =
-            tokio::spawn(
-                async move { read_pty_until_idle_from(&mut reader, Vec::new(), false).await },
-            );
+        let read_task = tokio::spawn(async move {
+            read_pty_until_idle_from(&mut reader, Vec::new(), false, None).await
+        });
 
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_millis(101)).await;
@@ -474,10 +489,10 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     #[tokio::test(start_paused = true)]
     async fn waits_for_the_first_pty_byte_before_using_idle_timeout() {
         let (mut writer, mut reader) = tokio::io::duplex(1);
-        let read_task =
-            tokio::spawn(
-                async move { read_pty_until_idle_from(&mut reader, Vec::new(), true).await },
-            );
+        let read_task = tokio::spawn(async move {
+            read_pty_until_idle_from(&mut reader, Vec::new(), true, Some(Duration::from_secs(1)))
+                .await
+        });
 
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_millis(101)).await;
@@ -485,5 +500,24 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         writer.shutdown().await.unwrap();
 
         assert_eq!(read_task.await.unwrap().unwrap(), b"frame");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn times_out_when_test_support_pty_has_no_initial_output() {
+        let (_writer, mut reader) = tokio::io::duplex(1);
+        let read_task = tokio::spawn(async move {
+            read_pty_until_idle_from(&mut reader, Vec::new(), true, Some(Duration::from_secs(1)))
+                .await
+        });
+
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(1)).await;
+
+        let error = read_task
+            .await
+            .unwrap()
+            .expect_err("initial output must time out");
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut);
+        assert_eq!(error.to_string(), "initial MySQL PTY output wait timed out");
     }
 }
