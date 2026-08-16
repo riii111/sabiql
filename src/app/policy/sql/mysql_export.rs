@@ -1,14 +1,14 @@
 use super::mysql_statement::{
-    MysqlStatementKind, classify_mysql_statement, split_mysql_statements,
+    MySqlStatementKind, classify_mysql_statement, split_mysql_statements,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MysqlExportPlan {
+pub enum MySqlExportPlan {
     CountRows,
     UseResultRowCount,
 }
 
-pub fn mysql_export_plan(query: &str) -> Option<MysqlExportPlan> {
+pub fn mysql_export_plan(query: &str) -> Option<MySqlExportPlan> {
     let statements = split_mysql_statements(query).ok()?;
     let [statement] = statements.as_slice() else {
         return None;
@@ -16,9 +16,9 @@ pub fn mysql_export_plan(query: &str) -> Option<MysqlExportPlan> {
     let statement = classify_mysql_statement(statement).ok()?;
 
     match statement.kind {
-        MysqlStatementKind::Select => Some(MysqlExportPlan::CountRows),
-        MysqlStatementKind::Table | MysqlStatementKind::Show | MysqlStatementKind::Describe => {
-            Some(MysqlExportPlan::UseResultRowCount)
+        MySqlStatementKind::Select => Some(MySqlExportPlan::CountRows),
+        MySqlStatementKind::Table | MySqlStatementKind::Show | MySqlStatementKind::Describe => {
+            Some(MySqlExportPlan::UseResultRowCount)
         }
         _ => None,
     }
@@ -30,13 +30,13 @@ mod tests {
     use rstest::rstest;
 
     #[rstest]
-    #[case::select("SELECT id FROM users", MysqlExportPlan::CountRows)]
-    #[case::table("TABLE users", MysqlExportPlan::UseResultRowCount)]
-    #[case::show("SHOW TABLES", MysqlExportPlan::UseResultRowCount)]
-    #[case::describe("DESCRIBE users", MysqlExportPlan::UseResultRowCount)]
+    #[case::select("SELECT id FROM users", MySqlExportPlan::CountRows)]
+    #[case::table("TABLE users", MySqlExportPlan::UseResultRowCount)]
+    #[case::show("SHOW TABLES", MySqlExportPlan::UseResultRowCount)]
+    #[case::describe("DESCRIBE users", MySqlExportPlan::UseResultRowCount)]
     fn plans_supported_mysql_export_queries(
         #[case] query: &str,
-        #[case] expected: MysqlExportPlan,
+        #[case] expected: MySqlExportPlan,
     ) {
         assert_eq!(mysql_export_plan(query), Some(expected));
     }

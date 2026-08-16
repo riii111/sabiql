@@ -4,24 +4,24 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
-use super::super::xml::{MysqlResultSet, parse_mysql_xml};
+use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
-    MysqlProcess, cleanup_mysql_process, configure_mysql_session,
+    MySqlProcess, cleanup_mysql_process, configure_mysql_session,
     finish_mysql_session_after_result, read_one_mysql_resultset, validate_mode_probe,
     write_mysql_statement,
 };
 
-pub(in crate::adapters::mysql) struct MysqlMetadataSession {
-    process: MysqlProcess,
+pub(in crate::adapters::mysql) struct MySqlMetadataSession {
+    process: MySqlProcess,
 }
 
-impl MysqlMetadataSession {
+impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
         Ok(Self {
-            process: MysqlProcess::spawn_with_program(program, option_file)?,
+            process: MySqlProcess::spawn_with_program(program, option_file)?,
         })
     }
 
@@ -42,7 +42,7 @@ impl MysqlMetadataSession {
     pub(in crate::adapters::mysql) async fn execute(
         &mut self,
         query: &str,
-    ) -> Result<MysqlResultSet, DbOperationError> {
+    ) -> Result<MySqlResultSet, DbOperationError> {
         self.execute_with_expected_columns(query, &[]).await
     }
 
@@ -50,7 +50,7 @@ impl MysqlMetadataSession {
         &mut self,
         query: &str,
         expected_columns: &[&str],
-    ) -> Result<MysqlResultSet, DbOperationError> {
+    ) -> Result<MySqlResultSet, DbOperationError> {
         write_mysql_statement(&mut self.process, query).await?;
         let xml = read_one_mysql_resultset(&mut self.process).await?;
         let mut result = parse_mysql_xml(&xml)?;

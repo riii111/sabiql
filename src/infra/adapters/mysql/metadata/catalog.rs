@@ -9,7 +9,7 @@ use crate::domain::{
 };
 
 use super::super::{
-    cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
+    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
@@ -19,13 +19,13 @@ use super::super::{
 };
 
 #[derive(Debug, Clone)]
-enum MysqlColumnUnique {
+enum MySqlColumnUnique {
     None,
     SingleColumnIndex,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct MysqlColumnMetadata {
+pub(super) struct MySqlColumnMetadata {
     name: String,
     data_type: String,
     nullable: bool,
@@ -33,13 +33,13 @@ pub(super) struct MysqlColumnMetadata {
     comment: Option<String>,
     pub(super) ordinal_position: i32,
     primary_key_position: Option<i32>,
-    unique: MysqlColumnUnique,
+    unique: MySqlColumnUnique,
     invisible: bool,
     generated: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct MysqlForeignKeyMetadata {
+pub(super) struct MySqlForeignKeyMetadata {
     pub(super) name: String,
     pub(super) from_schema: String,
     pub(super) from_table: String,
@@ -53,7 +53,7 @@ pub(super) struct MysqlForeignKeyMetadata {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct MysqlTableMetadata {
+pub(super) struct MySqlTableMetadata {
     pub(super) schema: String,
     pub(super) name: String,
     pub(super) kind: TableKind,
@@ -62,15 +62,15 @@ pub(super) struct MysqlTableMetadata {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct MysqlMetadataSnapshot {
+pub(super) struct MySqlMetadataSnapshot {
     pub(super) database: String,
-    pub(super) tables: Vec<MysqlTableMetadata>,
+    pub(super) tables: Vec<MySqlTableMetadata>,
     pub(super) table_summaries: Vec<TableSummary>,
 }
 
 pub(super) async fn fetch_metadata_snapshot(
     dsn: &str,
-) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+) -> Result<MySqlMetadataSnapshot, DbOperationError> {
     let database = selected_database(dsn)?;
     let result = execute_metadata_query(dsn, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
     metadata_snapshot_from_result(&database, None, &result)
@@ -79,8 +79,8 @@ pub(super) async fn fetch_metadata_snapshot(
 pub(super) fn find_table(
     schema: &str,
     table: &str,
-    tables: &[MysqlTableMetadata],
-) -> Result<MysqlTableMetadata, DbOperationError> {
+    tables: &[MySqlTableMetadata],
+) -> Result<MySqlTableMetadata, DbOperationError> {
     tables
         .iter()
         .find(|candidate| candidate.schema.eq_ignore_ascii_case(schema) && candidate.name == table)
@@ -91,10 +91,10 @@ pub(super) fn find_table(
 }
 
 pub(super) fn parse_columns_for_table(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     schema: &str,
     table: &str,
-) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
     let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
         return Err(DbOperationError::ObjectMissing(format!(
@@ -108,7 +108,7 @@ pub(super) async fn execute_metadata_query(
     dsn: &str,
     query: &str,
     expected_columns: &[&str],
-) -> Result<MysqlResultSet, DbOperationError> {
+) -> Result<MySqlResultSet, DbOperationError> {
     execute_metadata_queries_in_session(dsn, &[(query, expected_columns)])
         .await?
         .into_iter()
@@ -123,7 +123,7 @@ pub(super) async fn execute_metadata_query(
 pub(super) async fn execute_metadata_queries_in_session(
     dsn: &str,
     queries: &[(&str, &[&str])],
-) -> Result<Vec<MysqlResultSet>, DbOperationError> {
+) -> Result<Vec<MySqlResultSet>, DbOperationError> {
     execute_metadata_queries_in_session_with_program(
         dsn,
         queries,
@@ -138,10 +138,10 @@ async fn execute_metadata_queries_in_session_with_program(
     queries: &[(&str, &[&str])],
     program: &OsStr,
     timeout: Duration,
-) -> Result<Vec<MysqlResultSet>, DbOperationError> {
+) -> Result<Vec<MySqlResultSet>, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(timeout, async {
         session.probe().await?;
         session.prepare_read_only().await?;
@@ -197,14 +197,14 @@ pub(super) fn validate_selected_schema_name(
 pub(super) fn metadata_snapshot_from_result(
     database: &str,
     requested_schema: Option<&str>,
-    result: &MysqlResultSet,
-) -> Result<MysqlMetadataSnapshot, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<MySqlMetadataSnapshot, DbOperationError> {
     if let Some(schema) = requested_schema {
         validate_selected_schema_name(database, schema)?;
     }
     let tables = parse_table_metadata(result)?;
     let table_summaries = tables.iter().cloned().map(table_summary).collect();
-    Ok(MysqlMetadataSnapshot {
+    Ok(MySqlMetadataSnapshot {
         database: database.to_string(),
         tables,
         table_summaries,
@@ -212,8 +212,8 @@ pub(super) fn metadata_snapshot_from_result(
 }
 
 fn parse_table_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlTableMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     expect_columns(result, TABLES_RESULT_COLUMNS)?;
     result
         .values
@@ -245,7 +245,7 @@ fn parse_table_metadata(
             let comment = optional_text(&row[4], "TABLE_COMMENT")?
                 .filter(|value| !value.is_empty())
                 .map(str::to_string);
-            Ok(MysqlTableMetadata {
+            Ok(MySqlTableMetadata {
                 schema,
                 name,
                 kind,
@@ -257,8 +257,8 @@ fn parse_table_metadata(
 }
 
 fn parse_column_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlColumnMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
     expect_columns(result, COLUMN_METADATA_RESULT_COLUMNS)?;
     result
         .values
@@ -275,12 +275,12 @@ fn parse_column_metadata(
 pub(super) fn parse_column_metadata_row(
     row: &[QueryValue],
     field: &str,
-) -> Result<MysqlColumnMetadata, DbOperationError> {
+) -> Result<MySqlColumnMetadata, DbOperationError> {
     if row.len() != 8 {
         return Err(metadata_shape_error(field));
     }
     let extra = required_text(&row[4], "EXTRA")?;
-    Ok(MysqlColumnMetadata {
+    Ok(MySqlColumnMetadata {
         name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
         data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
         nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
@@ -292,7 +292,7 @@ pub(super) fn parse_column_metadata_row(
         primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
             .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
             .transpose()?,
-        unique: MysqlColumnUnique::None,
+        unique: MySqlColumnUnique::None,
         invisible: extra
             .split_ascii_whitespace()
             .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
@@ -303,8 +303,8 @@ pub(super) fn parse_column_metadata_row(
 }
 
 pub(super) fn parse_foreign_key_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlForeignKeyMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlForeignKeyMetadata>, DbOperationError> {
     expect_columns(result, FOREIGN_KEY_RESULT_COLUMNS)?;
     result
         .values
@@ -313,7 +313,7 @@ pub(super) fn parse_foreign_key_metadata(
             if row.len() != 10 {
                 return Err(metadata_shape_error("foreign key row"));
             }
-            Ok(MysqlForeignKeyMetadata {
+            Ok(MySqlForeignKeyMetadata {
                 name: required_text(&row[0], "CONSTRAINT_NAME")?.to_string(),
                 from_schema: required_text(&row[1], "TABLE_SCHEMA")?.to_string(),
                 from_table: required_text(&row[2], "TABLE_NAME")?.to_string(),
@@ -330,7 +330,7 @@ pub(super) fn parse_foreign_key_metadata(
 }
 
 pub(super) fn foreign_keys_from_metadata(
-    mut raw: Vec<MysqlForeignKeyMetadata>,
+    mut raw: Vec<MySqlForeignKeyMetadata>,
     database: &str,
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     raw.sort_by(|left, right| {
@@ -375,12 +375,12 @@ pub(super) fn foreign_keys_from_metadata(
     Ok(foreign_keys)
 }
 
-pub(super) fn column_from_metadata(metadata: &MysqlColumnMetadata) -> Column {
+pub(super) fn column_from_metadata(metadata: &MySqlColumnMetadata) -> Column {
     let primary_key = metadata.primary_key_position.is_some();
     let attributes = ColumnAttributes::from_parts(
         metadata.nullable,
         primary_key,
-        matches!(metadata.unique, MysqlColumnUnique::SingleColumnIndex),
+        matches!(metadata.unique, MySqlColumnUnique::SingleColumnIndex),
     ) | if metadata.invisible {
         ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
     } else {
@@ -401,7 +401,7 @@ pub(super) fn column_from_metadata(metadata: &MysqlColumnMetadata) -> Column {
 }
 
 pub(super) fn parse_unique_column_metadata(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
 ) -> Result<HashSet<String>, DbOperationError> {
     expect_columns(result, UNIQUE_COLUMN_RESULT_COLUMNS)?;
     result
@@ -417,19 +417,19 @@ pub(super) fn parse_unique_column_metadata(
 }
 
 pub(super) fn mark_single_column_unique(
-    columns: &mut [MysqlColumnMetadata],
+    columns: &mut [MySqlColumnMetadata],
     unique_columns: &HashSet<String>,
 ) {
     for column in columns {
         column.unique = if unique_columns.contains(&column.name) {
-            MysqlColumnUnique::SingleColumnIndex
+            MySqlColumnUnique::SingleColumnIndex
         } else {
-            MysqlColumnUnique::None
+            MySqlColumnUnique::None
         };
     }
 }
 
-pub(super) fn primary_key_names(columns: &[MysqlColumnMetadata]) -> Vec<String> {
+pub(super) fn primary_key_names(columns: &[MySqlColumnMetadata]) -> Vec<String> {
     let mut columns = columns
         .iter()
         .filter_map(|column| {
@@ -461,7 +461,7 @@ fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperat
     })
 }
 
-fn table_summary(table: MysqlTableMetadata) -> TableSummary {
+fn table_summary(table: MySqlTableMetadata) -> TableSummary {
     TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
         TableKindInfo {
             kind: table.kind,
@@ -473,7 +473,7 @@ fn table_summary(table: MysqlTableMetadata) -> TableSummary {
 }
 
 pub(super) fn expect_columns(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     expected: &[&str],
 ) -> Result<(), DbOperationError> {
     if result.columns == expected {
@@ -530,8 +530,8 @@ pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
 mod tests {
     use super::*;
 
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
-        MysqlResultSet {
+    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),
             values,
         }

@@ -1,15 +1,15 @@
 use super::{
-    MysqlLexError, MysqlStatementKind,
+    MySqlLexError, MySqlStatementKind,
     lexer::{Token, TokenKind},
     target, transaction,
 };
 
-type MysqlClassification = (MysqlStatementKind, Option<String>, Option<String>);
+type MySqlClassification = (MySqlStatementKind, Option<String>, Option<String>);
 
-pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, MysqlLexError> {
+pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MySqlClassification, MySqlLexError> {
     let start = target::effective_start(tokens);
     let first = target::word(tokens, start)
-        .ok_or_else(|| MysqlLexError("unknown MySQL statement".to_string()))?;
+        .ok_or_else(|| MySqlLexError("unknown MySQL statement".to_string()))?;
     match first {
         "SELECT" | "INSERT" | "REPLACE" | "UPDATE" | "DELETE" => {
             classify_mysql_crud_statement(tokens, start, first)
@@ -21,7 +21,7 @@ pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MysqlClassification, M
             transaction::classify_mysql_transaction_statement(tokens, start, first)
         }
         "TABLE" | "SHOW" | "DESCRIBE" | "DESC" => Ok(classify_mysql_utility_statement(first)),
-        _ => Err(MysqlLexError(format!(
+        _ => Err(MySqlLexError(format!(
             "unsupported MySQL statement: {first}"
         ))),
     }
@@ -31,9 +31,9 @@ fn classify_mysql_crud_statement(
     tokens: &[Token],
     start: usize,
     first: &str,
-) -> Result<MysqlClassification, MysqlLexError> {
+) -> Result<MySqlClassification, MySqlLexError> {
     match first {
-        "SELECT" => Ok((MysqlStatementKind::Select, None, None)),
+        "SELECT" => Ok((MySqlStatementKind::Select, None, None)),
         "INSERT" | "REPLACE" => {
             let index = if first == "INSERT" {
                 target::skip_mysql_modifiers(
@@ -51,9 +51,9 @@ fn classify_mysql_crud_statement(
             };
             let (target, database) = target::target_after(tokens, target_index)?;
             let kind = if first == "REPLACE" {
-                MysqlStatementKind::Replace
+                MySqlStatementKind::Replace
             } else {
-                MysqlStatementKind::Insert
+                MySqlStatementKind::Insert
             };
             Ok((kind, target, database))
         }
@@ -61,15 +61,15 @@ fn classify_mysql_crud_statement(
             let target_index =
                 target::skip_mysql_modifiers(tokens, start + 1, &["LOW_PRIORITY", "IGNORE"]);
             let set_index = target::find_word(tokens, "SET", target_index)
-                .ok_or_else(|| MysqlLexError("MySQL UPDATE target is ambiguous".to_string()))?;
+                .ok_or_else(|| MySqlLexError("MySQL UPDATE target is ambiguous".to_string()))?;
             if has_multi_table_reference(tokens, target_index, set_index) {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "MySQL multiple-table UPDATE statements are not supported".to_string(),
                 ));
             }
             let has_where = target::top_level_word(&tokens[start..], "WHERE");
             let (target, database) = target::target_after(tokens, target_index)?;
-            Ok((MysqlStatementKind::Update { has_where }, target, database))
+            Ok((MySqlStatementKind::Update { has_where }, target, database))
         }
         "DELETE" => {
             let has_where = target::top_level_word(&tokens[start..], "WHERE");
@@ -79,7 +79,7 @@ fn classify_mysql_crud_statement(
                 &["LOW_PRIORITY", "QUICK", "IGNORE"],
             );
             if target::word(tokens, index) != Some("FROM") {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "MySQL multiple-table DELETE statements are not supported".to_string(),
                 ));
             }
@@ -89,12 +89,12 @@ fn classify_mysql_crud_statement(
             if has_multi_table_reference(tokens, target_index, where_index)
                 || has_top_level_word(tokens, "USING", target_index, where_index)
             {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "MySQL multiple-table DELETE statements are not supported".to_string(),
                 ));
             }
             let (target, database) = target::target_after(tokens, target_index)?;
-            Ok((MysqlStatementKind::Delete { has_where }, target, database))
+            Ok((MySqlStatementKind::Delete { has_where }, target, database))
         }
         _ => unreachable!("not a MySQL CRUD statement: {first}"),
     }
@@ -222,12 +222,12 @@ fn classify_mysql_ddl_statement(
     tokens: &[Token],
     start: usize,
     first: &str,
-) -> Result<MysqlClassification, MysqlLexError> {
+) -> Result<MySqlClassification, MySqlLexError> {
     match first {
         "CREATE" => {
             if let Some(view_index) = view_statement_start(tokens, start, true) {
                 let (target, database) = target::target_after(tokens, view_index + 1)?;
-                return Ok((MysqlStatementKind::CreateView, target, database));
+                return Ok((MySqlStatementKind::CreateView, target, database));
             }
             let mut index = start + 1;
             let temporary = target::word(tokens, index) == Some("TEMPORARY");
@@ -242,51 +242,51 @@ fn classify_mysql_ddl_statement(
                     }
                     let (target, database) = target::target_after(tokens, index)?;
                     Ok((
-                        MysqlStatementKind::CreateTable { temporary },
+                        MySqlStatementKind::CreateTable { temporary },
                         target,
                         database,
                     ))
                 }
                 Some("VIEW") => {
                     let (target, database) = target::target_after(tokens, index + 1)?;
-                    Ok((MysqlStatementKind::CreateView, target, database))
+                    Ok((MySqlStatementKind::CreateView, target, database))
                 }
                 Some("FULLTEXT") if target::word(tokens, index + 1) == Some("INDEX") => {
                     let (index_name, _, index_end) = target::identifier_at(tokens, index + 2)
                         .ok_or_else(|| {
-                            MysqlLexError("CREATE INDEX name is ambiguous".to_string())
+                            MySqlLexError("CREATE INDEX name is ambiguous".to_string())
                         })?;
                     if target::word(tokens, index_end) != Some("ON") {
-                        return Err(MysqlLexError(
+                        return Err(MySqlLexError(
                             "CREATE INDEX target is ambiguous".to_string(),
                         ));
                     }
                     let (_, database) = target::target_after(tokens, index_end + 1)?;
-                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
+                    Ok((MySqlStatementKind::CreateIndex, Some(index_name), database))
                 }
                 Some("UNIQUE") if target::word(tokens, index + 1) == Some("INDEX") => {
                     let on = target::find_word(tokens, "ON", index + 2).ok_or_else(|| {
-                        MysqlLexError("CREATE INDEX target is ambiguous".to_string())
+                        MySqlLexError("CREATE INDEX target is ambiguous".to_string())
                     })?;
                     let (_, database) = target::target_after(tokens, on + 1)?;
                     let (index_name, _, _) =
                         target::identifier_at(tokens, index + 2).ok_or_else(|| {
-                            MysqlLexError("CREATE INDEX name is ambiguous".to_string())
+                            MySqlLexError("CREATE INDEX name is ambiguous".to_string())
                         })?;
-                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
+                    Ok((MySqlStatementKind::CreateIndex, Some(index_name), database))
                 }
                 Some("INDEX" | "KEY") => {
                     let on = target::find_word(tokens, "ON", index + 1).ok_or_else(|| {
-                        MysqlLexError("CREATE INDEX target is ambiguous".to_string())
+                        MySqlLexError("CREATE INDEX target is ambiguous".to_string())
                     })?;
                     let (_, database) = target::target_after(tokens, on + 1)?;
                     let (index_name, _, _) =
                         target::identifier_at(tokens, index + 1).ok_or_else(|| {
-                            MysqlLexError("CREATE INDEX name is ambiguous".to_string())
+                            MySqlLexError("CREATE INDEX name is ambiguous".to_string())
                         })?;
-                    Ok((MysqlStatementKind::CreateIndex, Some(index_name), database))
+                    Ok((MySqlStatementKind::CreateIndex, Some(index_name), database))
                 }
-                _ => Err(MysqlLexError(
+                _ => Err(MySqlLexError(
                     "unsupported MySQL CREATE statement".to_string(),
                 )),
             }
@@ -294,38 +294,38 @@ fn classify_mysql_ddl_statement(
         "ALTER" => {
             if let Some(view_index) = view_statement_start(tokens, start, false) {
                 let (target, database) = target::target_after(tokens, view_index + 1)?;
-                return Ok((MysqlStatementKind::AlterView, target, database));
+                return Ok((MySqlStatementKind::AlterView, target, database));
             }
             match target::word(tokens, start + 1) {
                 Some("TABLE") => {
                     let (target, database) = classify_alter_table_target(tokens, start + 2)?;
-                    Ok((MysqlStatementKind::AlterTable, target, database))
+                    Ok((MySqlStatementKind::AlterTable, target, database))
                 }
-                _ => Err(MysqlLexError(
+                _ => Err(MySqlLexError(
                     "unsupported MySQL ALTER statement".to_string(),
                 )),
             }
         }
         "RENAME" => {
             if target::word(tokens, start + 1) != Some("TABLE") {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "unsupported MySQL RENAME statement".to_string(),
                 ));
             }
             let (target, database, next) = target::identifier_at(tokens, start + 2)
-                .ok_or_else(|| MysqlLexError("RENAME TABLE source is ambiguous".to_string()))?;
+                .ok_or_else(|| MySqlLexError("RENAME TABLE source is ambiguous".to_string()))?;
             if target::word(tokens, next) != Some("TO") {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "RENAME TABLE requires one source and destination".to_string(),
                 ));
             }
             let (_, destination_database, end) = target::identifier_at(tokens, next + 1)
                 .ok_or_else(|| {
-                    MysqlLexError("RENAME TABLE destination is ambiguous".to_string())
+                    MySqlLexError("RENAME TABLE destination is ambiguous".to_string())
                 })?;
             let effective_database = match (database.as_deref(), destination_database.as_deref()) {
                 (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
-                    return Err(MysqlLexError(
+                    return Err(MySqlLexError(
                         "RENAME TABLE cannot move a table across databases".to_string(),
                     ));
                 }
@@ -337,13 +337,13 @@ fn classify_mysql_ddl_statement(
                 .iter()
                 .any(|token| !matches!(token.kind, TokenKind::Symbol(';')))
             {
-                return Err(MysqlLexError(
+                return Err(MySqlLexError(
                     "MySQL RENAME TABLE statements must have one source and destination"
                         .to_string(),
                 ));
             }
             Ok((
-                MysqlStatementKind::RenameTable,
+                MySqlStatementKind::RenameTable,
                 Some(target),
                 effective_database,
             ))
@@ -363,7 +363,7 @@ fn classify_mysql_ddl_statement(
                     };
                     let (target, database) = target::drop_target_after(tokens, target_index)?;
                     Ok((
-                        MysqlStatementKind::DropTable { temporary },
+                        MySqlStatementKind::DropTable { temporary },
                         target,
                         database,
                     ))
@@ -375,11 +375,11 @@ fn classify_mysql_ddl_statement(
                         index + 1
                     };
                     let (target, database) = target::drop_target_after(tokens, target_index)?;
-                    Ok((MysqlStatementKind::DropView, target, database))
+                    Ok((MySqlStatementKind::DropView, target, database))
                 }
                 Some("INDEX" | "KEY") => {
                     let on = target::find_word(tokens, "ON", index + 1).ok_or_else(|| {
-                        MysqlLexError("DROP INDEX target is ambiguous".to_string())
+                        MySqlLexError("DROP INDEX target is ambiguous".to_string())
                     })?;
                     let (_, database) = target::target_after(tokens, on + 1)?;
                     let index_name_index = if target::word(tokens, index + 1) == Some("IF") {
@@ -388,10 +388,10 @@ fn classify_mysql_ddl_statement(
                         index + 1
                     };
                     let (index_name, _, _) = target::identifier_at(tokens, index_name_index)
-                        .ok_or_else(|| MysqlLexError("DROP INDEX name is ambiguous".to_string()))?;
-                    Ok((MysqlStatementKind::DropIndex, Some(index_name), database))
+                        .ok_or_else(|| MySqlLexError("DROP INDEX name is ambiguous".to_string()))?;
+                    Ok((MySqlStatementKind::DropIndex, Some(index_name), database))
                 }
-                _ => Err(MysqlLexError(
+                _ => Err(MySqlLexError(
                     "unsupported MySQL DROP statement".to_string(),
                 )),
             }
@@ -403,7 +403,7 @@ fn classify_mysql_ddl_statement(
                 start + 1
             };
             let (target, database) = target::target_after(tokens, target_index)?;
-            Ok((MysqlStatementKind::TruncateTable, target, database))
+            Ok((MySqlStatementKind::TruncateTable, target, database))
         }
         _ => unreachable!("not a MySQL DDL statement: {first}"),
     }
@@ -412,13 +412,13 @@ fn classify_mysql_ddl_statement(
 fn classify_alter_table_target(
     tokens: &[Token],
     table_index: usize,
-) -> Result<(Option<String>, Option<String>), MysqlLexError> {
+) -> Result<(Option<String>, Option<String>), MySqlLexError> {
     let (target, source_database, after_target) = target::identifier_at(tokens, table_index)
-        .ok_or_else(|| MysqlLexError("MySQL statement target is ambiguous".to_string()))?;
+        .ok_or_else(|| MySqlLexError("MySQL statement target is ambiguous".to_string()))?;
     let destination_database = alter_table_rename_database(tokens, after_target)?;
     let effective_database = match (source_database.as_deref(), destination_database.as_deref()) {
         (Some(source), Some(destination)) if !source.eq_ignore_ascii_case(destination) => {
-            return Err(MysqlLexError(
+            return Err(MySqlLexError(
                 "ALTER TABLE RENAME cannot move a table across databases".to_string(),
             ));
         }
@@ -432,7 +432,7 @@ fn classify_alter_table_target(
 fn alter_table_rename_database(
     tokens: &[Token],
     start: usize,
-) -> Result<Option<String>, MysqlLexError> {
+) -> Result<Option<String>, MySqlLexError> {
     let Some(destination_start) =
         tokens
             .iter()
@@ -448,15 +448,15 @@ fn alter_table_rename_database(
         return Ok(None);
     };
     let (_, database, _) = target::identifier_at(tokens, destination_start)
-        .ok_or_else(|| MysqlLexError("ALTER TABLE RENAME destination is ambiguous".to_string()))?;
+        .ok_or_else(|| MySqlLexError("ALTER TABLE RENAME destination is ambiguous".to_string()))?;
     Ok(database)
 }
 
-fn classify_mysql_utility_statement(first: &str) -> MysqlClassification {
+fn classify_mysql_utility_statement(first: &str) -> MySqlClassification {
     match first {
-        "TABLE" => (MysqlStatementKind::Table, None, None),
-        "SHOW" => (MysqlStatementKind::Show, None, None),
-        "DESCRIBE" | "DESC" => (MysqlStatementKind::Describe, None, None),
+        "TABLE" => (MySqlStatementKind::Table, None, None),
+        "SHOW" => (MySqlStatementKind::Show, None, None),
+        "DESCRIBE" | "DESC" => (MySqlStatementKind::Describe, None, None),
         _ => unreachable!("not a MySQL utility statement: {first}"),
     }
 }

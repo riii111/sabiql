@@ -5,7 +5,7 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{Column, QueryValue};
 
 use super::super::{
-    cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet, validate_mysql_multi_query},
+    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet, validate_mysql_multi_query},
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
@@ -14,7 +14,7 @@ use super::super::{
     },
 };
 use super::catalog::{
-    MysqlColumnMetadata, column_from_metadata, mark_single_column_unique, parse_columns_for_table,
+    MySqlColumnMetadata, column_from_metadata, mark_single_column_unique, parse_columns_for_table,
     parse_unique_column_metadata, primary_key_names, validate_selected_schema_name,
 };
 
@@ -33,7 +33,7 @@ pub(in crate::adapters::mysql) struct ConvertedPreviewValues {
 
 pub(in crate::adapters::mysql) struct PreviewExecution {
     pub(in crate::adapters::mysql) metadata: PreviewMetadata,
-    pub(in crate::adapters::mysql) result_set: MysqlResultSet,
+    pub(in crate::adapters::mysql) result_set: MySqlResultSet,
     pub(in crate::adapters::mysql) display_query: String,
 }
 
@@ -74,7 +74,7 @@ async fn execute_preview_with_program(
     validate_selected_schema_name(database, schema)?;
 
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
         timeout,
         execute_preview_with_session(&mut session, database, schema, table, limit, offset),
@@ -98,7 +98,7 @@ async fn execute_preview_with_program(
 }
 
 async fn execute_preview_with_session(
-    session: &mut MysqlMetadataSession,
+    session: &mut MySqlMetadataSession,
     database: &str,
     schema: &str,
     table: &str,
@@ -166,7 +166,7 @@ async fn execute_preview_with_session(
 }
 
 fn preview_metadata_from_columns(
-    column_metadata: &[MysqlColumnMetadata],
+    column_metadata: &[MySqlColumnMetadata],
     schema: &str,
     table: &str,
 ) -> Result<PreviewMetadata, DbOperationError> {
@@ -216,7 +216,7 @@ fn preview_metadata_from_columns(
 }
 
 pub(in crate::adapters::mysql) fn convert_preview_values(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     columns: &[Column],
     identity_columns: &[Column],
 ) -> Result<ConvertedPreviewValues, DbOperationError> {
@@ -463,8 +463,8 @@ done
         (directory, program, log_path)
     }
 
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
-        MysqlResultSet {
+    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),
             values,
         }

@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use crate::app::ports::outbound::DbOperationError;
 
 use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind, validate_sql_mode};
-use super::xml::MysqlResultSet;
+use super::xml::MySqlResultSet;
 
 pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
     output
@@ -40,7 +40,7 @@ pub(super) fn write_mysql_transcript_line(line: &str) {
 }
 
 pub(super) fn validate_mode_probe(
-    result: &MysqlResultSet,
+    result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
     if result.values.len() != 1 || result.columns != ["__sabiql_probe", "__sabiql_sql_mode"] {

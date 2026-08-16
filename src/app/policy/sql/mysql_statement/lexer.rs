@@ -1,4 +1,4 @@
-use super::MysqlLexError;
+use super::MySqlLexError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum TokenKind {
@@ -16,7 +16,7 @@ pub(super) struct Token {
     pub(super) text: String,
 }
 
-pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError> {
+pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError> {
     let bytes = sql.as_bytes();
     let mut tokens = Vec::new();
     let mut index = 0;
@@ -41,7 +41,7 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
                     continue;
                 };
                 if content.is_empty() {
-                    return Err(MysqlLexError(
+                    return Err(MySqlLexError(
                         "MySQL version comment has no executable statement".to_string(),
                     ));
                 }
@@ -147,7 +147,7 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
             b')' => {
                 depth = depth
                     .checked_sub(1)
-                    .ok_or_else(|| MysqlLexError("unbalanced MySQL parentheses".to_string()))?;
+                    .ok_or_else(|| MySqlLexError("unbalanced MySQL parentheses".to_string()))?;
             }
             _ => {}
         }
@@ -156,7 +156,7 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MysqlLexError
     Ok(tokens)
 }
 
-pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MysqlLexError> {
+pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
     let mut statements = Vec::new();
     let mut start = 0;
     let mut index = 0;
@@ -202,7 +202,7 @@ pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MysqlLexE
             b')' => {
                 depth = depth
                     .checked_sub(1)
-                    .ok_or_else(|| MysqlLexError("unbalanced MySQL parentheses".to_string()))?;
+                    .ok_or_else(|| MySqlLexError("unbalanced MySQL parentheses".to_string()))?;
             }
             b';' if depth == 0 => {
                 push_mysql_statement(&mut statements, &sql[start..index]);
@@ -214,12 +214,12 @@ pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MysqlLexE
     }
 
     if quote.is_some() {
-        return Err(MysqlLexError(
+        return Err(MySqlLexError(
             "unterminated MySQL quoted literal".to_string(),
         ));
     }
     if depth != 0 {
-        return Err(MysqlLexError("unbalanced MySQL parentheses".to_string()));
+        return Err(MySqlLexError("unbalanced MySQL parentheses".to_string()));
     }
     push_mysql_statement(&mut statements, &sql[start..]);
     Ok(statements)
@@ -249,7 +249,7 @@ pub(super) fn skip_line_comment(bytes: &[u8], mut index: usize) -> usize {
     index
 }
 
-pub(super) fn skip_block_comment(bytes: &[u8], index: usize) -> Result<usize, MysqlLexError> {
+pub(super) fn skip_block_comment(bytes: &[u8], index: usize) -> Result<usize, MySqlLexError> {
     let mut cursor = index + 2;
     while cursor + 1 < bytes.len() {
         if bytes[cursor] == b'*' && bytes[cursor + 1] == b'/' {
@@ -257,7 +257,7 @@ pub(super) fn skip_block_comment(bytes: &[u8], index: usize) -> Result<usize, My
         }
         cursor += 1;
     }
-    Err(MysqlLexError(
+    Err(MySqlLexError(
         "unterminated MySQL block comment".to_string(),
     ))
 }
@@ -313,10 +313,10 @@ fn is_safe_trailing_ddl_clause(tokens: &[Token], inner: &[Token]) -> bool {
         })
 }
 
-fn mysql_version_comment_content(body: &str) -> Result<Option<&str>, MysqlLexError> {
+fn mysql_version_comment_content(body: &str) -> Result<Option<&str>, MySqlLexError> {
     let digit_len = body.bytes().take_while(u8::is_ascii_digit).count();
     if digit_len == 0 {
-        return Err(MysqlLexError(
+        return Err(MySqlLexError(
             "MySQL version comment has no verifiable version".to_string(),
         ));
     }
@@ -403,7 +403,7 @@ fn is_mysql_statement_keyword(word: &str) -> bool {
     )
 }
 
-fn skip_quoted(bytes: &[u8], index: usize, quote: u8) -> Result<usize, MysqlLexError> {
+fn skip_quoted(bytes: &[u8], index: usize, quote: u8) -> Result<usize, MySqlLexError> {
     let mut cursor = index + 1;
     while cursor < bytes.len() {
         if bytes[cursor] == b'\\' && quote != b'`' {
@@ -420,7 +420,7 @@ fn skip_quoted(bytes: &[u8], index: usize, quote: u8) -> Result<usize, MysqlLexE
             cursor += 1;
         }
     }
-    Err(MysqlLexError(
+    Err(MySqlLexError(
         "unterminated MySQL quoted literal".to_string(),
     ))
 }

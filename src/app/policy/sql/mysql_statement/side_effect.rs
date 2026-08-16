@@ -1,13 +1,13 @@
-use super::{MysqlLexError, lexer, lexer::TokenKind, target};
+use super::{MySqlLexError, lexer, lexer::TokenKind, target};
 
-pub(super) fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {
+pub(super) fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     let tokens = lexer::lex_mysql_statement(sql)?;
     Ok(tokens.iter().any(|token| {
         token.depth == 0 && matches!(&token.kind, TokenKind::Word(word) if word == "INTO")
     }))
 }
 
-pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MysqlLexError> {
+pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError> {
     if has_mysql_version_comment(sql)? {
         return Ok(true);
     }
@@ -47,7 +47,7 @@ pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MysqlLe
     Ok(false)
 }
 
-pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MysqlLexError> {
+pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
     let bytes = sql.as_bytes();
     let mut index = 0;
     let mut quote = None;
@@ -86,7 +86,7 @@ pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MysqlLexError
     }
 
     if quote.is_some() {
-        return Err(MysqlLexError(
+        return Err(MySqlLexError(
             "unterminated MySQL quoted literal".to_string(),
         ));
     }

@@ -10,13 +10,13 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error};
-use super::xml::{MysqlResultsetFrameScanner, take_mysql_pty_resultset_frame, trace_mysql_frame};
+use super::xml::{MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame, trace_mysql_frame};
 
-pub(super) struct MysqlPty {
+pub(super) struct MySqlPty {
     pub(super) input: TokioFile,
     pub(super) output: TokioFile,
     pub(super) pending: Vec<u8>,
-    pub(super) frame_scanner: MysqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultsetFrameScanner,
 }
 
 pub(super) fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
@@ -57,7 +57,7 @@ fn configure_mysql_pty(fd: RawFd) -> io::Result<()> {
 }
 
 pub(super) async fn read_one_pty_resultset(
-    pty: &mut MysqlPty,
+    pty: &mut MySqlPty,
 ) -> Result<Vec<u8>, DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
@@ -88,7 +88,7 @@ pub(super) async fn read_one_pty_resultset(
     }
 }
 
-pub(super) async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+pub(super) async fn read_pty_all(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
     let mut output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
     let mut chunk = [0; 4096];
@@ -104,14 +104,14 @@ pub(super) async fn read_pty_all(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
     }
 }
 
-pub(super) async fn read_pty_until_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+pub(super) async fn read_pty_until_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
     read_pty_until_idle_from(&mut pty.output, output, false).await
 }
 
 #[cfg(all(unix, feature = "test-support"))]
-pub(super) async fn read_pty_until_first_byte_then_idle(pty: &mut MysqlPty) -> io::Result<Vec<u8>> {
+pub(super) async fn read_pty_until_first_byte_then_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
     read_pty_until_idle_from(&mut pty.output, output, true).await
@@ -151,16 +151,16 @@ where
     }
 }
 
-pub(super) struct MysqlExportPtySource<'a> {
-    pub(super) pty: &'a mut MysqlPty,
+pub(super) struct MySqlExportPtySource<'a> {
+    pub(super) pty: &'a mut MySqlPty,
     pub(super) error_output: Vec<u8>,
     pub(super) error_buffer: Vec<u8>,
     pub(super) pending: Vec<u8>,
-    pub(super) frame_scanner: MysqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultsetFrameScanner,
     pub(super) started: bool,
 }
 
-impl MysqlExportPtySource<'_> {
+impl MySqlExportPtySource<'_> {
     fn capture_error(&mut self, bytes: &[u8]) {
         if !self.error_output.is_empty() {
             return;
@@ -202,7 +202,7 @@ impl MysqlExportPtySource<'_> {
     }
 }
 
-impl AsyncRead for MysqlExportPtySource<'_> {
+impl AsyncRead for MySqlExportPtySource<'_> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -258,16 +258,16 @@ mod tests {
 
     use super::*;
 
-    fn source_with_output(output: &[u8]) -> (tempfile::NamedTempFile, MysqlPty) {
+    fn source_with_output(output: &[u8]) -> (tempfile::NamedTempFile, MySqlPty) {
         let mut output_file = tempfile::NamedTempFile::new().unwrap();
         output_file.write_all(output).unwrap();
         output_file.as_file_mut().seek(SeekFrom::Start(0)).unwrap();
         let input_file = tempfile::NamedTempFile::new().unwrap();
-        let pty = MysqlPty {
+        let pty = MySqlPty {
             input: TokioFile::from_std(input_file.reopen().unwrap()),
             output: TokioFile::from_std(output_file.reopen().unwrap()),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
         };
         (output_file, pty)
     }
@@ -311,12 +311,12 @@ mod tests {
         let xml = br#"<resultset><row><field name="message">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (_output_file, mut pty) = source_with_output(xml);
-        let mut source = MysqlExportPtySource {
+        let mut source = MySqlExportPtySource {
             pty: &mut pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut result = Vec::new();
@@ -331,12 +331,12 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     async fn export_source_keeps_cli_error_before_resultset() {
         let output = b"ERROR 1054 (42S22): Unknown column\n<resultset></resultset>";
         let (_output_file, mut pty) = source_with_output(output);
-        let mut source = MysqlExportPtySource {
+        let mut source = MySqlExportPtySource {
             pty: &mut pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut result = Vec::new();
@@ -351,11 +351,11 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (master, slave) = create_mysql_pty().expect("create test PTY");
         let output = TokioFile::from_std(master.try_clone().expect("clone PTY master"));
         let input = TokioFile::from_std(master);
-        let mut pty = MysqlPty {
+        let mut pty = MySqlPty {
             input,
             output,
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
         };
         let mut writer = TokioFile::from_std(slave);
         let producer = tokio::spawn(async move {
@@ -366,12 +366,12 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
                 .await
                 .unwrap();
         });
-        let mut source = MysqlExportPtySource {
+        let mut source = MySqlExportPtySource {
             pty: &mut pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut output = vec![0; 1024];
@@ -394,11 +394,11 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (master, slave) = create_mysql_pty().expect("create test PTY");
         let output = TokioFile::from_std(master.try_clone().expect("clone PTY master"));
         let input = TokioFile::from_std(master);
-        let mut pty = MysqlPty {
+        let mut pty = MySqlPty {
             input,
             output,
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
         };
         let mut writer = TokioFile::from_std(slave);
         let producer = tokio::spawn(async move {
@@ -411,12 +411,12 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
                 .await
                 .unwrap();
         });
-        let mut source = MysqlExportPtySource {
+        let mut source = MySqlExportPtySource {
             pty: &mut pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut output = vec![0; 1024];
@@ -437,12 +437,12 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     #[test]
     fn rescans_resultset_marker_after_draining_large_pty_reads() {
         let (_output_file, mut pty) = source_with_output(&[]);
-        let mut source = MysqlExportPtySource {
+        let mut source = MySqlExportPtySource {
             pty: &mut pty,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MysqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultsetFrameScanner::default(),
             started: false,
         };
         let mut first = vec![b'x'; 4096 - b"<resultse".len()];

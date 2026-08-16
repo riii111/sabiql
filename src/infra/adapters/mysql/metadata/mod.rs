@@ -4,7 +4,7 @@ use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
 use crate::domain::{DatabaseMetadata, Schema, Table, TableSignature};
 
 use super::adapter::MySqlAdapter;
-use super::cli::MysqlResultSet;
+use super::cli::MySqlResultSet;
 use super::sql::{EFFECTIVE_USER_QUERY, EFFECTIVE_USER_RESULT_COLUMNS};
 
 mod catalog;
@@ -60,7 +60,7 @@ impl MetadataProvider for MySqlAdapter {
     }
 }
 
-fn effective_user_from_result(result: &MysqlResultSet) -> Option<String> {
+fn effective_user_from_result(result: &MySqlResultSet) -> Option<String> {
     let [row] = result.values.as_slice() else {
         return None;
     };
@@ -76,8 +76,8 @@ mod tests {
     use super::*;
     use crate::domain::QueryValue;
 
-    fn result(values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
-        MysqlResultSet {
+    fn result(values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
             columns: vec!["CURRENT_USER()".to_string()],
             values,
         }

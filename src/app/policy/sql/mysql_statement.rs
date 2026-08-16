@@ -9,7 +9,7 @@ mod transaction;
 use lexer::TokenKind;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MysqlStatementKind {
+pub enum MySqlStatementKind {
     Select,
     Table,
     Show,
@@ -38,30 +38,30 @@ pub enum MysqlStatementKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MysqlStatement {
+pub struct MySqlStatement {
     pub sql: String,
-    pub kind: MysqlStatementKind,
+    pub kind: MySqlStatementKind,
     pub target: Option<String>,
     pub target_database: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MysqlLexError(pub String);
+pub struct MySqlLexError(pub String);
 
-impl fmt::Display for MysqlLexError {
+impl fmt::Display for MySqlLexError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
 }
 
-pub fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MysqlLexError> {
+pub fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
     lexer::split_mysql_statements(sql)
 }
 
-pub fn classify_mysql_statement(sql: &str) -> Result<MysqlStatement, MysqlLexError> {
+pub fn classify_mysql_statement(sql: &str) -> Result<MySqlStatement, MySqlLexError> {
     let tokens = lexer::lex_mysql_statement(sql)?;
     if tokens.is_empty() {
-        return Err(MysqlLexError("empty MySQL statement".to_string()));
+        return Err(MySqlLexError("empty MySQL statement".to_string()));
     }
     if tokens.iter().any(|token| {
         matches!(
@@ -69,12 +69,12 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MysqlStatement, MysqlLexErr
             TokenKind::Word(word) if word == "UNSUPPORTED_VERSION_COMMENT"
         )
     }) {
-        return Err(MysqlLexError(
+        return Err(MySqlLexError(
             "executable MySQL version comment contains another statement".to_string(),
         ));
     }
     let (kind, target, target_database) = classifier::kind_and_target(&tokens)?;
-    Ok(MysqlStatement {
+    Ok(MySqlStatement {
         sql: sql.to_string(),
         kind,
         target,
@@ -82,20 +82,20 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MysqlStatement, MysqlLexErr
     })
 }
 
-pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MysqlLexError> {
+pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_top_level_into_clause(sql)
 }
 
-pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MysqlLexError> {
+pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_mysql_read_only_side_effect(sql)
 }
 
-pub fn has_mysql_version_comment(sql: &str) -> Result<bool, MysqlLexError> {
+pub fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_mysql_version_comment(sql)
 }
 
 pub fn target_is_selected_database(
-    statement: &MysqlStatement,
+    statement: &MySqlStatement,
     selected_database: Option<&str>,
 ) -> bool {
     target::target_is_selected_database(statement, selected_database)
@@ -121,11 +121,11 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
     };
     (!matches!(
         statement.kind,
-        MysqlStatementKind::Select
-            | MysqlStatementKind::Table
-            | MysqlStatementKind::Insert
-            | MysqlStatementKind::Update { .. }
-            | MysqlStatementKind::Delete { .. }
+        MySqlStatementKind::Select
+            | MySqlStatementKind::Table
+            | MySqlStatementKind::Insert
+            | MySqlStatementKind::Update { .. }
+            | MySqlStatementKind::Delete { .. }
     ))
     .then_some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements")
 }
@@ -142,7 +142,7 @@ pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
                     && classify_mysql_statement(&statements[0]).is_ok_and(|statement| {
                         matches!(
                             statement.kind,
-                            MysqlStatementKind::Select | MysqlStatementKind::Table
+                            MySqlStatementKind::Select | MySqlStatementKind::Table
                         ) && !has_mysql_read_only_side_effect(target).unwrap_or(true)
                     })
             })
@@ -233,7 +233,7 @@ mod tests {
             "WITH rows(id) AS (SELECT 1) UPDATE `app`.`items` SET value = 1",
         )
         .unwrap();
-        assert!(matches!(statement.kind, MysqlStatementKind::Update { .. }));
+        assert!(matches!(statement.kind, MySqlStatementKind::Update { .. }));
         assert_eq!(statement.target, Some("items".to_string()));
     }
 
@@ -246,8 +246,8 @@ mod tests {
     fn classifies_leading_version_comment_statement() {
         assert!(matches!(
             classify_mysql_statement("/*!80000 SELECT 1 */"),
-            Ok(MysqlStatement {
-                kind: MysqlStatementKind::Select,
+            Ok(MySqlStatement {
+                kind: MySqlStatementKind::Select,
                 ..
             })
         ));
@@ -258,67 +258,67 @@ mod tests {
         let cases = [
             (
                 "RENAME TABLE app.items TO app.archived_items",
-                MysqlStatementKind::RenameTable,
+                MySqlStatementKind::RenameTable,
                 "items",
                 Some("app"),
             ),
             (
                 "RENAME TABLE items TO app.archived_items",
-                MysqlStatementKind::RenameTable,
+                MySqlStatementKind::RenameTable,
                 "items",
                 Some("app"),
             ),
             (
                 "ALTER TABLE app.items RENAME TO app.archived_items",
-                MysqlStatementKind::AlterTable,
+                MySqlStatementKind::AlterTable,
                 "items",
                 Some("app"),
             ),
             (
                 "ALTER TABLE app.items RENAME AS app.archived_items",
-                MysqlStatementKind::AlterTable,
+                MySqlStatementKind::AlterTable,
                 "items",
                 Some("app"),
             ),
             (
                 "ALTER TABLE app.items RENAME COLUMN old_name TO new_name",
-                MysqlStatementKind::AlterTable,
+                MySqlStatementKind::AlterTable,
                 "items",
                 Some("app"),
             ),
             (
                 "ALTER TABLE app.items RENAME INDEX old_index TO new_index",
-                MysqlStatementKind::AlterTable,
+                MySqlStatementKind::AlterTable,
                 "items",
                 Some("app"),
             ),
             (
                 "CREATE OR REPLACE VIEW app.item_view AS SELECT id FROM app.items",
-                MysqlStatementKind::CreateView,
+                MySqlStatementKind::CreateView,
                 "item_view",
                 Some("app"),
             ),
             (
                 "CREATE OR REPLACE ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW app.item_view AS SELECT id FROM app.items",
-                MysqlStatementKind::CreateView,
+                MySqlStatementKind::CreateView,
                 "item_view",
                 Some("app"),
             ),
             (
                 "ALTER VIEW app.item_view AS SELECT id FROM app.items",
-                MysqlStatementKind::AlterView,
+                MySqlStatementKind::AlterView,
                 "item_view",
                 Some("app"),
             ),
             (
                 "ALTER ALGORITHM=MERGE DEFINER=CURRENT_USER SQL SECURITY INVOKER VIEW app.item_view AS SELECT id FROM app.items",
-                MysqlStatementKind::AlterView,
+                MySqlStatementKind::AlterView,
                 "item_view",
                 Some("app"),
             ),
             (
                 "CREATE FULLTEXT INDEX item_text ON app.items (body)",
-                MysqlStatementKind::CreateIndex,
+                MySqlStatementKind::CreateIndex,
                 "item_text",
                 Some("app"),
             ),
@@ -344,7 +344,7 @@ mod tests {
         .expect("trailing DDL version comment");
         assert_eq!(
             statement.kind,
-            MysqlStatementKind::CreateTable { temporary: false }
+            MySqlStatementKind::CreateTable { temporary: false }
         );
         assert!(
             classify_mysql_statement("CREATE TABLE items (id INT) /* ordinary comment */").is_ok()

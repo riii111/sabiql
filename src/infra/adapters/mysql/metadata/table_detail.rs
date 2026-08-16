@@ -15,12 +15,12 @@ use super::super::sql::{
     triggers_query, unique_columns_query,
 };
 use super::super::{
-    cli::{MYSQL_QUERY_TIMEOUT, MysqlMetadataSession, MysqlResultSet},
+    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
-    MysqlColumnMetadata, MysqlTableMetadata, column_from_metadata,
+    MySqlColumnMetadata, MySqlTableMetadata, column_from_metadata,
     execute_metadata_queries_in_session, expect_columns, find_table, foreign_keys_from_metadata,
     mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result, optional_text,
     parse_boolean_flag, parse_columns_for_table, parse_foreign_key_metadata, parse_positive_i32,
@@ -29,7 +29,7 @@ use super::catalog::{
 };
 
 #[derive(Debug, Clone)]
-struct MysqlIndexMetadata {
+struct MySqlIndexMetadata {
     name: String,
     non_unique: bool,
     index_type: String,
@@ -40,7 +40,7 @@ struct MysqlIndexMetadata {
 }
 
 #[derive(Debug, Clone)]
-struct MysqlTriggerMetadata {
+struct MySqlTriggerMetadata {
     name: String,
     timing: TriggerTiming,
     event: TriggerEvent,
@@ -112,7 +112,7 @@ async fn fetch_table_detail_in_session_with_program(
     })?;
     validate_selected_schema_name(database, schema)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MysqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
         timeout,
         fetch_table_detail_with_session(&mut session, database, schema, table),
@@ -136,7 +136,7 @@ async fn fetch_table_detail_in_session_with_program(
 }
 
 async fn fetch_table_detail_with_session(
-    session: &mut MysqlMetadataSession,
+    session: &mut MySqlMetadataSession,
     database: &str,
     schema: &str,
     table: &str,
@@ -218,8 +218,8 @@ async fn fetch_table_detail_with_session(
 }
 
 fn table_from_columns_and_foreign_keys(
-    table_metadata: MysqlTableMetadata,
-    columns: Vec<MysqlColumnMetadata>,
+    table_metadata: MySqlTableMetadata,
+    columns: Vec<MySqlColumnMetadata>,
     foreign_keys: Vec<ForeignKey>,
 ) -> Table {
     let primary_key = primary_key_names(&columns);
@@ -246,8 +246,8 @@ fn table_from_columns_and_foreign_keys(
 }
 
 fn parse_trigger_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlTriggerMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlTriggerMetadata>, DbOperationError> {
     expect_columns(result, TRIGGER_RESULT_COLUMNS)?;
     result
         .values
@@ -262,7 +262,7 @@ fn parse_trigger_metadata(
             let event = required_text(&row[2], "EVENT_MANIPULATION")?
                 .parse::<TriggerEvent>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            Ok(MysqlTriggerMetadata {
+            Ok(MySqlTriggerMetadata {
                 name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
                 timing,
                 event,
@@ -274,7 +274,7 @@ fn parse_trigger_metadata(
 }
 
 fn triggers_from_metadata(
-    raw: Vec<MysqlTriggerMetadata>,
+    raw: Vec<MySqlTriggerMetadata>,
 ) -> Result<Vec<Trigger>, DbOperationError> {
     let mut triggers = Vec::new();
     for metadata in raw {
@@ -302,7 +302,7 @@ fn triggers_from_metadata(
     Ok(triggers)
 }
 
-fn parse_source_ddl(result: &MysqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
+fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
     let expected_columns = if kind == TableKind::View {
         ["View", "Create View"]
     } else {
@@ -329,8 +329,8 @@ fn parse_source_ddl(result: &MysqlResultSet, kind: TableKind) -> Result<String, 
 }
 
 fn parse_index_metadata(
-    result: &MysqlResultSet,
-) -> Result<Vec<MysqlIndexMetadata>, DbOperationError> {
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlIndexMetadata>, DbOperationError> {
     expect_columns(result, INDEX_RESULT_COLUMNS)?;
     result
         .values
@@ -359,7 +359,7 @@ fn parse_index_metadata(
                     ));
                 }
             };
-            Ok(MysqlIndexMetadata {
+            Ok(MySqlIndexMetadata {
                 name: required_text(&row[0], "INDEX_NAME")?.to_string(),
                 non_unique: parse_boolean_flag(&row[1], "NON_UNIQUE")?,
                 index_type: required_text(&row[2], "INDEX_TYPE")?.to_string(),
@@ -372,7 +372,7 @@ fn parse_index_metadata(
         .collect()
 }
 
-fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
+fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
     raw.sort_by(|left, right| {
         left.name
             .cmp(&right.name)
@@ -413,8 +413,8 @@ fn indexes_from_metadata(mut raw: Vec<MysqlIndexMetadata>) -> Vec<Index> {
     indexes
 }
 
-fn unique_single_columns_from_metadata(raw: &[MysqlIndexMetadata]) -> HashSet<String> {
-    let mut indexes_by_name: HashMap<&str, Vec<&MysqlIndexMetadata>> = HashMap::new();
+fn unique_single_columns_from_metadata(raw: &[MySqlIndexMetadata]) -> HashSet<String> {
+    let mut indexes_by_name: HashMap<&str, Vec<&MySqlIndexMetadata>> = HashMap::new();
     for index in raw
         .iter()
         .filter(|index| !index.non_unique && !index.primary)
@@ -789,8 +789,8 @@ mod tests {
     use super::*;
     use crate::domain::QueryValue;
 
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MysqlResultSet {
-        MysqlResultSet {
+    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),
             values,
         }

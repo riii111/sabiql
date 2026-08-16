@@ -1,7 +1,7 @@
 use super::write_guardrails::{self, RiskLevel};
 use crate::domain::DatabaseType;
 use crate::policy::sql::mysql_statement::{
-    MysqlLexError, MysqlStatement, MysqlStatementKind, classify_mysql_statement,
+    MySqlLexError, MySqlStatement, MySqlStatementKind, classify_mysql_statement,
     has_mysql_read_only_side_effect, has_top_level_into_clause, split_mysql_statements,
     statement_contains_unsupported_mysql_control, target_is_selected_database,
 };
@@ -74,7 +74,7 @@ mod mysql_tests {
 
         assert!(matches!(
             statements[0].kind,
-            MysqlStatementKind::Update { has_where: false }
+            MySqlStatementKind::Update { has_where: false }
         ));
         assert_eq!(statements[1].sql, "SELECT 2");
     }
@@ -82,13 +82,13 @@ mod mysql_tests {
     #[test]
     fn distinguishes_persistent_mysql_schema_changes_from_temporary_tables() {
         assert!(mysql_statement_is_persistent_schema_change(
-            &MysqlStatementKind::CreateTable { temporary: false }
+            &MySqlStatementKind::CreateTable { temporary: false }
         ));
         assert!(!mysql_statement_is_persistent_schema_change(
-            &MysqlStatementKind::CreateTable { temporary: true }
+            &MySqlStatementKind::CreateTable { temporary: true }
         ));
         assert!(!mysql_statement_is_persistent_schema_change(
-            &MysqlStatementKind::DropTable { temporary: true }
+            &MySqlStatementKind::DropTable { temporary: true }
         ));
     }
 
@@ -122,25 +122,25 @@ mod mysql_tests {
         let cases = [
             (
                 "RENAME TABLE items TO archived_items",
-                MysqlStatementKind::RenameTable,
+                MySqlStatementKind::RenameTable,
                 RiskLevel::Medium,
                 "RENAME TABLE",
             ),
             (
                 "CREATE OR REPLACE VIEW item_view AS SELECT 1",
-                MysqlStatementKind::CreateView,
+                MySqlStatementKind::CreateView,
                 RiskLevel::Low,
                 "CREATE VIEW",
             ),
             (
                 "ALTER VIEW item_view AS SELECT 1",
-                MysqlStatementKind::AlterView,
+                MySqlStatementKind::AlterView,
                 RiskLevel::Medium,
                 "ALTER VIEW",
             ),
             (
                 "CREATE FULLTEXT INDEX item_text ON items (body)",
-                MysqlStatementKind::CreateIndex,
+                MySqlStatementKind::CreateIndex,
                 RiskLevel::Low,
                 "CREATE INDEX",
             ),
@@ -530,7 +530,7 @@ fn mysql_low(read_only_allowed: bool) -> SqlRiskDecision {
     }
 }
 
-fn mysql_table_name_input(statement: &MysqlStatement) -> SqlRiskDecision {
+fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
     match statement.target.as_deref() {
         Some(target) => SqlRiskDecision {
             risk_level: RiskLevel::High,
@@ -550,114 +550,114 @@ fn mysql_table_name_input(statement: &MysqlStatement) -> SqlRiskDecision {
     }
 }
 
-fn mysql_statement_risk(statement: &MysqlStatement) -> SqlRiskDecision {
+fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
     match statement.kind {
-        MysqlStatementKind::Select
-        | MysqlStatementKind::Table
-        | MysqlStatementKind::Show
-        | MysqlStatementKind::Describe => {
+        MySqlStatementKind::Select
+        | MySqlStatementKind::Table
+        | MySqlStatementKind::Show
+        | MySqlStatementKind::Describe => {
             mysql_low(!has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true))
         }
-        MysqlStatementKind::Begin
-        | MysqlStatementKind::StartTransaction
-        | MysqlStatementKind::Commit
-        | MysqlStatementKind::Rollback
-        | MysqlStatementKind::Savepoint
-        | MysqlStatementKind::RollbackToSavepoint
-        | MysqlStatementKind::ReleaseSavepoint
-        | MysqlStatementKind::Insert
-        | MysqlStatementKind::CreateTable { .. }
-        | MysqlStatementKind::CreateView
-        | MysqlStatementKind::CreateIndex => mysql_low(false),
-        MysqlStatementKind::Update { has_where: true }
-        | MysqlStatementKind::Delete { has_where: true }
-        | MysqlStatementKind::AlterTable
-        | MysqlStatementKind::RenameTable
-        | MysqlStatementKind::AlterView => SqlRiskDecision {
+        MySqlStatementKind::Begin
+        | MySqlStatementKind::StartTransaction
+        | MySqlStatementKind::Commit
+        | MySqlStatementKind::Rollback
+        | MySqlStatementKind::Savepoint
+        | MySqlStatementKind::RollbackToSavepoint
+        | MySqlStatementKind::ReleaseSavepoint
+        | MySqlStatementKind::Insert
+        | MySqlStatementKind::CreateTable { .. }
+        | MySqlStatementKind::CreateView
+        | MySqlStatementKind::CreateIndex => mysql_low(false),
+        MySqlStatementKind::Update { has_where: true }
+        | MySqlStatementKind::Delete { has_where: true }
+        | MySqlStatementKind::AlterTable
+        | MySqlStatementKind::RenameTable
+        | MySqlStatementKind::AlterView => SqlRiskDecision {
             risk_level: RiskLevel::Medium,
             confirmation: ConfirmationType::Immediate,
             read_only_allowed: false,
         },
-        MysqlStatementKind::Replace
-        | MysqlStatementKind::Update { has_where: false }
-        | MysqlStatementKind::Delete { has_where: false }
-        | MysqlStatementKind::DropTable { .. }
-        | MysqlStatementKind::DropView
-        | MysqlStatementKind::DropIndex
-        | MysqlStatementKind::TruncateTable => mysql_table_name_input(statement),
+        MySqlStatementKind::Replace
+        | MySqlStatementKind::Update { has_where: false }
+        | MySqlStatementKind::Delete { has_where: false }
+        | MySqlStatementKind::DropTable { .. }
+        | MySqlStatementKind::DropView
+        | MySqlStatementKind::DropIndex
+        | MySqlStatementKind::TruncateTable => mysql_table_name_input(statement),
     }
 }
 
-pub fn mysql_statement_label(kind: &MysqlStatementKind) -> &'static str {
+pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     match kind {
-        MysqlStatementKind::Select => "SELECT",
-        MysqlStatementKind::Table => "TABLE",
-        MysqlStatementKind::Show => "SHOW",
-        MysqlStatementKind::Describe => "DESCRIBE",
-        MysqlStatementKind::Insert => "INSERT",
-        MysqlStatementKind::Replace => "REPLACE",
-        MysqlStatementKind::Update { has_where: true } => "UPDATE",
-        MysqlStatementKind::Update { has_where: false } => "UPDATE (no WHERE)",
-        MysqlStatementKind::Delete { has_where: true } => "DELETE",
-        MysqlStatementKind::Delete { has_where: false } => "DELETE (no WHERE)",
-        MysqlStatementKind::CreateTable { temporary: true } => "CREATE TEMPORARY TABLE",
-        MysqlStatementKind::CreateTable { temporary: false } => "CREATE TABLE",
-        MysqlStatementKind::AlterTable => "ALTER TABLE",
-        MysqlStatementKind::RenameTable => "RENAME TABLE",
-        MysqlStatementKind::DropTable { temporary: true } => "DROP TEMPORARY TABLE",
-        MysqlStatementKind::DropTable { temporary: false } => "DROP TABLE",
-        MysqlStatementKind::TruncateTable => "TRUNCATE TABLE",
-        MysqlStatementKind::CreateView => "CREATE VIEW",
-        MysqlStatementKind::AlterView => "ALTER VIEW",
-        MysqlStatementKind::DropView => "DROP VIEW",
-        MysqlStatementKind::CreateIndex => "CREATE INDEX",
-        MysqlStatementKind::DropIndex => "DROP INDEX",
-        MysqlStatementKind::Begin => "BEGIN",
-        MysqlStatementKind::StartTransaction => "START TRANSACTION",
-        MysqlStatementKind::Commit => "COMMIT",
-        MysqlStatementKind::Rollback => "ROLLBACK",
-        MysqlStatementKind::Savepoint => "SAVEPOINT",
-        MysqlStatementKind::RollbackToSavepoint => "ROLLBACK TO SAVEPOINT",
-        MysqlStatementKind::ReleaseSavepoint => "RELEASE SAVEPOINT",
+        MySqlStatementKind::Select => "SELECT",
+        MySqlStatementKind::Table => "TABLE",
+        MySqlStatementKind::Show => "SHOW",
+        MySqlStatementKind::Describe => "DESCRIBE",
+        MySqlStatementKind::Insert => "INSERT",
+        MySqlStatementKind::Replace => "REPLACE",
+        MySqlStatementKind::Update { has_where: true } => "UPDATE",
+        MySqlStatementKind::Update { has_where: false } => "UPDATE (no WHERE)",
+        MySqlStatementKind::Delete { has_where: true } => "DELETE",
+        MySqlStatementKind::Delete { has_where: false } => "DELETE (no WHERE)",
+        MySqlStatementKind::CreateTable { temporary: true } => "CREATE TEMPORARY TABLE",
+        MySqlStatementKind::CreateTable { temporary: false } => "CREATE TABLE",
+        MySqlStatementKind::AlterTable => "ALTER TABLE",
+        MySqlStatementKind::RenameTable => "RENAME TABLE",
+        MySqlStatementKind::DropTable { temporary: true } => "DROP TEMPORARY TABLE",
+        MySqlStatementKind::DropTable { temporary: false } => "DROP TABLE",
+        MySqlStatementKind::TruncateTable => "TRUNCATE TABLE",
+        MySqlStatementKind::CreateView => "CREATE VIEW",
+        MySqlStatementKind::AlterView => "ALTER VIEW",
+        MySqlStatementKind::DropView => "DROP VIEW",
+        MySqlStatementKind::CreateIndex => "CREATE INDEX",
+        MySqlStatementKind::DropIndex => "DROP INDEX",
+        MySqlStatementKind::Begin => "BEGIN",
+        MySqlStatementKind::StartTransaction => "START TRANSACTION",
+        MySqlStatementKind::Commit => "COMMIT",
+        MySqlStatementKind::Rollback => "ROLLBACK",
+        MySqlStatementKind::Savepoint => "SAVEPOINT",
+        MySqlStatementKind::RollbackToSavepoint => "ROLLBACK TO SAVEPOINT",
+        MySqlStatementKind::ReleaseSavepoint => "RELEASE SAVEPOINT",
     }
 }
 
-pub fn mysql_statement_is_schema_modifying(kind: &MysqlStatementKind) -> bool {
+pub fn mysql_statement_is_schema_modifying(kind: &MySqlStatementKind) -> bool {
     matches!(
         kind,
-        MysqlStatementKind::CreateTable { .. }
-            | MysqlStatementKind::AlterTable
-            | MysqlStatementKind::RenameTable
-            | MysqlStatementKind::DropTable { .. }
-            | MysqlStatementKind::TruncateTable
-            | MysqlStatementKind::CreateView
-            | MysqlStatementKind::AlterView
-            | MysqlStatementKind::DropView
-            | MysqlStatementKind::CreateIndex
-            | MysqlStatementKind::DropIndex
+        MySqlStatementKind::CreateTable { .. }
+            | MySqlStatementKind::AlterTable
+            | MySqlStatementKind::RenameTable
+            | MySqlStatementKind::DropTable { .. }
+            | MySqlStatementKind::TruncateTable
+            | MySqlStatementKind::CreateView
+            | MySqlStatementKind::AlterView
+            | MySqlStatementKind::DropView
+            | MySqlStatementKind::CreateIndex
+            | MySqlStatementKind::DropIndex
     )
 }
 
-pub fn mysql_statement_is_data_modifying(kind: &MysqlStatementKind) -> bool {
+pub fn mysql_statement_is_data_modifying(kind: &MySqlStatementKind) -> bool {
     matches!(
         kind,
-        MysqlStatementKind::Insert
-            | MysqlStatementKind::Replace
-            | MysqlStatementKind::Update { .. }
-            | MysqlStatementKind::Delete { .. }
+        MySqlStatementKind::Insert
+            | MySqlStatementKind::Replace
+            | MySqlStatementKind::Update { .. }
+            | MySqlStatementKind::Delete { .. }
     )
 }
 
-pub fn mysql_statement_is_persistent_schema_change(kind: &MysqlStatementKind) -> bool {
+pub fn mysql_statement_is_persistent_schema_change(kind: &MySqlStatementKind) -> bool {
     mysql_statement_is_schema_modifying(kind)
         && !matches!(
             kind,
-            MysqlStatementKind::CreateTable { temporary: true }
-                | MysqlStatementKind::DropTable { temporary: true }
+            MySqlStatementKind::CreateTable { temporary: true }
+                | MySqlStatementKind::DropTable { temporary: true }
         )
 }
 
-fn mysql_target_key(statement: &MysqlStatement, selected_database: Option<&str>) -> Option<String> {
+fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
     Some(format!(
         "{}:{}",
         statement
@@ -671,7 +671,7 @@ fn mysql_target_key(statement: &MysqlStatement, selected_database: Option<&str>)
 }
 
 fn mysql_validate_submission_state(
-    planned: &[(MysqlStatement, SqlRiskDecision)],
+    planned: &[(MySqlStatement, SqlRiskDecision)],
     selected_database: Option<&str>,
 ) -> Result<(), String> {
     let mut transaction_open = false;
@@ -680,18 +680,18 @@ fn mysql_validate_submission_state(
 
     for (statement, _) in planned {
         match &statement.kind {
-            MysqlStatementKind::Begin | MysqlStatementKind::StartTransaction => {
+            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
                 if transaction_open {
                     return Err("nested MySQL transactions are not supported".to_string());
                 }
                 transaction_open = true;
                 savepoints.clear();
             }
-            MysqlStatementKind::Commit | MysqlStatementKind::Rollback => {
+            MySqlStatementKind::Commit | MySqlStatementKind::Rollback => {
                 transaction_open = false;
                 savepoints.clear();
             }
-            MysqlStatementKind::Savepoint => {
+            MySqlStatementKind::Savepoint => {
                 if !transaction_open {
                     return Err("MySQL SAVEPOINT requires an explicit transaction".to_string());
                 }
@@ -702,7 +702,7 @@ fn mysql_validate_submission_state(
                 savepoints.retain(|current| !current.eq_ignore_ascii_case(name));
                 savepoints.push(name.to_string());
             }
-            MysqlStatementKind::RollbackToSavepoint => {
+            MySqlStatementKind::RollbackToSavepoint => {
                 if !transaction_open {
                     return Err(
                         "MySQL ROLLBACK TO SAVEPOINT requires an explicit transaction".to_string(),
@@ -720,7 +720,7 @@ fn mysql_validate_submission_state(
                 };
                 savepoints.truncate(index + 1);
             }
-            MysqlStatementKind::ReleaseSavepoint => {
+            MySqlStatementKind::ReleaseSavepoint => {
                 if !transaction_open {
                     return Err(
                         "MySQL RELEASE SAVEPOINT requires an explicit transaction".to_string()
@@ -738,7 +738,7 @@ fn mysql_validate_submission_state(
                 };
                 savepoints.remove(index);
             }
-            MysqlStatementKind::CreateTable { temporary: true } => {
+            MySqlStatementKind::CreateTable { temporary: true } => {
                 let key = mysql_target_key(statement, selected_database)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 if temporary_tables.iter().any(|current| current == &key) {
@@ -746,7 +746,7 @@ fn mysql_validate_submission_state(
                 }
                 temporary_tables.push(key);
             }
-            MysqlStatementKind::DropTable { temporary: true } => {
+            MySqlStatementKind::DropTable { temporary: true } => {
                 let key = mysql_target_key(statement, selected_database)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 let Some(index) = temporary_tables.iter().position(|current| current == &key)
@@ -777,7 +777,7 @@ fn mysql_validate_submission_state(
 pub fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
-) -> MultiStatementDecision<MysqlStatement> {
+) -> MultiStatementDecision<MySqlStatement> {
     if statement_contains_unsupported_mysql_control(sql) {
         return MultiStatementDecision::Block {
             reason: "unsupported MySQL session or table-lock statement".to_string(),
@@ -807,14 +807,14 @@ pub fn evaluate_mysql_multi_statement(
                 };
             }
         };
-        if matches!(statement.kind, MysqlStatementKind::Replace) {
+        if matches!(statement.kind, MySqlStatementKind::Replace) {
             return MultiStatementDecision::Block {
                 reason: "MySQL REPLACE execution is not supported".to_string(),
             };
         }
         if matches!(
             statement.kind,
-            MysqlStatementKind::Select | MysqlStatementKind::Table
+            MySqlStatementKind::Select | MySqlStatementKind::Table
         ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
         {
             return MultiStatementDecision::Block {
@@ -955,7 +955,7 @@ pub fn split_statements(sql: &str) -> Vec<String> {
 pub fn split_statements_for_database(
     database_type: DatabaseType,
     sql: &str,
-) -> Result<Vec<String>, MysqlLexError> {
+) -> Result<Vec<String>, MySqlLexError> {
     if database_type == DatabaseType::MySQL {
         return split_mysql_statements(sql);
     }
@@ -1173,7 +1173,7 @@ pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecisio
     let statement = classify_mysql_statement(&statements[0]).ok()?;
     if !matches!(
         statement.kind,
-        MysqlStatementKind::Select | MysqlStatementKind::Table
+        MySqlStatementKind::Select | MySqlStatementKind::Table
     ) {
         return None;
     }

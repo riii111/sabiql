@@ -4,9 +4,9 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
-use super::super::xml::{MysqlResultSet, parse_mysql_xml};
+use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
-    MYSQL_QUERY_TIMEOUT, MysqlProcess, configure_mysql_session, finish_mysql_session,
+    MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
     finish_mysql_session_after_result, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
@@ -15,8 +15,8 @@ pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
     option_file: &std::path::Path,
     query: &str,
     access_mode: AccessMode,
-) -> Result<MysqlResultSet, DbOperationError> {
-    let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
+) -> Result<MySqlResultSet, DbOperationError> {
+    let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), option_file)?;
     run_mysql_process_with_timeout(MYSQL_QUERY_TIMEOUT, &mut process, async |process| {
         run_mysql_single_statement_process(process, query, access_mode).await
     })
@@ -24,10 +24,10 @@ pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
 }
 
 pub(super) async fn run_mysql_single_statement_process(
-    process: &mut MysqlProcess,
+    process: &mut MySqlProcess,
     query: &str,
     access_mode: AccessMode,
-) -> Result<MysqlResultSet, DbOperationError> {
+) -> Result<MySqlResultSet, DbOperationError> {
     let marker = Uuid::new_v4().simple().to_string();
     let probe_query =
         format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");

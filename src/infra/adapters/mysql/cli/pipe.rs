@@ -8,10 +8,10 @@ use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 use super::xml::{
-    MysqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check, trace_mysql_frame,
+    MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check, trace_mysql_frame,
 };
 
-pub(super) struct MysqlExportPipeSource<'a, O, E> {
+pub(super) struct MySqlExportPipeSource<'a, O, E> {
     pub(super) stdout: &'a mut O,
     pub(super) stderr: &'a mut E,
     pub(super) pending: &'a mut Vec<u8>,
@@ -21,7 +21,7 @@ pub(super) struct MysqlExportPipeSource<'a, O, E> {
     pub(super) stdout_closed: bool,
 }
 
-impl<O, E> MysqlExportPipeSource<'_, O, E>
+impl<O, E> MySqlExportPipeSource<'_, O, E>
 where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
@@ -61,7 +61,7 @@ where
     }
 }
 
-impl<O, E> AsyncRead for MysqlExportPipeSource<'_, O, E>
+impl<O, E> AsyncRead for MySqlExportPipeSource<'_, O, E>
 where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
@@ -125,7 +125,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     child: &mut tokio::process::Child,
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
-    frame_scanner: &mut MysqlResultsetFrameScanner,
+    frame_scanner: &mut MySqlResultsetFrameScanner,
 ) -> Result<Vec<u8>, DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -245,7 +245,7 @@ mod tests {
             .unwrap();
         drop(stdout_writer);
         drop(stderr_writer);
-        let mut frame_scanner = MysqlResultsetFrameScanner::default();
+        let mut frame_scanner = MySqlResultsetFrameScanner::default();
         let mut child = exited_child();
 
         let result = read_one_mysql_resultset_from_pipes(
@@ -279,7 +279,7 @@ mod tests {
         let mut stderr = child.stderr.take().expect("piped stderr");
         let mut pending = Vec::new();
         let mut pending_stderr = Vec::new();
-        let mut frame_scanner = MysqlResultsetFrameScanner::default();
+        let mut frame_scanner = MySqlResultsetFrameScanner::default();
 
         let result = read_one_mysql_resultset_from_pipes(
             &mut stdout,
@@ -314,7 +314,7 @@ mod tests {
             stderr_writer.write_all(&stderr).await.unwrap();
         });
 
-        let mut source = MysqlExportPipeSource {
+        let mut source = MySqlExportPipeSource {
             stdout: &mut stdout_reader,
             stderr: &mut stderr_reader,
             pending: &mut Vec::new(),
