@@ -6,7 +6,6 @@ use quick_xml::Reader;
 use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use tokio::io::{AsyncRead, BufReader};
-use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::adapters::csv_export::CsvFileWriter;
@@ -19,8 +18,8 @@ use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_m
 use super::pipe::MysqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
-    MYSQL_QUERY_TIMEOUT, MysqlProcess, cleanup_mysql_process, configure_mysql_session,
-    finish_mysql_session_after_result, mysql_metadata_columns, read_one_mysql_resultset,
+    MYSQL_QUERY_TIMEOUT, MysqlProcess, configure_mysql_session, finish_mysql_session_after_result,
+    mysql_metadata_columns, read_one_mysql_resultset, run_mysql_process_with_timeout,
     write_mysql_statement,
 };
 #[cfg(unix)]
@@ -36,24 +35,10 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MysqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
-    let result = timeout(
-        MYSQL_EXPORT_TIMEOUT,
-        run_mysql_export_process(&mut process, &option_file.path, query, path),
-    )
-    .await;
-    match result {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(error)
-        }
-        Err(_) => {
-            cleanup_mysql_process(&mut process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    }
+    run_mysql_process_with_timeout(MYSQL_EXPORT_TIMEOUT, &mut process, async |process| {
+        run_mysql_export_process(process, &option_file.path, query, path).await
+    })
+    .await
 }
 
 pub(super) async fn run_mysql_export_process(
