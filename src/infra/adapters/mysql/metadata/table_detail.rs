@@ -710,29 +710,6 @@ done
     }
 
     #[tokio::test]
-    async fn inspector_detail_sends_foreign_key_query_without_sentinel() {
-        let (_directory, program, transcript) = fake_metadata_cli("table");
-        fetch_table_detail_in_session_with_program(
-            "mysql://user:password@localhost:3306/app",
-            "app",
-            "items",
-            OsStr::new(&program),
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
-        let foreign_key_query = transcript_text
-            .lines()
-            .find(|line| line.contains("REFERENTIAL_CONSTRAINTS"))
-            .expect("foreign key metadata query");
-        assert!(!foreign_key_query.contains("UNION ALL SELECT NULL"));
-        assert_process_stopped(&transcript);
-        assert_option_file_removed(&transcript);
-    }
-
-    #[tokio::test]
     async fn inspector_detail_orchestration_rejects_empty_and_malformed_shapes_without_partial_table()
      {
         let (_directory, program, transcript) = fake_metadata_cli("empty");

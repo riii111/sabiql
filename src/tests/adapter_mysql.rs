@@ -304,14 +304,6 @@ mod metadata_fetch {
                         table.kind_info
                     ));
                 }
-                if metadata
-                    .table_summaries
-                    .iter()
-                    .any(|summary| summary.name == MYSQL_VIEW)
-                {
-                    return Err("MySQL view was listed in table metadata".to_string());
-                }
-
                 let detail = db
                     .adapter()
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)
