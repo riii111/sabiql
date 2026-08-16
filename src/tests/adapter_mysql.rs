@@ -2006,9 +2006,30 @@ mod query_execution {
             if result.columns != ["id"]
                 || result.values() != [[QueryValue::Text("1".to_string())], [QueryValue::Text("2".to_string())]]
                 || result.command_tag != Some(CommandTag::Insert(2))
-                || result.refresh_scope != RefreshScope::Metadata
+                || result.refresh_scope != RefreshScope::Data
             {
                 return Err(format!("unexpected temporary-table result: {result:?}"));
+            }
+
+            let ddl_only_table = format!("sabiql_sab461_tmp_{suffix}");
+            let ddl_only_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TEMPORARY TABLE {ddl_only_table} (id INT); DROP TEMPORARY TABLE {ddl_only_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("temporary-table DDL-only query failed: {error:?}"))?;
+            if ddl_only_result.command_tag
+                    != Some(CommandTag::Other("DROP TEMPORARY TABLE".to_string()))
+                || ddl_only_result.refresh_scope != RefreshScope::None
+            {
+                return Err(format!(
+                    "unexpected temporary-table DDL-only result: {ddl_only_result:?}"
+                ));
             }
 
             let empty_table = format!("sabiql_sab414_empty_tmp_{suffix}");

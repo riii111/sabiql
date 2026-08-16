@@ -5,7 +5,7 @@ use crate::app::policy::sql::mysql_statement::{
 };
 use crate::app::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_mysql_multi_statement, mysql_statement_is_data_modifying,
-    mysql_statement_is_persistent_schema_change, mysql_statement_is_schema_modifying,
+    mysql_statement_is_persistent_schema_change,
 };
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{CommandTag, QueryValue, RefreshScope};
@@ -263,7 +263,7 @@ pub(super) fn mysql_command_tag(
 }
 
 pub(super) fn mysql_refresh_scope(kind: &MysqlStatementKind) -> RefreshScope {
-    if mysql_statement_is_schema_modifying(kind) {
+    if mysql_statement_is_persistent_schema_change(kind) {
         RefreshScope::Metadata
     } else if mysql_statement_is_data_modifying(kind) {
         RefreshScope::Data
@@ -516,6 +516,29 @@ mod tests {
             &statements
         ));
     }
+
+    #[test]
+    fn refresh_scope_ignores_temporary_table_ddl() {
+        for kind in [
+            MysqlStatementKind::CreateTable { temporary: true },
+            MysqlStatementKind::DropTable { temporary: true },
+        ] {
+            assert_eq!(mysql_refresh_scope(&kind), RefreshScope::None);
+        }
+    }
+
+    #[test]
+    fn refresh_scope_preserves_data_and_persistent_metadata_changes() {
+        assert_eq!(
+            mysql_refresh_scope(&MysqlStatementKind::Insert),
+            RefreshScope::Data
+        );
+        assert_eq!(
+            mysql_refresh_scope(&MysqlStatementKind::CreateTable { temporary: false }),
+            RefreshScope::Metadata
+        );
+    }
+
     #[test]
     fn transaction_rollback_removes_pending_data_tag() {
         let events = vec![
