@@ -1107,7 +1107,7 @@ mod tests {
                 &format!("mysql://localhost/{database}"),
                 Some(database),
             );
-            state.session.mark_probe_connected(true);
+            state.session.mark_probe_connected();
             state.runtime.project_name = "test-project".to_string();
             state
         }

@@ -47,17 +47,6 @@ pub mod global {
         combos: &[KeyCombo::plain(Key::Char('T'))],
     };
 
-    pub const DATABASE_PICKER: KeyBinding = KeyBinding {
-        key_short: "^⇧B",
-        key: "Ctrl+Shift+B",
-        desc_short: "Database",
-        description: "Open MySQL Database Picker",
-        action: Action::OpenModal(ModalKind::DatabasePicker),
-        combos: &[KeyCombo::ctrl_shift(Key::Char('b'))],
-    };
-
-    pub const DATABASE_PICKER_IDE: KeyBinding = DATABASE_PICKER;
-
     pub const SETTINGS: KeyBinding = KeyBinding {
         key_short: ",",
         key: ",",
@@ -270,7 +259,6 @@ pub const DEFAULT_GLOBAL_KEYS: &[KeyBinding] = &[
     global::QUIT,
     global::HELP,
     global::TABLE_PICKER,
-    global::DATABASE_PICKER,
     global::SETTINGS,
     global::COMMAND_LINE,
     global::COMMAND_PALETTE,
@@ -293,7 +281,6 @@ pub const IDE_GLOBAL_KEYS: &[KeyBinding] = &[
     global::QUIT,
     global::HELP,
     global::TABLE_PICKER_IDE,
-    global::DATABASE_PICKER_IDE,
     global::SETTINGS,
     global::COMMAND_LINE,
     global::COMMAND_PALETTE_IDE,

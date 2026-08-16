@@ -3,7 +3,6 @@ use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeatureRequirement {
     None,
-    DatabasePicker,
     ErDiagram,
     JsonDocumentDetail,
     JsonDocumentEdit,
@@ -32,7 +31,6 @@ impl FeaturePolicy {
     pub fn availability(&self, requirement: FeatureRequirement) -> FeatureAvailability {
         let supported = match requirement {
             FeatureRequirement::None => true,
-            FeatureRequirement::DatabasePicker => self.profile.supports_database_picker(),
             FeatureRequirement::ErDiagram => self.profile.supports_er_diagram(),
             FeatureRequirement::JsonDocumentDetail => self.profile.supports_json_document_detail(),
             FeatureRequirement::JsonDocumentEdit => self.profile.supports_json_document_edit(),
@@ -67,10 +65,6 @@ mod tests {
         let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
 
         assert_eq!(
-            policy.availability(FeatureRequirement::DatabasePicker),
-            FeatureAvailability::Hidden
-        );
-        assert_eq!(
             policy.availability(FeatureRequirement::ErDiagram),
             FeatureAvailability::Enabled
         );
@@ -96,10 +90,6 @@ mod tests {
     fn sqlite_profile_enables_diagnostics_and_hides_postgres_features() {
         let policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
 
-        assert_eq!(
-            policy.availability(FeatureRequirement::DatabasePicker),
-            FeatureAvailability::Hidden
-        );
         assert_eq!(
             policy.availability(FeatureRequirement::SqliteDiagnostics),
             FeatureAvailability::Enabled
@@ -128,12 +118,5 @@ mod tests {
 
         assert!(policy.is_visible(FeatureRequirement::None));
         assert!(policy.is_enabled(FeatureRequirement::None));
-    }
-
-    #[test]
-    fn mysql_profile_enables_database_picker() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::mysql_like());
-
-        assert!(policy.is_enabled(FeatureRequirement::DatabasePicker));
     }
 }

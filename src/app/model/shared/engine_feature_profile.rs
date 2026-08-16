@@ -15,7 +15,6 @@ pub enum InspectorInfoField {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionFeature {
-    DatabasePicker,
     ErDiagram,
     JsonDocumentDetail,
     JsonDocumentEdit,
@@ -129,7 +128,6 @@ const POSTGRESQL_FEATURES: &[ConnectionFeature] = &[
 ];
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
 const MYSQL_FEATURES: &[ConnectionFeature] = &[
-    ConnectionFeature::DatabasePicker,
     ConnectionFeature::ErDiagram,
     ConnectionFeature::JsonDocumentDetail,
     ConnectionFeature::JsonDocumentEdit,
@@ -234,10 +232,6 @@ impl EngineFeatureProfile {
 
     pub fn supports_er_diagram(&self) -> bool {
         self.supports_connection_feature(ConnectionFeature::ErDiagram)
-    }
-
-    pub fn supports_database_picker(&self) -> bool {
-        self.supports_connection_feature(ConnectionFeature::DatabasePicker)
     }
 
     pub fn supports_plan_comparison(&self) -> bool {

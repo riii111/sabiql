@@ -10,7 +10,6 @@ use crate::app::model::shared::ui_state::{
     explorer_content_width_from_inner_width, scroll_max_offset, text_display_width,
 };
 use crate::app::policy::table_kind::{explorer_table_label, max_explorer_table_label_width};
-use crate::app::update::input::keybindings::global;
 use crate::domain::MetadataState;
 use crate::theme::ThemePalette;
 
@@ -66,14 +65,6 @@ impl Explorer {
                     ListItem::new(displayed)
                 })
                 .collect()
-        } else if state.session.connection_state().is_awaiting_database() {
-            vec![
-                ListItem::new(" Open database picker"),
-                ListItem::new(format!(
-                    " ({}: database picker)",
-                    global::DATABASE_PICKER.key
-                )),
-            ]
         } else {
             match &state.session.metadata_state() {
                 MetadataState::Loading => {

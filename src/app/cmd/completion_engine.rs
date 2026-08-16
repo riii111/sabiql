@@ -116,7 +116,6 @@ const MYSQL_COMPLETION_KEYWORDS: &[&str] = &[
 pub(crate) struct CompletionDatabaseScope<'a> {
     pub(crate) database_type: DatabaseType,
     pub(crate) active_database: Option<&'a str>,
-    pub(crate) available_databases: &'a [String],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,7 +283,6 @@ impl CompletionEngine {
             CompletionDatabaseScope {
                 database_type: DatabaseType::PostgreSQL,
                 active_database: None,
-                available_databases: &[],
             },
         )
     }
@@ -407,7 +405,6 @@ impl CompletionEngine {
             CompletionDatabaseScope {
                 database_type: DatabaseType::PostgreSQL,
                 active_database: None,
-                available_databases: &[],
             },
         )
     }
@@ -849,7 +846,6 @@ impl CompletionEngine {
             CompletionDatabaseScope {
                 database_type: DatabaseType::PostgreSQL,
                 active_database: None,
-                available_databases: &[],
             },
         )
     }
@@ -861,7 +857,7 @@ impl CompletionEngine {
         scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
         let mut candidates = if scope.database_type == DatabaseType::MySQL {
-            self.database_candidates(scope.active_database, scope.available_databases, prefix)
+            self.database_candidates(scope.active_database, prefix)
         } else {
             Vec::new()
         };
@@ -922,15 +918,10 @@ impl CompletionEngine {
     fn database_candidates(
         &self,
         active_database: Option<&str>,
-        available_databases: &[String],
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
         let prefix_lower = prefix.to_lowercase();
-        let mut names = Vec::with_capacity(available_databases.len() + 1);
-        if let Some(database) = active_database {
-            names.push(database.to_string());
-        }
-        names.extend(available_databases.iter().cloned());
+        let names = active_database.into_iter().map(str::to_string);
 
         let mut seen = HashSet::new();
         let mut candidates: Vec<_> = names
@@ -1132,7 +1123,6 @@ impl CompletionEngine {
             CompletionDatabaseScope {
                 database_type: DatabaseType::PostgreSQL,
                 active_database: None,
-                available_databases: &[],
             },
         )
     }
@@ -1146,7 +1136,7 @@ impl CompletionEngine {
     ) -> Vec<CompletionCandidate> {
         let prefix_lower = prefix.to_lowercase();
         let mut candidates = if scope.database_type == DatabaseType::MySQL {
-            self.database_candidates(scope.active_database, scope.available_databases, prefix)
+            self.database_candidates(scope.active_database, prefix)
         } else {
             Vec::new()
         };
@@ -1636,15 +1626,11 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &["analytics".to_string()],
                 },
             );
 
             assert!(candidates.iter().any(|candidate| {
                 candidate.text == "`app`" && candidate.kind == CompletionKind::Database
-            }));
-            assert!(candidates.iter().any(|candidate| {
-                candidate.text == "`analytics`" && candidate.kind == CompletionKind::Database
             }));
             assert!(candidates.iter().any(|candidate| {
                 candidate.text == "`users`" && candidate.kind == CompletionKind::Table
@@ -1668,7 +1654,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 
@@ -1692,7 +1677,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 
@@ -1719,7 +1703,6 @@ mod tests {
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
-                        available_databases: &[],
                     },
                 );
 
@@ -1746,7 +1729,6 @@ mod tests {
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
-                        available_databases: &[],
                     },
                 );
 
@@ -1778,7 +1760,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 
@@ -1810,7 +1791,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 
@@ -1838,7 +1818,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 
@@ -1867,7 +1846,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app`db"),
-                    available_databases: &[],
                 },
             );
 
@@ -1901,7 +1879,6 @@ mod tests {
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
-                    available_databases: &[],
                 },
             );
 

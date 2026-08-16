@@ -17,12 +17,6 @@ pub enum Effect {
         target: ConnectionTarget,
         run_id: u64,
     },
-    FetchMySqlDatabases {
-        connection_id: ConnectionId,
-        dsn: String,
-        connection_generation: u64,
-        database_generation: u64,
-    },
     LoadConnectionForEdit {
         id: ConnectionId,
     },
