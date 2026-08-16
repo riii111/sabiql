@@ -26,6 +26,8 @@ mod connection {
     #[cfg(unix)]
     use tempfile::NamedTempFile;
 
+    const MYSQL_TLS_TEST_USER: &str = "sabiql_tls_test_runner";
+
     fn mysql_profile(name: &str, config: MySqlConnectionConfig) -> ConnectionProfile {
         ConnectionProfile::with_id_and_config(
             ConnectionId::new(),
@@ -98,10 +100,16 @@ mod connection {
         .await;
     }
 
+    fn mysql_tls_test_config() -> MySqlConnectionConfig {
+        let mut config = mysql_tls_config();
+        config.username = MYSQL_TLS_TEST_USER.to_string();
+        config
+    }
+
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
-        let config = mysql_tls_config();
+        let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
@@ -116,6 +124,30 @@ mod connection {
             .await
             .unwrap();
         assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn rejects_oracle_mysql_84_fixture_without_client_certificate() {
+        let mut config = mysql_tls_test_config();
+        config.ssl_cert = None;
+        config.ssl_key = None;
+        let profile = mysql_profile("mysql-tls-missing-client-certificate", config);
+        let adapter = MySqlAdapter::new();
+        let dsn = adapter.build_dsn(&profile);
+        let error = adapter.probe(&dsn).await.unwrap_err();
+        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        assert_eq!(
+            error_info.kind,
+            ConnectionErrorKind::AuthFailed,
+            "masked connection error details: {}",
+            error_info.masked_details()
+        );
+        assert!(
+            error_info.masked_details().contains("ERROR 1045 (28000)"),
+            "missing client certificate must be rejected by the REQUIRE X509 account: {}",
+            error_info.masked_details()
+        );
     }
 
     #[tokio::test]
