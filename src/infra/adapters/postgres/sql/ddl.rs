@@ -37,8 +37,10 @@ impl DdlGenerator for PostgresAdapter {
             elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
         }
 
-        ddl.push_str(&elements.join(",\n"));
-        ddl.push('\n');
+        if !elements.is_empty() {
+            ddl.push_str(&elements.join(",\n"));
+            ddl.push('\n');
+        }
         ddl.push_str(");");
 
         let qualified = format!(
@@ -159,6 +161,16 @@ mod tests {
                 ddl,
                 "CREATE TABLE \"public\".\"test_table\" (\n  \"id\" integer NOT NULL,\n  \"name\" text\n);"
             );
+        }
+
+        #[test]
+        fn empty_table_returns_valid_ddl() {
+            let adapter = PostgresAdapter::new();
+            let table = make_table(Vec::new(), None);
+
+            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+
+            assert_eq!(ddl, "CREATE TABLE \"public\".\"test_table\" (\n);");
         }
 
         #[test]
