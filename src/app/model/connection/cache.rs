@@ -38,14 +38,6 @@ pub struct ConnectionCacheStore {
 }
 
 impl ConnectionCacheStore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn get_or_create(&mut self, id: &ConnectionId) -> &mut ConnectionCache {
-        self.caches.entry(id.clone()).or_default()
-    }
-
     pub fn get(&self, id: &ConnectionId) -> Option<&ConnectionCache> {
         self.caches.get(id)
     }
@@ -84,24 +76,15 @@ mod tests {
 
     #[test]
     fn store_get_returns_none_for_unknown_id() {
-        let store = ConnectionCacheStore::new();
+        let store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         assert!(store.get(&id).is_none());
     }
 
     #[test]
-    fn store_get_or_create_creates_default() {
-        let mut store = ConnectionCacheStore::new();
-        let id = ConnectionId::new();
-
-        let cache = store.get_or_create(&id);
-        assert!(cache.metadata.is_none());
-    }
-
-    #[test]
     fn store_save_and_get_returns_saved_cache() {
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let cache = ConnectionCache {
@@ -118,7 +101,7 @@ mod tests {
 
     #[test]
     fn store_remove_returns_and_deletes_cache() {
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let cache = ConnectionCache {
@@ -137,7 +120,7 @@ mod tests {
     fn preserves_metadata_on_save_and_get() {
         use crate::domain::{DatabaseMetadata, TableSummary};
 
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let metadata = Arc::new({
@@ -186,7 +169,7 @@ mod tests {
     fn preserves_query_result_on_save_and_get() {
         use crate::domain::{QueryResult, QuerySource};
 
-        let mut store = ConnectionCacheStore::new();
+        let mut store = ConnectionCacheStore::default();
         let id = ConnectionId::new();
 
         let query_result = QueryResult::success(
