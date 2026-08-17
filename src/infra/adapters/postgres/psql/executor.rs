@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
@@ -11,6 +12,62 @@ use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 use super::super::PostgresAdapter;
 use super::error::{classify_cli_spawn_error, classify_query_error};
 use super::parser::{ParseCommandTagError, split_sql_statements};
+
+async fn collect_csv_output(
+    mut child: tokio::process::Child,
+    path: &Path,
+    timeout_duration: Duration,
+) -> Result<(ExitStatus, String), DbOperationError> {
+    let stdout = child.stdout.take();
+    let stderr_handle = child.stderr.take();
+
+    let file = tokio::fs::File::create(path)
+        .await
+        .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {e}")))?;
+    let mut writer = tokio::io::BufWriter::new(file);
+
+    let result = timeout(timeout_duration, async {
+        let ((), stderr, status) = tokio::try_join!(
+            async {
+                if let Some(mut out) = stdout {
+                    let mut buf = [0u8; 8192];
+                    loop {
+                        let n = out.read(&mut buf).await?;
+                        if n == 0 {
+                            break;
+                        }
+                        writer.write_all(&buf[..n]).await?;
+                    }
+                    writer.flush().await?;
+                }
+                Ok::<_, std::io::Error>(())
+            },
+            async {
+                let mut buf = Vec::new();
+                if let Some(mut err) = stderr_handle {
+                    err.read_to_end(&mut buf).await?;
+                }
+                Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+            },
+            child.wait(),
+        )?;
+
+        Ok::<_, std::io::Error>((status, stderr))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(inner)) => Ok(inner),
+        Ok(Err(e)) => {
+            let _ = tokio::fs::remove_file(path).await;
+            Err(DbOperationError::QueryFailed(e.to_string()))
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_file(path).await;
+            Err(DbOperationError::Timeout(e.to_string()))
+        }
+    }
+}
 
 // Keep user SQL server-side: stdin scripts would let psql interpret
 // line-leading backslash metacommands before the server sees them.
@@ -411,54 +468,15 @@ impl PostgresAdapter {
         Self::apply_psql_base_args(&mut cmd, dsn);
         cmd.arg("--csv").arg("-c").arg(query);
 
-        let mut child = cmd
+        let child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let stdout = child.stdout.take();
-        let mut stderr_handle = child.stderr.take();
-
-        let file = tokio::fs::File::create(path)
-            .await
-            .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {e}")))?;
-        let mut writer = tokio::io::BufWriter::new(file);
-
-        let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
-            if let Some(mut out) = stdout {
-                let mut buf = [0u8; 8192];
-                loop {
-                    let n = out.read(&mut buf).await?;
-                    if n == 0 {
-                        break;
-                    }
-                    writer.write_all(&buf[..n]).await?;
-                }
-                writer.flush().await?;
-            }
-
-            let stderr = {
-                let mut buf = Vec::new();
-                if let Some(ref mut err) = stderr_handle {
-                    err.read_to_end(&mut buf).await?;
-                }
-                String::from_utf8_lossy(&buf).into_owned()
-            };
-
-            let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr))
-        })
-        .await;
-
-        let result = match result {
-            Ok(inner) => inner.map_err(|e| DbOperationError::QueryFailed(e.to_string()))?,
-            Err(e) => {
-                let _ = tokio::fs::remove_file(path).await;
-                return Err(DbOperationError::Timeout(e.to_string()));
-            }
-        };
+        let result =
+            collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
 
         let (status, stderr) = result;
         if !status.success() {
@@ -759,6 +777,44 @@ mod tests {
 
             assert_eq!(headers[0], "id");
             assert_eq!(headers[1], "name");
+        }
+    }
+
+    #[cfg(unix)]
+    mod csv_export {
+        use std::process::Stdio;
+
+        use tempfile::tempdir;
+        use tokio::process::Command;
+
+        use super::super::collect_csv_output;
+
+        #[tokio::test]
+        async fn reads_stderr_without_blocking_stdout() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+            let child = Command::new("sh")
+                .arg("-c")
+                .arg(
+                    "i=0; while [ \"$i\" -lt 20000 ]; do printf 'NOTICE: diagnostic\\n' >&2; i=$((i + 1)); done; printf 'id,name\\n1,Alice\\n'",
+                )
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+
+            let (status, stderr) =
+                collect_csv_output(child, &path, std::time::Duration::from_secs(2))
+                    .await
+                    .unwrap();
+
+            assert!(status.success());
+            assert!(stderr.len() > 128 * 1024);
+            assert_eq!(
+                tokio::fs::read_to_string(path).await.unwrap(),
+                "id,name\n1,Alice\n"
+            );
         }
     }
 
