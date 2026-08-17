@@ -725,6 +725,54 @@ mod tests {
         }
 
         #[test]
+        fn later_adhoc_run_drops_pending_preview_before_inspector_finishes() {
+            let (mut state, generation, detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            let preview_action =
+                query_completed_action(&mut state, preview_result(1), generation, Some(0));
+
+            dispatch_query(
+                &mut state,
+                &preview_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.has_pending_preview(generation));
+
+            let adhoc_action = query_completed_action(&mut state, adhoc_result(), 0, None);
+            dispatch_query(
+                &mut state,
+                &adhoc_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(
+                state.query.current_result().map(|result| result.source),
+                Some(QuerySource::Adhoc)
+            );
+            assert!(!state.query.has_pending_preview(generation));
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: Box::new(users_table_detail()),
+                    generation,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.query.current_result().map(|result| result.source),
+                Some(QuerySource::Adhoc)
+            );
+        }
+
+        #[test]
         fn stale_selection_drops_old_pending_preview_before_new_one_is_released() {
             let (mut state, old_generation, old_detail_run_id) =
                 state_with_selected_table(DatabaseType::PostgreSQL);

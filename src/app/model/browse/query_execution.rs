@@ -193,6 +193,7 @@ impl QueryExecution {
     pub fn begin_running(&mut self, now: Instant) -> u64 {
         self.status = QueryStatus::Running;
         self.start_time = Some(now);
+        self.pending_preview = None;
         self.run.begin()
     }
 
