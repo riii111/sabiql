@@ -1,5 +1,5 @@
 use super::splitter::{
-    first_sqlite_keyword, keywords_with_depth, split_sqlite_statements, statement_keyword,
+    first_sqlite_keyword, has_cte_body_starting_with, split_sqlite_statements, statement_keyword,
     top_level_keywords,
 };
 
@@ -31,11 +31,7 @@ fn supports_sqlite_query_plan(statement: &str) -> bool {
     if split_sqlite_statements(statement).statements().len() != 1 {
         return false;
     }
-    if first_sqlite_keyword(statement).as_deref() == Some("WITH")
-        && keywords_with_depth(statement)
-            .iter()
-            .any(|(keyword, depth)| *depth == 1 && keyword == "MERGE")
-    {
+    if has_cte_body_starting_with(statement, "MERGE") {
         return false;
     }
     let effective_keyword = statement_keyword(statement);
@@ -141,6 +137,10 @@ mod tests {
                 "SELECT * FROM x"
             )),
             None
+        );
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql("WITH x AS (SELECT merge FROM t) SELECT * FROM x"),
+            Some("EXPLAIN QUERY PLAN WITH x AS (SELECT merge FROM t) SELECT * FROM x".to_string())
         );
         assert_eq!(
             build_sqlite_explain_query_plan_sql("-- filter\nSELECT 1"),

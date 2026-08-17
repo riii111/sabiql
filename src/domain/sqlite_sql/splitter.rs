@@ -472,6 +472,34 @@ pub(super) fn first_sqlite_keyword(sql: &str) -> Option<String> {
     top_level_keywords(sql).into_iter().next()
 }
 
+pub(super) fn has_cte_body_starting_with(sql: &str, expected: &str) -> bool {
+    if first_sqlite_keyword(sql).as_deref() != Some("WITH") {
+        return false;
+    }
+    let keywords = keywords_with_depth(sql);
+    keywords
+        .iter()
+        .enumerate()
+        .any(|(index, (keyword, depth))| {
+            if *depth != 0 || keyword != "AS" {
+                return false;
+            }
+            let mut candidate = index + 1;
+            while keywords
+                .get(candidate)
+                .is_some_and(|(_, depth)| *depth == 0)
+                && keywords
+                    .get(candidate)
+                    .is_some_and(|(keyword, _)| matches!(keyword.as_str(), "NOT" | "MATERIALIZED"))
+            {
+                candidate += 1;
+            }
+            keywords
+                .get(candidate)
+                .is_some_and(|(keyword, depth)| *depth == 1 && keyword == expected)
+        })
+}
+
 pub(super) fn statement_keyword(sql: &str) -> Option<String> {
     let tokens = top_level_keywords(sql);
     if tokens.first().map(String::as_str) != Some("WITH") {
