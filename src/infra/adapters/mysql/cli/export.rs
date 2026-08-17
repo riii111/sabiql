@@ -31,7 +31,9 @@ use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field, pars
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
 const MYSQL_CSV_MAX_FIELD_BYTES: usize = 16 * 1024 * 1024;
+const MYSQL_CSV_MAX_ROW_BYTES: usize = MYSQL_CSV_MAX_FIELD_BYTES;
 const MYSQL_CSV_FIELD_LIMIT_ERROR: &str = "MySQL CSV field exceeds the 16777216-byte limit";
+const MYSQL_CSV_ROW_LIMIT_ERROR: &str = "MySQL CSV row exceeds the 16777216-byte limit";
 
 #[derive(Clone, Copy)]
 enum MySqlXmlFieldState {
@@ -317,13 +319,26 @@ where
     }
 }
 
-fn append_csv_field_value(field: &mut MySqlField, value: &str) -> Result<(), DbOperationError> {
+fn append_csv_field_value(
+    field: &mut MySqlField,
+    row_bytes: &mut usize,
+    value: &str,
+) -> Result<(), DbOperationError> {
     if field.value.len().saturating_add(value.len()) > MYSQL_CSV_MAX_FIELD_BYTES {
         return Err(DbOperationError::QueryFailed(
             MYSQL_CSV_FIELD_LIMIT_ERROR.to_string(),
         ));
     }
+
+    let next_row_bytes = row_bytes.saturating_add(value.len());
+    if next_row_bytes > MYSQL_CSV_MAX_ROW_BYTES {
+        return Err(DbOperationError::QueryFailed(
+            MYSQL_CSV_ROW_LIMIT_ERROR.to_string(),
+        ));
+    }
+
     field.value.push_str(value);
+    *row_bytes = next_row_bytes;
     Ok(())
 }
 
@@ -471,6 +486,7 @@ where
     let mut resultset_count = 0;
     let mut in_resultset = false;
     let mut current_row: Option<Vec<(String, String)>> = None;
+    let mut current_row_bytes = 0;
     let mut current_field: Option<MySqlField> = None;
     let mut columns: Option<Vec<String>> = None;
 
@@ -494,6 +510,7 @@ where
                 }
                 b"row" if in_resultset && current_row.is_none() => {
                     current_row = Some(Vec::new());
+                    current_row_bytes = 0;
                 }
                 b"field" if current_row.is_some() && current_field.is_none() => {
                     current_field = Some(parse_mysql_field(&element)?);
@@ -523,7 +540,7 @@ where
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
                 if let Some(field) = current_field.as_mut() {
-                    append_csv_field_value(field, &text)?;
+                    append_csv_field_value(field, &mut current_row_bytes, &text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -533,7 +550,7 @@ where
             Event::GeneralRef(reference) => {
                 let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
-                    append_csv_field_value(field, &text)?;
+                    append_csv_field_value(field, &mut current_row_bytes, &text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -545,7 +562,7 @@ where
                     let text = std::str::from_utf8(data.as_ref()).map_err(|error| {
                         DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                     })?;
-                    append_csv_field_value(field, text)?;
+                    append_csv_field_value(field, &mut current_row_bytes, text)?;
                 } else {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected CDATA in MySQL XML result".to_string(),
@@ -623,10 +640,44 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
 
+    use crate::adapters::csv_export::export_to_path;
     use tokio::io::AsyncWriteExt;
 
     use super::*;
     use tempfile::tempdir;
+
+    fn xml_row(fields: &[(&str, &str)]) -> String {
+        let mut xml = String::from("<row>");
+        for (name, value) in fields {
+            xml.push_str("<field name=\"");
+            xml.push_str(name);
+            xml.push_str("\">");
+            xml.push_str(value);
+            xml.push_str("</field>");
+        }
+        xml.push_str("</row>");
+        xml
+    }
+
+    fn xml_resultset(rows: &[String]) -> String {
+        let mut xml = String::from("<resultset>");
+        for row in rows {
+            xml.push_str(row);
+        }
+        xml.push_str("</resultset>");
+        xml
+    }
+
+    async fn stream_xml_to_csv_file(
+        xml: &str,
+        path: std::path::PathBuf,
+    ) -> Result<(), DbOperationError> {
+        let mut csv_writer = CsvFileWriter::create(path).await?;
+        let mut reader = Reader::from_reader(BufReader::new(std::io::Cursor::new(xml.as_bytes())));
+        reader.config_mut().trim_text(false);
+        stream_mysql_xml_to_csv(&mut reader, &mut csv_writer).await?;
+        csv_writer.finish().await
+    }
 
     #[tokio::test]
     async fn streams_mysql_xml_rows_into_csv_without_binary_type_inference() {
@@ -689,6 +740,83 @@ line2]]></field>
 
         assert!(matches!(&error, DbOperationError::QueryFailed(_)));
         assert!(error.masked_details().contains(MYSQL_CSV_FIELD_LIMIT_ERROR));
+    }
+
+    #[tokio::test]
+    async fn accepts_mysql_csv_row_just_below_byte_limit() {
+        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() - 1);
+        let xml = xml_resultset(&[xml_row(&[
+            ("first", first.as_str()),
+            ("second", second.as_str()),
+        ])]);
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("row-below-limit.csv");
+
+        stream_xml_to_csv_file(&xml, path.clone()).await.unwrap();
+
+        assert!(
+            fs::read_to_string(path)
+                .unwrap()
+                .starts_with("first,second\n")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_mysql_csv_row_just_above_byte_limit() {
+        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() + 1);
+        let xml = xml_resultset(&[xml_row(&[
+            ("first", first.as_str()),
+            ("second", second.as_str()),
+        ])]);
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("row-above-limit.csv");
+
+        let error = stream_xml_to_csv_file(&xml, path).await.unwrap_err();
+
+        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+    }
+
+    #[tokio::test]
+    async fn rejects_mysql_csv_row_when_multiple_fields_exceed_byte_limit() {
+        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 3);
+        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 3);
+        let third = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() - second.len() + 1);
+        let xml = xml_resultset(&[xml_row(&[
+            ("first", first.as_str()),
+            ("second", second.as_str()),
+            ("third", third.as_str()),
+        ])]);
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("multi-field-row.csv");
+
+        let error = stream_xml_to_csv_file(&xml, path).await.unwrap_err();
+
+        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+    }
+
+    #[tokio::test]
+    async fn does_not_publish_partial_csv_when_mysql_csv_row_exceeds_byte_limit() {
+        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() + 1);
+        let xml = xml_resultset(&[
+            xml_row(&[("status", "complete")]),
+            xml_row(&[("first", first.as_str()), ("second", second.as_str())]),
+        ]);
+        let directory = tempdir().unwrap();
+        let final_path = directory.path().join("published.csv");
+        fs::write(&final_path, b"previous\n").unwrap();
+
+        let error = export_to_path(final_path.clone(), move |temporary_path| async move {
+            stream_xml_to_csv_file(&xml, temporary_path).await
+        })
+        .await
+        .unwrap_err();
+
+        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+        assert_eq!(fs::read_to_string(&final_path).unwrap(), "previous\n");
+        assert_eq!(directory.path().read_dir().unwrap().count(), 1);
     }
 
     #[tokio::test]
