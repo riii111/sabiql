@@ -14,6 +14,7 @@ use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
+use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
@@ -73,6 +74,7 @@ pub struct EffectRunner {
     action_tx: mpsc::Sender<Action>,
     query_tasks: QueryTaskRegistry,
     table_detail_tasks: TableDetailTaskRegistry,
+    metadata_tasks: Arc<MetadataTaskRegistry>,
 }
 
 impl EffectRunner {
@@ -97,6 +99,7 @@ impl EffectRunner {
             action_tx,
             query_tasks: QueryTaskRegistry::default(),
             table_detail_tasks: TableDetailTaskRegistry::default(),
+            metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
         }
     }
 
@@ -104,9 +107,14 @@ impl EffectRunner {
         &self.action_tx
     }
 
-    fn cancel_active_tasks(&self) {
+    async fn cancel_metadata_tasks(&self) {
+        self.metadata_tasks.cancel().await;
+    }
+
+    async fn cancel_active_tasks(&self) {
         self.query_tasks.cancel();
         self.table_detail_tasks.cancel();
+        self.cancel_metadata_tasks().await;
     }
 
     pub async fn run<T: Renderer>(
@@ -183,6 +191,15 @@ impl EffectRunner {
             | Effect::DeleteConnection { .. }
             | Effect::SwitchConnection { .. }
             | Effect::SwitchToService { .. }) => {
+                if matches!(
+                    &e,
+                    Effect::SaveAndConnect { .. }
+                        | Effect::ProbeMySqlConnection { .. }
+                        | Effect::SwitchConnection { .. }
+                        | Effect::SwitchToService { .. }
+                ) {
+                    self.cancel_metadata_tasks().await;
+                }
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
                     self.table_detail_tasks.cancel();
                 }
@@ -205,6 +222,9 @@ impl EffectRunner {
             | Effect::ProcessPrefetchQueue { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
+                if matches!(&e, Effect::FetchMetadata { .. }) {
+                    self.cancel_metadata_tasks().await;
+                }
                 cmd_browse::metadata::run(
                     e,
                     &self.action_tx,
@@ -212,6 +232,7 @@ impl EffectRunner {
                     &self.metadata_cache,
                     &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
+                    &self.metadata_tasks,
                     state,
                     completion_engine,
                 )
@@ -220,7 +241,7 @@ impl EffectRunner {
             }
 
             Effect::CancelActiveTasks => {
-                self.cancel_active_tasks();
+                self.cancel_active_tasks().await;
                 Ok(vec![])
             }
 
@@ -818,6 +839,253 @@ mod tests {
             })
             .await
             .expect("context cancellation should drop the pending table detail task");
+        }
+    }
+
+    mod metadata_context_termination {
+        use std::future::pending;
+        use std::sync::Mutex;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tokio::sync::oneshot;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::Table;
+        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::ports::outbound::DbOperationError;
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicUsize>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingMetadataProvider {
+            metadata_started: Mutex<Option<oneshot::Sender<()>>>,
+            effective_user_started: Mutex<Option<oneshot::Sender<()>>>,
+            dropped: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingMetadataProvider {
+            async fn fetch_metadata(
+                &self,
+                _dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.metadata_started
+                    .lock()
+                    .expect("metadata started signal lock poisoned")
+                    .take()
+                    .expect("metadata should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_effective_user(
+                &self,
+                _dsn: &str,
+            ) -> Result<Option<String>, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.effective_user_started
+                    .lock()
+                    .expect("effective user started signal lock poisoned")
+                    .take()
+                    .expect("effective user should start once")
+                    .send(())
+                    .ok();
+                pending().await
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
+                unreachable!("test only starts metadata tasks")
+            }
+        }
+
+        struct ProbeThatObservesDrop {
+            metadata_dropped: Arc<AtomicUsize>,
+            started: Mutex<Option<oneshot::Sender<bool>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl MySqlConnectionProbe for ProbeThatObservesDrop {
+            async fn probe(&self, _dsn: &str) -> Result<(), DbOperationError> {
+                self.started
+                    .lock()
+                    .expect("probe started signal lock poisoned")
+                    .take()
+                    .expect("probe should start once")
+                    .send(self.metadata_dropped.load(Ordering::SeqCst) > 0)
+                    .ok();
+                Ok(())
+            }
+        }
+
+        #[tokio::test]
+        async fn drops_old_metadata_before_new_mysql_probe_starts() {
+            let (metadata_started_tx, metadata_started_rx) = oneshot::channel();
+            let (probe_started_tx, probe_started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let metadata_provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(Some(metadata_started_tx)),
+                effective_user_started: Mutex::new(None),
+                dropped: Arc::clone(&dropped),
+            };
+            let probe = ProbeThatObservesDrop {
+                metadata_dropped: Arc::clone(&dropped),
+                started: Mutex::new(Some(probe_started_tx)),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(metadata_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::FetchMetadata {
+                        dsn: "postgres://localhost/old".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            metadata_started_rx.await.expect("metadata should start");
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: ConnectionTarget {
+                            id: ConnectionId::new(),
+                            dsn: "mysql://localhost/new".to_string(),
+                            name: "new".to_string(),
+                            database_type: DatabaseType::MySQL,
+                            database: Some("new".to_string()),
+                        },
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                probe_started_rx
+                    .await
+                    .expect("probe should start after cancellation")
+            );
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
+
+        #[tokio::test]
+        async fn quit_drops_effective_user_and_delayed_prefetch_tasks() {
+            let (effective_user_started_tx, effective_user_started_rx) = oneshot::channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let provider = PendingMetadataProvider {
+                metadata_started: Mutex::new(None),
+                effective_user_started: Mutex::new(Some(effective_user_started_tx)),
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![
+                        Effect::FetchEffectiveUser {
+                            dsn: "postgres://localhost/current".to_string(),
+                            run_id: 1,
+                        },
+                        Effect::DelayedProcessPrefetchQueue {
+                            run_id: 1,
+                            delay_secs: 60,
+                        },
+                    ],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            effective_user_started_rx
+                .await
+                .expect("effective user should start");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert!(
+                timeout(Duration::from_millis(100), action_rx.recv())
+                    .await
+                    .is_err()
+            );
         }
     }
 }
