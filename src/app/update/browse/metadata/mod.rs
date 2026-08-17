@@ -20,9 +20,7 @@ pub(super) fn check_er_completion(state: &mut AppState, now: Instant) -> Vec<Eff
         let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
             return vec![];
         };
-        return vec![Effect::DispatchActions(vec![
-            Action::ExpandPrefetchWithFkNeighbors { run_id },
-        ])];
+        return er_neighbors::expand_prefetch_with_fk_neighbors(state, run_id);
     }
 
     if !state.er_preparation.has_failures() {
@@ -963,6 +961,36 @@ mod tests {
 
             assert!(state.er_preparation.fk_expanded());
         }
+
+        #[test]
+        fn process_queue_starts_prefetch_effects_without_action_redispatch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.session.set_metadata(Some(make_metadata(2)));
+            dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+            let run_id = state
+                .sql_modal
+                .active_prefetch_run_id()
+                .expect("prefetch run");
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 2);
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| matches!(effect, Effect::PrefetchTableDetail { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::DispatchActions(_)))
+            );
+        }
     }
 
     mod start_prefetch_scoped {
@@ -1195,12 +1223,8 @@ mod tests {
 
             assert!(effects.iter().any(|e| matches!(
                 e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(
-                        a,
-                        Action::ExpandPrefetchWithFkNeighbors { run_id: action_run_id }
-                            if *action_run_id == run_id
-                    ))
+                Effect::ExtractFkNeighbors { run_id: action_run_id, .. }
+                    if *action_run_id == run_id
             )));
         }
 

@@ -19,6 +19,7 @@ use crate::update::connection::helpers::{
     connection_save_fetch_effects, mysql_connection_completion_effects, reset_for_new_connection,
     save_current_connection_cache,
 };
+use crate::update::connection::lifecycle::try_connect;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{validate_all, validate_field};
 use crate::update::query_context::termination_effects;
@@ -236,9 +237,7 @@ pub fn reduce_connection_setup(
                 DispatchResult::handled()
             } else {
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::TryConnect,
-                ])])
+                DispatchResult::handled_with(try_connect(state, now))
             }
         }
         Action::ConnectionSaveCompleted { target, run_id } => {
@@ -715,20 +714,12 @@ mod tests {
             fill_valid_form(&mut state);
 
             reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
-            reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now());
+            let effects = reduce(&mut state, &Action::ConnectionSetupCancel, Instant::now())
+                .expect("cancel should retry previous connection");
 
-            assert!(state.session.connection_state().is_not_connected());
+            assert!(state.session.connection_state().is_connecting());
             assert_eq!(state.session.active_connection_id(), Some(&previous_id));
             assert_eq!(state.session.dsn(), Some("postgres://localhost/previous"));
-
-            let effects = reduce_connection_lifecycle(
-                &mut state,
-                &Action::TryConnect,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .into_effects()
-            .expect("retry handled");
             assert!(
                 effects
                     .iter()

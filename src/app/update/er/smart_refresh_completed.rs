@@ -6,6 +6,8 @@ use crate::model::app_state::AppState;
 use crate::update::action::{Action, SmartErRefreshResult};
 use crate::update::dispatch_result::DispatchResult;
 
+use super::diagram::reduce_diagram_lifecycle;
+
 pub(super) fn reduce_smart_refresh_completed(
     state: &mut AppState,
     action: &Action,
@@ -53,7 +55,11 @@ pub(super) fn reduce_smart_refresh_completed(
                     "No schema changes detected, generating ER diagram...".to_string(),
                     now,
                 );
-                effects.push(Effect::DispatchActions(vec![Action::ErGenerateFromCache]));
+                effects.extend(
+                    reduce_diagram_lifecycle(state, &Action::ErGenerateFromCache, now)
+                        .into_effects()
+                        .unwrap_or_default(),
+                );
             } else {
                 if !stale_tables.is_empty() {
                     effects.push(Effect::EvictTablesFromCompletionCache {
