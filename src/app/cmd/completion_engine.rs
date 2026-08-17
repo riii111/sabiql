@@ -132,6 +132,7 @@ pub(crate) enum CompletionContext {
 pub(crate) struct PreparedCompletion {
     pub(crate) tokens: Vec<Token>,
     pub(crate) context: SqlContext,
+    pub(crate) candidate_context: SqlContext,
     pub(crate) database_type: DatabaseType,
     pub(crate) before_cursor: String,
     pub(crate) current_token: String,
@@ -294,13 +295,17 @@ impl CompletionEngine {
         lexer: &SqlLexer,
         database_type: DatabaseType,
     ) -> PreparedCompletion {
-        let tokens = lexer.tokenize(content, content.len());
-        let context = lexer.build_context(&tokens, cursor_pos);
+        let all_tokens = lexer.tokenize(content, content.len());
+        let context = lexer.build_context(&all_tokens, cursor_pos);
+        let candidate_context = lexer.build_context_before_cursor(&all_tokens, cursor_pos);
+        let tokens = lexer
+            .tokens_for_statement_before_cursor(&all_tokens, cursor_pos)
+            .to_vec();
         let in_string_or_comment =
-            SqlLexer::is_in_string_or_comment_from_tokens(&tokens, cursor_pos);
+            SqlLexer::is_in_string_or_comment_from_tokens(&all_tokens, cursor_pos);
         let before_cursor: String = content.chars().take(cursor_pos).collect();
         let current_token = self.extract_current_token(&before_cursor);
-        let cte_names: HashSet<String> = context
+        let cte_names: HashSet<String> = candidate_context
             .ctes
             .iter()
             .map(|cte| cte.name.to_lowercase())
@@ -308,6 +313,7 @@ impl CompletionEngine {
         PreparedCompletion {
             tokens,
             context,
+            candidate_context,
             database_type,
             before_cursor,
             current_token,
@@ -326,7 +332,7 @@ impl CompletionEngine {
         let mut missing = Vec::new();
         let mut seen = HashSet::new();
 
-        for table_ref in &prep.context.tables {
+        for table_ref in &prep.candidate_context.tables {
             if prep.cte_names.contains(&table_ref.table.to_lowercase()) {
                 continue;
             }
@@ -395,6 +401,7 @@ impl CompletionEngine {
             &prep.before_cursor,
             &prep.current_token,
             &prep.context,
+            &prep.candidate_context,
             &prep.tokens,
             cursor_pos,
         );
@@ -417,7 +424,7 @@ impl CompletionEngine {
                     .trim_end();
                 let after_comma = before_token.ends_with(',');
 
-                let target_qualified = prep.context.target_table.as_ref().and_then(|t| {
+                let target_qualified = prep.candidate_context.target_table.as_ref().and_then(|t| {
                     self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
                 });
 
@@ -434,7 +441,7 @@ impl CompletionEngine {
                 }
 
                 let referenced_tables: HashSet<String> = prep
-                    .context
+                    .candidate_context
                     .tables
                     .iter()
                     .filter(|t| !prep.cte_names.contains(&t.table.to_lowercase()))
@@ -443,7 +450,7 @@ impl CompletionEngine {
                     })
                     .collect();
                 let has_unresolved_reference = prep
-                    .context
+                    .candidate_context
                     .tables
                     .iter()
                     .filter(|t| !prep.cte_names.contains(&t.table.to_lowercase()))
@@ -519,7 +526,7 @@ impl CompletionEngine {
                 scope.database_type,
             ),
             CompletionContext::CteOrTable => self.cte_or_table_candidates_for_database(
-                &prep.context,
+                &prep.candidate_context,
                 metadata,
                 &current_token,
                 scope,
@@ -570,6 +577,7 @@ impl CompletionEngine {
             &before_cursor,
             &current_token,
             sql_context,
+            sql_context,
             tokens,
             cursor_pos,
         )
@@ -580,6 +588,7 @@ impl CompletionEngine {
         before_cursor: &str,
         current_token: &str,
         sql_context: &SqlContext,
+        candidate_context: &SqlContext,
         tokens: &[Token],
         cursor_pos: usize,
     ) -> (String, CompletionContext) {
@@ -603,7 +612,7 @@ impl CompletionEngine {
         let base_context = self.detect_context_from_tokens(tokens, cursor_pos);
 
         // If in FROM clause and CTEs are defined, suggest CTE names too
-        if base_context == CompletionContext::Table && !sql_context.ctes.is_empty() {
+        if base_context == CompletionContext::Table && !candidate_context.ctes.is_empty() {
             return (current_token.to_string(), CompletionContext::CteOrTable);
         }
 
@@ -2932,6 +2941,79 @@ mod tests {
         }
 
         #[test]
+        fn current_statement_prefetch_ignores_other_statements() {
+            let sql = "SELECT * FROM first_table; WITH current_cte AS (SELECT * FROM public.nested_table) SELECT * FROM public.current_table WHERE ; SELECT * FROM later_table";
+            let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = [
+                "first_table",
+                "nested_table",
+                "current_table",
+                "later_table",
+            ]
+            .into_iter()
+            .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+            .collect();
+
+            for database_type in DatabaseType::all() {
+                let prep = engine().prepare_for_database(sql, cursor_pos, *database_type);
+                let missing = engine().missing_tables_prepared(&prep, Some(&metadata));
+
+                assert_eq!(
+                    missing,
+                    vec![
+                        "public.nested_table".to_string(),
+                        "public.current_table".to_string(),
+                    ]
+                );
+            }
+        }
+
+        #[test]
+        fn cursor_boundaries_and_comments_keep_prefetch_in_scope() {
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = ["first_table", "current_table", "later_table"]
+                .into_iter()
+                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+                .collect();
+
+            let before_semicolon = "SELECT * FROM first_table; SELECT * FROM later_table";
+            let before_cursor = before_semicolon.find(';').unwrap();
+            let after_cursor = before_cursor + 1;
+
+            let before_prep = engine().prepare_for_database(
+                before_semicolon,
+                before_cursor,
+                DatabaseType::PostgreSQL,
+            );
+            assert_eq!(
+                engine().missing_tables_prepared(&before_prep, Some(&metadata)),
+                vec!["public.first_table".to_string()]
+            );
+
+            let after_prep = engine().prepare_for_database(
+                before_semicolon,
+                after_cursor,
+                DatabaseType::PostgreSQL,
+            );
+            assert!(
+                engine()
+                    .missing_tables_prepared(&after_prep, Some(&metadata))
+                    .is_empty()
+            );
+
+            let with_comment = "SELECT * FROM first_table; SELECT * FROM current_table -- FROM ignored_table\n; SELECT * FROM later_table";
+            let comment_cursor = with_comment.find("ignored_table").unwrap() + 3;
+            let comment_prep =
+                engine().prepare_for_database(with_comment, comment_cursor, DatabaseType::SQLite);
+
+            assert_eq!(
+                engine().missing_tables_prepared(&comment_prep, Some(&metadata)),
+                vec!["public.current_table".to_string()]
+            );
+        }
+
+        #[test]
         fn schema_qualified_table_returns_qualified_name() {
             let e = engine();
 
@@ -3627,8 +3709,92 @@ mod tests {
         }
     }
 
+    mod statement_scope {
+        use super::*;
+
+        #[test]
+        fn column_candidates_use_only_current_statement_context() {
+            let mut engine = engine();
+            for (name, column) in [
+                ("first_table", "first_only"),
+                ("current_table", "current_only"),
+                ("later_table", "later_only"),
+            ] {
+                engine.cache_table_detail(
+                    format!("public.{name}"),
+                    create_table("public", name, &[column]),
+                );
+            }
+
+            let mut metadata = DatabaseMetadata::new("test".to_string());
+            metadata.table_summaries = ["first_table", "current_table", "later_table"]
+                .into_iter()
+                .map(|name| TableSummary::new("public".to_string(), name.to_string(), None, false))
+                .collect();
+            let sql = "SELECT * FROM first_table; SELECT * FROM current_table WHERE ; SELECT * FROM later_table";
+            let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();
+            let candidates = engine.get_candidates(sql, cursor_pos, Some(&metadata), None, &[]);
+
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "current_only")
+            );
+            assert!(!candidates.iter().any(|candidate| {
+                matches!(candidate.text.as_str(), "first_only" | "later_only")
+            }));
+        }
+    }
+
     mod prepared_context {
         use super::*;
+
+        #[test]
+        fn candidate_tokens_exclude_tokens_crossing_cursor_for_each_database() {
+            let engine = engine();
+            let sql = "SELECT * FROM public.users";
+
+            for database_type in DatabaseType::all() {
+                let keyword_cursor = sql.find("FROM").unwrap() + 2;
+                let keyword_prep = engine.prepare_for_database(sql, keyword_cursor, *database_type);
+                assert!(
+                    keyword_prep
+                        .tokens
+                        .iter()
+                        .all(|token| token.end <= keyword_cursor)
+                );
+                assert!(
+                    !keyword_prep
+                        .candidate_context
+                        .tables
+                        .iter()
+                        .any(|table| { table.table == "users" })
+                );
+
+                let identifier_cursor = sql.find("users").unwrap() + 2;
+                let identifier_prep =
+                    engine.prepare_for_database(sql, identifier_cursor, *database_type);
+                assert!(
+                    identifier_prep
+                        .tokens
+                        .iter()
+                        .all(|token| token.end <= identifier_cursor)
+                );
+                assert!(
+                    !identifier_prep
+                        .tokens
+                        .iter()
+                        .any(|token| token.text == "users")
+                );
+                assert!(
+                    !identifier_prep
+                        .candidate_context
+                        .tables
+                        .iter()
+                        .any(|table| { table.table == "users" })
+                );
+            }
+        }
 
         #[test]
         fn is_in_string_or_comment_from_tokens_edges() {
