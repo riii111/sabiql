@@ -1093,6 +1093,20 @@ impl SqlLexer {
     }
 
     pub fn build_context(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
+        let tokens = self.tokens_for_statement(tokens, cursor_pos);
+        self.build_context_from_tokens(tokens, cursor_pos)
+    }
+
+    pub(crate) fn build_context_before_cursor(
+        &self,
+        tokens: &[Token],
+        cursor_pos: usize,
+    ) -> SqlContext {
+        let tokens = self.tokens_for_statement_before_cursor(tokens, cursor_pos);
+        self.build_context_from_tokens(tokens, cursor_pos)
+    }
+
+    fn build_context_from_tokens(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
         let target_table = self.extract_target_table(tokens, cursor_pos);
@@ -1102,6 +1116,29 @@ impl SqlLexer {
             ctes,
             target_table,
         }
+    }
+
+    pub(crate) fn tokens_for_statement<'a>(
+        &self,
+        tokens: &'a [Token],
+        cursor_pos: usize,
+    ) -> &'a [Token] {
+        let (start_idx, end_idx) = self.find_statement_range(tokens, cursor_pos);
+        &tokens[start_idx..end_idx]
+    }
+
+    fn tokens_for_statement_before_cursor<'a>(
+        &self,
+        tokens: &'a [Token],
+        cursor_pos: usize,
+    ) -> &'a [Token] {
+        let statement_tokens = self.tokens_for_statement(tokens, cursor_pos);
+        let end_idx = statement_tokens
+            .iter()
+            .position(|token| token.start >= cursor_pos)
+            .unwrap_or(statement_tokens.len());
+
+        &statement_tokens[..end_idx]
     }
 
     fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
@@ -1133,8 +1170,8 @@ impl SqlLexer {
                 break;
             }
             let semi_pos = tokens[semi_idx].end;
-            if cursor_pos <= semi_pos {
-                // Cursor is before or at this semicolon
+            if cursor_pos < semi_pos {
+                // Cursor is before this semicolon
                 return (start, semi_idx + 1);
             }
             start = semi_idx + 1;
@@ -1924,6 +1961,45 @@ mod tests {
             assert_eq!(ctx.ctes.len(), 1);
             assert_eq!(ctx.tables.len(), 2);
         }
+
+        #[test]
+        fn current_statement_context_excludes_other_statements() {
+            let sql = "SELECT * FROM first_table; WITH current_cte AS (SELECT * FROM public.nested_table) SELECT * FROM public.current_table current_alias WHERE current_alias.id IN (SELECT id FROM public.subquery_table); SELECT * FROM later_table";
+            let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();
+
+            for database_type in DatabaseType::all() {
+                let lexer = SqlLexer::new(*database_type);
+                let tokens = lexer.tokenize(sql, sql.len());
+                let context = lexer.build_context(&tokens, cursor_pos);
+
+                assert_eq!(
+                    context
+                        .ctes
+                        .iter()
+                        .map(|cte| cte.name.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["current_cte"]
+                );
+                assert_eq!(
+                    context
+                        .tables
+                        .iter()
+                        .map(|table| {
+                            (
+                                table.schema.as_deref(),
+                                table.table.as_str(),
+                                table.alias.as_deref(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    vec![
+                        (Some("public"), "nested_table", None),
+                        (Some("public"), "current_table", Some("current_alias")),
+                        (Some("public"), "subquery_table", None),
+                    ]
+                );
+            }
+        }
     }
 
     mod target_table {
@@ -2228,6 +2304,19 @@ mod tests {
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 35 (in "orders")
                 let cursor_pos = 35;
+                let tokens = l.tokenize(sql, sql.len());
+
+                let target = l.extract_target_table(&tokens, cursor_pos);
+
+                assert!(target.is_some());
+                assert_eq!(target.unwrap().table, "orders");
+            }
+
+            #[test]
+            fn cursor_immediately_after_semicolon_uses_next_statement() {
+                let l = lexer();
+                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+                let cursor_pos = sql.find(';').unwrap() + 1;
                 let tokens = l.tokenize(sql, sql.len());
 
                 let target = l.extract_target_table(&tokens, cursor_pos);
