@@ -1,5 +1,5 @@
 ---
-source: src/tests/render_snapshots/table_explorer.rs
+source: src/tests/render_snapshots/connection_flow.rs
 expression: output
 ---
 test_project ▸ app ▸ -                                                                                                                             not loaded | mysql
@@ -23,15 +23,15 @@ test_project ▸ app ▸ -                                                      
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       │└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-│                                       │┌ [3] Result ──────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                       ││(select a table to preview)                                                                                               │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
+│                        ╭ Connection Error ───────────────────────────────────────────────────────────────────────────────────────────────╮                        │
+│                        │✗ Connection timed out                                                                                           │                        │
+│                        │                                                                                                                 │                        │
+│                        │Hint: Check network connectivity                                                                                 │────────────────────────┘
+│                        │                                                                                                                 │────────────────────────┐
+│                        │▶ Details (press d to expand)                                                                                    │                        │
+│                        │                                                                                                                 │                        │
+│                        │Actions:  r  Retry   s  Switch   d  Details   y  Copy                                                            │                        │
+│                        ╰ Esc: Close ─────────────────────────────────────────────────────────────────────────────────────────────────────╯                        │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
@@ -51,4 +51,4 @@ test_project ▸ app ▸ -                                                      
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-r:Reload  s:SQL  e:ER Diagram  c:Connections  ^P:Tables  ^O:History  ^R:Read-Only  f:Focus  ?:Help  F1:Palette  ,:Settings  q:Quit
+r:Retry  s:Switch  d:Details  y:Copy  Esc:Close

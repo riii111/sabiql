@@ -392,6 +392,31 @@ fn connection_error_collapsed() {
     insta::assert_snapshot!(output);
 }
 
+#[test]
+fn mysql_active_connection_retryable_error_shows_retry_action() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.session.activate_connection_with_target(
+        &sabiql_domain::ConnectionId::from_string("mysql-test"),
+        "mysql",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        Some("app"),
+    );
+    state.modal.set_mode(InputMode::ConnectionError);
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::Timeout,
+            "ERROR 2003 (HY000): Can't connect to MySQL server on 'localhost' (110)",
+        ));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
 fn render_service_error_without_service_file_hint(save_and_connect: bool) -> String {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
