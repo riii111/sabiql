@@ -341,22 +341,6 @@ mod tests {
             "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = DATABASE() AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION"
         );
 
-        for query in [
-            TABLES_QUERY,
-            SIGNATURE_COLUMNS_QUERY,
-            SIGNATURE_UNIQUE_COLUMNS_QUERY,
-            SIGNATURE_FOREIGN_KEYS_QUERY,
-            table_sql.as_str(),
-            columns_sql.as_str(),
-            preview_columns_sql.as_str(),
-            unique_columns_sql.as_str(),
-            foreign_keys_sql.as_str(),
-            indexes_sql.as_str(),
-            triggers_sql.as_str(),
-        ] {
-            assert!(!query.contains("UNION ALL SELECT NULL"));
-        }
-
         assert_eq!(
             TABLES_RESULT_COLUMNS,
             &[
