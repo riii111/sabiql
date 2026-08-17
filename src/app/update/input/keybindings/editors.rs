@@ -156,7 +156,10 @@ pub mod sql_modal_plan {
         desc_short: "Analyze",
         description: "Run EXPLAIN ANALYZE on current query",
         action: Action::ExplainAnalyzeRequest,
-        combos: &[KeyCombo::ctrl_shift(Key::Char('e'))],
+        combos: &[
+            KeyCombo::ctrl_shift(Key::Char('e')),
+            KeyCombo::ctrl(Key::Char('E')),
+        ],
     };
 
     pub const YANK: KeyBinding = KeyBinding {
@@ -247,7 +250,10 @@ pub mod sql_modal_compare {
         desc_short: "Analyze",
         description: "Run EXPLAIN ANALYZE on current query",
         action: Action::ExplainAnalyzeRequest,
-        combos: &[KeyCombo::ctrl_shift(Key::Char('e'))],
+        combos: &[
+            KeyCombo::ctrl_shift(Key::Char('e')),
+            KeyCombo::ctrl(Key::Char('E')),
+        ],
     };
 
     pub const EDIT_QUERY: KeyBinding = KeyBinding {

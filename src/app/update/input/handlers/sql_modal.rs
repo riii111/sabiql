@@ -7,7 +7,7 @@ use crate::update::action::{
 };
 use crate::update::input::keybindings::{
     Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
-    sql_modal_plan_explain,
+    sql_modal_plan, sql_modal_plan_explain,
 };
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
@@ -59,7 +59,6 @@ fn handle_sql_modal_keys_internal(
         let ctrl = combo.modifiers.contains(Modifiers::CTRL);
         let alt = combo.modifiers.contains(Modifiers::ALT);
         let shift = combo.modifiers.contains(Modifiers::SHIFT);
-        let ctrl_shift = combo.modifiers == Modifiers::CTRL_SHIFT;
         let plain = !ctrl && !alt && !shift;
 
         if let Some(prefix) = pending_prefix {
@@ -83,6 +82,7 @@ fn handle_sql_modal_keys_internal(
             SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
             SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
         };
+        let analyze_binding_matches = sql_modal_plan::ANALYZE.combos.contains(&combo);
         if explain_binding.combos.contains(&combo)
             && feature_policy.is_enabled(explain_binding.feature_requirement())
         {
@@ -108,11 +108,10 @@ fn handle_sql_modal_keys_internal(
                 return action;
             }
 
-            return match combo.key {
-                Key::Char('e') if ctrl_shift && supports_explain_analyze => {
-                    Action::ExplainAnalyzeRequest
-                }
-                _ => Action::None,
+            return if analyze_binding_matches && supports_explain_analyze {
+                Action::ExplainAnalyzeRequest
+            } else {
+                Action::None
             };
         }
 
@@ -125,10 +124,10 @@ fn handle_sql_modal_keys_internal(
                 return action;
             }
 
+            if analyze_binding_matches && supports_explain_analyze {
+                return Action::ExplainAnalyzeRequest;
+            }
             return match combo.key {
-                Key::Char('e') if ctrl_shift && supports_explain_analyze => {
-                    Action::ExplainAnalyzeRequest
-                }
                 Key::Char('e')
                     if plain && feature_policy.is_enabled(FeatureRequirement::PlanComparison) =>
                 {
@@ -138,7 +137,7 @@ fn handle_sql_modal_keys_internal(
             };
         }
 
-        if ctrl_shift && combo.key == Key::Char('e') && supports_explain_analyze {
+        if analyze_binding_matches && supports_explain_analyze {
             return Action::ExplainAnalyzeRequest;
         }
         if sql_modal_normal_query_history(keymap_preset)
@@ -301,7 +300,6 @@ fn handle_sql_modal_keys_internal(
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
-    let ctrl_shift = combo.modifiers == Modifiers::CTRL_SHIFT;
     let ctrl_only = ctrl && !alt && !shift;
 
     let plain = !ctrl && !alt && !shift;
@@ -326,7 +324,7 @@ fn handle_sql_modal_keys_internal(
         return Action::SqlModalClear;
     }
 
-    if ctrl_shift && combo.key == Key::Char('e') {
+    if sql_modal_plan::ANALYZE.combos.contains(&combo) {
         return if supports_explain_analyze {
             Action::ExplainAnalyzeRequest
         } else {

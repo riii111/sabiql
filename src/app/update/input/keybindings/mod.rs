@@ -646,7 +646,13 @@ mod tests {
         for binding in [&sql_modal_plan::ANALYZE, &sql_modal_compare::ANALYZE] {
             assert_eq!(binding.key_short, "^⇧E");
             assert_eq!(binding.key, "Ctrl+Shift+E");
-            assert_eq!(binding.combos, &[KeyCombo::ctrl_shift(Key::Char('e'))]);
+            assert_eq!(
+                binding.combos,
+                &[
+                    KeyCombo::ctrl_shift(Key::Char('e')),
+                    KeyCombo::ctrl(Key::Char('E')),
+                ]
+            );
         }
     }
 }

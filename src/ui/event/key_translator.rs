@@ -240,4 +240,45 @@ mod tests {
             ));
         }
     }
+
+    mod sql_modal_explain_analyze_binding {
+        use super::*;
+        use crate::app::model::app_state::AppState;
+        use crate::app::model::shared::input_mode::InputMode;
+        use crate::app::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
+        use crate::app::ports::inbound::InputEvent;
+        use crate::app::update::action::Action;
+        use crate::app::update::input::handle_event;
+        use crate::domain::{ConnectionId, DatabaseType};
+        use rstest::rstest;
+
+        fn postgres_sql_modal_state() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.set_active_tab(SqlModalTab::Plan);
+            state.sql_modal.set_status_for_test(SqlModalStatus::Normal);
+            state
+        }
+
+        #[rstest]
+        #[case::lowercase('e')]
+        #[case::uppercase('E')]
+        fn translated_ctrl_shift_e_requests_explain_analyze(#[case] key: char) {
+            let state = postgres_sql_modal_state();
+            let combo = translate(KeyEvent::new(
+                KeyCode::Char(key),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            ));
+
+            let result = handle_event(InputEvent::Key(combo), &state);
+
+            assert!(matches!(result, Action::ExplainAnalyzeRequest));
+        }
+    }
 }
