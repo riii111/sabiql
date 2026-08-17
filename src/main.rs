@@ -368,8 +368,8 @@ impl Runtime {
                 pending,
                 Instant::now(),
             );
-            // Render immediately: the main loop's next wakeup is the message expiry
-            // itself, so without this draw the message would never become visible.
+            // Render immediately so the overflow error is visible before the next
+            // event-loop pass; errors do not have an expiry wake-up anymore.
             self.run_effects(vec![Effect::Render]).await?;
         }
         Ok(())
@@ -377,9 +377,11 @@ impl Runtime {
 
     async fn process_terminal_event_burst(&mut self, first_action: Action) -> Result<()> {
         if !first_action.is_scroll() {
+            self.state.messages.clear_error();
             return self.process_action(first_action).await;
         }
 
+        self.state.messages.clear_error();
         let now = Instant::now();
         let mut effects = reduce(&mut self.state, first_action, now, &self.services);
         if !effects.is_empty() {
@@ -404,6 +406,7 @@ impl Runtime {
             }
 
             if action.is_scroll() {
+                self.state.messages.clear_error();
                 let now = Instant::now();
                 let mut effects = reduce(&mut self.state, action, now, &self.services);
                 if !effects.is_empty() {
@@ -419,6 +422,7 @@ impl Runtime {
                     self.state.clear_dirty();
                     self.process_action(Action::Render).await?;
                 }
+                self.state.messages.clear_error();
                 self.process_action(action).await?;
                 if self.state.should_quit {
                     return Ok(());

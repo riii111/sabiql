@@ -1198,7 +1198,7 @@ mod tests {
                 .set_error_at("Old error".to_string(), Instant::now());
 
             assert!(state.messages.last_error().is_some());
-            assert!(state.messages.expires_at().is_some());
+            assert!(state.messages.expires_at().is_none());
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 

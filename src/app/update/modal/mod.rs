@@ -966,6 +966,9 @@ mod tests {
 
         mod cancel {
             use super::*;
+            use crate::policy::write::write_guardrails::{
+                GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
+            };
 
             #[test]
             fn quit_no_connection_restores_connection_setup_synchronously() {
@@ -1005,6 +1008,45 @@ mod tests {
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(effects.is_empty());
                 assert!(state.result_interaction.pending_write_preview().is_none());
+            }
+
+            #[test]
+            fn delete_preview_preserves_staged_rows() {
+                let mut state = create_test_state();
+                enter_confirm_dialog(&mut state, InputMode::Normal);
+                state.result_interaction.activate_cell(4, 2);
+                state.result_interaction.stage_row(4);
+                state.result_interaction.set_write_preview(WritePreview {
+                    operation: WriteOperation::Delete,
+                    sql: "DELETE FROM users WHERE id = 4".to_string(),
+                    target_summary: TargetSummary {
+                        schema: "public".to_string(),
+                        table: "users".to_string(),
+                        key_values: vec![],
+                    },
+                    diff: vec![],
+                    guardrail: GuardrailDecision {
+                        risk_level: RiskLevel::Low,
+                        blocked: false,
+                        reason: None,
+                        target_summary: None,
+                    },
+                });
+                state.confirm_dialog.open(
+                    "Confirm DELETE".to_string(),
+                    "DELETE FROM users WHERE id = 4".to_string(),
+                    ConfirmIntent::ExecuteWrite {
+                        sql: "DELETE FROM users WHERE id = 4".to_string(),
+                        blocked: false,
+                    },
+                );
+
+                let effects = cancel_effects(&mut state);
+
+                assert!(effects.is_empty());
+                assert!(state.result_interaction.staged_delete_rows().contains(&4));
+                assert_eq!(state.result_interaction.selection().row(), Some(4));
+                assert_eq!(state.result_interaction.selection().cell(), Some(2));
             }
 
             #[test]
@@ -1306,7 +1348,7 @@ mod tests {
             }
 
             #[test]
-            fn load_failed_sets_error_with_expiry() {
+            fn load_failed_sets_persistent_error() {
                 let mut state = connected_state();
                 state.modal.set_mode(InputMode::QueryHistoryPicker);
                 let now = Instant::now();
@@ -1325,7 +1367,7 @@ mod tests {
                     state.messages.last_error.as_deref(),
                     Some("IO error: disk error")
                 );
-                assert!(state.messages.expires_at.is_some());
+                assert!(state.messages.expires_at.is_none());
             }
 
             #[test]

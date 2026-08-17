@@ -6,8 +6,8 @@ use crate::update::action::{
 
 use super::{scroll, scroll_to_cursor};
 use crate::update::input::vim::types::{
-    BrowseVimContext, InspectorVimContext, ResultVimContext, VimModeTransition, VimNavigation,
-    VimOperator,
+    BrowseVimContext, InspectorVimContext, ResultVimContext, StagedDeleteState, VimModeTransition,
+    VimNavigation, VimOperator,
 };
 
 pub(in crate::update::input::vim) fn navigation(
@@ -32,7 +32,13 @@ pub(in crate::update::input::vim) fn mode_transition(
         ) => Action::Escape,
         (VimModeTransition::Escape, BrowseVimContext::Result(result_ctx)) => {
             match result_ctx.mode {
-                ResultNavMode::Scroll => Action::Escape,
+                ResultNavMode::Scroll => {
+                    if result_ctx.staged_delete == StagedDeleteState::InProgress {
+                        Action::ClearStagedDeletes
+                    } else {
+                        Action::Escape
+                    }
+                }
                 ResultNavMode::CellActive => {
                     if result_ctx.has_pending_draft {
                         Action::ResultDiscardCellEdit
@@ -301,6 +307,7 @@ mod tests {
         ResultVimContext {
             mode,
             has_pending_draft: false,
+            staged_delete: StagedDeleteState::None,
             yank_pending: false,
             delete_pending: false,
         }
@@ -321,6 +328,19 @@ mod tests {
         );
 
         assert!(matches!(action, Some(Action::ResultDiscardCellEdit)));
+    }
+
+    #[test]
+    fn result_scroll_escape_clears_staged_deletes() {
+        let action = action_for_command(
+            VimCommand::ModeTransition(VimModeTransition::Escape),
+            browse_result(ResultVimContext {
+                staged_delete: StagedDeleteState::InProgress,
+                ..result_ctx(ResultNavMode::Scroll)
+            }),
+        );
+
+        assert!(matches!(action, Some(Action::ClearStagedDeletes)));
     }
 
     #[test]

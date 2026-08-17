@@ -222,6 +222,21 @@ mod tests {
             assert_eq!(state.result_interaction.selection().row(), None);
             assert!(state.result_interaction.staged_delete_rows().contains(&0));
         }
+
+        #[test]
+        fn escape_from_result_scroll_clears_all_staged_rows() {
+            let mut state = base_state(
+                Some(vec!["id"]),
+                vec![vec!["1", "alice"], vec!["2", "bob"]],
+                0,
+            );
+            state.result_interaction.stage_row(0);
+            state.result_interaction.stage_row(1);
+
+            reduce_selection(&mut state, &Action::ClearStagedDeletes, Instant::now());
+
+            assert!(state.result_interaction.staged_delete_rows().is_empty());
+        }
     }
 
     mod read_only_guard {
