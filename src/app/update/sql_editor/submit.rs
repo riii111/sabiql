@@ -1,10 +1,13 @@
 use std::time::Instant;
 
+use crate::domain::DatabaseType;
+use crate::domain::mysql_sql::MySqlStatement;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::policy::write::sql_risk::{
-    ConfirmationType, MultiStatementDecision, adhoc_label_for_table_name_confirmation,
-    evaluate_multi_statement_for_database_with_context,
+    ConfirmationType, MultiStatementDecision, SqlRiskDecision,
+    adhoc_label_for_table_name_confirmation, evaluate_multi_statement_for_database_with_context,
+    evaluate_mysql_multi_statement,
 };
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::update::action::Action;
@@ -23,6 +26,24 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
 
             let database_type = state.session.active_database_type_or_default();
 
+            if database_type == DatabaseType::MySQL {
+                return match evaluate_mysql_multi_statement(&query, state.session.active_database())
+                {
+                    MultiStatementDecision::Block { reason } => {
+                        state.sql_modal.finish_adhoc_error(reason);
+                        DispatchResult::handled()
+                    }
+                    MultiStatementDecision::Allow { statements, risk } => handle_allowed_query(
+                        state,
+                        database_type,
+                        query,
+                        now,
+                        risk,
+                        Some(statements),
+                    ),
+                };
+            }
+
             match evaluate_multi_statement_for_database_with_context(
                 database_type,
                 state.session.active_database(),
@@ -33,35 +54,48 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                     DispatchResult::handled()
                 }
                 MultiStatementDecision::Allow { risk, .. } => {
-                    if state.session.is_read_only() && !risk.read_only_allowed {
-                        state.sql_modal.finish_adhoc_error(
-                            "Read-only mode: write operations are disabled".to_string(),
-                        );
-                        return DispatchResult::handled();
-                    }
-                    match risk.confirmation {
-                        ConfirmationType::Immediate => start_adhoc_if_connected(state, query, now),
-                        ConfirmationType::Acknowledge { reason, label } => {
-                            state.sql_modal.begin_confirming_risk(reason, label);
-                            DispatchResult::handled()
-                        }
-                        ConfirmationType::TableNameInput { target } => {
-                            let label = adhoc_label_for_table_name_confirmation(
-                                database_type,
-                                &query,
-                            )
-                            .expect("TableNameInput confirmation must have a matching statement");
-                            let decision = AdhocRiskDecision {
-                                risk_level: risk.risk_level,
-                                label,
-                            };
-                            state.sql_modal.begin_confirming_high(decision, target);
-                            DispatchResult::handled()
-                        }
-                    }
+                    handle_allowed_query(state, database_type, query, now, risk, None)
                 }
             }
         }
         _ => DispatchResult::pass(),
+    }
+}
+
+fn handle_allowed_query(
+    state: &mut AppState,
+    database_type: DatabaseType,
+    query: String,
+    now: Instant,
+    risk: SqlRiskDecision,
+    classified_mysql_statements: Option<Vec<MySqlStatement>>,
+) -> DispatchResult {
+    if state.session.is_read_only() && !risk.read_only_allowed {
+        state
+            .sql_modal
+            .finish_adhoc_error("Read-only mode: write operations are disabled".to_string());
+        return DispatchResult::handled();
+    }
+
+    match risk.confirmation {
+        ConfirmationType::Immediate => {
+            start_adhoc_if_connected(state, query, now, classified_mysql_statements)
+        }
+        ConfirmationType::Acknowledge { reason, label } => {
+            state.sql_modal.begin_confirming_risk(reason, label);
+            DispatchResult::handled()
+        }
+        ConfirmationType::TableNameInput { target } => {
+            let label = adhoc_label_for_table_name_confirmation(database_type, &query)
+                .expect("TableNameInput confirmation must have a matching statement");
+            let decision = AdhocRiskDecision {
+                risk_level: risk.risk_level,
+                label,
+            };
+            state
+                .sql_modal
+                .begin_confirming_high(decision, target, classified_mysql_statements);
+            DispatchResult::handled()
+        }
     }
 }

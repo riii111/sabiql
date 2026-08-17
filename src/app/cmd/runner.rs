@@ -25,8 +25,8 @@ use crate::model::app_state::AppState;
 use crate::ports::outbound::{
     CachedResultExporter, ClipboardWriter, ConfigWriter, ConnectionStore, DsnBuilder,
     ErDiagramExporter, ErLogWriter, FolderOpener, MetadataProvider, MySqlConnectionProbe,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer, SettingsStore,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    MySqlQueryExecutor, PgServiceEntryReader, QueryExecutor, QueryHistoryStore, Renderer,
+    SettingsStore, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::services::AppServices;
 use crate::update::action::Action;
@@ -41,6 +41,7 @@ pub struct ConnectionDeps {
 
 pub struct QueryDeps {
     pub query_executor: Arc<dyn QueryExecutor>,
+    pub mysql_query_executor: Arc<dyn MySqlQueryExecutor>,
     pub query_history_store: Arc<dyn QueryHistoryStore>,
     pub sqlite_diagnostics: Arc<dyn SqliteDiagnosticsProvider>,
     pub cached_result_exporter: Arc<dyn CachedResultExporter>,
@@ -234,6 +235,7 @@ impl EffectRunner {
                     e,
                     &self.action_tx,
                     &self.query.query_executor,
+                    &self.query.mysql_query_executor,
                     &self.query.query_history_store,
                     &self.query.cached_result_exporter,
                     &self.query_tasks,

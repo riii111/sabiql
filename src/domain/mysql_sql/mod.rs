@@ -42,10 +42,28 @@ pub enum MySqlStatementKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MySqlStatement {
-    pub sql: String,
-    pub kind: MySqlStatementKind,
-    pub target: Option<String>,
-    pub target_database: Option<String>,
+    sql: String,
+    kind: MySqlStatementKind,
+    target: Option<String>,
+    target_database: Option<String>,
+}
+
+impl MySqlStatement {
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    pub fn kind(&self) -> &MySqlStatementKind {
+        &self.kind
+    }
+
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    pub fn target_database(&self) -> Option<&str> {
+        self.target_database.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +174,25 @@ pub fn classify_mysql_multi_statement(
     for statement_sql in statements {
         let statement =
             classify_mysql_statement(&statement_sql).map_err(|error| error.to_string())?;
+        classified.push(statement);
+    }
+
+    validate_mysql_statements(&classified, selected_database)?;
+    Ok(classified)
+}
+
+pub fn validate_mysql_statements(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+) -> Result<(), String> {
+    if statements.is_empty() {
+        return Err("Empty MySQL input".to_string());
+    }
+
+    for statement in statements {
+        if statement_contains_unsupported_mysql_control(&statement.sql) {
+            return Err("unsupported MySQL session or table-lock statement".to_string());
+        }
         if matches!(statement.kind, MySqlStatementKind::Replace) {
             return Err("MySQL REPLACE execution is not supported".to_string());
         }
@@ -168,15 +205,13 @@ pub fn classify_mysql_multi_statement(
         }
         if (mysql_statement_is_schema_modifying(&statement.kind)
             || mysql_statement_is_data_modifying(&statement.kind))
-            && !target_is_selected_database(&statement, selected_database)
+            && !target_is_selected_database(statement, selected_database)
         {
             return Err("MySQL target must be in the selected database".to_string());
         }
-        classified.push(statement);
     }
 
-    validate_mysql_submission_state(&classified, selected_database)?;
-    Ok(classified)
+    validate_mysql_submission_state(statements, selected_database)
 }
 
 fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
@@ -410,6 +445,20 @@ mod tests {
     fn splits_mysql_comments_quotes_and_backticks() {
         let sql = "SELECT 'a;\\'b'; # comment;\n SELECT `semi;colon` /* ; */";
         assert_eq!(split_mysql_statements(sql).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn classified_statement_preserves_its_private_classifier_invariant() {
+        let statement = classify_mysql_statement("DROP TABLE users").unwrap();
+
+        assert_eq!(statement.sql(), "DROP TABLE users");
+        assert_eq!(
+            statement.kind(),
+            &MySqlStatementKind::DropTable { temporary: false }
+        );
+        assert_eq!(statement.target(), Some("users"));
+        assert_eq!(statement.target_database(), None);
+        assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
     }
 
     #[test]

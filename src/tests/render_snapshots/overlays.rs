@@ -427,6 +427,7 @@ fn sql_modal_confirming_high_matched() {
             label: "DROP",
         },
         "users".to_string(),
+        None,
     );
     *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
@@ -453,6 +454,7 @@ fn sql_modal_confirming_high_unmatched() {
             label: "DROP",
         },
         "users".to_string(),
+        None,
     );
     *state.sql_modal.confirming_high_input_mut().unwrap() = input;
 
