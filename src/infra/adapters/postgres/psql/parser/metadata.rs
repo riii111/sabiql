@@ -186,12 +186,18 @@ impl PostgresAdapter {
             return Ok(Vec::new());
         };
 
+        #[expect(
+            clippy::struct_excessive_bools,
+            reason = "PostgreSQL index flags are independent catalog fields"
+        )]
         #[derive(serde::Deserialize)]
         struct RawIndex {
             name: String,
             columns: Vec<String>,
             is_unique: bool,
             is_primary: bool,
+            is_partial: bool,
+            has_expression: bool,
             index_type: String,
             definition: Option<String>,
         }
@@ -200,15 +206,25 @@ impl PostgresAdapter {
 
         Ok(raw
             .into_iter()
-            .map(|i| Index {
-                name: i.name,
-                columns: i.columns,
-                attributes: IndexAttributes::from_parts(i.is_unique, i.is_primary),
-                index_type: match i.index_type.parse::<IndexType>() {
-                    Ok(index_type) => index_type,
-                    Err(never) => match never {},
-                },
-                definition: i.definition,
+            .map(|i| {
+                let mut attributes = IndexAttributes::from_parts(i.is_unique, i.is_primary);
+                if i.is_partial {
+                    attributes = attributes | IndexAttributes::PARTIAL;
+                }
+                if i.has_expression {
+                    attributes = attributes | IndexAttributes::EXPRESSION;
+                }
+
+                Index {
+                    name: i.name,
+                    columns: i.columns,
+                    attributes,
+                    index_type: match i.index_type.parse::<IndexType>() {
+                        Ok(index_type) => index_type,
+                        Err(never) => match never {},
+                    },
+                    definition: i.definition,
+                }
             })
             .collect())
     }
@@ -654,6 +670,8 @@ mod tests {
                 "columns": ["id"],
                 "is_unique": false,
                 "is_primary": false,
+                "is_partial": false,
+                "has_expression": false,
                 "index_type": "ivfflat",
                 "definition": null
             }]"#;
@@ -664,6 +682,97 @@ mod tests {
                 result[0].index_type,
                 IndexType::Other("ivfflat".to_string())
             );
+        }
+
+        #[test]
+        fn parse_indexes_preserves_key_order_and_metadata_attributes() {
+            let json = r#"[
+                {
+                    "name": "users_pkey",
+                    "columns": ["id"],
+                    "is_unique": true,
+                    "is_primary": true,
+                    "is_partial": false,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE UNIQUE INDEX users_pkey ON users USING btree (id)"
+                },
+                {
+                    "name": "users_tenant_email_idx",
+                    "columns": ["tenant_id", "email"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_tenant_email_idx ON users USING btree (tenant_id, email)"
+                },
+                {
+                    "name": "users_lower_email_idx",
+                    "columns": ["lower(email)"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": true,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))"
+                },
+                {
+                    "name": "users_active_email_idx",
+                    "columns": ["email"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": true,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_active_email_idx ON users USING btree (email) WHERE active"
+                },
+                {
+                    "name": "users_active_email_key",
+                    "columns": ["email"],
+                    "is_unique": true,
+                    "is_primary": false,
+                    "is_partial": true,
+                    "has_expression": false,
+                    "index_type": "btree",
+                    "definition": "CREATE UNIQUE INDEX users_active_email_key ON users USING btree (email) WHERE active"
+                },
+                {
+                    "name": "users_tenant_lower_email_idx",
+                    "columns": ["tenant_id", "lower(email)"],
+                    "is_unique": false,
+                    "is_primary": false,
+                    "is_partial": false,
+                    "has_expression": true,
+                    "index_type": "btree",
+                    "definition": "CREATE INDEX users_tenant_lower_email_idx ON users USING btree (tenant_id, lower(email))"
+                }
+            ]"#;
+
+            let indexes = PostgresAdapter::parse_indexes(json).unwrap();
+
+            assert_eq!(indexes[0].columns, ["id"]);
+            assert!(indexes[0].is_unique());
+            assert!(indexes[0].is_primary());
+
+            assert_eq!(indexes[1].columns, ["tenant_id", "email"]);
+            assert!(!indexes[1].has_expression());
+
+            assert_eq!(indexes[2].columns, ["lower(email)"]);
+            assert!(indexes[2].has_expression());
+            assert_eq!(
+                indexes[2].definition.as_deref(),
+                Some("CREATE INDEX users_lower_email_idx ON users USING btree (lower(email))")
+            );
+
+            assert!(indexes[3].is_partial());
+            assert!(!indexes[3].is_unique());
+
+            assert!(indexes[4].is_partial());
+            assert!(indexes[4].is_unique());
+
+            assert_eq!(indexes[5].columns, ["tenant_id", "lower(email)"]);
+            assert!(indexes[5].has_expression());
         }
 
         #[test]
