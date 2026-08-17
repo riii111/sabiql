@@ -2136,6 +2136,50 @@ mod tests {
         }
 
         #[test]
+        fn resumes_after_mysql_backslash_escaped_quote() {
+            let e = engine();
+            let metadata = metadata();
+            let sql = r"SELECT 'it\'s' AS label FROM us";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`users`" && candidate.kind == CompletionKind::Table
+            }));
+        }
+
+        #[test]
+        fn resumes_after_mysql_non_comment_double_dash() {
+            let e = engine();
+            let metadata = metadata();
+            let sql = "SELECT 1--1 FROM us";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`users`" && candidate.kind == CompletionKind::Table
+            }));
+        }
+
+        #[test]
         fn mysql_backtick_table_alias_returns_cached_columns() {
             let mut e = engine();
             e.cache_table_detail(
