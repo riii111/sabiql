@@ -10,12 +10,12 @@ use crate::app::model::app_state::AppState;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
-use crate::app::policy::sql::sqlite_explain::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::{FeaturePolicy, FeatureRequirement};
 use crate::app::update::input::keybindings::sql_modal_plan_explain;
 use crate::domain::DatabaseType;
 use crate::domain::explain_plan::ExplainPlan;
+use crate::domain::sqlite_sql::SQLITE_EXPLAIN_QUERY_PLAN_PREFIX;
 use crate::primitives::atoms::{apply_yank_flash, text_cursor_spans};
 use crate::theme::ThemePalette;
 

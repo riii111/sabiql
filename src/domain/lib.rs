@@ -14,6 +14,7 @@ pub mod query_result;
 pub mod rls;
 pub mod schema;
 pub mod sqlite_diagnostics;
+pub mod sqlite_sql;
 pub mod table;
 pub mod table_kind;
 pub mod trigger;

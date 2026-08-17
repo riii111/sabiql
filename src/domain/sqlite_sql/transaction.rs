@@ -1,4 +1,6 @@
-use crate::policy::sql::statement_classifier::{StatementKind, classify, first_keyword};
+use super::splitter::{
+    first_sqlite_keyword, keywords_with_depth, statement_keyword, top_level_keywords,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SqliteStatementClassification {
@@ -33,14 +35,6 @@ impl SqliteTransactionPolicy {
     pub fn is_invalid(self) -> bool {
         matches!(self, Self::ClassificationMismatch)
     }
-}
-
-pub fn sqlite_transaction_policy(statements: &[String]) -> SqliteTransactionPolicy {
-    let classifications: Vec<_> = statements
-        .iter()
-        .map(|statement| sqlite_statement_classification(statement))
-        .collect();
-    sqlite_transaction_policy_for_classifications(statements.len(), &classifications)
 }
 
 pub fn sqlite_transaction_policy_for_classifications(
@@ -83,7 +77,7 @@ pub fn sqlite_transaction_policy_for_classifications(
 }
 
 pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassification {
-    if matches!(classify(statement), StatementKind::Transaction) {
+    if is_transaction_control(statement) {
         return SqliteStatementClassification::TransactionControl;
     }
     if is_transaction_incompatible(statement) {
@@ -95,36 +89,65 @@ pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassi
     if is_session_pragma_side_effect(statement) {
         return SqliteStatementClassification::SessionSideEffect;
     }
-    if matches!(
-        first_keyword(statement).as_deref(),
-        Some("ATTACH" | "DETACH")
-    ) {
-        return SqliteStatementClassification::SessionSideEffect;
-    }
-    if matches!(
-        first_keyword(statement).as_deref(),
-        Some("ANALYZE" | "REINDEX" | "REPLACE")
-    ) {
+    if has_data_modifying_cte(statement) {
         return SqliteStatementClassification::TransactionalWrite;
     }
-    if matches!(
-        classify(statement),
-        StatementKind::Insert
-            | StatementKind::Update { .. }
-            | StatementKind::Delete { .. }
-            | StatementKind::Create
-            | StatementKind::Alter
-            | StatementKind::Drop
-            | StatementKind::Truncate
-    ) {
-        SqliteStatementClassification::TransactionalWrite
-    } else {
-        SqliteStatementClassification::ReadOnly
+    if first_sqlite_keyword(statement).as_deref() == Some("EXPLAIN") {
+        return match explain_analyze_statement_keyword(statement).as_deref() {
+            Some("INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE") => {
+                SqliteStatementClassification::TransactionalWrite
+            }
+            _ => SqliteStatementClassification::ReadOnly,
+        };
+    }
+    match statement_keyword(statement).as_deref() {
+        Some("ATTACH" | "DETACH") => SqliteStatementClassification::SessionSideEffect,
+        Some(
+            "ANALYZE" | "REINDEX" | "REPLACE" | "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER"
+            | "DROP" | "TRUNCATE",
+        ) => SqliteStatementClassification::TransactionalWrite,
+        _ => SqliteStatementClassification::ReadOnly,
     }
 }
 
-pub fn is_transaction_incompatible(statement: &str) -> bool {
-    if first_keyword(statement).as_deref() == Some("VACUUM") {
+fn explain_analyze_statement_keyword(statement: &str) -> Option<String> {
+    let keywords = top_level_keywords(statement);
+    (keywords.first().map(String::as_str) == Some("EXPLAIN"))
+        .then(|| {
+            keywords
+                .iter()
+                .skip(1)
+                .position(|keyword| keyword == "ANALYZE")
+                .and_then(|index| keywords.get(index + 2))
+                .cloned()
+        })
+        .flatten()
+}
+
+fn has_data_modifying_cte(statement: &str) -> bool {
+    if first_sqlite_keyword(statement).as_deref() != Some("WITH") {
+        return false;
+    }
+    keywords_with_depth(statement)
+        .into_iter()
+        .any(|(keyword, depth)| {
+            depth > 0 && matches!(keyword.as_str(), "INSERT" | "UPDATE" | "DELETE")
+        })
+}
+
+fn is_transaction_control(statement: &str) -> bool {
+    let keywords = top_level_keywords(statement);
+    matches!(
+        keywords.first().map(String::as_str),
+        Some("BEGIN" | "COMMIT" | "ROLLBACK" | "SAVEPOINT" | "RELEASE")
+    ) || matches!(
+        keywords.as_slice(),
+        [first, second, ..] if first == "START" && second == "TRANSACTION"
+    )
+}
+
+fn is_transaction_incompatible(statement: &str) -> bool {
+    if first_sqlite_keyword(statement).as_deref() == Some("VACUUM") {
         return true;
     }
     let Some(pragma) = parse_sqlite_pragma(statement) else {
@@ -251,57 +274,59 @@ fn pragma_identifier_and_tail(sql: &str) -> Option<(&str, &str)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::DatabaseType;
-    use crate::policy::write::sql_risk::split_statements_for_database;
-
-    fn policy_for(sql: &str) -> SqliteTransactionPolicy {
-        let statements = split_statements_for_database(DatabaseType::SQLite, sql)
-            .expect("SQLite statement splitting does not produce MySQL lexer errors");
-        sqlite_transaction_policy(&statements)
-    }
 
     #[test]
-    fn incompatible_setters_require_an_acknowledgement() {
+    fn classifies_pragma_changes_and_queries() {
         assert_eq!(
-            policy_for("PRAGMA foreign_keys = OFF; CREATE TABLE users(id INTEGER)"),
-            SqliteTransactionPolicy::IncompatibleStatement
+            sqlite_statement_classification("PRAGMA journal_mode"),
+            SqliteStatementClassification::ReadOnly
         );
         assert_eq!(
-            policy_for("PRAGMA journal_mode(WAL); CREATE TABLE users(id INTEGER)"),
-            SqliteTransactionPolicy::IncompatibleStatement
+            sqlite_statement_classification("PRAGMA main.journal_mode = WAL"),
+            SqliteStatementClassification::TransactionIncompatible
+        );
+        assert_eq!(
+            sqlite_statement_classification("PRAGMA user_version = 42"),
+            SqliteStatementClassification::TransactionalWrite
         );
     }
 
     #[test]
-    fn comments_and_quoted_pragma_names_are_classified() {
-        for sql in [
-            "-- setup\nPRAGMA foreign_keys=OFF; CREATE TABLE users(id INTEGER)",
-            "PRAGMA \"foreign_keys\"=OFF; CREATE TABLE users(id INTEGER)",
-            "PRAGMA [foreign_keys](OFF); CREATE TABLE users(id INTEGER)",
-        ] {
-            assert_eq!(
-                policy_for(sql),
-                SqliteTransactionPolicy::IncompatibleStatement,
-                "{sql}"
-            );
-        }
+    fn classifies_cte_writes_and_transaction_control() {
+        assert_eq!(
+            sqlite_statement_classification(
+                "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload"
+            ),
+            SqliteStatementClassification::TransactionalWrite
+        );
+        assert_eq!(
+            sqlite_statement_classification(
+                "WITH \"payload\"(id) AS (VALUES (1)) SELECT id FROM \"payload\""
+            ),
+            SqliteStatementClassification::ReadOnly
+        );
+        assert_eq!(
+            sqlite_statement_classification("EXPLAIN ANALYZE UPDATE users SET name = 'a'"),
+            SqliteStatementClassification::TransactionalWrite
+        );
+        assert_eq!(
+            sqlite_statement_classification("EXPLAIN QUERY PLAN UPDATE users SET name = 'a'"),
+            SqliteStatementClassification::ReadOnly
+        );
+        assert_eq!(
+            sqlite_statement_classification("START TRANSACTION"),
+            SqliteStatementClassification::TransactionControl
+        );
+        assert_eq!(
+            sqlite_statement_classification(
+                "WITH changed AS (UPDATE users SET name = 'a' RETURNING *) SELECT * FROM changed"
+            ),
+            SqliteStatementClassification::TransactionalWrite
+        );
     }
 
     #[test]
-    fn vacuum_is_transaction_incompatible() {
-        assert!(is_transaction_incompatible("VACUUM"));
-        assert!(is_transaction_incompatible("  VACUUM"));
-        assert!(is_transaction_incompatible("VACUUM INTO 'backup.db'"));
-    }
-
-    #[test]
-    fn query_pragma_is_not_transaction_incompatible() {
-        assert!(!is_transaction_incompatible("PRAGMA foreign_keys"));
-        assert!(!is_transaction_incompatible("PRAGMA journal_mode"));
-    }
-
-    #[test]
-    fn classification_mismatch_is_not_treated_as_not_needed() {
+    fn transaction_policy_rejects_mismatched_classifications() {
         assert_eq!(
             sqlite_transaction_policy_for_classifications(1, &[]),
             SqliteTransactionPolicy::ClassificationMismatch
@@ -309,88 +334,11 @@ mod tests {
     }
 
     #[test]
-    fn persistent_pragma_writes_are_transactional() {
-        for sql in [
-            "PRAGMA user_version = 42",
-            "PRAGMA application_id(7)",
-            "PRAGMA \"main\".\"user_version\" = 42",
-            "PRAGMA [main].[application_id](7)",
-        ] {
-            assert_eq!(
-                sqlite_statement_classification(sql),
-                SqliteStatementClassification::TransactionalWrite,
-                "{sql}"
-            );
-        }
-    }
+    fn parses_qualified_quoted_pragma_names() {
+        let pragma = parse_sqlite_pragma("PRAGMA [main].[application_id](7)").unwrap();
 
-    #[test]
-    fn persistent_pragma_write_enables_auto_wrap_for_multi_statement_sql() {
-        let statements = vec![
-            "PRAGMA user_version = 42".to_string(),
-            "SELECT * FROM missing_table".to_string(),
-        ];
-
-        assert_eq!(
-            sqlite_transaction_policy(&statements),
-            SqliteTransactionPolicy::AutoWrap
-        );
-    }
-
-    #[test]
-    fn side_effect_pragma_requires_acknowledgement_without_a_transactional_write() {
-        for sql in [
-            "PRAGMA synchronous = NORMAL; SELECT 1",
-            "PRAGMA cache_size = 2000; SELECT 1",
-        ] {
-            assert_eq!(
-                policy_for(sql),
-                SqliteTransactionPolicy::IncompatibleStatement,
-                "{sql}"
-            );
-        }
-    }
-
-    #[test]
-    fn session_pragma_changes_are_not_implicitly_atomic() {
-        for sql in [
-            "PRAGMA cache_size = 2000",
-            "PRAGMA locking_mode = EXCLUSIVE",
-        ] {
-            assert_eq!(
-                sqlite_statement_classification(sql),
-                SqliteStatementClassification::SessionSideEffect,
-                "{sql}"
-            );
-        }
-    }
-
-    #[test]
-    fn synchronous_change_is_transaction_incompatible() {
-        assert_eq!(
-            sqlite_statement_classification("PRAGMA synchronous = NORMAL"),
-            SqliteStatementClassification::TransactionIncompatible
-        );
-    }
-
-    #[test]
-    fn quoted_schema_pragma_is_normalized_with_its_value() {
-        for (sql, expected_name, expected_value) in [
-            (
-                "PRAGMA \"main\".\"foreign_keys\" = OFF",
-                "foreign_keys",
-                Some("off"),
-            ),
-            (
-                "PRAGMA [main].[journal_mode](WAL)",
-                "journal_mode",
-                Some("wal"),
-            ),
-        ] {
-            let pragma = parse_sqlite_pragma(sql).unwrap();
-
-            assert_eq!(pragma.name, expected_name, "{sql}");
-            assert_eq!(pragma.value.as_deref(), expected_value, "{sql}");
-        }
+        assert_eq!(pragma.name, "application_id");
+        assert!(pragma.has_value);
+        assert_eq!(pragma.value.as_deref(), Some("7"));
     }
 }

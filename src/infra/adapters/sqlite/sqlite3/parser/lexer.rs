@@ -1,15 +1,12 @@
 use std::borrow::Cow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::app::policy::sql::sqlite_export::is_sqlite_rerunnable_export_statement;
-use crate::app::policy::sql::sqlite_statement_splitter::{
-    SqliteStatementSplitError, split_sqlite_statements,
-};
-use crate::app::policy::sql::sqlite_transaction::{
-    SqliteTransactionPolicy, sqlite_statement_classification,
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::sqlite_sql::{
+    SqliteStatementSplitError, SqliteTransactionPolicy, is_sqlite_rerunnable_export_statement,
+    split_sqlite_statements, sqlite_statement_classification,
     sqlite_transaction_policy_for_classifications,
 };
-use crate::app::ports::outbound::DbOperationError;
 
 fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
@@ -761,7 +758,7 @@ fn statement_emits_result_set(statement: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::policy::sql::sqlite_transaction::SqliteStatementClassification;
+    use crate::domain::sqlite_sql::SqliteStatementClassification;
 
     use super::*;
     use rstest::rstest;

@@ -18,7 +18,7 @@ impl AppServices {
         use crate::domain::mysql_sql::{
             mysql_explain_rejection_message, mysql_tree_explain_query_kind,
         };
-        use crate::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
+        use crate::domain::sqlite_sql::build_sqlite_explain_query_plan_sql;
 
         fn quote_identifier(database_type: DatabaseType, value: &str) -> String {
             match database_type {
