@@ -365,6 +365,37 @@ mod tests {
     }
 
     #[test]
+    fn highlight_sql_keeps_mysql_backslash_string_and_non_comment_dash_dashes() {
+        let lines = highlight_sql(
+            r"SELECT 'it\'s' AS label, 1--1 FROM users",
+            DatabaseType::MySQL,
+            &DEFAULT_THEME,
+        );
+        let spans = &lines[0].spans;
+
+        let string_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "'it\\'s'")
+            .expect("MySQL backslash-escaped string should remain one span");
+        assert_eq!(
+            string_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
+        let from_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "FROM")
+            .expect("FROM after non-comment -- should remain visible");
+        assert_eq!(
+            from_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
+        assert!(!spans.iter().any(|span| {
+            span.content.as_ref().contains("FROM")
+                && span.style.fg == Some(DEFAULT_THEME.component.syntax.sql_comment)
+        }));
+    }
+
+    #[test]
     fn highlight_sql_preserves_postgresql_quotes() {
         let lines = highlight_sql(
             r#"SELECT "user" AS name, $$body$$"#,

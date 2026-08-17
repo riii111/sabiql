@@ -44,6 +44,10 @@ pub struct SqlContext {
     pub target_table: Option<TableReference>,
 }
 
+const MYSQL_INSERT_MODIFIERS: &[&str] = &["LOW_PRIORITY", "DELAYED", "HIGH_PRIORITY", "IGNORE"];
+const MYSQL_UPDATE_MODIFIERS: &[&str] = &["LOW_PRIORITY", "IGNORE"];
+const MYSQL_DELETE_MODIFIERS: &[&str] = &["LOW_PRIORITY", "QUICK", "IGNORE"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LexerState {
     Normal,
@@ -314,8 +318,14 @@ impl SqlLexer {
                         continue;
                     }
 
-                    // Line comment: --
-                    if c == '-' && pos + 1 < end_pos && chars[pos + 1] == '-' {
+                    // MySQL starts a -- comment only when followed by ASCII whitespace or EOF.
+                    if c == '-'
+                        && pos + 1 < end_pos
+                        && chars[pos + 1] == '-'
+                        && (!self.is_mysql()
+                            || pos + 2 == end_pos
+                            || chars[pos + 2].is_ascii_whitespace())
+                    {
                         token_start = pos;
                         state = LexerState::InLineComment;
                         pos += 2;
@@ -489,6 +499,10 @@ impl SqlLexer {
                 }
 
                 LexerState::InSingleQuote => {
+                    if self.is_mysql() && c == '\\' && pos + 1 < end_pos {
+                        pos += 2;
+                        continue;
+                    }
                     // Handle escaped single quotes: ''
                     if c == '\'' {
                         if pos + 1 < end_pos && chars[pos + 1] == '\'' {
@@ -725,6 +739,36 @@ impl SqlLexer {
         matches!(c, '(' | ')' | ',' | ';' | '.' | '[' | ']')
     }
 
+    fn skip_mysql_modifiers(
+        &self,
+        tokens: &[Token],
+        mut index: usize,
+        modifiers: &[&str],
+    ) -> usize {
+        if !self.is_mysql() {
+            return index;
+        }
+
+        loop {
+            while index < tokens.len() && tokens[index].kind == TokenKind::Whitespace {
+                index += 1;
+            }
+            let Some(token) = tokens.get(index) else {
+                return index;
+            };
+            let is_modifier = matches!(
+                &token.kind,
+                TokenKind::Identifier(_) | TokenKind::Keyword(_)
+            ) && modifiers
+                .iter()
+                .any(|modifier| token.text.eq_ignore_ascii_case(modifier));
+            if !is_modifier {
+                return index;
+            }
+            index += 1;
+        }
+    }
+
     pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
         let mut refs = Vec::new();
         let mut i = 0;
@@ -801,6 +845,7 @@ impl SqlLexer {
                     "UPDATE" if !in_for_clause => {
                         prev_keyword = Some("UPDATE");
                         i += 1;
+                        i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
                         }
@@ -1136,6 +1181,7 @@ impl SqlLexer {
                         }
                         "UPDATE" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -1152,6 +1198,7 @@ impl SqlLexer {
                         }
                         "DELETE" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_DELETE_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -1177,6 +1224,7 @@ impl SqlLexer {
                         }
                         "INSERT" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -1595,6 +1643,49 @@ mod tests {
         }
 
         #[test]
+        fn mysql_backslash_escape_keeps_following_table_context() {
+            let l = mysql_lexer();
+            let sql = r"SELECT 'it\'s' AS label FROM us";
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::StringLiteral if token.text == "'it\\'s'"
+                )
+            }));
+            assert!(tokens.iter().any(|token| {
+                matches!(&token.kind, TokenKind::Keyword(keyword) if keyword == "FROM")
+            }));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &tokens,
+                sql.chars().count()
+            ));
+            assert_eq!(l.extract_table_references(&tokens)[0].table, "us");
+        }
+
+        #[test]
+        fn mysql_double_dash_requires_whitespace_or_end_of_input() {
+            let l = mysql_lexer();
+            let tokens = l.tokenize("SELECT 1--1 FROM users", 22);
+
+            assert!(!tokens.iter().any(|token| token.kind == TokenKind::Comment));
+            assert!(tokens.iter().any(|token| {
+                matches!(&token.kind, TokenKind::Keyword(keyword) if keyword == "FROM")
+            }));
+            assert!(
+                l.tokenize("SELECT 1 -- comment", 19)
+                    .iter()
+                    .any(|token| token.kind == TokenKind::Comment)
+            );
+            assert!(
+                l.tokenize("SELECT 1--", 10)
+                    .iter()
+                    .any(|token| token.kind == TokenKind::Comment)
+            );
+        }
+
+        #[test]
         fn backtick_qualified_table_reference_supports_aliases() {
             let l = mysql_lexer();
             let sql = "SELECT * FROM `app`.`users` AS `u`";
@@ -1868,6 +1959,45 @@ mod tests {
 
                 assert_eq!(refs.len(), 1);
                 assert_eq!(refs[0].table, expected);
+            }
+
+            #[test]
+            fn mysql_dml_modifiers_are_skipped_for_targets_and_references() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                for (sql, expected) in [
+                    (
+                        "INSERT LOW_PRIORITY INTO users (name) VALUES ('foo')",
+                        "users",
+                    ),
+                    ("INSERT DELAYED INTO users (name) VALUES ('foo')", "users"),
+                    (
+                        "INSERT HIGH_PRIORITY INTO users (name) VALUES ('foo')",
+                        "users",
+                    ),
+                    ("INSERT IGNORE INTO users (name) VALUES ('foo')", "users"),
+                    ("UPDATE LOW_PRIORITY users SET name = 'foo'", "users"),
+                    ("UPDATE IGNORE users SET name = 'foo'", "users"),
+                    ("DELETE LOW_PRIORITY FROM users WHERE id = 1", "users"),
+                    ("DELETE QUICK FROM users WHERE id = 1", "users"),
+                    ("DELETE IGNORE FROM users WHERE id = 1", "users"),
+                ] {
+                    let tokens = l.tokenize(sql, sql.len());
+
+                    assert_eq!(
+                        l.extract_target_table(&tokens, sql.len())
+                            .as_ref()
+                            .map(|table| table.table.as_str()),
+                        Some(expected),
+                        "target table for {sql}"
+                    );
+                    assert_eq!(
+                        l.extract_table_references(&tokens)
+                            .first()
+                            .map(|table| table.table.as_str()),
+                        Some(expected),
+                        "table reference for {sql}"
+                    );
+                }
             }
         }
 
