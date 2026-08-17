@@ -3109,6 +3109,7 @@ mod tests {
         use super::*;
         use crate::domain::{DatabaseMetadata, QueryResult, QuerySource};
         use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+        use crate::test_support;
 
         fn state_after_confirm_and_complete() -> (AppState, Instant) {
             let mut state = create_test_state();
@@ -3161,6 +3162,20 @@ mod tests {
             for action in dispatch_actions {
                 reduce(&mut state, action, now, &AppServices::stub());
             }
+
+            let generation = state.session.selection_generation();
+            let detail_run_id = state.session.begin_table_detail_run();
+            reduce(
+                &mut state,
+                Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: Box::new(test_support::table::minimal("public", "users")),
+                    generation,
+                },
+                now,
+                &AppServices::stub(),
+            );
 
             // Simulate QueryCompleted with a full page of results
             let current_gen = state.session.selection_generation();

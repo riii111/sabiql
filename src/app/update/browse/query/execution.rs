@@ -38,6 +38,18 @@ pub fn reduce_execution(
                 return DispatchResult::handled();
             }
 
+            if *generation != 0
+                && result.source == QuerySource::Preview
+                && state.session.selected_table_key().is_some()
+                && !state.session.is_table_detail_terminal(*generation)
+            {
+                state.query.mark_idle();
+                state
+                    .query
+                    .defer_preview(Arc::clone(result), *generation, *target_page, true);
+                return DispatchResult::handled();
+            }
+
             state.query.mark_idle();
 
             match (result.source, result.is_error()) {
@@ -64,47 +76,7 @@ pub fn reduce_execution(
                 // Preview errors arrive as error results and are shown in the
                 // Result pane like any other preview.
                 (QuerySource::Preview, _) => {
-                    let preserved_result_col = state.result_interaction.selection().cell();
-                    let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
-                    reset_view_for_new_result(state, now);
-
-                    if let Some(page) = target_page {
-                        state
-                            .query
-                            .pagination
-                            .set_page_result(*page, result.data_row_count() < PREVIEW_PAGE_SIZE);
-                    }
-                    state.query.set_current_result(Arc::clone(result));
-
-                    match state.query.post_delete_row_selection() {
-                        PostDeleteRowSelection::Keep => {}
-                        PostDeleteRowSelection::Clear => {
-                            state.result_interaction.reset_interaction();
-                        }
-                        PostDeleteRowSelection::Select(row) => {
-                            if result.data_row_count() > 0 && result.column_count() > 0 {
-                                let clamped = row.min(result.data_row_count() - 1);
-                                let max_col = result.column_count() - 1;
-                                let col = preserved_result_col
-                                    .unwrap_or(preserved_horizontal_offset)
-                                    .min(max_col);
-                                state.result_interaction.set_horizontal_offset(
-                                    preserved_horizontal_offset.min(max_col).min(col),
-                                );
-                                state.result_interaction.activate_cell(clamped, col);
-
-                                let visible = state.result_visible_rows();
-                                if visible > 0 && clamped >= visible {
-                                    state
-                                        .result_interaction
-                                        .set_scroll_offset(clamped - visible + 1);
-                                }
-                            }
-                        }
-                    }
-                    state
-                        .query
-                        .set_post_delete_selection(PostDeleteRowSelection::Keep);
+                    apply_preview_result(state, result, *target_page, now, true);
                 }
             }
 
@@ -118,6 +90,28 @@ pub fn reduce_execution(
             source,
         } => {
             if state.is_stale_query_run(dsn, *run_id) {
+                return DispatchResult::handled();
+            }
+
+            if *source == QuerySource::Preview
+                && *generation != 0
+                && *generation == state.session.selection_generation()
+                && state.session.selected_table_key().is_some()
+                && !state.session.is_table_detail_terminal(*generation)
+            {
+                let preview_query = state.query.pagination.qualified_name();
+                state.query.mark_idle();
+                state.query.defer_preview(
+                    Arc::new(QueryResult::error(
+                        preview_query,
+                        error.result_message(),
+                        0,
+                        QuerySource::Preview,
+                    )),
+                    *generation,
+                    None,
+                    false,
+                );
                 return DispatchResult::handled();
             }
 
@@ -152,6 +146,22 @@ pub fn reduce_execution(
                 vec![]
             };
             DispatchResult::handled_with(effects)
+        }
+
+        Action::RevealPendingPreview { generation } => {
+            if !state.session.is_table_detail_terminal(*generation) {
+                return DispatchResult::handled();
+            }
+
+            let Some(pending) = state.query.take_pending_preview(*generation) else {
+                return DispatchResult::handled();
+            };
+            let (result, target_page, highlight) = pending.into_parts();
+            if result.is_error() && !highlight {
+                state.query.clear_delete_refresh_target();
+            }
+            apply_preview_result(state, &result, target_page, now, highlight);
+            DispatchResult::handled()
         }
 
         Action::CommandLineSubmit => {
@@ -302,10 +312,67 @@ fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
         .set_result_highlight(now + Duration::from_millis(500));
 }
 
+fn apply_preview_result(
+    state: &mut AppState,
+    result: &Arc<QueryResult>,
+    target_page: Option<usize>,
+    now: Instant,
+    highlight: bool,
+) {
+    let preserved_result_col = state.result_interaction.selection().cell();
+    let preserved_horizontal_offset = state.result_interaction.horizontal_offset();
+    state.result_interaction.reset_view();
+    if highlight {
+        state
+            .query
+            .set_result_highlight(now + Duration::from_millis(500));
+    }
+
+    if let Some(page) = target_page {
+        state
+            .query
+            .pagination
+            .set_page_result(page, result.data_row_count() < PREVIEW_PAGE_SIZE);
+    }
+    state.query.set_current_result(Arc::clone(result));
+
+    match state.query.post_delete_row_selection() {
+        PostDeleteRowSelection::Keep => {}
+        PostDeleteRowSelection::Clear => {
+            state.result_interaction.reset_interaction();
+        }
+        PostDeleteRowSelection::Select(row) => {
+            if result.data_row_count() > 0 && result.column_count() > 0 {
+                let clamped = row.min(result.data_row_count() - 1);
+                let max_col = result.column_count() - 1;
+                let col = preserved_result_col
+                    .unwrap_or(preserved_horizontal_offset)
+                    .min(max_col);
+                state
+                    .result_interaction
+                    .set_horizontal_offset(preserved_horizontal_offset.min(max_col).min(col));
+                state.result_interaction.activate_cell(clamped, col);
+
+                let visible = state.result_visible_rows();
+                if visible > 0 && clamped >= visible {
+                    state
+                        .result_interaction
+                        .set_scroll_offset(clamped - visible + 1);
+                }
+            }
+        }
+    }
+    state
+        .query
+        .set_post_delete_selection(PostDeleteRowSelection::Keep);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::ports::outbound::DbOperationError;
+    use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
@@ -317,12 +384,27 @@ mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryFailed {
-            dsn: "postgres://localhost/test".to_string(),
+            dsn: state.session.dsn().unwrap_or_default().to_string(),
             run_id,
             error,
             generation,
             source,
         }
+    }
+
+    fn state_with_selected_table(database_type: DatabaseType) -> (AppState, u64, u64) {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "test",
+            database_type,
+            "postgres://localhost/test",
+        );
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let detail_run_id = state.session.begin_table_detail_run();
+        (state, generation, detail_run_id)
     }
 
     mod command_line_submit {
@@ -556,6 +638,184 @@ mod tests {
             assert_eq!(state.query.pagination.current_page(), 3);
         }
 
+        #[rstest::rstest]
+        #[case(DatabaseType::PostgreSQL)]
+        #[case(DatabaseType::MySQL)]
+        #[case(DatabaseType::SQLite)]
+        fn inspector_terminal_state_precedes_preview_for_all_engines(
+            #[case] database_type: DatabaseType,
+        ) {
+            let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
+            let now = Instant::now();
+
+            let inspector_effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: Box::new(users_table_detail()),
+                    generation,
+                },
+                now,
+            )
+            .unwrap();
+
+            assert!(inspector_effects.is_empty());
+            assert!(state.session.is_table_detail_terminal(generation));
+            assert!(state.query.current_result().is_none());
+
+            let query_action =
+                query_completed_action(&mut state, preview_result(1), generation, Some(0));
+            dispatch_query(&mut state, &query_action, now, &AppServices::stub());
+
+            assert!(state.query.current_result().is_some());
+            assert!(!state.query.has_pending_preview(generation));
+        }
+
+        #[test]
+        fn preview_completion_waits_for_inspector_render_boundary() {
+            let (mut state, generation, detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            let query_action =
+                query_completed_action(&mut state, preview_result(1), generation, Some(0));
+
+            dispatch_query(
+                &mut state,
+                &query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.has_pending_preview(generation));
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: Box::new(users_table_detail()),
+                    generation,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.is_table_detail_terminal(generation));
+            assert!(state.query.current_result().is_none());
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::DispatchActions(actions)]
+                    if matches!(
+                        actions.as_slice(),
+                        [Action::RevealPendingPreview { generation: action_generation }]
+                            if *action_generation == generation
+                    )
+            ));
+
+            dispatch_query(
+                &mut state,
+                &Action::RevealPendingPreview { generation },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.current_result().is_some());
+            assert!(!state.query.has_pending_preview(generation));
+        }
+
+        #[test]
+        fn stale_selection_drops_old_pending_preview_before_new_one_is_released() {
+            let (mut state, old_generation, old_detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            let old_query_action =
+                query_completed_action(&mut state, preview_result(1), old_generation, Some(0));
+            dispatch_query(
+                &mut state,
+                &old_query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.has_pending_preview(old_generation));
+
+            let new_generation = state
+                .session
+                .select_table("public", "orders", &mut state.query);
+            let new_detail_run_id = state.session.begin_table_detail_run();
+
+            assert_ne!(old_generation, new_generation);
+            assert!(!state.query.has_pending_preview(old_generation));
+            assert!(state.query.current_result().is_none());
+
+            dispatch_query(
+                &mut state,
+                &old_query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.current_result().is_none());
+
+            let stale_inspector_effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: old_detail_run_id,
+                    detail: Box::new(users_table_detail()),
+                    generation: old_generation,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+            assert!(stale_inspector_effects.is_empty());
+            assert!(!state.session.is_table_detail_terminal(new_generation));
+
+            let new_query_action =
+                query_completed_action(&mut state, preview_result(1), new_generation, Some(0));
+            dispatch_query(
+                &mut state,
+                &new_query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.has_pending_preview(new_generation));
+
+            dispatch_query(
+                &mut state,
+                &Action::RevealPendingPreview {
+                    generation: old_generation,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.has_pending_preview(new_generation));
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: new_detail_run_id,
+                    detail: Box::new(users_table_detail()),
+                    generation: new_generation,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+            assert!(matches!(effects.as_slice(), [Effect::DispatchActions(_)]));
+
+            dispatch_query(
+                &mut state,
+                &Action::RevealPendingPreview {
+                    generation: new_generation,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.query.current_result().is_some());
+            assert!(!state.query.has_pending_preview(new_generation));
+        }
+
         #[test]
         fn adhoc_success_writes_current_result_and_records_history() {
             let mut state = create_test_state();
@@ -756,6 +1016,66 @@ mod tests {
                     .is_some_and(|message| message.contains("Permission denied"))
             );
             assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
+        fn preview_failure_waits_for_inspector_then_releases_error_result() {
+            let (mut state, generation, detail_run_id) =
+                state_with_selected_table(DatabaseType::PostgreSQL);
+            state.query.set_delete_refresh_target(1, None, 1);
+            let query_action = query_failed_action(
+                &mut state,
+                DbOperationError::PermissionDenied("forbidden".to_string()),
+                generation,
+                QuerySource::Preview,
+            );
+
+            dispatch_query(
+                &mut state,
+                &query_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.has_pending_preview(generation));
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    error: DbOperationError::QueryFailed("inspector failed".to_string()),
+                    generation,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.is_table_detail_terminal(generation));
+            assert!(state.messages.last_error().is_some());
+            assert!(state.query.current_result().is_none());
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::DispatchActions(actions)]
+                    if matches!(
+                        actions.as_slice(),
+                        [Action::RevealPendingPreview { generation: action_generation }]
+                            if *action_generation == generation
+                    )
+            ));
+
+            dispatch_query(
+                &mut state,
+                &Action::RevealPendingPreview { generation },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let result = state.query.current_result().expect("released result");
+            assert!(result.is_error());
+            assert!(state.query.pending_delete_refresh_target().is_none());
+            assert!(!state.query.has_pending_preview(generation));
         }
 
         #[test]
@@ -1013,7 +1333,6 @@ mod tests {
         use super::*;
         use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
         use crate::model::sql_editor::modal::SqlModalStatus;
-        use crate::update::browse::metadata::dispatch_metadata;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
             Arc::new({

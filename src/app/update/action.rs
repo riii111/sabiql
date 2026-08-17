@@ -600,6 +600,9 @@ pub enum Action {
         generation: u64,
         source: QuerySource,
     },
+    RevealPendingPreview {
+        generation: u64,
+    },
     ExecuteWriteSucceeded {
         dsn: String,
         run_id: u64,

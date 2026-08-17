@@ -25,6 +25,7 @@ pub(super) fn reduce_table_detail(
 
             if state.session.set_table_detail(*detail.clone(), *generation) {
                 state.ui.set_inspector_scroll_offset(0);
+                return DispatchResult::handled_with(reveal_pending_preview(state, *generation));
             }
             DispatchResult::handled()
         }
@@ -46,6 +47,7 @@ pub(super) fn reduce_table_detail(
                 .mark_table_detail_failed(*generation, message.clone())
             {
                 state.messages.set_error_at(message, now);
+                return DispatchResult::handled_with(reveal_pending_preview(state, *generation));
             }
             DispatchResult::handled()
         }
@@ -82,5 +84,15 @@ pub(super) fn reduce_table_detail(
             }])
         }
         _ => DispatchResult::pass(),
+    }
+}
+
+fn reveal_pending_preview(state: &AppState, generation: u64) -> Vec<Effect> {
+    if state.query.has_pending_preview(generation) {
+        vec![Effect::DispatchActions(vec![
+            Action::RevealPendingPreview { generation },
+        ])]
+    } else {
+        vec![]
     }
 }

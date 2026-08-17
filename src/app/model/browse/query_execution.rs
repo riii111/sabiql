@@ -157,6 +157,20 @@ pub struct DeleteRefreshTarget {
     pub expected_delete_count: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PendingPreview {
+    result: Arc<QueryResult>,
+    generation: u64,
+    target_page: Option<usize>,
+    highlight: bool,
+}
+
+impl PendingPreview {
+    pub(crate) fn into_parts(self) -> (Arc<QueryResult>, Option<usize>, bool) {
+        (self.result, self.target_page, self.highlight)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
     status: QueryStatus,
@@ -166,6 +180,7 @@ pub struct QueryExecution {
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
+    pending_preview: Option<PendingPreview>,
     pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
     run: AsyncRun,
@@ -189,6 +204,7 @@ impl QueryExecution {
 
     pub fn reset_for_context_change(&mut self) {
         self.mark_idle();
+        self.pending_preview = None;
         self.clear_delete_refresh_target();
         self.post_delete_row_selection = PostDeleteRowSelection::Keep;
     }
@@ -223,6 +239,35 @@ impl QueryExecution {
     pub fn clear_current_result(&mut self) {
         self.current_result = None;
         self.result_generation += 1;
+    }
+
+    pub(crate) fn defer_preview(
+        &mut self,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+        highlight: bool,
+    ) {
+        self.pending_preview = Some(PendingPreview {
+            result,
+            generation,
+            target_page,
+            highlight,
+        });
+    }
+
+    pub(crate) fn has_pending_preview(&self, generation: u64) -> bool {
+        self.pending_preview
+            .as_ref()
+            .is_some_and(|pending| pending.generation == generation)
+    }
+
+    pub(crate) fn take_pending_preview(&mut self, generation: u64) -> Option<PendingPreview> {
+        if self.has_pending_preview(generation) {
+            self.pending_preview.take()
+        } else {
+            None
+        }
     }
 
     pub fn push_history(&mut self, result: Arc<QueryResult>) {
@@ -523,12 +568,14 @@ mod tests {
         let run_id = execution.begin_running(Instant::now());
         execution.set_delete_refresh_target(2, Some(3), 1);
         execution.set_post_delete_selection(PostDeleteRowSelection::Select(4));
+        execution.defer_preview(make_result(QuerySource::Preview), 1, Some(0), true);
 
         execution.reset_for_context_change();
 
         assert_eq!(execution.status(), QueryStatus::Idle);
         assert!(!execution.is_current_run(run_id));
         assert!(execution.pending_delete_refresh_target().is_none());
+        assert!(!execution.has_pending_preview(1));
         assert_eq!(
             execution.post_delete_row_selection(),
             PostDeleteRowSelection::Keep
