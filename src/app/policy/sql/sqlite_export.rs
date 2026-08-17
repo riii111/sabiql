@@ -1,4 +1,7 @@
-use crate::domain::{QuerySource, sqlite_sql};
+use crate::domain::{DatabaseType, QuerySource, sqlite_sql};
+use crate::policy::write::sql_risk::{
+    MultiStatementDecision, evaluate_multi_statement_for_database,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SqliteExportPlan {
@@ -16,7 +19,7 @@ pub fn sqlite_export_plan(
     if source == QuerySource::Preview {
         return SqliteExportPlan::CachedResult { row_count };
     }
-    if sqlite_sql::is_sqlite_rerunnable_export_query(query) {
+    if is_sqlite_rerunnable_export_query(query) {
         return SqliteExportPlan::RerunnableQuery {
             query: query.to_string(),
         };
@@ -29,6 +32,18 @@ pub fn sqlite_export_plan(
     SqliteExportPlan::CachedResult { row_count }
 }
 
+pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
+    match evaluate_multi_statement_for_database(DatabaseType::SQLite, query) {
+        MultiStatementDecision::Block { .. } => false,
+        MultiStatementDecision::Allow { statements, .. } => {
+            statements.len() == 1
+                && statements
+                    .iter()
+                    .all(|statement| sqlite_sql::is_sqlite_rerunnable_export_statement(statement))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -39,21 +54,17 @@ mod tests {
 
         #[test]
         fn plain_select_is_rerunnable() {
-            assert!(sqlite_sql::is_sqlite_rerunnable_export_query(
-                "SELECT id FROM users"
-            ));
+            assert!(is_sqlite_rerunnable_export_query("SELECT id FROM users"));
         }
 
         #[test]
         fn multi_select_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
-                "SELECT 1; SELECT 2"
-            ));
+            assert!(!is_sqlite_rerunnable_export_query("SELECT 1; SELECT 2"));
         }
 
         #[test]
         fn read_only_pragma_is_rerunnable() {
-            assert!(sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(is_sqlite_rerunnable_export_query(
                 "PRAGMA table_info(users)"
             ));
         }
@@ -64,51 +75,49 @@ mod tests {
 
         #[test]
         fn insert_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "INSERT INTO users(id) VALUES (1)"
             ));
         }
 
         #[test]
         fn mixed_write_and_select_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "INSERT INTO users(id) VALUES (1); SELECT * FROM users"
             ));
         }
 
         #[test]
         fn with_dml_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload"
             ));
         }
 
         #[test]
         fn ddl_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "CREATE TABLE backup AS SELECT * FROM users"
             ));
         }
 
         #[test]
         fn write_pragma_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "PRAGMA foreign_keys = OFF"
             ));
         }
 
         #[test]
         fn persistent_pragma_write_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
+            assert!(!is_sqlite_rerunnable_export_query(
                 "PRAGMA user_version = 42"
             ));
         }
 
         #[test]
         fn maintenance_statement_is_not_rerunnable() {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(
-                "REINDEX users_name_idx"
-            ));
+            assert!(!is_sqlite_rerunnable_export_query("REINDEX users_name_idx"));
         }
 
         #[rstest]
@@ -116,7 +125,7 @@ mod tests {
         #[case::journal_mode("PRAGMA journal_mode=WAL")]
         #[case::parenthesized_checkpoint("PRAGMA wal_checkpoint(TRUNCATE)")]
         fn dangerous_pragma_variants_are_not_rerunnable(#[case] sql: &str) {
-            assert!(!sqlite_sql::is_sqlite_rerunnable_export_query(sql));
+            assert!(!is_sqlite_rerunnable_export_query(sql));
         }
     }
 
@@ -147,6 +156,18 @@ mod tests {
                 &["id".to_string()],
                 1,
             );
+            assert_eq!(plan, SqliteExportPlan::CachedResult { row_count: 1 });
+        }
+
+        #[test]
+        fn cli_meta_command_keeps_cached_result_export() {
+            let plan = sqlite_export_plan(
+                QuerySource::Adhoc,
+                "SELECT 1\n.read file",
+                &["value".to_string()],
+                1,
+            );
+
             assert_eq!(plan, SqliteExportPlan::CachedResult { row_count: 1 });
         }
 

@@ -50,6 +50,9 @@ mod tests {
         assert!(is_sqlite_rerunnable_export_query(
             "PRAGMA table_info(users)"
         ));
+        assert!(is_sqlite_rerunnable_export_query(
+            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload"
+        ));
     }
 
     #[test]

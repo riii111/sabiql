@@ -1,4 +1,6 @@
-use super::splitter::{first_sqlite_keyword, statement_keyword};
+use super::splitter::{
+    first_sqlite_keyword, split_sqlite_statements, statement_keyword, top_level_keywords,
+};
 
 pub const SQLITE_EXPLAIN_QUERY_PLAN_PREFIX: &str = "EXPLAIN QUERY PLAN";
 
@@ -25,10 +27,23 @@ pub fn is_sqlite_explain_query_plan_sql(query: &str) -> bool {
 }
 
 fn supports_sqlite_query_plan(statement: &str) -> bool {
+    if split_sqlite_statements(statement).statements().len() != 1 {
+        return false;
+    }
+    let effective_keyword = statement_keyword(statement);
+    if matches!(effective_keyword.as_deref(), Some("SELECT" | "SHOW"))
+        && top_level_keywords(statement)
+            .iter()
+            .skip(1)
+            .any(|keyword| keyword == "INTO")
+    {
+        return false;
+    }
     matches!(
-        statement_keyword(statement).as_deref(),
-        Some("SELECT" | "SHOW" | "INSERT" | "UPDATE" | "DELETE" | "REPLACE")
-    )
+        effective_keyword.as_deref(),
+        Some("SELECT" | "SHOW" | "INSERT" | "UPDATE" | "DELETE")
+    ) || (effective_keyword.as_deref() == Some("REPLACE")
+        && first_sqlite_keyword(statement).as_deref() == Some("REPLACE"))
 }
 
 pub fn build_sqlite_explain_query_plan_sql(query: &str) -> Option<String> {
@@ -85,6 +100,10 @@ mod tests {
             build_sqlite_explain_query_plan_sql("EXPLAIN QUERY PLANSELECT 1"),
             None
         );
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql("SELECT * INTO backup FROM users"),
+            None
+        );
     }
 
     #[test]
@@ -100,6 +119,12 @@ mod tests {
             Some(
                 "EXPLAIN QUERY PLAN WITH \"rows\" AS (SELECT 1) SELECT * FROM \"rows\"".to_string()
             )
+        );
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql(
+                "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload"
+            ),
+            None
         );
         assert_eq!(
             build_sqlite_explain_query_plan_sql("-- filter\nSELECT 1"),

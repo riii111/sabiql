@@ -92,7 +92,8 @@ pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassi
     if has_data_modifying_cte(statement) {
         return SqliteStatementClassification::TransactionalWrite;
     }
-    if first_sqlite_keyword(statement).as_deref() == Some("EXPLAIN") {
+    let first_keyword = first_sqlite_keyword(statement);
+    if first_keyword.as_deref() == Some("EXPLAIN") {
         return match explain_analyze_statement_keyword(statement).as_deref() {
             Some("INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP" | "TRUNCATE") => {
                 SqliteStatementClassification::TransactionalWrite
@@ -103,9 +104,12 @@ pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassi
     match statement_keyword(statement).as_deref() {
         Some("ATTACH" | "DETACH") => SqliteStatementClassification::SessionSideEffect,
         Some(
-            "ANALYZE" | "REINDEX" | "REPLACE" | "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER"
-            | "DROP" | "TRUNCATE",
+            "ANALYZE" | "REINDEX" | "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP"
+            | "TRUNCATE",
         ) => SqliteStatementClassification::TransactionalWrite,
+        Some("REPLACE") if first_keyword.as_deref() == Some("REPLACE") => {
+            SqliteStatementClassification::TransactionalWrite
+        }
         _ => SqliteStatementClassification::ReadOnly,
     }
 }
@@ -311,6 +315,12 @@ mod tests {
         );
         assert_eq!(
             sqlite_statement_classification("EXPLAIN QUERY PLAN UPDATE users SET name = 'a'"),
+            SqliteStatementClassification::ReadOnly
+        );
+        assert_eq!(
+            sqlite_statement_classification(
+                "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload"
+            ),
             SqliteStatementClassification::ReadOnly
         );
         assert_eq!(
