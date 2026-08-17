@@ -8,7 +8,7 @@ use crate::app::ports::outbound::{
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table,
-    TableSignatureSnapshot, WriteExecutionResult,
+    TableSignatureSnapshot, WriteExecutionResult, mysql_sql::MySqlStatement,
 };
 use async_trait::async_trait;
 
@@ -188,6 +188,32 @@ impl QueryExecutor for DbAdapterRegistry {
                 QueryExecutor::execute_adhoc(self.sqlite.as_ref(), dsn, query, access_mode).await
             }
             DatabaseType::MySQL => self.mysql.execute_adhoc(dsn, query, access_mode).await,
+        }
+    }
+
+    async fn execute_adhoc_with_classified_mysql_statements(
+        &self,
+        dsn: &str,
+        query: &str,
+        statements: &[MySqlStatement],
+        access_mode: AccessMode,
+    ) -> Result<QueryResult, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::MySQL => {
+                self.mysql
+                    .execute_adhoc_with_classified_mysql_statements(
+                        dsn,
+                        query,
+                        statements,
+                        access_mode,
+                    )
+                    .await
+            }
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                Err(DbOperationError::UnsupportedOperation(
+                    "classified MySQL statements require a MySQL connection".to_string(),
+                ))
+            }
         }
     }
 

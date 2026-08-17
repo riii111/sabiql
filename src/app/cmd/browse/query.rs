@@ -191,6 +191,7 @@ pub async fn run(
             dsn,
             run_id,
             query,
+            classified_mysql_statements,
             access_mode,
         } => {
             let executor = Arc::clone(query_executor);
@@ -202,7 +203,20 @@ pub async fn run(
             let query_for_history = query.clone();
 
             query_tasks.spawn(async move {
-                match executor.execute_adhoc(&dsn, &query, access_mode).await {
+                let result = match classified_mysql_statements.as_deref() {
+                    Some(statements) => {
+                        executor
+                            .execute_adhoc_with_classified_mysql_statements(
+                                &dsn,
+                                &query,
+                                statements,
+                                access_mode,
+                            )
+                            .await
+                    }
+                    None => executor.execute_adhoc(&dsn, &query, access_mode).await,
+                };
+                match result {
                     Ok(result) => {
                         if let Some(scope) = &history_scope {
                             let rows = result
@@ -849,6 +863,7 @@ mod tests {
                     dsn: "dsn://test".to_string(),
                     run_id: 1,
                     query: "SELECT 1".to_string(),
+                    classified_mysql_statements: None,
                     access_mode: AccessMode::ReadOnly,
                 },
                 executor,
@@ -856,6 +871,38 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+        }
+
+        #[tokio::test]
+        async fn execute_adhoc_forwards_classified_mysql_statements() {
+            let statements =
+                crate::domain::mysql_sql::classify_mysql_multi_statement("SELECT 1", Some("app"))
+                    .expect("classification should succeed");
+            let mut executor = MockQueryExecutor::new();
+            executor
+                .expect_execute_adhoc_with_classified_mysql_statements()
+                .once()
+                .withf(|_, query, statements, access_mode| {
+                    query == "SELECT 1"
+                        && statements.len() == 1
+                        && statements[0].sql == "SELECT 1"
+                        && *access_mode == AccessMode::ReadOnly
+                })
+                .returning(|_, _, _, _| Ok(test_fixtures::sample_query_result()));
+
+            let action = run_effect(
+                Effect::ExecuteAdhoc {
+                    dsn: "mysql://test/app".to_string(),
+                    run_id: 3,
+                    query: "SELECT 1".to_string(),
+                    classified_mysql_statements: Some(statements),
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(action, Action::QueryCompleted { run_id: 3, .. }));
         }
 
         #[tokio::test]

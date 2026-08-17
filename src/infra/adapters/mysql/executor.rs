@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::domain::mysql_sql::MySqlStatement;
 use crate::domain::{
     QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
 };
@@ -11,6 +12,7 @@ use super::adapter::MySqlAdapter;
 use super::cli::{
     export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
     validate_mysql_export_query, validate_mysql_multi_query,
+    validate_mysql_statements_for_execution,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
@@ -115,6 +117,74 @@ pub(super) mod test_support {
     }
 }
 
+async fn execute_adhoc_with_statements(
+    dsn: &str,
+    query: &str,
+    access_mode: AccessMode,
+    classified_statements: Option<&[MySqlStatement]>,
+) -> Result<QueryResult, DbOperationError> {
+    let target = parse_and_validate_mysql_dsn(dsn)?;
+
+    if mysql_tree_explain_query_kind(query).is_some() {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "infra measures mysql execution time at the I/O boundary"
+        )]
+        let start = Instant::now();
+        let option_file = MySqlOptionFile::create(&target)?;
+        let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
+        drop(option_file);
+        let result_set = result?;
+        return Ok(QueryResult::success_with_values(
+            query.to_string(),
+            result_set.columns,
+            result_set.values,
+            start.elapsed().as_millis() as u64,
+            QuerySource::Adhoc,
+        ));
+    }
+
+    let statements = match classified_statements {
+        Some(statements) => validate_mysql_statements_for_execution(
+            statements,
+            target.database.as_deref(),
+            access_mode,
+        )?,
+        None => validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?,
+    };
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "infra measures mysql execution time at the I/O boundary"
+    )]
+    let start = Instant::now();
+    let option_file = MySqlOptionFile::create(&target)?;
+    let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
+    drop(option_file);
+    let execution = result?;
+    let elapsed = start.elapsed().as_millis() as u64;
+    let mut result = match execution.result_set {
+        Some(result_set) => QueryResult::success_with_values(
+            query.to_string(),
+            result_set.columns,
+            result_set.values,
+            elapsed,
+            QuerySource::Adhoc,
+        ),
+        None => QueryResult::success(
+            query.to_string(),
+            Vec::new(),
+            Vec::new(),
+            elapsed,
+            QuerySource::Adhoc,
+        ),
+    };
+    if let Some(tag) = execution.command_tag {
+        result = result.with_command_tag(tag);
+    }
+    Ok(result.with_refresh_scope(execution.refresh_scope))
+}
+
 #[async_trait]
 impl QueryExecutor for MySqlAdapter {
     async fn execute_preview(
@@ -171,62 +241,18 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        let target = parse_and_validate_mysql_dsn(dsn)?;
-
-        if mysql_tree_explain_query_kind(query).is_some() {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "infra measures mysql execution time at the I/O boundary"
-            )]
-            let start = Instant::now();
-            let option_file = MySqlOptionFile::create(&target)?;
-            let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
-            drop(option_file);
-            let result_set = result?;
-            return Ok(QueryResult::success_with_values(
-                query.to_string(),
-                result_set.columns,
-                result_set.values,
-                start.elapsed().as_millis() as u64,
-                QuerySource::Adhoc,
-            ));
-        }
-
-        let statements =
-            validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
-
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures mysql execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
-        let option_file = MySqlOptionFile::create(&target)?;
-        let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
-        drop(option_file);
-        let execution = result?;
-        let elapsed = start.elapsed().as_millis() as u64;
-        let mut result = match execution.result_set {
-            Some(result_set) => QueryResult::success_with_values(
-                query.to_string(),
-                result_set.columns,
-                result_set.values,
-                elapsed,
-                QuerySource::Adhoc,
-            ),
-            None => QueryResult::success(
-                query.to_string(),
-                Vec::new(),
-                Vec::new(),
-                elapsed,
-                QuerySource::Adhoc,
-            ),
-        };
-        if let Some(tag) = execution.command_tag {
-            result = result.with_command_tag(tag);
-        }
-        Ok(result.with_refresh_scope(execution.refresh_scope))
+        execute_adhoc_with_statements(dsn, query, access_mode, None).await
     }
 
+    async fn execute_adhoc_with_classified_mysql_statements(
+        &self,
+        dsn: &str,
+        query: &str,
+        statements: &[MySqlStatement],
+        access_mode: AccessMode,
+    ) -> Result<QueryResult, DbOperationError> {
+        execute_adhoc_with_statements(dsn, query, access_mode, Some(statements)).await
+    }
     async fn execute_write(
         &self,
         dsn: &str,

@@ -6,7 +6,7 @@ use crate::domain::{
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
         has_mysql_read_only_side_effect, mysql_export_plan, mysql_statement_is_data_modifying,
-        mysql_statement_is_persistent_schema_change,
+        mysql_statement_is_persistent_schema_change, validate_mysql_statements,
     },
 };
 
@@ -43,12 +43,22 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
 ) -> Result<Vec<MySqlStatement>, DbOperationError> {
     let statements = classify_mysql_multi_statement(query, selected_database)
         .map_err(DbOperationError::UnsupportedOperation)?;
+    validate_mysql_statements_for_execution(&statements, selected_database, access_mode)
+}
+
+pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+    access_mode: AccessMode,
+) -> Result<Vec<MySqlStatement>, DbOperationError> {
+    validate_mysql_statements(statements, selected_database)
+        .map_err(DbOperationError::UnsupportedOperation)?;
     if access_mode.is_read_only() && !statements.iter().all(mysql_statement_is_read_only_allowed) {
         return Err(DbOperationError::PermissionDenied(
             "read-only mode blocks MySQL write statements".to_string(),
         ));
     }
-    Ok(statements)
+    Ok(statements.to_vec())
 }
 
 fn mysql_statement_is_read_only_allowed(statement: &MySqlStatement) -> bool {
@@ -389,6 +399,29 @@ mod tests {
         assert!(matches!(
             validate_mysql_export_query("SELECT GET_LOCK('sabiql', 0)", Some("app")),
             Err(DbOperationError::PermissionDenied(_))
+        ));
+    }
+
+    #[test]
+    fn preclassified_statements_keep_execution_time_guards() {
+        let statements =
+            classify_mysql_multi_statement("SELECT GET_LOCK('sabiql', 0)", Some("app"))
+                .expect("classification should succeed");
+        assert!(matches!(
+            validate_mysql_statements_for_execution(&statements, Some("app"), AccessMode::ReadOnly,),
+            Err(DbOperationError::PermissionDenied(_))
+        ));
+
+        let statements =
+            classify_mysql_multi_statement("UPDATE other.users SET value = 1", Some("other"))
+                .expect("classification should succeed for the original selected database");
+        assert!(matches!(
+            validate_mysql_statements_for_execution(
+                &statements,
+                Some("app"),
+                AccessMode::ReadWrite,
+            ),
+            Err(DbOperationError::UnsupportedOperation(_))
         ));
     }
 

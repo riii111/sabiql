@@ -25,7 +25,9 @@ pub fn dispatch_sql_modal(state: &mut AppState, action: &Action, now: Instant) -
 mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::domain::{
+        ConnectionId, DatabaseMetadata, DatabaseType, TableSummary, mysql_sql::MySqlStatementKind,
+    };
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -286,6 +288,30 @@ mod tests {
                     target_name,
                     ..
                 } if target_name == "users"
+            ));
+
+            for c in "users".chars() {
+                reduce_sql_modal(
+                    &mut state,
+                    &Action::TextInput {
+                        target: InputTarget::SqlModalHighRisk,
+                        ch: c,
+                    },
+                    Instant::now(),
+                );
+            }
+            let effects =
+                reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now())
+                    .into_effects()
+                    .expect("confirmation should execute");
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc {
+                    classified_mysql_statements: Some(statements),
+                    ..
+                }] if matches!(statements.as_slice(), [statement]
+                    if statement.kind == MySqlStatementKind::AlterTable
+                        && statement.sql == "ALTER TABLE users DROP COLUMN obsolete")
             ));
         }
 
@@ -874,6 +900,26 @@ mod tests {
             assert!(matches!(
                 effects.as_slice(),
                 [Effect::ExecuteAdhoc { run_id: 1, .. }]
+            ));
+        }
+
+        #[test]
+        fn submit_mysql_select_preserves_classified_statements_in_effect() {
+            let mut state = modal_state_with_query("SELECT 1");
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecuteAdhoc {
+                    classified_mysql_statements: Some(statements),
+                    ..
+                }] if matches!(statements.as_slice(), [statement]
+                    if statement.kind == MySqlStatementKind::Select
+                        && statement.sql == "SELECT 1")
             ));
         }
 

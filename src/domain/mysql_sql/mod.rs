@@ -156,6 +156,25 @@ pub fn classify_mysql_multi_statement(
     for statement_sql in statements {
         let statement =
             classify_mysql_statement(&statement_sql).map_err(|error| error.to_string())?;
+        classified.push(statement);
+    }
+
+    validate_mysql_statements(&classified, selected_database)?;
+    Ok(classified)
+}
+
+pub fn validate_mysql_statements(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+) -> Result<(), String> {
+    if statements.is_empty() {
+        return Err("Empty MySQL input".to_string());
+    }
+
+    for statement in statements {
+        if statement_contains_unsupported_mysql_control(&statement.sql) {
+            return Err("unsupported MySQL session or table-lock statement".to_string());
+        }
         if matches!(statement.kind, MySqlStatementKind::Replace) {
             return Err("MySQL REPLACE execution is not supported".to_string());
         }
@@ -168,15 +187,13 @@ pub fn classify_mysql_multi_statement(
         }
         if (mysql_statement_is_schema_modifying(&statement.kind)
             || mysql_statement_is_data_modifying(&statement.kind))
-            && !target_is_selected_database(&statement, selected_database)
+            && !target_is_selected_database(statement, selected_database)
         {
             return Err("MySQL target must be in the selected database".to_string());
         }
-        classified.push(statement);
     }
 
-    validate_mysql_submission_state(&classified, selected_database)?;
-    Ok(classified)
+    validate_mysql_submission_state(statements, selected_database)
 }
 
 fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {

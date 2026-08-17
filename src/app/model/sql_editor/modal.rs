@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use crate::domain::CommandTag;
+use crate::domain::{CommandTag, mysql_sql::MySqlStatement};
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -87,6 +87,7 @@ pub struct SqlModalContext {
     pub(crate) last_adhoc_error: Option<String>,
     pub(crate) completion: CompletionState,
     pub(crate) completion_debounce: Option<Instant>,
+    pending_mysql_statements: Option<Vec<MySqlStatement>>,
     prefetch_queue: VecDeque<String>,
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
@@ -237,27 +238,36 @@ impl SqlModalContext {
 
     pub fn begin_adhoc_running(&mut self) {
         self.status = SqlModalStatus::Running;
+        self.pending_mysql_statements = None;
         self.dismiss_completion();
     }
 
     pub fn finish_adhoc_error(&mut self, error: String) {
         self.status = SqlModalStatus::Error;
+        self.pending_mysql_statements = None;
         self.last_adhoc_error = Some(error);
         self.last_adhoc_success = None;
     }
 
     pub fn finish_adhoc_success(&mut self, snapshot: AdhocSuccessSnapshot) {
         self.status = SqlModalStatus::Success;
+        self.pending_mysql_statements = None;
         self.last_adhoc_success = Some(snapshot);
         self.last_adhoc_error = None;
     }
 
-    pub fn begin_confirming_high(&mut self, decision: AdhocRiskDecision, target_name: String) {
+    pub fn begin_confirming_high(
+        &mut self,
+        decision: AdhocRiskDecision,
+        target_name: String,
+        pending_mysql_statements: Option<Vec<MySqlStatement>>,
+    ) {
         self.status = SqlModalStatus::ConfirmingHigh {
             decision,
             input: TextInputState::default(),
             target_name,
         };
+        self.pending_mysql_statements = pending_mysql_statements;
         self.dismiss_completion();
     }
 
@@ -267,17 +277,35 @@ impl SqlModalContext {
             input: TextInputState::default(),
             target_name,
         };
+        self.pending_mysql_statements = None;
         self.active_tab = SqlModalTab::Plan;
         self.dismiss_completion();
     }
 
     pub fn begin_confirming_risk(&mut self, reason: AcknowledgeReason, label: String) {
         self.status = SqlModalStatus::ConfirmingRisk { reason, label };
+        self.pending_mysql_statements = None;
         self.dismiss_completion();
+    }
+
+    pub fn begin_confirming_mysql_risk(
+        &mut self,
+        reason: AcknowledgeReason,
+        label: String,
+        pending_mysql_statements: Vec<MySqlStatement>,
+    ) {
+        self.status = SqlModalStatus::ConfirmingRisk { reason, label };
+        self.pending_mysql_statements = Some(pending_mysql_statements);
+        self.dismiss_completion();
+    }
+
+    pub fn take_pending_mysql_statements(&mut self) -> Option<Vec<MySqlStatement>> {
+        self.pending_mysql_statements.take()
     }
 
     pub fn begin_confirming_analyze_risk(&mut self, query: String, reason: AcknowledgeReason) {
         self.status = SqlModalStatus::ConfirmingAnalyzeRisk { query, reason };
+        self.pending_mysql_statements = None;
         self.active_tab = SqlModalTab::Plan;
         self.dismiss_completion();
     }
@@ -291,6 +319,7 @@ impl SqlModalContext {
                 | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
         ) {
             self.status = SqlModalStatus::Normal;
+            self.pending_mysql_statements = None;
         }
     }
 
@@ -316,6 +345,7 @@ impl SqlModalContext {
 
     pub fn open_sql_tab(&mut self) {
         self.status = SqlModalStatus::Normal;
+        self.pending_mysql_statements = None;
         self.active_tab = SqlModalTab::Sql;
         self.reset_completion();
     }
@@ -326,10 +356,12 @@ impl SqlModalContext {
 
     pub fn enter_editing(&mut self) {
         self.status = SqlModalStatus::Editing;
+        self.pending_mysql_statements = None;
     }
 
     pub fn enter_normal(&mut self) {
         self.status = SqlModalStatus::Normal;
+        self.pending_mysql_statements = None;
         self.dismiss_completion();
     }
 
@@ -341,6 +373,7 @@ impl SqlModalContext {
     pub fn load_query_for_editing(&mut self, query: String) {
         self.editor.set_content(query);
         self.status = SqlModalStatus::Editing;
+        self.pending_mysql_statements = None;
         self.active_tab = SqlModalTab::Sql;
         self.reset_completion();
     }
@@ -616,6 +649,7 @@ mod tests {
                     label: "DROP",
                 },
                 "users".to_string(),
+                None,
             );
             ctx.cancel_confirmation();
             assert_eq!(ctx.status, SqlModalStatus::Normal);
