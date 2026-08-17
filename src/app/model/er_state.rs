@@ -246,14 +246,6 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
-    pub fn scoped_fallback_tables(&self, total_table_count: usize) -> Option<Vec<String>> {
-        if !self.target_tables.is_empty() && self.target_tables.len() < total_table_count {
-            Some(self.target_tables.clone())
-        } else {
-            None
-        }
-    }
-
     fn clear_table_tracking(&mut self) {
         self.pending_tables.clear();
         self.fetching_tables.clear();

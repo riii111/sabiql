@@ -205,7 +205,7 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
-    use crate::update::action::{ConnectionSaveError, ConnectionTarget};
+    use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
     use crate::update::action::{InputTarget, SelectMotion};
     use crate::update::test_fixtures;
     fn create_test_state() -> AppState {
@@ -2997,6 +2997,44 @@ mod tests {
                 state.er_preparation.target_tables(),
                 vec!["public.users".to_string()]
             );
+        }
+
+        #[test]
+        fn failed_refresh_prefetches_source_and_selected_tables() {
+            let mut state = state_with_metadata();
+            state
+                .er_preparation
+                .set_targets(vec!["public.users".to_string()]);
+            let run_id = state.er_preparation.start_waiting_run();
+
+            let effects = reduce(
+                &mut state,
+                Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::DispatchActions(actions)
+                    if actions.iter().any(|action| matches!(action, Action::StartPrefetchAll))
+            )));
+
+            reduce(
+                &mut state,
+                Action::StartPrefetchAll,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.posts"));
+            assert!(state.er_preparation.fk_expanded());
         }
 
         #[test]
