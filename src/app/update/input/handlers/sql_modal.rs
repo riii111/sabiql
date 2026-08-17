@@ -6,8 +6,8 @@ use crate::update::action::{
     Action, InputTarget, ModalKind, ScrollAmount, ScrollDirection, ScrollTarget,
 };
 use crate::update::input::keybindings::{
-    Key, KeyCombo, Modifiers, sql_modal_compare_explain, sql_modal_normal_query_history,
-    sql_modal_plan, sql_modal_plan_explain,
+    Key, KeyCombo, Modifiers, sql_modal_compare, sql_modal_compare_explain,
+    sql_modal_normal_query_history, sql_modal_plan, sql_modal_plan_explain,
 };
 use crate::update::input::vim::{
     SqlModalVimContext, VimSurfaceContext, action_for_input, action_for_key,
@@ -82,7 +82,11 @@ fn handle_sql_modal_keys_internal(
             SqlModalTab::Compare => sql_modal_compare_explain(keymap_preset),
             SqlModalTab::Sql | SqlModalTab::Plan => sql_modal_plan_explain(keymap_preset),
         };
-        let analyze_binding_matches = sql_modal_plan::ANALYZE.combos.contains(&combo);
+        let analyze_binding = match active_tab {
+            SqlModalTab::Compare => &sql_modal_compare::ANALYZE,
+            SqlModalTab::Sql | SqlModalTab::Plan => &sql_modal_plan::ANALYZE,
+        };
+        let analyze_binding_matches = analyze_binding.combos.contains(&combo);
         if explain_binding.combos.contains(&combo)
             && feature_policy.is_enabled(explain_binding.feature_requirement())
         {
