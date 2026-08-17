@@ -27,6 +27,7 @@ enum ConnectionSaveState {
     Idle,
     Active(u64),
     Claimed(u64),
+    Saving(u64),
 }
 
 impl ConnectionSaveGuard {
@@ -48,14 +49,20 @@ impl ConnectionSaveGuard {
         true
     }
 
-    pub(crate) fn save_if_claimed<T>(&self, run_id: u64, save: impl FnOnce() -> T) -> Option<T> {
+    pub(crate) fn start_save(&self, run_id: u64) -> bool {
         let mut state = self.state.lock().expect("connection save guard poisoned");
         if *state != ConnectionSaveState::Claimed(run_id) {
-            return None;
+            return false;
         }
-        let result = save();
-        *state = ConnectionSaveState::Idle;
-        Some(result)
+        *state = ConnectionSaveState::Saving(run_id);
+        true
+    }
+
+    pub(crate) fn finish_save(&self, run_id: u64) {
+        let mut state = self.state.lock().expect("connection save guard poisoned");
+        if *state == ConnectionSaveState::Saving(run_id) {
+            *state = ConnectionSaveState::Idle;
+        }
     }
 }
 

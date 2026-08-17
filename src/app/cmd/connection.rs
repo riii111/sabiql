@@ -24,27 +24,17 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
-fn claim_save_run(run_guard: &ConnectionSaveGuard, run_id: u64) -> bool {
-    run_guard.claim(run_id)
-}
-
-fn save_if_claimed<T>(
-    run_guard: &ConnectionSaveGuard,
-    run_id: u64,
-    save: impl FnOnce() -> T,
-) -> Option<T> {
-    run_guard.save_if_claimed(run_id, save)
-}
-
 fn claim_and_save<T>(
     run_guard: &ConnectionSaveGuard,
     run_id: u64,
     save: impl FnOnce() -> T,
 ) -> Option<T> {
-    if !claim_save_run(run_guard, run_id) {
+    if !run_guard.claim(run_id) || !run_guard.start_save(run_id) {
         return None;
     }
-    save_if_claimed(run_guard, run_id, save)
+    let result = save();
+    run_guard.finish_save(run_id);
+    Some(result)
 }
 
 pub(crate) async fn run(
@@ -456,7 +446,6 @@ mod tests {
 
     mod save_connection {
         use super::*;
-        use crate::cmd::connection::{claim_save_run, save_if_claimed};
         use mockall::predicate::eq;
         use std::fs;
         use tempfile::tempdir;
@@ -687,13 +676,25 @@ mod tests {
         #[test]
         fn cancel_after_claim_prevents_save_from_starting() {
             let run_guard = active_run_guard(1);
-            let mut save_started = false;
 
-            assert!(claim_save_run(&run_guard, 1));
+            assert!(run_guard.claim(1));
 
             run_guard.cancel();
-            assert!(save_if_claimed(&run_guard, 1, || save_started = true).is_none());
-            assert!(!save_started);
+            assert!(!run_guard.start_save(1));
+        }
+
+        #[test]
+        fn finishing_cancelled_save_does_not_clear_new_run() {
+            let run_guard = active_run_guard(1);
+
+            assert!(run_guard.claim(1));
+            assert!(run_guard.start_save(1));
+
+            run_guard.cancel();
+            run_guard.start(2);
+            run_guard.finish_save(1);
+
+            assert!(run_guard.claim(2));
         }
 
         #[tokio::test]
