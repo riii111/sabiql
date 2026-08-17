@@ -372,6 +372,7 @@ mod tests {
     use super::*;
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
+    use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -417,6 +418,27 @@ mod tests {
         }
     }
 
+    async fn run_effects_and_clear_dirty<T: Renderer>(
+        runner: &EffectRunner,
+        effects: Vec<Effect>,
+        renderer: &mut T,
+        state: &mut AppState,
+        completion_engine: &std::cell::RefCell<CompletionEngine>,
+    ) -> Vec<Action> {
+        let pending = runner
+            .run(
+                effects,
+                renderer,
+                state,
+                completion_engine,
+                &AppServices::stub(),
+            )
+            .await
+            .unwrap();
+        state.clear_dirty();
+        pending
+    }
+
     async fn render_frames_after_inspector_terminal(inspector_failed: bool) -> Vec<RenderFrame> {
         let (mut state, generation, detail_run_id) =
             state_with_selected_table(DatabaseType::PostgreSQL);
@@ -440,17 +462,15 @@ mod tests {
         );
         append_runtime_render(&state, &mut query_effects);
         assert!(
-            runner
-                .run(
-                    query_effects,
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap()
-                .is_empty()
+            run_effects_and_clear_dirty(
+                &runner,
+                query_effects,
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+            )
+            .await
+            .is_empty()
         );
         assert_eq!(
             renderer.frames,
@@ -483,16 +503,14 @@ mod tests {
             &AppServices::stub(),
         );
         append_runtime_render(&state, &mut effects);
-        let pending = runner
-            .run(
-                effects,
-                &mut renderer,
-                &mut state,
-                &completion_engine,
-                &AppServices::stub(),
-            )
-            .await
-            .unwrap();
+        let pending = run_effects_and_clear_dirty(
+            &runner,
+            effects,
+            &mut renderer,
+            &mut state,
+            &completion_engine,
+        )
+        .await;
         assert_eq!(
             renderer.frames,
             [RenderFrame {
@@ -512,17 +530,15 @@ mod tests {
         }
         append_runtime_render(&state, &mut next_effects);
         assert!(
-            runner
-                .run(
-                    next_effects,
-                    &mut renderer,
-                    &mut state,
-                    &completion_engine,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap()
-                .is_empty()
+            run_effects_and_clear_dirty(
+                &runner,
+                next_effects,
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+            )
+            .await
+            .is_empty()
         );
 
         renderer.frames
