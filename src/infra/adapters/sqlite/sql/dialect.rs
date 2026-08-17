@@ -1,6 +1,5 @@
-use crate::app::policy::sql::sqlite_explain::build_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::SqlDialect;
-use crate::domain::{DatabaseType, QueryValue};
+use crate::domain::{DatabaseType, QueryValue, sqlite_sql::build_sqlite_explain_query_plan_sql};
 
 use super::super::SqliteAdapter;
 use super::literal::{equality_predicate, quote_ident, rows_predicate, sql_literal};

@@ -3,10 +3,10 @@ use std::time::Instant;
 use async_trait::async_trait;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::policy::sql::sqlite_explain::is_sqlite_explain_query_plan_sql;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
     CommandTag, QueryResult, QuerySource, TableKind, TableKindInfo, WriteExecutionResult,
+    sqlite_sql::is_sqlite_explain_query_plan_sql,
 };
 
 use super::sqlite3::parser::{

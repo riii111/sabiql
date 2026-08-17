@@ -6,11 +6,11 @@ use crate::domain::{
         classify_mysql_statement, has_mysql_read_only_side_effect, split_mysql_statements,
         statement_contains_unsupported_mysql_control,
     },
-};
-use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
-use crate::policy::sql::sqlite_transaction::{
-    SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
-    sqlite_statement_classification, sqlite_transaction_policy_for_classifications,
+    sqlite_sql::{
+        SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
+        split_sqlite_statements, sqlite_statement_classification,
+        sqlite_transaction_policy_for_classifications,
+    },
 };
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
