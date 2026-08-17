@@ -2210,7 +2210,6 @@ mod query_execution {
         .await;
     }
 
-    #[cfg(unix)]
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior() {

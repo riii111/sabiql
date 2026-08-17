@@ -748,7 +748,7 @@ done
     }
 
     #[test]
-    fn numeric_literal_validation_rejects_partial_values() {
+    fn accepts_valid_decimal_and_rejects_incomplete_numeric_literals() {
         assert!(is_sql_numeric_literal("1."));
         assert!(is_sql_numeric_literal(".5"));
         assert!(is_sql_numeric_literal("-1.2e-3"));

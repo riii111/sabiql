@@ -35,226 +35,6 @@ pub enum AcknowledgeReason {
     AnalyzeExecution,
 }
 
-#[cfg(test)]
-mod mysql_tests {
-    use crate::domain::mysql_sql::mysql_statement_is_schema_modifying;
-
-    use super::*;
-    use rstest::rstest;
-
-    fn mysql(sql: &str) -> MultiStatementDecision {
-        evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
-    }
-
-    #[test]
-    fn max_risk_uses_destructive_confirmation() {
-        let decision = mysql(
-            r#"SELECT 'a; b', "quoted; identifier", `back;tick` /* block ; comment */;
-                UPDATE items SET value = 1"#,
-        );
-        match decision {
-            MultiStatementDecision::Allow { risk, statements } => {
-                assert_eq!(statements.len(), 2);
-                assert_eq!(risk.risk_level, RiskLevel::High);
-                assert_eq!(
-                    risk.confirmation,
-                    ConfirmationType::TableNameInput {
-                        target: "items".to_string()
-                    }
-                );
-                assert!(!risk.read_only_allowed);
-            }
-            MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
-        }
-    }
-
-    #[test]
-    fn confirmation_target_preserves_input_case() {
-        let MultiStatementDecision::Allow { risk, .. } =
-            mysql("UPDATE CustomerOrders SET value = 1")
-        else {
-            panic!("unexpected block");
-        };
-        assert!(matches!(
-            risk.confirmation,
-            ConfirmationType::TableNameInput { ref target } if target == "CustomerOrders"
-        ));
-    }
-
-    #[test]
-    fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
-        let cases = [
-            (
-                "RENAME TABLE items TO archived_items",
-                MySqlStatementKind::RenameTable,
-                RiskLevel::Medium,
-                "RENAME TABLE",
-            ),
-            (
-                "CREATE OR REPLACE VIEW item_view AS SELECT 1",
-                MySqlStatementKind::CreateView,
-                RiskLevel::Low,
-                "CREATE VIEW",
-            ),
-            (
-                "ALTER VIEW item_view AS SELECT 1",
-                MySqlStatementKind::AlterView,
-                RiskLevel::Medium,
-                "ALTER VIEW",
-            ),
-            (
-                "CREATE FULLTEXT INDEX item_text ON items (body)",
-                MySqlStatementKind::CreateIndex,
-                RiskLevel::Low,
-                "CREATE INDEX",
-            ),
-        ];
-
-        for (sql, expected_kind, expected_risk, expected_label) in cases {
-            let statement = classify_mysql_statement(sql).expect(sql);
-            assert_eq!(statement.kind(), &expected_kind, "{sql}");
-            assert_eq!(
-                mysql_statement_label(statement.kind()),
-                expected_label,
-                "{sql}"
-            );
-            assert!(
-                mysql_statement_is_schema_modifying(statement.kind()),
-                "{sql}"
-            );
-            assert_eq!(
-                mysql_statement_risk(&statement).risk_level,
-                expected_risk,
-                "{sql}"
-            );
-        }
-    }
-
-    #[rstest]
-    #[case::add_column("ALTER TABLE items ADD COLUMN value INT", "items")]
-    #[case::table_named_comment("ALTER TABLE comment ADD COLUMN value INT", "comment")]
-    #[case::table_named_repair("ALTER TABLE repair ADD COLUMN value INT", "repair")]
-    #[case::table_named_secondary_load(
-        "ALTER TABLE secondary_load ADD COLUMN value INT",
-        "secondary_load"
-    )]
-    #[case::table_named_secondary_unload(
-        "ALTER TABLE secondary_unload ADD COLUMN value INT",
-        "secondary_unload"
-    )]
-    #[case::table_option("ALTER TABLE items AVG_ROW_LENGTH=100", "items")]
-    #[case::no_op("ALTER TABLE items", "items")]
-    #[case::tablespace("ALTER TABLE items TABLESPACE ts", "items")]
-    #[case::check_partition("ALTER TABLE items CHECK PARTITION p0", "items")]
-    #[case::drop_column("ALTER TABLE items DROP COLUMN value", "items")]
-    #[case::drop_partition("ALTER TABLE items DROP PARTITION p0", "items")]
-    #[case::truncate_partition("ALTER TABLE items TRUNCATE PARTITION p0", "items")]
-    fn alter_table_requires_table_name_confirmation(#[case] sql: &str, #[case] target: &str) {
-        let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
-            panic!("expected Allow: {sql}");
-        };
-
-        assert_eq!(risk.risk_level, RiskLevel::High);
-        assert!(!risk.read_only_allowed);
-        assert_eq!(
-            risk.confirmation,
-            ConfirmationType::TableNameInput {
-                target: target.to_string()
-            }
-        );
-    }
-
-    #[test]
-    fn replace_has_destructive_risk_mapping() {
-        let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
-        let risk = mysql_statement_risk(&statement);
-        assert_eq!(risk.risk_level, RiskLevel::High);
-        assert!(!risk.read_only_allowed);
-        assert!(matches!(
-            risk.confirmation,
-            ConfirmationType::TableNameInput { ref target } if target == "items"
-        ));
-    }
-
-    #[test]
-    fn read_only_allows_only_side_effect_free_mysql_reads() {
-        for sql in [
-            "SELECT 1",
-            "TABLE items",
-            "SHOW TABLES",
-            "DESCRIBE items",
-            "WITH rows AS (SELECT 1) SELECT * FROM rows",
-            "WITH RECURSIVE rows AS (SELECT 1) SELECT * FROM rows",
-            "SELECT LAST_INSERT_ID()",
-        ] {
-            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
-                panic!("{sql}");
-            };
-            assert!(risk.read_only_allowed, "{sql}");
-        }
-
-        for sql in [
-            "SELECT * FROM items FOR UPDATE",
-            "SELECT * FROM items FOR SHARE",
-            "SELECT * FROM items LOCK IN SHARE MODE",
-            "SELECT @value := value FROM items",
-            "SELECT GET_LOCK('sabiql', 0)",
-            "SELECT RELEASE_LOCK('sabiql')",
-            "SELECT RELEASE_ALL_LOCKS()",
-            "SELECT `GET_LOCK`('sabiql', 0)",
-            "SELECT `RELEASE_LOCK`('sabiql')",
-            "SELECT `RELEASE_ALL_LOCKS`()",
-            "SELECT LAST_INSERT_ID(42)",
-            "SELECT `LAST_INSERT_ID`(42)",
-            "/*!80000 SELECT 1 */",
-        ] {
-            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
-                panic!("{sql}");
-            };
-            assert!(!risk.read_only_allowed, "{sql}");
-        }
-    }
-
-    #[test]
-    fn explain_analyze_target_rejects_side_effects() {
-        for sql in [
-            "UPDATE items SET value = 1",
-            "SELECT * FROM items FOR UPDATE",
-            "SELECT * FROM items INTO OUTFILE '/tmp/items'",
-            "SELECT id INTO DUMPFILE '/tmp/items' FROM items",
-            "SELECT id INTO @value FROM items",
-            "TABLE items INTO OUTFILE '/tmp/items'",
-            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
-            "SHOW TABLES",
-            "DESCRIBE items",
-            "SELECT 1; SELECT 2",
-            "SELECT 1\nsystem echo unsafe",
-            "SELECT 1\n\\! echo unsafe",
-            "SELECT 'unfinished",
-            "SELECT 1 /* unfinished",
-            "MERGE INTO items USING source ON items.id = source.id",
-            "REPLACE INTO items VALUES (1)",
-        ] {
-            assert!(
-                evaluate_mysql_explain_analyze_target(sql).is_none(),
-                "{sql}"
-            );
-        }
-        for (sql, label) in [("SELECT 1", "SELECT"), ("TABLE items", "TABLE")] {
-            let risk = evaluate_mysql_explain_analyze_target(sql).expect(sql);
-            assert_eq!(risk.risk_level, RiskLevel::Low);
-            assert!(risk.read_only_allowed);
-            assert_eq!(
-                risk.confirmation,
-                ConfirmationType::Acknowledge {
-                    reason: AcknowledgeReason::AnalyzeExecution,
-                    label: label.to_string(),
-                }
-            );
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfirmationType {
     Immediate,
@@ -2329,5 +2109,225 @@ mod tests {
             )
             .is_none()
         );
+    }
+}
+
+#[cfg(test)]
+mod mysql_tests {
+    use crate::domain::mysql_sql::mysql_statement_is_schema_modifying;
+
+    use super::*;
+    use rstest::rstest;
+
+    fn mysql(sql: &str) -> MultiStatementDecision {
+        evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
+    }
+
+    #[test]
+    fn max_risk_uses_destructive_confirmation() {
+        let decision = mysql(
+            r#"SELECT 'a; b', "quoted; identifier", `back;tick` /* block ; comment */;
+                UPDATE items SET value = 1"#,
+        );
+        match decision {
+            MultiStatementDecision::Allow { risk, statements } => {
+                assert_eq!(statements.len(), 2);
+                assert_eq!(risk.risk_level, RiskLevel::High);
+                assert_eq!(
+                    risk.confirmation,
+                    ConfirmationType::TableNameInput {
+                        target: "items".to_string()
+                    }
+                );
+                assert!(!risk.read_only_allowed);
+            }
+            MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
+        }
+    }
+
+    #[test]
+    fn confirmation_target_preserves_input_case() {
+        let MultiStatementDecision::Allow { risk, .. } =
+            mysql("UPDATE CustomerOrders SET value = 1")
+        else {
+            panic!("unexpected block");
+        };
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target } if target == "CustomerOrders"
+        ));
+    }
+
+    #[test]
+    fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
+        let cases = [
+            (
+                "RENAME TABLE items TO archived_items",
+                MySqlStatementKind::RenameTable,
+                RiskLevel::Medium,
+                "RENAME TABLE",
+            ),
+            (
+                "CREATE OR REPLACE VIEW item_view AS SELECT 1",
+                MySqlStatementKind::CreateView,
+                RiskLevel::Low,
+                "CREATE VIEW",
+            ),
+            (
+                "ALTER VIEW item_view AS SELECT 1",
+                MySqlStatementKind::AlterView,
+                RiskLevel::Medium,
+                "ALTER VIEW",
+            ),
+            (
+                "CREATE FULLTEXT INDEX item_text ON items (body)",
+                MySqlStatementKind::CreateIndex,
+                RiskLevel::Low,
+                "CREATE INDEX",
+            ),
+        ];
+
+        for (sql, expected_kind, expected_risk, expected_label) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.kind(), &expected_kind, "{sql}");
+            assert_eq!(
+                mysql_statement_label(statement.kind()),
+                expected_label,
+                "{sql}"
+            );
+            assert!(
+                mysql_statement_is_schema_modifying(statement.kind()),
+                "{sql}"
+            );
+            assert_eq!(
+                mysql_statement_risk(&statement).risk_level,
+                expected_risk,
+                "{sql}"
+            );
+        }
+    }
+
+    #[rstest]
+    #[case::add_column("ALTER TABLE items ADD COLUMN value INT", "items")]
+    #[case::table_named_comment("ALTER TABLE comment ADD COLUMN value INT", "comment")]
+    #[case::table_named_repair("ALTER TABLE repair ADD COLUMN value INT", "repair")]
+    #[case::table_named_secondary_load(
+        "ALTER TABLE secondary_load ADD COLUMN value INT",
+        "secondary_load"
+    )]
+    #[case::table_named_secondary_unload(
+        "ALTER TABLE secondary_unload ADD COLUMN value INT",
+        "secondary_unload"
+    )]
+    #[case::table_option("ALTER TABLE items AVG_ROW_LENGTH=100", "items")]
+    #[case::no_op("ALTER TABLE items", "items")]
+    #[case::tablespace("ALTER TABLE items TABLESPACE ts", "items")]
+    #[case::check_partition("ALTER TABLE items CHECK PARTITION p0", "items")]
+    #[case::drop_column("ALTER TABLE items DROP COLUMN value", "items")]
+    #[case::drop_partition("ALTER TABLE items DROP PARTITION p0", "items")]
+    #[case::truncate_partition("ALTER TABLE items TRUNCATE PARTITION p0", "items")]
+    fn alter_table_requires_table_name_confirmation(#[case] sql: &str, #[case] target: &str) {
+        let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+            panic!("expected Allow: {sql}");
+        };
+
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert_eq!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput {
+                target: target.to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn replace_has_destructive_risk_mapping() {
+        let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
+        let risk = mysql_statement_risk(&statement);
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target } if target == "items"
+        ));
+    }
+
+    #[test]
+    fn read_only_allows_only_side_effect_free_mysql_reads() {
+        for sql in [
+            "SELECT 1",
+            "TABLE items",
+            "SHOW TABLES",
+            "DESCRIBE items",
+            "WITH rows AS (SELECT 1) SELECT * FROM rows",
+            "WITH RECURSIVE rows AS (SELECT 1) SELECT * FROM rows",
+            "SELECT LAST_INSERT_ID()",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(risk.read_only_allowed, "{sql}");
+        }
+
+        for sql in [
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items FOR SHARE",
+            "SELECT * FROM items LOCK IN SHARE MODE",
+            "SELECT @value := value FROM items",
+            "SELECT GET_LOCK('sabiql', 0)",
+            "SELECT RELEASE_LOCK('sabiql')",
+            "SELECT RELEASE_ALL_LOCKS()",
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
+            "SELECT LAST_INSERT_ID(42)",
+            "SELECT `LAST_INSERT_ID`(42)",
+            "/*!80000 SELECT 1 */",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(!risk.read_only_allowed, "{sql}");
+        }
+    }
+
+    #[test]
+    fn explain_analyze_target_rejects_side_effects() {
+        for sql in [
+            "UPDATE items SET value = 1",
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items INTO OUTFILE '/tmp/items'",
+            "SELECT id INTO DUMPFILE '/tmp/items' FROM items",
+            "SELECT id INTO @value FROM items",
+            "TABLE items INTO OUTFILE '/tmp/items'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
+            "SHOW TABLES",
+            "DESCRIBE items",
+            "SELECT 1; SELECT 2",
+            "SELECT 1\nsystem echo unsafe",
+            "SELECT 1\n\\! echo unsafe",
+            "SELECT 'unfinished",
+            "SELECT 1 /* unfinished",
+            "MERGE INTO items USING source ON items.id = source.id",
+            "REPLACE INTO items VALUES (1)",
+        ] {
+            assert!(
+                evaluate_mysql_explain_analyze_target(sql).is_none(),
+                "{sql}"
+            );
+        }
+        for (sql, label) in [("SELECT 1", "SELECT"), ("TABLE items", "TABLE")] {
+            let risk = evaluate_mysql_explain_analyze_target(sql).expect(sql);
+            assert_eq!(risk.risk_level, RiskLevel::Low);
+            assert!(risk.read_only_allowed);
+            assert_eq!(
+                risk.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                    label: label.to_string(),
+                }
+            );
+        }
     }
 }

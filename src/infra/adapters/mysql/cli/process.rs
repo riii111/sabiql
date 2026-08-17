@@ -539,24 +539,28 @@ mod tests {
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
     use crate::domain::{CommandTag, QueryValue, RefreshScope};
 
-    #[tokio::test]
-    async fn bounds_pty_drain_when_the_slave_stays_open() {
-        let (master, _slave) = create_mysql_pty().expect("create test PTY");
-        let mut pty = MySqlPty {
-            input: TokioFile::from_std(master.try_clone().expect("clone PTY master")),
-            output: TokioFile::from_std(master),
-            pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
-        };
+    mod cleanup {
+        use super::*;
 
-        assert!(
-            tokio::time::timeout(
-                MYSQL_PTY_DRAIN_TIMEOUT + Duration::from_secs(1),
-                drain_mysql_pty(&mut pty),
-            )
-            .await
-            .is_ok()
-        );
+        #[tokio::test]
+        async fn bounds_pty_drain_when_the_slave_stays_open() {
+            let (master, _slave) = create_mysql_pty().expect("create test PTY");
+            let mut pty = MySqlPty {
+                input: TokioFile::from_std(master.try_clone().expect("clone PTY master")),
+                output: TokioFile::from_std(master),
+                pending: Vec::new(),
+                frame_scanner: MySqlResultsetFrameScanner::default(),
+            };
+
+            assert!(
+                tokio::time::timeout(
+                    MYSQL_PTY_DRAIN_TIMEOUT + Duration::from_secs(1),
+                    drain_mysql_pty(&mut pty),
+                )
+                .await
+                .is_ok()
+            );
+        }
     }
 
     async fn export_mysql_csv_with_program(
@@ -861,449 +865,55 @@ done
         (directory, program, option_file)
     }
 
-    #[tokio::test]
-    async fn sends_user_sql_only_after_a_valid_mode_probe() {
-        let (_directory, program, log_file) = fake_mysql("success");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadWrite,
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
+    mod single_statement {
+        use super::*;
 
-        assert_eq!(result.columns, vec!["value"]);
-        assert_eq!(result.values[0][0].as_str(), Some("ok"));
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(log.contains("__sabiql_probe"));
-        assert!(log.contains("SELECT 123"));
-        assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT));
-    }
-
-    #[tokio::test]
-    async fn configures_read_only_session_before_user_sql() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let statements = split_mysql_statements("SELECT 2")
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadOnly,
-            None,
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap_or_else(|error| {
-            let log = fs::read_to_string(&log_file).unwrap_or_default();
-            panic!("read-only execution failed: {error:?}; log: {log}");
-        });
-
-        assert_eq!(
-            result.result_set.unwrap().values[0][0].as_str(),
-            Some("two")
-        );
-        let log = fs::read_to_string(log_file).unwrap();
-        let session_index = log
-            .find(MYSQL_READ_ONLY_STATEMENT)
-            .expect("read-only session statement");
-        let user_index = log.find("SELECT 2").expect("user statement");
-        assert!(session_index < user_index, "{log}");
-        assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
-    }
-
-    #[tokio::test]
-    async fn known_empty_result_uses_expected_columns_without_replaying_query() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let query = "SELECT 1 AS first_alias WHERE FALSE";
-        let statements = split_mysql_statements(query)
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadOnly,
-            Some(&["first_alias"]),
-            Duration::from_secs(5),
-        )
-        .await
-        .expect("known empty result");
-        let result_set = result.result_set.expect("result set");
-        assert_eq!(result_set.columns, ["first_alias"]);
-        assert!(result_set.values.is_empty());
-
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert_eq!(log.matches(query).count(), 1, "{log}");
-        assert!(!log.contains("__sabiql_metadata_inner"));
-    }
-
-    #[tokio::test]
-    async fn duplicate_empty_select_columns_are_rejected_without_replaying_user_sql() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let query = "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE";
-        let statements = split_mysql_statements(query)
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await;
-
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(
-            matches!(
-                result,
-                Err(DbOperationError::UnsupportedOperation(ref details))
-                    if details.contains("duplicate column names")
-            ),
-            "result={result:?}; log={log}"
-        );
-        assert_eq!(
-            log.lines().filter(|line| *line == query).count(),
-            1,
-            "{log}"
-        );
-    }
-
-    #[tokio::test]
-    async fn metadata_session_reuses_one_process_for_ordered_resultsets() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let mut session =
-            MySqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
-                .expect("spawn fake mysql");
-
-        session.probe().await.expect("mode probe");
-        session
-            .prepare_read_only()
-            .await
-            .expect("read-only session setup");
-        for query in [
-            "SELECT TABLES",
-            "SELECT COLUMNS",
-            "SELECT INDEXES",
-            "SELECT FOREIGN_KEYS",
-            "SELECT TRIGGERS",
-            "SHOW CREATE TABLE items",
-        ] {
-            session.execute(query).await.expect("metadata resultset");
-        }
-        let empty_result = session
-            .execute_with_expected_columns("EMPTY_RESULT", &["known_column"])
-            .await
-            .expect("empty metadata resultset");
-        assert_eq!(empty_result.columns, ["known_column"]);
-        assert!(empty_result.values.is_empty());
-        session.finish().await.expect("finish fake mysql");
-
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert_eq!(
-            log.lines()
-                .filter(|line| line.starts_with("process="))
-                .count(),
-            1
-        );
-        let positions = [
-            "__sabiql_probe",
-            MYSQL_READ_ONLY_STATEMENT,
-            MYSQL_SESSION_MARKER_COLUMN,
-            "SELECT TABLES",
-            "SELECT COLUMNS",
-            "SELECT INDEXES",
-            "SELECT FOREIGN_KEYS",
-            "SELECT TRIGGERS",
-            "SHOW CREATE TABLE items",
-        ]
-        .into_iter()
-        .map(|query| log.find(query).expect("query in transcript"))
-        .collect::<Vec<_>>();
-        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
-    }
-
-    #[tokio::test]
-    async fn read_only_session_failure_never_writes_user_sql() {
-        let (_directory, program, log_file) = fake_mysql("read_only_failure");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadOnly,
-            Duration::from_secs(5),
-        )
-        .await;
-
-        assert!(result.is_err());
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
-        assert!(!log.contains("SELECT 123"), "{log}");
-    }
-
-    #[tokio::test]
-    async fn generated_preview_and_metadata_queries_configure_read_only_session() {
-        for query in [
-            "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
-            "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
-        ] {
-            let (_directory, program, option_file) = fake_mysql_multi();
-            let statements = split_mysql_statements(query)
-                .unwrap()
-                .into_iter()
-                .map(|sql| classify_mysql_statement(&sql).unwrap())
-                .collect::<Vec<_>>();
-
-            run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+        #[tokio::test]
+        async fn sends_user_sql_only_after_a_valid_mode_probe() {
+            let (_directory, program, log_file) = fake_mysql("success");
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_program(
                 OsStr::new(&program),
                 &option_file,
-                &statements,
-                AccessMode::ReadOnly,
-                None,
+                "SELECT 123",
+                AccessMode::ReadWrite,
                 Duration::from_secs(5),
             )
             .await
             .unwrap();
 
+            assert_eq!(result.columns, vec!["value"]);
+            assert_eq!(result.values[0][0].as_str(), Some("ok"));
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            let session_index = log
-                .find(MYSQL_READ_ONLY_STATEMENT)
-                .expect("read-only session statement");
-            let query_index = log.find(query).expect("generated query");
-            assert!(session_index < query_index, "{query}: {log}");
+            assert!(log.contains("__sabiql_probe"));
+            assert!(log.contains("SELECT 123"));
+            assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT));
         }
-    }
 
-    #[tokio::test]
-    async fn external_metadata_fallback_configures_read_only_session_before_query() {
-        let (_directory, program, option_file) = fake_mysql_metadata_columns(false);
-        let columns = mysql_metadata_columns_external_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SHOW DATABASES",
-            AccessMode::ReadOnly,
-        )
-        .await
-        .unwrap_or_else(|error| {
-            let log =
-                fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
-            panic!("external metadata fallback failed: {error:?}; log: {log}");
-        });
-
-        assert_eq!(columns, ["Database"]);
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        let positions = [
-            "__sabiql_probe",
-            MYSQL_READ_ONLY_STATEMENT,
-            MYSQL_SESSION_MARKER_COLUMN,
-            "SHOW DATABASES",
-        ]
-        .into_iter()
-        .map(|query| log.find(query).expect("query in transcript"))
-        .collect::<Vec<_>>();
-        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
-    }
-
-    #[tokio::test]
-    async fn external_metadata_fallback_setup_failure_never_sends_query() {
-        let (_directory, program, option_file) = fake_mysql_metadata_columns(true);
-        let result = mysql_metadata_columns_external_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SHOW DATABASES",
-            AccessMode::ReadOnly,
-        )
-        .await;
-
-        assert!(result.is_err());
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
-        assert!(!log.contains("SHOW DATABASES"), "{log}");
-    }
-
-    #[tokio::test]
-    async fn external_metadata_timeout_kills_and_reaps_the_process() {
-        let (_directory, program, option_file) =
-            fake_mysql_metadata_columns_with_hanging_query(false, true);
-        let result = run_mysql_metadata_query_with_read_only_session_with_timeout(
-            OsStr::new(&program),
-            &option_file,
-            "SHOW DATABASES",
-            Duration::from_secs(10),
-        )
-        .await;
-
-        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        let pid = log
-            .lines()
-            .find_map(|line| line.strip_prefix("process=")?.parse::<i32>().ok())
-            .expect("metadata process pid");
-        let status = std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .expect("check metadata process");
-        assert!(!status.success(), "metadata process {pid} is still running");
-    }
-
-    #[tokio::test]
-    async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let path = option_file.with_file_name("export.csv");
-
-        export_mysql_csv_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 1",
-            path.clone(),
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(fs::read_to_string(path).unwrap(), "value\none\n");
-    }
-
-    #[tokio::test]
-    async fn export_configures_read_only_session_before_user_sql() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let path = option_file.with_file_name("export.csv");
-
-        export_mysql_csv_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 1",
-            path,
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        let log = fs::read_to_string(log_file).unwrap();
-        let session_index = log
-            .find(MYSQL_READ_ONLY_STATEMENT)
-            .expect("read-only session statement");
-        let user_index = log.find("SELECT 1").expect("user statement");
-        assert!(session_index < user_index, "{log}");
-        assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
-    }
-
-    #[tokio::test]
-    async fn export_ignores_cli_error_text_inside_resultset_fields() {
-        let (_directory, program, option_file) = fake_mysql("field_error");
-        let path = option_file.with_file_name("export.csv");
-
-        export_mysql_csv_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 1",
-            path.clone(),
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap();
-
-        assert_eq!(
-            fs::read_to_string(path).unwrap(),
-            "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n"
-        );
-    }
-
-    #[tokio::test]
-    async fn export_read_only_session_failure_never_writes_user_sql_or_partial_file() {
-        let (_directory, program, option_file) = fake_mysql("read_only_failure");
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let output_directory = tempfile::tempdir().unwrap();
-        let final_path = output_directory.path().join("export.csv");
-
-        let result = export_to_path(final_path.clone(), |path| {
-            export_mysql_csv_with_program(
+        #[tokio::test]
+        async fn read_only_session_failure_never_writes_user_sql() {
+            let (_directory, program, log_file) = fake_mysql("read_only_failure");
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_program(
                 OsStr::new(&program),
                 &option_file,
                 "SELECT 123",
-                path,
+                AccessMode::ReadOnly,
                 Duration::from_secs(5),
             )
-        })
-        .await;
+            .await;
 
-        assert!(result.is_err());
-        let log = fs::read_to_string(log_file).unwrap();
-        assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
-        assert!(!log.contains("SELECT 123"), "{log}");
-        assert!(!final_path.exists());
-        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
-    }
+            assert!(result.is_err());
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+            assert!(!log.contains("SELECT 123"), "{log}");
+        }
 
-    #[tokio::test]
-    async fn export_failure_removes_the_partial_file() {
-        let (_directory, program, option_file) = fake_mysql("failure");
-        let output_directory = tempfile::tempdir().unwrap();
-        let final_path = output_directory.path().join("export.csv");
-
-        let result = export_to_path(final_path.clone(), |path| {
-            export_mysql_csv_with_program(
-                OsStr::new(&program),
-                &option_file,
-                "SELECT 1",
-                path,
-                Duration::from_secs(5),
-            )
-        })
-        .await;
-
-        assert!(result.is_err());
-        assert!(!final_path.exists());
-        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
-    }
-
-    #[tokio::test]
-    async fn export_timeout_kills_the_process_and_removes_the_partial_file() {
-        let (_directory, program, option_file) = fake_mysql("timeout");
-        let output_directory = tempfile::tempdir().unwrap();
-        let final_path = output_directory.path().join("export.csv");
-
-        let result = export_to_path(final_path.clone(), |path| {
-            export_mysql_csv_with_program(
-                OsStr::new(&program),
-                &option_file,
-                "SELECT 1",
-                path,
-                Duration::from_millis(50),
-            )
-        })
-        .await;
-
-        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
-        assert!(!final_path.exists());
-        assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
-    }
-
-    #[tokio::test]
-    async fn probe_failure_never_writes_user_sql() {
-        for mode in ["unsupported", "invalid", "missing"] {
-            let (_directory, program, log_file) = fake_mysql(mode);
+        #[tokio::test]
+        async fn nonzero_cli_exit_discards_any_collected_stdout() {
+            let (_directory, program, log_file) = fake_mysql("failure");
             let option_file = log_file.with_extension("cnf");
             fs::write(&option_file, "[client]\n").unwrap();
             let result = run_mysql_single_statement_with_program(
@@ -1314,235 +924,605 @@ done
                 Duration::from_secs(5),
             )
             .await;
-            assert!(result.is_err(), "{mode}");
+
+            assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
+        }
+
+        #[tokio::test]
+        async fn classifies_cli_error_when_no_resultset_is_emitted() {
+            let (_directory, program, log_file) = fake_mysql("no_result_failure");
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123",
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::ObjectMissing(details))
+                    if details.contains("missing_column")
+            ));
+        }
+
+        #[tokio::test]
+        async fn classifies_connection_refusal_from_the_shared_cli_error_path() {
+            let (_directory, program, log_file) = fake_mysql("connection_refused");
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123",
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
+        }
+    }
+
+    mod adhoc {
+        use super::*;
+
+        #[tokio::test]
+        async fn configures_read_only_session_before_user_sql() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+            let statements = split_mysql_statements("SELECT 2")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadOnly,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap_or_else(|error| {
+                let log = fs::read_to_string(&log_file).unwrap_or_default();
+                panic!("read-only execution failed: {error:?}; log: {log}");
+            });
+
+            assert_eq!(
+                result.result_set.unwrap().values[0][0].as_str(),
+                Some("two")
+            );
+            let log = fs::read_to_string(log_file).unwrap();
+            let session_index = log
+                .find(MYSQL_READ_ONLY_STATEMENT)
+                .expect("read-only session statement");
+            let user_index = log.find("SELECT 2").expect("user statement");
+            assert!(session_index < user_index, "{log}");
+            assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+        }
+
+        #[tokio::test]
+        async fn known_empty_result_uses_expected_columns_without_replaying_query() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let query = "SELECT 1 AS first_alias WHERE FALSE";
+            let statements = split_mysql_statements(query)
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadOnly,
+                Some(&["first_alias"]),
+                Duration::from_secs(5),
+            )
+            .await
+            .expect("known empty result");
+            let result_set = result.result_set.expect("result set");
+            assert_eq!(result_set.columns, ["first_alias"]);
+            assert!(result_set.values.is_empty());
+
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert_eq!(log.matches(query).count(), 1, "{log}");
+            assert!(!log.contains("__sabiql_metadata_inner"));
+        }
+
+        #[tokio::test]
+        async fn duplicate_empty_select_columns_are_rejected_without_replaying_user_sql() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let query = "SELECT 1 AS duplicate_alias, 2 AS duplicate_alias WHERE FALSE";
+            let statements = split_mysql_statements(query)
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await;
+
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(
+                matches!(
+                    result,
+                    Err(DbOperationError::UnsupportedOperation(ref details))
+                        if details.contains("duplicate column names")
+                ),
+                "result={result:?}; log={log}"
+            );
+            assert_eq!(
+                log.lines().filter(|line| *line == query).count(),
+                1,
+                "{log}"
+            );
+        }
+
+        #[tokio::test]
+        async fn generated_preview_and_metadata_queries_configure_read_only_session() {
+            for query in [
+                "SELECT id FROM app.items ORDER BY id LIMIT 10 OFFSET 0",
+                "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES",
+            ] {
+                let (_directory, program, option_file) = fake_mysql_multi();
+                let statements = split_mysql_statements(query)
+                    .unwrap()
+                    .into_iter()
+                    .map(|sql| classify_mysql_statement(&sql).unwrap())
+                    .collect::<Vec<_>>();
+
+                run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                    OsStr::new(&program),
+                    &option_file,
+                    &statements,
+                    AccessMode::ReadOnly,
+                    None,
+                    Duration::from_secs(5),
+                )
+                .await
+                .unwrap();
+
+                let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+                let session_index = log
+                    .find(MYSQL_READ_ONLY_STATEMENT)
+                    .expect("read-only session statement");
+                let query_index = log.find(query).expect("generated query");
+                assert!(session_index < query_index, "{query}: {log}");
+            }
+        }
+    }
+
+    mod metadata_session {
+        use super::*;
+
+        #[tokio::test]
+        async fn reuses_one_process_for_ordered_resultsets() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let mut session =
+                MySqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
+                    .expect("spawn fake mysql");
+
+            session.probe().await.expect("mode probe");
+            session
+                .prepare_read_only()
+                .await
+                .expect("read-only session setup");
+            for query in [
+                "SELECT TABLES",
+                "SELECT COLUMNS",
+                "SELECT INDEXES",
+                "SELECT FOREIGN_KEYS",
+                "SELECT TRIGGERS",
+                "SHOW CREATE TABLE items",
+            ] {
+                session.execute(query).await.expect("metadata resultset");
+            }
+            let empty_result = session
+                .execute_with_expected_columns("EMPTY_RESULT", &["known_column"])
+                .await
+                .expect("empty metadata resultset");
+            assert_eq!(empty_result.columns, ["known_column"]);
+            assert!(empty_result.values.is_empty());
+            session.finish().await.expect("finish fake mysql");
+
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert_eq!(
+                log.lines()
+                    .filter(|line| line.starts_with("process="))
+                    .count(),
+                1
+            );
+            let positions = [
+                "__sabiql_probe",
+                MYSQL_READ_ONLY_STATEMENT,
+                MYSQL_SESSION_MARKER_COLUMN,
+                "SELECT TABLES",
+                "SELECT COLUMNS",
+                "SELECT INDEXES",
+                "SELECT FOREIGN_KEYS",
+                "SELECT TRIGGERS",
+                "SHOW CREATE TABLE items",
+            ]
+            .into_iter()
+            .map(|query| log.find(query).expect("query in transcript"))
+            .collect::<Vec<_>>();
+            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+        }
+
+        #[tokio::test]
+        async fn external_metadata_fallback_configures_read_only_session_before_query() {
+            let (_directory, program, option_file) = fake_mysql_metadata_columns(false);
+            let columns = mysql_metadata_columns_external_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SHOW DATABASES",
+                AccessMode::ReadOnly,
+            )
+            .await
+            .unwrap_or_else(|error| {
+                let log = fs::read_to_string(format!("{}.log", option_file.display()))
+                    .unwrap_or_default();
+                panic!("external metadata fallback failed: {error:?}; log: {log}");
+            });
+
+            assert_eq!(columns, ["Database"]);
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            let positions = [
+                "__sabiql_probe",
+                MYSQL_READ_ONLY_STATEMENT,
+                MYSQL_SESSION_MARKER_COLUMN,
+                "SHOW DATABASES",
+            ]
+            .into_iter()
+            .map(|query| log.find(query).expect("query in transcript"))
+            .collect::<Vec<_>>();
+            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+        }
+
+        #[tokio::test]
+        async fn external_metadata_fallback_setup_failure_never_sends_query() {
+            let (_directory, program, option_file) = fake_mysql_metadata_columns(true);
+            let result = mysql_metadata_columns_external_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SHOW DATABASES",
+                AccessMode::ReadOnly,
+            )
+            .await;
+
+            assert!(result.is_err());
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+            assert!(!log.contains("SHOW DATABASES"), "{log}");
+        }
+
+        #[tokio::test]
+        async fn external_metadata_timeout_kills_and_reaps_the_process() {
+            let (_directory, program, option_file) =
+                fake_mysql_metadata_columns_with_hanging_query(false, true);
+            let result = run_mysql_metadata_query_with_read_only_session_with_timeout(
+                OsStr::new(&program),
+                &option_file,
+                "SHOW DATABASES",
+                Duration::from_secs(10),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            let pid = log
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<i32>().ok())
+                .expect("metadata process pid");
+            let status = std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("check metadata process");
+            assert!(!status.success(), "metadata process {pid} is still running");
+        }
+    }
+
+    mod export {
+        use super::*;
+
+        #[tokio::test]
+        async fn exports_mysql_xml_rows_through_the_shared_csv_writer() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let path = option_file.with_file_name("export.csv");
+
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 1",
+                path.clone(),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(fs::read_to_string(path).unwrap(), "value\none\n");
+        }
+
+        #[tokio::test]
+        async fn configures_read_only_session_before_user_sql() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+            let path = option_file.with_file_name("export.csv");
+
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 1",
+                path,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            let log = fs::read_to_string(log_file).unwrap();
+            let session_index = log
+                .find(MYSQL_READ_ONLY_STATEMENT)
+                .expect("read-only session statement");
+            let user_index = log.find("SELECT 1").expect("user statement");
+            assert!(session_index < user_index, "{log}");
+            assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
+        }
+
+        #[tokio::test]
+        async fn ignores_cli_error_text_inside_resultset_fields() {
+            let (_directory, program, option_file) = fake_mysql("field_error");
+            let path = option_file.with_file_name("export.csv");
+
+            export_mysql_csv_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 1",
+                path.clone(),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                fs::read_to_string(path).unwrap(),
+                "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n"
+            );
+        }
+
+        #[tokio::test]
+        async fn read_only_session_failure_never_writes_user_sql_or_partial_file() {
+            let (_directory, program, option_file) = fake_mysql("read_only_failure");
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+            let output_directory = tempfile::tempdir().unwrap();
+            let final_path = output_directory.path().join("export.csv");
+
+            let result = export_to_path(final_path.clone(), |path| {
+                export_mysql_csv_with_program(
+                    OsStr::new(&program),
+                    &option_file,
+                    "SELECT 123",
+                    path,
+                    Duration::from_secs(5),
+                )
+            })
+            .await;
+
+            assert!(result.is_err());
+            let log = fs::read_to_string(log_file).unwrap();
+            assert!(log.contains(MYSQL_READ_ONLY_STATEMENT));
+            assert!(!log.contains("SELECT 123"), "{log}");
+            assert!(!final_path.exists());
+            assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
+        }
+
+        #[tokio::test]
+        async fn failure_removes_the_partial_file() {
+            let (_directory, program, option_file) = fake_mysql("failure");
+            let output_directory = tempfile::tempdir().unwrap();
+            let final_path = output_directory.path().join("export.csv");
+
+            let result = export_to_path(final_path.clone(), |path| {
+                export_mysql_csv_with_program(
+                    OsStr::new(&program),
+                    &option_file,
+                    "SELECT 1",
+                    path,
+                    Duration::from_secs(5),
+                )
+            })
+            .await;
+
+            assert!(result.is_err());
+            assert!(!final_path.exists());
+            assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
+        }
+
+        #[tokio::test]
+        async fn timeout_kills_the_process_and_removes_the_partial_file() {
+            let (_directory, program, option_file) = fake_mysql("timeout");
+            let output_directory = tempfile::tempdir().unwrap();
+            let final_path = output_directory.path().join("export.csv");
+
+            let result = export_to_path(final_path.clone(), |path| {
+                export_mysql_csv_with_program(
+                    OsStr::new(&program),
+                    &option_file,
+                    "SELECT 1",
+                    path,
+                    Duration::from_millis(50),
+                )
+            })
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+            assert!(!final_path.exists());
+            assert_eq!(output_directory.path().read_dir().unwrap().count(), 0);
+        }
+    }
+
+    mod probe {
+        use super::*;
+
+        #[tokio::test]
+        async fn failure_never_writes_user_sql() {
+            for mode in ["unsupported", "invalid", "missing"] {
+                let (_directory, program, log_file) = fake_mysql(mode);
+                let option_file = log_file.with_extension("cnf");
+                fs::write(&option_file, "[client]\n").unwrap();
+                let result = run_mysql_single_statement_with_program(
+                    OsStr::new(&program),
+                    &option_file,
+                    "SELECT 123",
+                    AccessMode::ReadWrite,
+                    Duration::from_secs(5),
+                )
+                .await;
+                assert!(result.is_err(), "{mode}");
+                let log = fs::read_to_string(format!("{}.log", option_file.display()))
+                    .unwrap_or_default();
+                assert!(!log.contains("SELECT 123"), "{mode}: {log}");
+            }
+        }
+
+        #[tokio::test]
+        async fn timeout_kills_the_process_and_discards_output() {
+            let (_directory, program, log_file) = fake_mysql("timeout");
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123",
+                AccessMode::ReadWrite,
+                Duration::from_millis(50),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
             let log =
                 fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
-            assert!(!log.contains("SELECT 123"), "{mode}: {log}");
+            assert!(!log.contains("SELECT 123"));
         }
-    }
 
-    #[tokio::test]
-    async fn probe_timeout_kills_the_process_and_discards_output() {
-        let (_directory, program, log_file) = fake_mysql("timeout");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadWrite,
-            Duration::from_millis(50),
-        )
-        .await;
+        #[cfg(feature = "test-support")]
+        #[tokio::test]
+        async fn initial_pty_output_timeout_kills_and_reaps_the_process() {
+            let (_directory, program, option_file) = fake_mysql_without_output();
+            let (pid, result) = run_mysql_cli_script_with_program_and_pid(
+                OsStr::new(&program),
+                &option_file,
+                "SELECT 123;\n",
+                Duration::from_millis(50),
+            )
+            .await
+            .expect("spawn script process");
 
-        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
-        assert!(!log.contains("SELECT 123"));
-    }
-
-    #[cfg(feature = "test-support")]
-    #[tokio::test]
-    async fn initial_pty_output_timeout_kills_and_reaps_the_process() {
-        let (_directory, program, option_file) = fake_mysql_without_output();
-        let (pid, result) = run_mysql_cli_script_with_program_and_pid(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123;\n",
-            Duration::from_millis(50),
-        )
-        .await
-        .expect("spawn script process");
-
-        match result {
-            Err(DbOperationError::Timeout(details)) => {
-                assert!(
-                    details.contains("initial MySQL PTY output wait"),
-                    "{details}"
-                );
+            match result {
+                Err(DbOperationError::Timeout(details)) => {
+                    assert!(
+                        details.contains("initial MySQL PTY output wait"),
+                        "{details}"
+                    );
+                }
+                result => panic!("expected initial PTY output timeout, got {result:?}"),
             }
-            result => panic!("expected initial PTY output timeout, got {result:?}"),
+            let status = std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .expect("check script process");
+            assert!(!status.success(), "script process {pid} is still running");
         }
-        let status = std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .expect("check script process");
-        assert!(!status.success(), "script process {pid} is still running");
     }
 
-    #[tokio::test]
-    async fn nonzero_cli_exit_discards_any_collected_stdout() {
-        let (_directory, program, log_file) = fake_mysql("failure");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadWrite,
-            Duration::from_secs(5),
-        )
-        .await;
+    mod multi_statement {
+        use super::*;
 
-        assert!(matches!(result, Err(DbOperationError::QueryFailed(_))));
-    }
+        #[tokio::test]
+        async fn executes_each_statement_and_returns_the_last_user_result() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+            let statements = split_mysql_statements("UPDATE items SET value = 1; SELECT 2")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
 
-    #[tokio::test]
-    async fn classifies_cli_error_when_no_resultset_is_emitted() {
-        let (_directory, program, log_file) = fake_mysql("no_result_failure");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadWrite,
-            Duration::from_secs(5),
-        )
-        .await;
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap_or_else(|error| panic!("multi execution failed: {error:?}"));
 
-        assert!(matches!(
-            result,
-            Err(DbOperationError::ObjectMissing(details))
-                if details.contains("missing_column")
-        ));
-    }
+            assert_eq!(
+                result.result_set,
+                Some(MySqlResultSet {
+                    columns: vec!["value".to_string()],
+                    values: vec![vec![QueryValue::Text("two".to_string())]],
+                })
+            );
+            assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
+            assert_eq!(result.refresh_scope, RefreshScope::Data);
+            let log = fs::read_to_string(log_file).unwrap();
+            assert!(log.contains("UPDATE items SET value = 1"));
+            assert!(log.matches("__sabiql_marker").count() >= 2);
+        }
 
-    #[tokio::test]
-    async fn classifies_connection_refusal_from_the_shared_cli_error_path() {
-        let (_directory, program, log_file) = fake_mysql("connection_refused");
-        let option_file = log_file.with_extension("cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let result = run_mysql_single_statement_with_program(
-            OsStr::new(&program),
-            &option_file,
-            "SELECT 123",
-            AccessMode::ReadWrite,
-            Duration::from_secs(5),
-        )
-        .await;
+        #[tokio::test]
+        async fn tail_error_is_classified_after_pty_drain() {
+            let (_directory, program, option_file) = fake_mysql_multi_with_tail_failure();
+            let query = "UPDATE items SET value = 1; CREATE TABLE created (id INT)";
+            let statements = split_mysql_statements(query)
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
 
-        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
-    }
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await;
 
-    #[tokio::test]
-    async fn executes_each_statement_and_returns_the_last_user_result() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let statements = split_mysql_statements("UPDATE items SET value = 1; SELECT 2")
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    source,
+                    refresh_scope: RefreshScope::Metadata,
+                    ..
+                }) if matches!(&*source, DbOperationError::ObjectMissing(_))
+            ));
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.lines().any(|line| line == "input_closed"), "{log}");
+        }
 
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await
-        .unwrap_or_else(|error| panic!("multi execution failed: {error:?}"));
-
-        assert_eq!(
-            result.result_set,
-            Some(MySqlResultSet {
-                columns: vec!["value".to_string()],
-                values: vec![vec![QueryValue::Text("two".to_string())]],
-            })
-        );
-        assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
-        assert_eq!(result.refresh_scope, RefreshScope::Data);
-        let log = fs::read_to_string(log_file).unwrap();
-        assert!(log.contains("UPDATE items SET value = 1"));
-        assert!(log.matches("__sabiql_marker").count() >= 2);
-    }
-
-    #[tokio::test]
-    async fn tail_error_is_classified_after_pty_drain() {
-        let (_directory, program, option_file) = fake_mysql_multi_with_tail_failure();
-        let query = "UPDATE items SET value = 1; CREATE TABLE created (id INT)";
-        let statements = split_mysql_statements(query)
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await;
-
-        assert!(matches!(
-            result,
-            Err(DbOperationError::QueryFailedAfterChange {
-                source,
-                refresh_scope: RefreshScope::Metadata,
-                ..
-            }) if matches!(&*source, DbOperationError::ObjectMissing(_))
-        ));
-        let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-        assert!(log.lines().any(|line| line == "input_closed"), "{log}");
-    }
-
-    #[tokio::test]
-    async fn marker_failure_after_a_change_refreshes_the_current_scope() {
-        let (_directory, program, option_file) = fake_mysql_multi_with_marker_failure();
-        let statements = split_mysql_statements("UPDATE items SET value = 1")
-            .unwrap()
-            .into_iter()
-            .map(|sql| classify_mysql_statement(&sql).unwrap())
-            .collect::<Vec<_>>();
-
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await;
-
-        assert!(matches!(
-            result,
-            Err(DbOperationError::QueryFailedAfterChange {
-                source,
-                refresh_scope: RefreshScope::Data,
-                ..
-            }) if matches!(&*source, DbOperationError::QueryFailed(_))
-        ));
-    }
-
-    #[tokio::test]
-    async fn first_change_statement_failure_keeps_the_classified_error_unwrapped() {
-        for (details, summary) in [
-            (
-                "ERROR 1142 (42000): command denied to user",
-                "Permission denied",
-            ),
-            (
-                "ERROR 1062 (23000): Duplicate entry duplicate_value for key PRIMARY",
-                "Unique constraint violation",
-            ),
-            (
-                "ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails",
-                "Foreign key constraint violation",
-            ),
-            (
-                "ERROR 1205 (HY000): Lock wait timeout exceeded",
-                "Operation blocked by lock or timeout",
-            ),
-        ] {
-            let (_directory, program, option_file) =
-                fake_mysql_multi_with_statement_failure(details);
+        #[tokio::test]
+        async fn marker_failure_after_a_change_refreshes_the_current_scope() {
+            let (_directory, program, option_file) = fake_mysql_multi_with_marker_failure();
             let statements = split_mysql_statements("UPDATE items SET value = 1")
                 .unwrap()
                 .into_iter()
@@ -1558,72 +1538,122 @@ done
                 Duration::from_secs(5),
             )
             .await;
-            let Err(error) = result else {
-                panic!("expected the fake MySQL statement to fail");
-            };
 
-            assert_eq!(error.summary(), summary);
-            assert!(!matches!(
-                error,
-                DbOperationError::QueryFailedAfterChange { .. }
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    source,
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                }) if matches!(&*source, DbOperationError::QueryFailed(_))
             ));
         }
-    }
 
-    #[tokio::test]
-    async fn marks_a_later_failure_after_a_confirmed_change_for_refresh() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let statements =
-            split_mysql_statements("UPDATE items SET value = 1; SELECT missing_column FROM items")
-                .unwrap()
-                .into_iter()
-                .map(|sql| classify_mysql_statement(&sql).unwrap())
-                .collect::<Vec<_>>();
+        #[tokio::test]
+        async fn first_change_statement_failure_keeps_the_classified_error_unwrapped() {
+            for (details, summary) in [
+                (
+                    "ERROR 1142 (42000): command denied to user",
+                    "Permission denied",
+                ),
+                (
+                    "ERROR 1062 (23000): Duplicate entry duplicate_value for key PRIMARY",
+                    "Unique constraint violation",
+                ),
+                (
+                    "ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails",
+                    "Foreign key constraint violation",
+                ),
+                (
+                    "ERROR 1205 (HY000): Lock wait timeout exceeded",
+                    "Operation blocked by lock or timeout",
+                ),
+            ] {
+                let (_directory, program, option_file) =
+                    fake_mysql_multi_with_statement_failure(details);
+                let statements = split_mysql_statements("UPDATE items SET value = 1")
+                    .unwrap()
+                    .into_iter()
+                    .map(|sql| classify_mysql_statement(&sql).unwrap())
+                    .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await;
+                let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                    OsStr::new(&program),
+                    &option_file,
+                    &statements,
+                    AccessMode::ReadWrite,
+                    None,
+                    Duration::from_secs(5),
+                )
+                .await;
+                let Err(error) = result else {
+                    panic!("expected the fake MySQL statement to fail");
+                };
 
-        assert!(matches!(
-            result,
-            Err(DbOperationError::QueryFailedAfterChange {
-                source,
-                refresh_scope: RefreshScope::Data,
-                ..
-            }) if matches!(&*source, DbOperationError::ObjectMissing(_))
-        ));
-    }
+                assert_eq!(error.summary(), summary);
+                assert!(!matches!(
+                    error,
+                    DbOperationError::QueryFailedAfterChange { .. }
+                ));
+            }
+        }
 
-    #[tokio::test]
-    async fn rejects_error_reported_after_row_count_marker() {
-        let (_directory, program, option_file) = fake_mysql_multi();
-        let statements = split_mysql_statements("SELECT missing_column FROM items")
+        #[tokio::test]
+        async fn marks_a_later_failure_after_a_confirmed_change_for_refresh() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements(
+                "UPDATE items SET value = 1; SELECT missing_column FROM items",
+            )
             .unwrap()
             .into_iter()
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-        let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-            OsStr::new(&program),
-            &option_file,
-            &statements,
-            AccessMode::ReadWrite,
-            None,
-            Duration::from_secs(5),
-        )
-        .await;
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await;
 
-        assert!(matches!(
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    source,
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                }) if matches!(&*source, DbOperationError::ObjectMissing(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn rejects_error_reported_after_row_count_marker() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements("SELECT missing_column FROM items")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await;
+
+            assert!(matches!(
             result,
             Err(DbOperationError::ObjectMissing(details))
                 if details.contains("missing_column")
-        ));
+            ));
+        }
     }
 }
 

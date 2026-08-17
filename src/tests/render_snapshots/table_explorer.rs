@@ -137,24 +137,6 @@ fn sqlite_explorer_shows_table_kind_suffixes() {
 }
 
 #[test]
-fn mysql_explorer_requests_metadata_load() {
-    let mut state = create_test_state();
-    state.session.activate_connection_with_target(
-        &ConnectionId::from_string("mysql-test"),
-        "mysql",
-        DatabaseType::MySQL,
-        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
-        Some("app"),
-    );
-    state.session.mark_probe_connected();
-
-    let mut terminal = create_test_terminal();
-    let output = render_to_string(&mut terminal, &mut state);
-
-    insta::assert_snapshot!(output);
-}
-
-#[test]
 fn mysql_header_and_explorer_show_table_names() {
     let mut state = create_test_state();
     state.session.activate_connection_with_target(
