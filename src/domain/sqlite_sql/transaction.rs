@@ -115,17 +115,27 @@ pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassi
 }
 
 fn explain_analyze_statement_keyword(statement: &str) -> Option<String> {
-    let keywords = top_level_keywords(statement);
-    (keywords.first().map(String::as_str) == Some("EXPLAIN"))
-        .then(|| {
-            keywords
-                .iter()
-                .skip(1)
-                .position(|keyword| keyword == "ANALYZE")
-                .and_then(|index| keywords.get(index + 2))
-                .cloned()
-        })
-        .flatten()
+    let keywords = keywords_with_depth(statement);
+    if keywords
+        .first()
+        .map(|(keyword, depth)| (keyword.as_str(), *depth))
+        != Some(("EXPLAIN", 0))
+    {
+        return None;
+    }
+    let analyze_index =
+        keywords
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(index, (keyword, depth))| {
+                (*depth <= 1 && keyword == "ANALYZE").then_some(index)
+            })?;
+    keywords
+        .iter()
+        .skip(analyze_index + 1)
+        .find(|(_, depth)| *depth == 0)
+        .map(|(keyword, _)| keyword.clone())
 }
 
 fn has_data_modifying_cte(statement: &str) -> bool {
@@ -311,6 +321,16 @@ mod tests {
         );
         assert_eq!(
             sqlite_statement_classification("EXPLAIN ANALYZE UPDATE users SET name = 'a'"),
+            SqliteStatementClassification::TransactionalWrite
+        );
+        assert_eq!(
+            sqlite_statement_classification("EXPLAIN (ANALYZE) UPDATE users SET name = 'a'"),
+            SqliteStatementClassification::TransactionalWrite
+        );
+        assert_eq!(
+            sqlite_statement_classification(
+                "EXPLAIN (ANALYZE, VERBOSE) DELETE FROM users WHERE id = 1"
+            ),
             SqliteStatementClassification::TransactionalWrite
         );
         assert_eq!(

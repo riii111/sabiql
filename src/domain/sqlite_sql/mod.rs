@@ -7,7 +7,7 @@ pub use explain::{
     SQLITE_EXPLAIN_QUERY_PLAN_PREFIX, build_sqlite_explain_query_plan_sql,
     is_sqlite_explain_query_plan_sql,
 };
-pub use export::{is_sqlite_rerunnable_export_query, is_sqlite_rerunnable_export_statement};
+pub use export::is_sqlite_rerunnable_export_statement;
 pub use splitter::{
     SqliteStatementSplitError, SqliteStatementSplitResult, split_sqlite_statements,
 };
