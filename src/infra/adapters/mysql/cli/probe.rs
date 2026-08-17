@@ -14,12 +14,11 @@ use crate::app::ports::outbound::{
 };
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
-const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('database', DATABASE(), 'user', CURRENT_USER(), 'version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
+const MYSQL_PROBE_QUERY: &str =
+    "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
 
 #[derive(Debug, Deserialize)]
 struct MySqlProbeResponse {
-    database: Option<String>,
-    user: String,
     version: String,
     sql_mode: String,
 }
@@ -49,7 +48,6 @@ pub(in crate::adapters::mysql) async fn probe_mysql_server(
     }
 
     let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
-    let _ = (&response.database, &response.user);
     validate_server_version(&response.version)?;
     validate_sql_mode(&response.sql_mode)
 }
