@@ -370,11 +370,135 @@ fn apply_preview_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::cache::TtlCache;
+    use crate::cmd::completion_engine::CompletionEngine;
+    use crate::cmd::test_fixtures;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::ports::outbound::DbOperationError;
+    use crate::ports::outbound::connection_store::MockConnectionStore;
+    use crate::ports::outbound::metadata::MockMetadataProvider;
+    use crate::ports::outbound::query_executor::MockQueryExecutor;
+    use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+    use crate::update::reducer::reduce;
+    use tokio::sync::mpsc;
+
+    #[derive(Debug, PartialEq)]
+    struct RenderFrame {
+        inspector_terminal: bool,
+        result_visible: bool,
+    }
+
+    struct RecordingRenderer {
+        frames: Vec<RenderFrame>,
+    }
+
+    impl Renderer for RecordingRenderer {
+        fn draw(
+            &mut self,
+            state: &AppState,
+            _services: &AppServices,
+            _now: Instant,
+        ) -> RenderResult<RenderOutput> {
+            self.frames.push(RenderFrame {
+                inspector_terminal: state
+                    .session
+                    .is_table_detail_terminal(state.session.selection_generation()),
+                result_visible: state.query.current_result().is_some(),
+            });
+            Ok(RenderOutput::default())
+        }
+    }
+
+    fn append_runtime_render(state: &AppState, effects: &mut Vec<Effect>) {
+        if state.render_dirty {
+            effects.push(Effect::Render);
+        }
+    }
+
+    async fn render_frames_after_inspector_terminal(inspector_failed: bool) -> Vec<RenderFrame> {
+        let (mut state, generation, detail_run_id) =
+            state_with_selected_table(DatabaseType::PostgreSQL);
+        let query_action =
+            query_completed_action(&mut state, preview_result(1), generation, Some(0));
+        reduce(
+            &mut state,
+            query_action,
+            Instant::now(),
+            &AppServices::stub(),
+        );
+
+        let inspector_action = if inspector_failed {
+            Action::TableDetailFailed {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id: detail_run_id,
+                error: DbOperationError::QueryFailed("inspector failed".to_string()),
+                generation,
+            }
+        } else {
+            Action::TableDetailLoaded {
+                dsn: "postgres://localhost/test".to_string(),
+                run_id: detail_run_id,
+                detail: Box::new(users_table_detail()),
+                generation,
+            }
+        };
+        let mut effects = reduce(
+            &mut state,
+            inspector_action,
+            Instant::now(),
+            &AppServices::stub(),
+        );
+        append_runtime_render(&state, &mut effects);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let runner = test_fixtures::make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            TtlCache::new(300),
+            tx,
+        );
+        let completion_engine = std::cell::RefCell::new(CompletionEngine::new());
+        let mut renderer = RecordingRenderer { frames: vec![] };
+        let pending = runner
+            .run(
+                effects,
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+                &AppServices::stub(),
+            )
+            .await
+            .unwrap();
+
+        let mut next_effects = Vec::new();
+        for action in pending {
+            next_effects.extend(reduce(
+                &mut state,
+                action,
+                Instant::now(),
+                &AppServices::stub(),
+            ));
+        }
+        append_runtime_render(&state, &mut next_effects);
+        assert!(
+            runner
+                .run(
+                    next_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        renderer.frames
+    }
 
     fn query_failed_action(
         state: &mut AppState,
@@ -672,56 +796,23 @@ mod tests {
             assert!(!state.query.has_pending_preview(generation));
         }
 
-        #[test]
-        fn preview_completion_waits_for_inspector_render_boundary() {
-            let (mut state, generation, detail_run_id) =
-                state_with_selected_table(DatabaseType::PostgreSQL);
-            let query_action =
-                query_completed_action(&mut state, preview_result(1), generation, Some(0));
-
-            dispatch_query(
-                &mut state,
-                &query_action,
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.query.current_result().is_none());
-            assert!(state.query.has_pending_preview(generation));
-
-            let effects = dispatch_metadata(
-                &mut state,
-                &Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
-                    run_id: detail_run_id,
-                    detail: Box::new(users_table_detail()),
-                    generation,
-                },
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(state.session.is_table_detail_terminal(generation));
-            assert!(state.query.current_result().is_none());
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::DispatchActions(actions)]
-                    if matches!(
-                        actions.as_slice(),
-                        [Action::RevealPendingPreview { generation: action_generation }]
-                            if *action_generation == generation
-                    )
-            ));
-
-            dispatch_query(
-                &mut state,
-                &Action::RevealPendingPreview { generation },
-                Instant::now(),
-                &AppServices::stub(),
-            );
-
-            assert!(state.query.current_result().is_some());
-            assert!(!state.query.has_pending_preview(generation));
+        #[tokio::test]
+        async fn preview_reveal_follows_inspector_render_for_success_and_failure() {
+            for inspector_failed in [false, true] {
+                assert_eq!(
+                    render_frames_after_inspector_terminal(inspector_failed).await,
+                    [
+                        RenderFrame {
+                            inspector_terminal: true,
+                            result_visible: false,
+                        },
+                        RenderFrame {
+                            inspector_terminal: true,
+                            result_visible: true,
+                        },
+                    ]
+                );
+            }
         }
 
         #[test]
