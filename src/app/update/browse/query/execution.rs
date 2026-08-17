@@ -15,11 +15,13 @@ use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::input::command::{command_to_action, parse_command};
 
+use super::write;
+
 pub fn reduce_execution(
     state: &mut AppState,
     action: &Action,
     now: Instant,
-    _services: &AppServices,
+    services: &AppServices,
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
@@ -190,7 +192,9 @@ pub fn reduce_execution(
                     )])]
                 }
                 Action::SubmitCellEditWrite => {
-                    vec![Effect::DispatchActions(vec![Action::SubmitCellEditWrite])]
+                    write::reduce_write(state, &Action::SubmitCellEditWrite, now, services)
+                        .into_effects()
+                        .unwrap_or_default()
                 }
                 _ => vec![],
             })
@@ -361,6 +365,37 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::CellEdit);
             assert!(!state.should_quit);
+        }
+
+        #[test]
+        fn submit_write_enters_confirm_dialog_without_action_redispatch() {
+            let mut state = create_test_state();
+            state.query.set_current_result(editable_preview_result());
+            state
+                .session
+                .set_table_detail_raw(Some(users_table_detail()));
+            state.query.pagination.reset_for_table("public", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, "Alice".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("Bob".to_string());
+            state.modal.push_mode(InputMode::CommandLine);
+            state.command_line_input.set_content("write".to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::CommandLineSubmit,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
+            assert!(state.result_interaction.pending_write_preview().is_some());
         }
 
         #[test]

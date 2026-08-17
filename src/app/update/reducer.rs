@@ -2118,7 +2118,7 @@ mod tests {
         }
 
         #[test]
-        fn cancel_after_save_returns_to_normal_and_dispatches_try_connect() {
+        fn cancel_after_save_returns_to_normal_without_action_redispatch() {
             let mut state = create_test_state();
             state.modal.set_mode(InputMode::ConnectionSetup);
             state.connection_setup.set_first_run(false);
@@ -2132,8 +2132,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::DispatchActions(_)));
+            assert!(effects.is_empty());
         }
     }
 

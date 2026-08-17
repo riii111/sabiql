@@ -21,57 +21,7 @@ pub fn reduce_connection_lifecycle(
     _services: &AppServices,
 ) -> DispatchResult {
     match action {
-        Action::TryConnect => {
-            state.session.cancel_connection_save_and_disconnect();
-            if state.session.connection_state().is_not_connected()
-                && state.modal.active_mode() == InputMode::Normal
-            {
-                if let Some(dsn) = state.session.dsn().map(str::to_string) {
-                    if state.session.active_database_type() == Some(DatabaseType::MySQL) {
-                        if state.session.active_database().is_none() {
-                            state.messages.set_error_at(
-                                "MySQL connection field `database` is required".to_string(),
-                                now,
-                            );
-                            return DispatchResult::handled();
-                        }
-                        let target = ConnectionTarget {
-                            id: state
-                                .session
-                                .active_connection_id()
-                                .cloned()
-                                .expect("active MySQL connection"),
-                            dsn,
-                            name: state
-                                .session
-                                .active_connection_name()
-                                .unwrap_or_default()
-                                .to_string(),
-                            database_type: DatabaseType::MySQL,
-                            database: state.session.active_database().map(str::to_string),
-                        };
-                        let run_id = state.session.begin_mysql_connection_probe(
-                            &target.id,
-                            &target.name,
-                            target.database_type,
-                            &target.dsn,
-                            target.database.as_deref(),
-                        );
-                        state.session.mark_connecting();
-                        return DispatchResult::handled_with(vec![Effect::ProbeMySqlConnection {
-                            target,
-                            run_id,
-                        }]);
-                    }
-                    let run_id = state.session.begin_connecting(&dsn);
-                    DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
-                } else {
-                    DispatchResult::handled()
-                }
-            } else {
-                DispatchResult::handled()
-            }
-        }
+        Action::TryConnect => DispatchResult::handled_with(try_connect(state, now)),
 
         Action::SwitchConnection(target) => {
             state.session.cancel_connection_save_and_disconnect();
@@ -224,6 +174,55 @@ pub fn reduce_connection_lifecycle(
         }
 
         _ => DispatchResult::pass(),
+    }
+}
+
+pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<Effect> {
+    state.session.cancel_connection_save_and_disconnect();
+    if state.session.connection_state().is_not_connected()
+        && state.modal.active_mode() == InputMode::Normal
+    {
+        if let Some(dsn) = state.session.dsn().map(str::to_string) {
+            if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                if state.session.active_database().is_none() {
+                    state.messages.set_error_at(
+                        "MySQL connection field `database` is required".to_string(),
+                        now,
+                    );
+                    return vec![];
+                }
+                let target = ConnectionTarget {
+                    id: state
+                        .session
+                        .active_connection_id()
+                        .cloned()
+                        .expect("active MySQL connection"),
+                    dsn,
+                    name: state
+                        .session
+                        .active_connection_name()
+                        .unwrap_or_default()
+                        .to_string(),
+                    database_type: DatabaseType::MySQL,
+                    database: state.session.active_database().map(str::to_string),
+                };
+                let run_id = state.session.begin_mysql_connection_probe(
+                    &target.id,
+                    &target.name,
+                    target.database_type,
+                    &target.dsn,
+                    target.database.as_deref(),
+                );
+                state.session.mark_connecting();
+                return vec![Effect::ProbeMySqlConnection { target, run_id }];
+            }
+            let run_id = state.session.begin_connecting(&dsn);
+            vec![Effect::FetchMetadata { dsn, run_id }]
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
     }
 }
 

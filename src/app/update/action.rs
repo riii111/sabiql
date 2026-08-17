@@ -12,7 +12,6 @@ use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
 use crate::model::sql_editor::completion::CompletionCandidate;
-use crate::policy::write::write_guardrails::WritePreview;
 use crate::policy::{FeatureRequirement, mask_password};
 use crate::ports::outbound::clipboard::ClipboardError;
 use crate::ports::outbound::connection_store::ConnectionStoreError;
@@ -639,7 +638,6 @@ pub enum Action {
     ResultCancelCellEdit,
     ResultDiscardCellEdit,
     SubmitCellEditWrite,
-    OpenWritePreviewConfirm(Box<WritePreview>),
     CopyFailed(ClipboardError),
     OpenFolderFailed(FolderOpenError),
     ToggleFocus,

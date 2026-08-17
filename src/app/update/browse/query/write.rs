@@ -188,9 +188,7 @@ pub fn reduce_write(
                             result.target_row,
                             staged_count,
                         );
-                        return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                            Action::OpenWritePreviewConfirm(Box::new(result.preview)),
-                        ])]);
+                        return open_write_preview_confirm(state, &result.preview, now);
                     }
                     Err(err) => {
                         state.messages.set_error_at(err.to_string(), now);
@@ -208,61 +206,12 @@ pub fn reduce_write(
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenWritePreviewConfirm(Box::new(preview)),
-                ])]),
+                Ok(preview) => open_write_preview_confirm(state, &preview, now),
                 Err(err) => {
                     state.messages.set_error_at(err.to_string(), now);
                     DispatchResult::handled()
                 }
             }
-        }
-
-        Action::OpenWritePreviewConfirm(preview) => {
-            if state.session.is_read_only() {
-                state.messages.set_error_at(
-                    "Read-only mode: write operations are disabled".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
-            }
-            state
-                .result_interaction
-                .set_write_preview((**preview).clone());
-            let operation = preview.operation;
-            let title = match operation {
-                WriteOperation::Update => {
-                    state.query.clear_delete_refresh_target();
-                    format!("Confirm UPDATE: {}", preview.target_summary.table)
-                }
-                WriteOperation::Delete => {
-                    let n = state
-                        .query
-                        .pending_delete_refresh_target()
-                        .map_or(1, |target| target.expected_delete_count);
-                    format!(
-                        "Confirm DELETE: {} {} from {}",
-                        n,
-                        if n == 1 { "row" } else { "rows" },
-                        preview.target_summary.table
-                    )
-                }
-            };
-
-            state.confirm_dialog.open(
-                title,
-                build_write_preview_fallback_message(preview),
-                ConfirmIntent::ExecuteWrite {
-                    sql: preview.sql.clone(),
-                    blocked: preview.guardrail.blocked,
-                },
-            );
-            if matches!(operation, WriteOperation::Delete) {
-                state.modal.set_mode(InputMode::Normal);
-            }
-            state.modal.push_mode(InputMode::ConfirmDialog);
-
-            DispatchResult::handled()
         }
 
         Action::ExecuteWrite(query) => {
@@ -419,6 +368,55 @@ pub fn reduce_write(
     }
 }
 
+fn open_write_preview_confirm(
+    state: &mut AppState,
+    preview: &WritePreview,
+    now: Instant,
+) -> DispatchResult {
+    if state.session.is_read_only() {
+        state.messages.set_error_at(
+            "Read-only mode: write operations are disabled".to_string(),
+            now,
+        );
+        return DispatchResult::handled();
+    }
+    state.result_interaction.set_write_preview(preview.clone());
+    let operation = preview.operation;
+    let title = match operation {
+        WriteOperation::Update => {
+            state.query.clear_delete_refresh_target();
+            format!("Confirm UPDATE: {}", preview.target_summary.table)
+        }
+        WriteOperation::Delete => {
+            let n = state
+                .query
+                .pending_delete_refresh_target()
+                .map_or(1, |target| target.expected_delete_count);
+            format!(
+                "Confirm DELETE: {} {} from {}",
+                n,
+                if n == 1 { "row" } else { "rows" },
+                preview.target_summary.table
+            )
+        }
+    };
+
+    state.confirm_dialog.open(
+        title,
+        build_write_preview_fallback_message(preview),
+        ConfirmIntent::ExecuteWrite {
+            sql: preview.sql.clone(),
+            blocked: preview.guardrail.blocked,
+        },
+    );
+    if matches!(operation, WriteOperation::Delete) {
+        state.modal.set_mode(InputMode::Normal);
+    }
+    state.modal.push_mode(InputMode::ConfirmDialog);
+
+    DispatchResult::handled()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,6 +473,22 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("Bob".to_string());
             state
+        }
+
+        fn submit_write_preview(state: &mut AppState) -> WritePreview {
+            let effects = dispatch_query(
+                state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(effects.is_empty());
+            state
+                .result_interaction
+                .pending_write_preview()
+                .cloned()
+                .expect("write preview")
         }
 
         #[test]
@@ -651,25 +665,9 @@ mod tests {
         fn submit_write_opens_confirm_dialog() {
             let mut state = editable_state();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-            assert_eq!(effects.len(), 1);
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("UPDATE"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert!(preview.sql.contains("UPDATE"));
         }
 
         #[test]
@@ -686,27 +684,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(
-                        preview.sql,
-                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
-                    );
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+            );
         }
 
         #[test]
@@ -724,27 +707,12 @@ mod tests {
             state.session.set_table_detail_raw(Some(detail));
             state.query.pagination.reset_for_table("main", "users");
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(
-                        preview.sql,
-                        "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
-                    );
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"users\" SET \"name\" = 'Bob' WHERE \"id\" = '1'"
+            );
         }
 
         #[test]
@@ -781,25 +749,10 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("7".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("SET \"score\" = 7"));
-                    assert!(!preview.sql.contains("SET \"score\" = '7'"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert!(preview.sql.contains("SET \"score\" = 7"));
+            assert!(!preview.sql.contains("SET \"score\" = '7'"));
         }
 
         #[test]
@@ -833,25 +786,10 @@ mod tests {
                 .result_interaction
                 .begin_cell_edit(0, 1, "a\0b".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert_eq!(preview.diff[0].before, "a\0b");
-                    assert_eq!(preview.diff[0].after, "a\0b");
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert_eq!(preview.diff[0].before, "a\0b");
+            assert_eq!(preview.diff[0].after, "a\0b");
         }
 
         #[test]
@@ -888,24 +826,9 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft("42".to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let preview = submit_write_preview(&mut state);
 
-            let dispatched = match &effects[0] {
-                Effect::DispatchActions(actions) => actions.first().expect("action"),
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            match dispatched {
-                Action::OpenWritePreviewConfirm(preview) => {
-                    assert!(preview.sql.contains("SET \"score\" = 42.0"));
-                }
-                other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-            }
+            assert!(preview.sql.contains("SET \"score\" = 42.0"));
         }
 
         #[test]
@@ -1034,21 +957,7 @@ mod tests {
         fn json_column_produces_structured_diff() {
             let mut state = editable_state_with_json();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(
                 preview.diff[0].json_diff.is_some(),
                 "jsonb column should have structured diff"
@@ -1085,20 +994,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{"role":"user"}"#.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview,
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_some());
         }
 
@@ -1125,21 +1021,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(after.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_none());
             assert_eq!(preview.diff[0].before, before);
             assert_eq!(preview.diff[0].after, after);
@@ -1156,21 +1038,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(r#"{"key":"new"}"#.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(
                 preview.diff[0].json_diff.is_none(),
                 "text column should not have structured diff even if value looks like JSON"
@@ -1202,21 +1070,7 @@ mod tests {
                 .result_interaction
                 .replace_cell_edit_draft(after.to_string());
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_none());
             assert_eq!(preview.diff[0].before, before);
             assert_eq!(preview.diff[0].after, after);
@@ -1226,28 +1080,7 @@ mod tests {
         fn confirm_dialog_displays_and_executes_same_sql() {
             let mut state = editable_state();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::SubmitCellEditWrite,
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
-            let preview = match &effects[0] {
-                Effect::DispatchActions(actions) => match actions.first().expect("action") {
-                    Action::OpenWritePreviewConfirm(preview) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-            let expected_sql = preview.sql.clone();
-
-            dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(preview),
-                Instant::now(),
-                &AppServices::stub(),
-            );
+            let expected_sql = submit_write_preview(&mut state).sql;
 
             assert_eq!(
                 state
@@ -1450,13 +1283,9 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(Box::new(preview)),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+                .into_effects()
+                .expect("write preview should be handled");
 
             assert!(effects.is_empty());
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
@@ -1474,13 +1303,9 @@ mod tests {
             state.query.set_delete_refresh_target(0, Some(2), 3);
             let preview = delete_preview();
 
-            let effects = dispatch_query(
-                &mut state,
-                &Action::OpenWritePreviewConfirm(Box::new(preview)),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .unwrap();
+            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+                .into_effects()
+                .expect("write preview should be handled");
 
             assert!(effects.is_empty());
             assert_eq!(

@@ -318,11 +318,11 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
-            )));
+            assert!(
+                effects
+                    .iter()
+                    .any(|e| matches!(e, Effect::GenerateErDiagramFromCache { .. }))
+            );
         }
 
         #[test]

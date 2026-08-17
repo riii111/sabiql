@@ -1425,20 +1425,7 @@ mod tests {
             );
 
             let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
-            let preview = match effects.first() {
-                Some(Effect::DispatchActions(actions)) => match actions.first() {
-                    Some(Action::OpenWritePreviewConfirm(preview)) => preview.clone(),
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
-
-            reduce_app(
-                &mut state,
-                Action::OpenWritePreviewConfirm(preview),
-                now,
-                &services,
-            );
+            assert!(effects.is_empty());
 
             assert_eq!(state.input_mode(), InputMode::ConfirmDialog);
             assert!(state.result_interaction.pending_write_preview().is_some());
@@ -1474,13 +1461,11 @@ mod tests {
             );
 
             let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
-            let preview = match effects.first() {
-                Some(Effect::DispatchActions(actions)) => match actions.first() {
-                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            assert!(effects.is_empty());
+            let preview = state
+                .result_interaction
+                .pending_write_preview()
+                .expect("write preview");
 
             assert_eq!(
                 preview.sql,
@@ -1524,13 +1509,11 @@ mod tests {
             );
 
             let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
-            let preview = match effects.first() {
-                Some(Effect::DispatchActions(actions)) => match actions.first() {
-                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            assert!(effects.is_empty());
+            let preview = state
+                .result_interaction
+                .pending_write_preview()
+                .expect("write preview");
 
             assert!(preview.sql.contains("WHERE `id` = '1'"));
             assert!(preview.sql.contains("SET `settings` ="));
@@ -1668,13 +1651,11 @@ mod tests {
             );
 
             let effects = reduce_app(&mut state, Action::SubmitCellEditWrite, now, &services);
-            let preview = match effects.first() {
-                Some(Effect::DispatchActions(actions)) => match actions.first() {
-                    Some(Action::OpenWritePreviewConfirm(preview)) => preview,
-                    other => panic!("expected OpenWritePreviewConfirm, got {other:?}"),
-                },
-                other => panic!("expected DispatchActions, got {other:?}"),
-            };
+            assert!(effects.is_empty());
+            let preview = state
+                .result_interaction
+                .pending_write_preview()
+                .expect("write preview");
 
             assert_eq!(
                 preview.sql,
