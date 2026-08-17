@@ -161,9 +161,6 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 )?)?),
             ),
             DatabaseType::MySQL => {
-                if entry.port == Some(0) {
-                    return Err(ConnectionProfileError::InvalidMySqlPort);
-                }
                 let database = entry.database.clone().filter(|value| !value.is_empty());
                 Self::with_id_and_config(
                     id,
