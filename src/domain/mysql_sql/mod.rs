@@ -42,10 +42,28 @@ pub enum MySqlStatementKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MySqlStatement {
-    pub sql: String,
-    pub kind: MySqlStatementKind,
-    pub target: Option<String>,
-    pub target_database: Option<String>,
+    sql: String,
+    kind: MySqlStatementKind,
+    target: Option<String>,
+    target_database: Option<String>,
+}
+
+impl MySqlStatement {
+    pub fn sql(&self) -> &str {
+        &self.sql
+    }
+
+    pub fn kind(&self) -> &MySqlStatementKind {
+        &self.kind
+    }
+
+    pub fn target(&self) -> Option<&str> {
+        self.target.as_deref()
+    }
+
+    pub fn target_database(&self) -> Option<&str> {
+        self.target_database.as_deref()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,6 +445,20 @@ mod tests {
     fn splits_mysql_comments_quotes_and_backticks() {
         let sql = "SELECT 'a;\\'b'; # comment;\n SELECT `semi;colon` /* ; */";
         assert_eq!(split_mysql_statements(sql).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn classified_statement_preserves_its_private_classifier_invariant() {
+        let statement = classify_mysql_statement("DROP TABLE users").unwrap();
+
+        assert_eq!(statement.sql(), "DROP TABLE users");
+        assert_eq!(
+            statement.kind(),
+            &MySqlStatementKind::DropTable { temporary: false }
+        );
+        assert_eq!(statement.target(), Some("users"));
+        assert_eq!(statement.target_database(), None);
+        assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
     }
 
     #[test]

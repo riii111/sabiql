@@ -131,9 +131,9 @@ async fn run_mysql_statement(
     refresh_scope: RefreshScope,
 ) -> Result<MySqlStatementExecution, DbOperationError> {
     let marker = Uuid::new_v4().simple().to_string();
-    let statement_scope = mysql_refresh_scope(&statement.kind);
+    let statement_scope = mysql_refresh_scope(statement.kind());
     let possible_refresh_scope = refresh_scope.merge(statement_scope);
-    if let Err(error) = write_mysql_statement(process, &statement.sql).await {
+    if let Err(error) = write_mysql_statement(process, statement.sql()).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
     let marker_query =
@@ -176,8 +176,8 @@ async fn run_mysql_statement(
             process,
             first_result,
             option_file,
-            &statement.sql,
-            &statement.kind,
+            statement.sql(),
+            statement.kind(),
             access_mode,
             expected_columns,
         )
@@ -189,13 +189,13 @@ async fn run_mysql_statement(
         Ok(rows) => rows,
         Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
     };
-    let tag = mysql_command_tag(&statement.kind, affected_rows, user_result.as_ref());
+    let tag = mysql_command_tag(statement.kind(), affected_rows, user_result.as_ref());
 
     Ok(MySqlStatementExecution {
         result_set: user_result,
         command_event: MySqlCommandEvent {
-            kind: statement.kind.clone(),
-            target: statement.target.clone(),
+            kind: statement.kind().clone(),
+            target: statement.target().map(str::to_string),
             tag,
         },
         refresh_scope: possible_refresh_scope,

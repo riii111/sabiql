@@ -288,17 +288,6 @@ impl SqlModalContext {
         self.dismiss_completion();
     }
 
-    pub fn begin_confirming_mysql_risk(
-        &mut self,
-        reason: AcknowledgeReason,
-        label: String,
-        pending_mysql_statements: Vec<MySqlStatement>,
-    ) {
-        self.status = SqlModalStatus::ConfirmingRisk { reason, label };
-        self.pending_mysql_statements = Some(pending_mysql_statements);
-        self.dismiss_completion();
-    }
-
     pub fn take_pending_mysql_statements(&mut self) -> Option<Vec<MySqlStatement>> {
         self.pending_mysql_statements.take()
     }

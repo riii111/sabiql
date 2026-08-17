@@ -43,14 +43,15 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
 ) -> Result<Vec<MySqlStatement>, DbOperationError> {
     let statements = classify_mysql_multi_statement(query, selected_database)
         .map_err(DbOperationError::UnsupportedOperation)?;
-    validate_mysql_statements_for_execution(&statements, selected_database, access_mode)
+    validate_mysql_statements_for_execution(&statements, selected_database, access_mode)?;
+    Ok(statements)
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,
     access_mode: AccessMode,
-) -> Result<Vec<MySqlStatement>, DbOperationError> {
+) -> Result<(), DbOperationError> {
     validate_mysql_statements(statements, selected_database)
         .map_err(DbOperationError::UnsupportedOperation)?;
     if access_mode.is_read_only() && !statements.iter().all(mysql_statement_is_read_only_allowed) {
@@ -58,17 +59,17 @@ pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution(
             "read-only mode blocks MySQL write statements".to_string(),
         ));
     }
-    Ok(statements.to_vec())
+    Ok(())
 }
 
 fn mysql_statement_is_read_only_allowed(statement: &MySqlStatement) -> bool {
     matches!(
-        statement.kind,
+        statement.kind(),
         MySqlStatementKind::Select
             | MySqlStatementKind::Table
             | MySqlStatementKind::Show
             | MySqlStatementKind::Describe
-    ) && !has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true)
+    ) && !has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true)
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_export_query(
@@ -103,14 +104,14 @@ pub(super) fn mysql_metadata_fallback_has_unsupported_session_state(
     for statement in statements {
         if temporary_table_created
             && matches!(
-                statement.kind,
+                statement.kind(),
                 MySqlStatementKind::Show | MySqlStatementKind::Describe
             )
         {
             return true;
         }
         if matches!(
-            statement.kind,
+            statement.kind(),
             MySqlStatementKind::CreateTable { temporary: true }
         ) {
             temporary_table_created = true;

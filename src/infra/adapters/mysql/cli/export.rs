@@ -376,7 +376,7 @@ pub(super) async fn run_mysql_export_process(
     if columns.is_none() {
         let statement = classify_mysql_statement(query)
             .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let fallback_kind = mysql_metadata_fallback_kind(&statement.kind).ok_or_else(|| {
+        let fallback_kind = mysql_metadata_fallback_kind(statement.kind()).ok_or_else(|| {
             DbOperationError::QueryFailed(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )

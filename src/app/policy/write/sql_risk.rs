@@ -112,14 +112,14 @@ mod mysql_tests {
 
         for (sql, expected_kind, expected_risk, expected_label) in cases {
             let statement = classify_mysql_statement(sql).expect(sql);
-            assert_eq!(statement.kind, expected_kind, "{sql}");
+            assert_eq!(statement.kind(), &expected_kind, "{sql}");
             assert_eq!(
-                mysql_statement_label(&statement.kind),
+                mysql_statement_label(statement.kind()),
                 expected_label,
                 "{sql}"
             );
             assert!(
-                mysql_statement_is_schema_modifying(&statement.kind),
+                mysql_statement_is_schema_modifying(statement.kind()),
                 "{sql}"
             );
             assert_eq!(
@@ -295,7 +295,7 @@ fn mysql_low(read_only_allowed: bool) -> SqlRiskDecision {
 }
 
 fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
-    match statement.target.as_deref() {
+    match statement.target() {
         Some(target) => SqlRiskDecision {
             risk_level: RiskLevel::High,
             confirmation: ConfirmationType::TableNameInput {
@@ -307,7 +307,7 @@ fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
             risk_level: RiskLevel::High,
             confirmation: ConfirmationType::Acknowledge {
                 reason: AcknowledgeReason::TargetNameUnavailable,
-                label: mysql_statement_label(&statement.kind).to_string(),
+                label: mysql_statement_label(statement.kind()).to_string(),
             },
             read_only_allowed: false,
         },
@@ -315,12 +315,12 @@ fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
 }
 
 fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
-    match statement.kind {
+    match statement.kind() {
         MySqlStatementKind::Select
         | MySqlStatementKind::Table
         | MySqlStatementKind::Show
         | MySqlStatementKind::Describe => {
-            mysql_low(!has_mysql_read_only_side_effect(&statement.sql).unwrap_or(true))
+            mysql_low(!has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true))
         }
         MySqlStatementKind::Begin
         | MySqlStatementKind::StartTransaction
@@ -738,7 +738,7 @@ pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecisio
     }
     let statement = classify_mysql_statement(&statements[0]).ok()?;
     if !matches!(
-        statement.kind,
+        statement.kind(),
         MySqlStatementKind::Select | MySqlStatementKind::Table
     ) {
         return None;
@@ -750,7 +750,7 @@ pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecisio
     }
     risk.confirmation = ConfirmationType::Acknowledge {
         reason: AcknowledgeReason::AnalyzeExecution,
-        label: mysql_statement_label(&statement.kind).to_string(),
+        label: mysql_statement_label(statement.kind()).to_string(),
     };
     Some(risk)
 }
@@ -776,7 +776,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
             MultiStatementDecision::Allow { statements, risk } => MultiStatementDecision::Allow {
                 statements: statements
                     .into_iter()
-                    .map(|statement| statement.sql)
+                    .map(|statement| statement.sql().to_string())
                     .collect(),
                 risk,
             },
@@ -1008,7 +1008,7 @@ pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
 pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
     if database_type == DatabaseType::MySQL {
         return classify_mysql_statement(sql)
-            .map_or("SQL", |statement| mysql_statement_label(&statement.kind));
+            .map_or("SQL", |statement| mysql_statement_label(statement.kind()));
     }
     let sqlite_label = (database_type == DatabaseType::SQLite)
         .then(|| sqlite_specific_label(sql))
@@ -1032,7 +1032,7 @@ pub fn adhoc_label_for_table_name_confirmation(
                     mysql_statement_risk(&statement).confirmation,
                     ConfirmationType::TableNameInput { .. }
                 )
-                .then(|| mysql_statement_label(&statement.kind))
+                .then(|| mysql_statement_label(statement.kind()))
             });
     }
     let Ok(statements) = split_statements_for_database(database_type, sql) else {

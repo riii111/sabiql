@@ -266,7 +266,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_mysql_alter_table_enters_confirming_high() {
+        fn submit_mysql_alter_table_confirmation_forwards_classified_statements() {
             let mut state = sql_modal_state();
             state.session.activate_connection_with_target(
                 &ConnectionId::new(),
@@ -310,8 +310,8 @@ mod tests {
                     classified_mysql_statements: Some(statements),
                     ..
                 }] if matches!(statements.as_slice(), [statement]
-                    if statement.kind == MySqlStatementKind::AlterTable
-                        && statement.sql == "ALTER TABLE users DROP COLUMN obsolete")
+                    if statement.kind() == &MySqlStatementKind::AlterTable
+                        && statement.sql() == "ALTER TABLE users DROP COLUMN obsolete")
             ));
         }
 
@@ -918,8 +918,8 @@ mod tests {
                     classified_mysql_statements: Some(statements),
                     ..
                 }] if matches!(statements.as_slice(), [statement]
-                    if statement.kind == MySqlStatementKind::Select
-                        && statement.sql == "SELECT 1")
+                    if statement.kind() == &MySqlStatementKind::Select
+                        && statement.sql() == "SELECT 1")
             ));
         }
 

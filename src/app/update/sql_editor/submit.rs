@@ -82,13 +82,7 @@ fn handle_allowed_query(
             start_adhoc_if_connected(state, query, now, classified_mysql_statements)
         }
         ConfirmationType::Acknowledge { reason, label } => {
-            if let Some(statements) = classified_mysql_statements {
-                state
-                    .sql_modal
-                    .begin_confirming_mysql_risk(reason, label, statements);
-            } else {
-                state.sql_modal.begin_confirming_risk(reason, label);
-            }
+            state.sql_modal.begin_confirming_risk(reason, label);
             DispatchResult::handled()
         }
         ConfirmationType::TableNameInput { target } => {

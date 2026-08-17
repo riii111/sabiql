@@ -1,7 +1,10 @@
+use std::borrow::Cow;
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
+use crate::app::ports::outbound::{
+    AccessMode, DbOperationError, MySqlQueryExecutor, QueryExecutor,
+};
 use crate::domain::mysql_sql::MySqlStatement;
 use crate::domain::{
     QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
@@ -144,13 +147,20 @@ async fn execute_adhoc_with_statements(
         ));
     }
 
-    let statements = match classified_statements {
-        Some(statements) => validate_mysql_statements_for_execution(
-            statements,
+    let statements: Cow<'_, [MySqlStatement]> = match classified_statements {
+        Some(statements) => {
+            validate_mysql_statements_for_execution(
+                statements,
+                target.database.as_deref(),
+                access_mode,
+            )?;
+            Cow::Borrowed(statements)
+        }
+        None => Cow::Owned(validate_mysql_multi_query(
+            query,
             target.database.as_deref(),
             access_mode,
-        )?,
-        None => validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?,
+        )?),
     };
 
     #[expect(
@@ -159,7 +169,7 @@ async fn execute_adhoc_with_statements(
     )]
     let start = Instant::now();
     let option_file = MySqlOptionFile::create(&target)?;
-    let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
+    let result = run_mysql_adhoc(&option_file.path, statements.as_ref(), access_mode).await;
     drop(option_file);
     let execution = result?;
     let elapsed = start.elapsed().as_millis() as u64;
@@ -244,15 +254,6 @@ impl QueryExecutor for MySqlAdapter {
         execute_adhoc_with_statements(dsn, query, access_mode, None).await
     }
 
-    async fn execute_adhoc_with_classified_mysql_statements(
-        &self,
-        dsn: &str,
-        query: &str,
-        statements: &[MySqlStatement],
-        access_mode: AccessMode,
-    ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(dsn, query, access_mode, Some(statements)).await
-    }
     async fn execute_write(
         &self,
         dsn: &str,
@@ -314,6 +315,19 @@ impl QueryExecutor for MySqlAdapter {
             export_mysql_csv_to_file(target, &query, path).await
         })
         .await
+    }
+}
+
+#[async_trait]
+impl MySqlQueryExecutor for MySqlAdapter {
+    async fn execute_adhoc_with_classified_statements(
+        &self,
+        dsn: &str,
+        query: &str,
+        statements: &[MySqlStatement],
+        access_mode: AccessMode,
+    ) -> Result<QueryResult, DbOperationError> {
+        execute_adhoc_with_statements(dsn, query, access_mode, Some(statements)).await
     }
 }
 
