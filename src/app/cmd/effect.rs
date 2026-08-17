@@ -1,9 +1,9 @@
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{QueryValue, Table};
+use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
 
@@ -16,7 +16,7 @@ pub enum Effect {
         name: String,
         config: ConnectionConfig,
         run_id: u64,
-        run_guard: Arc<AtomicU64>,
+        run_guard: Arc<ConnectionSaveGuard>,
     },
     ProbeMySqlConnection {
         target: ConnectionTarget,
