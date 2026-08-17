@@ -237,6 +237,7 @@ mod tests {
         ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, Table,
         TableKindInfo,
     };
+    use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
     use crate::model::connection::cache::ConnectionCache;
     use crate::model::connection::error::ConnectionErrorKind;
@@ -910,6 +911,9 @@ mod tests {
         use super::*;
 
         fn valid_mysql_cache(dsn: &str, database: &str) -> ConnectionCache {
+            let mut pagination = PaginationState::default();
+            pagination.reset_for_table_with_estimate("app", "users", Some(1200));
+            pagination.set_page_result(2, false);
             ConnectionCache {
                 connection_dsn: Some(dsn.to_string()),
                 database_type: Some(DatabaseType::MySQL),
@@ -924,6 +928,7 @@ mod tests {
                     1,
                     QuerySource::Preview,
                 ))),
+                pagination,
                 explorer_selected: 42,
                 inspector_tab: InspectorTab::ForeignKeys,
                 ..Default::default()
@@ -989,6 +994,10 @@ mod tests {
             assert_eq!(state.session.effective_user(), Some("user@localhost"));
             assert_eq!(state.session.selected_table_key(), Some("app.users"));
             assert!(state.query.current_result().is_some());
+            assert_eq!(state.query.pagination.schema(), "app");
+            assert_eq!(state.query.pagination.table(), "users");
+            assert_eq!(state.query.pagination.current_page(), 2);
+            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
         }
@@ -1072,12 +1081,16 @@ mod tests {
         fn sqlite_switch_restores_cache() {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
+            let mut pagination = PaginationState::default();
+            pagination.reset_for_table_with_estimate("main", "items", Some(900));
+            pagination.set_page_result(1, true);
             state.ui.set_explorer_selected_raw(7);
             state.connection_caches.save(
                 &target_id,
                 ConnectionCache {
                     explorer_selected: 42,
                     inspector_tab: InspectorTab::ForeignKeys,
+                    pagination,
                     ..Default::default()
                 },
             );
@@ -1098,11 +1111,128 @@ mod tests {
             );
             assert!(state.connection_caches.get(&target_id).is_some());
             assert_eq!(state.ui.explorer_selected(), 42);
+            assert_eq!(state.query.pagination.schema(), "main");
+            assert_eq!(state.query.pagination.table(), "items");
+            assert_eq!(state.query.pagination.current_page(), 1);
+            assert!(state.query.pagination.reached_end());
             assert_eq!(
                 state.session.active_database_type(),
                 Some(DatabaseType::SQLite)
             );
             assert_eq!(state.session.connection_state(), ConnectionState::Connected);
+        }
+
+        #[test]
+        fn cached_round_trip_restores_pagination_target_for_next_and_previous_pages() {
+            let mut state = AppState::new("test".to_string());
+            let connection_a = ConnectionId::from_string("connection-a");
+            let connection_b = ConnectionId::from_string("connection-b");
+            let dsn_a = "postgres://localhost/connection-a";
+            let dsn_b = "postgres://localhost/connection-b";
+
+            state.session.activate_connection_with_dsn(
+                &connection_a,
+                "connection-a",
+                DatabaseType::PostgreSQL,
+                dsn_a,
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            state
+                .query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.set_page_result(2, false);
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string()],
+                    vec![vec!["1".to_string()]],
+                    1500,
+                    QuerySource::Preview,
+                )));
+
+            let mut pagination_b = PaginationState::default();
+            pagination_b.reset_for_table_with_estimate("main", "orders", Some(2600));
+            pagination_b.set_page_result(5, false);
+            state.connection_caches.save(
+                &connection_b,
+                ConnectionCache {
+                    selected_table_key: Some("main.orders".to_string()),
+                    query_result: Some(Arc::new(QueryResult::success(
+                        "SELECT * FROM orders".to_string(),
+                        vec!["id".to_string()],
+                        vec![vec!["2".to_string()]],
+                        2600,
+                        QuerySource::Preview,
+                    ))),
+                    pagination: pagination_b,
+                    ..Default::default()
+                },
+            );
+
+            reduce(
+                &mut state,
+                &create_postgres_switch_action(&connection_b, "connection-b"),
+            );
+
+            assert_eq!(state.session.dsn(), Some(dsn_b));
+            assert_eq!(state.session.selected_table_key(), Some("main.orders"));
+            assert_eq!(state.query.pagination.current_page(), 5);
+            assert_eq!(state.query.pagination.schema(), "main");
+            assert_eq!(state.query.pagination.table(), "orders");
+
+            let next_effects = reduce_app(
+                &mut state,
+                Action::ResultNextPage,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(next_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview {
+                    dsn,
+                    schema,
+                    table,
+                    offset: 3000,
+                    target_page: 6,
+                    ..
+                } if dsn == dsn_b && schema == "main" && table == "orders"
+            )));
+
+            state.query.mark_idle();
+            let previous_effects = reduce_app(
+                &mut state,
+                Action::ResultPrevPage,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(previous_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview {
+                    dsn,
+                    schema,
+                    table,
+                    offset: 2000,
+                    target_page: 4,
+                    ..
+                } if dsn == dsn_b && schema == "main" && table == "orders"
+            )));
+
+            reduce(
+                &mut state,
+                &create_postgres_switch_action(&connection_a, "connection-a"),
+            );
+            assert_eq!(state.session.dsn(), Some(dsn_a));
+            assert_eq!(state.session.selected_table_key(), Some("public.users"));
+            assert_eq!(state.query.pagination.current_page(), 2);
+            assert_eq!(state.query.pagination.schema(), "public");
+            assert_eq!(state.query.pagination.table(), "users");
         }
     }
 

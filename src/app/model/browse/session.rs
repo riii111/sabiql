@@ -6,7 +6,7 @@ use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
-use crate::model::browse::query_execution::QueryExecution;
+use crate::model::browse::query_execution::{PaginationState, QueryExecution};
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::origin::ConnectionOrigin;
@@ -634,6 +634,7 @@ impl BrowseSession {
         inspector_tab: InspectorTab,
         query_result: Option<Arc<QueryResult>>,
         result_history: ResultHistory,
+        pagination: PaginationState,
     ) -> ConnectionCache {
         ConnectionCache {
             connection_dsn: self.dsn.clone(),
@@ -645,6 +646,7 @@ impl BrowseSession {
             selected_table_key: self.selected_table_key.clone(),
             query_result,
             result_history,
+            pagination,
             explorer_selected,
             inspector_tab,
         }
@@ -652,6 +654,7 @@ impl BrowseSession {
 
     fn restore_from_cache(&mut self, cache: &ConnectionCache, query: &mut QueryExecution) {
         query.reset_for_context_change();
+        query.restore_pagination(cache.pagination.clone());
         self.metadata.clone_from(&cache.metadata);
         self.effective_user.clone_from(&cache.effective_user);
         self.table_detail.clone_from(&cache.table_detail);
@@ -1285,8 +1288,18 @@ mod tests {
             let result = make_query_result();
             let mut history = ResultHistory::default();
             history.push(result.clone());
+            query
+                .pagination
+                .reset_for_table_with_estimate("public", "users", Some(1200));
+            query.pagination.set_page_result(2, false);
 
-            let cache = session.to_cache(5, InspectorTab::Indexes, Some(result), history);
+            let cache = session.to_cache(
+                5,
+                InspectorTab::Indexes,
+                Some(result),
+                history,
+                query.pagination.clone(),
+            );
 
             // Create a fresh session and restore
             let mut new_session = BrowseSession::default();
@@ -1302,6 +1315,11 @@ mod tests {
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
             assert_eq!(query.result_history().len(), 1);
+            assert_eq!(query.pagination.schema(), "public");
+            assert_eq!(query.pagination.table(), "users");
+            assert_eq!(query.pagination.current_page(), 2);
+            assert_eq!(query.pagination.total_rows_estimate(), Some(1200));
+            assert!(!query.pagination.reached_end());
             assert!(!query.is_running());
             assert!(!query.is_current_run(stale_run_id));
         }
@@ -1315,7 +1333,13 @@ mod tests {
             let _ = session.begin_reload();
             assert!(session.selection_generation() > 0);
 
-            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
+            let cache = session.to_cache(
+                0,
+                InspectorTab::Info,
+                None,
+                ResultHistory::default(),
+                PaginationState::default(),
+            );
 
             let mut new_session = BrowseSession::default();
             new_session.set_selection_generation(42);
@@ -1334,7 +1358,13 @@ mod tests {
             let mut query = QueryExecution::default();
             let _ = session.select_table("public", "users", &mut query);
 
-            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
+            let cache = session.to_cache(
+                0,
+                InspectorTab::Info,
+                None,
+                ResultHistory::default(),
+                PaginationState::default(),
+            );
 
             let mut restored = BrowseSession::default();
             let mut query = QueryExecution::default();
@@ -1361,6 +1391,7 @@ mod tests {
                 InspectorTab::Columns,
                 Some(make_query_result()),
                 ResultHistory::default(),
+                PaginationState::default(),
             );
 
             let mut restored = BrowseSession::default();
@@ -1472,7 +1503,13 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
 
-            let cache = session.to_cache(0, InspectorTab::Info, None, ResultHistory::default());
+            let cache = session.to_cache(
+                0,
+                InspectorTab::Info,
+                None,
+                ResultHistory::default(),
+                PaginationState::default(),
+            );
 
             let mut new_session = BrowseSession::default();
             let mut query = QueryExecution::default();
@@ -1486,9 +1523,16 @@ mod tests {
             let cache = ConnectionCache::default();
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
+            query.pagination.reset_for_table("public", "old_table");
+            query.pagination.set_page_result(4, true);
             session.restore_from_cache(&cache, &mut query);
 
             assert!(session.database_name().is_none());
+            assert_eq!(query.pagination.current_page(), 0);
+            assert!(query.pagination.schema().is_empty());
+            assert!(query.pagination.table().is_empty());
+            assert!(query.pagination.total_rows_estimate().is_none());
+            assert!(!query.pagination.reached_end());
         }
     }
 

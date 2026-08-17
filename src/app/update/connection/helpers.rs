@@ -94,6 +94,7 @@ pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
         state.ui.inspector_tab(),
         state.query.current_result().cloned(),
         state.query.result_history().clone(),
+        state.query.pagination.clone(),
     )
 }
 
