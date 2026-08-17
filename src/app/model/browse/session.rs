@@ -1,6 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use crate::domain::query_history::QueryHistoryScope;
 use crate::domain::{
@@ -15,6 +15,49 @@ use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::mask_password;
+
+#[derive(Debug, Default)]
+pub struct ConnectionSaveGuard {
+    state: Mutex<ConnectionSaveState>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+enum ConnectionSaveState {
+    #[default]
+    Idle,
+    Active(u64),
+    Claimed(u64),
+}
+
+impl ConnectionSaveGuard {
+    pub(crate) fn start(&self, run_id: u64) {
+        *self.state.lock().expect("connection save guard poisoned") =
+            ConnectionSaveState::Active(run_id);
+    }
+
+    pub(crate) fn cancel(&self) {
+        *self.state.lock().expect("connection save guard poisoned") = ConnectionSaveState::Idle;
+    }
+
+    pub(crate) fn claim(&self, run_id: u64) -> bool {
+        let mut state = self.state.lock().expect("connection save guard poisoned");
+        if *state != ConnectionSaveState::Active(run_id) {
+            return false;
+        }
+        *state = ConnectionSaveState::Claimed(run_id);
+        true
+    }
+
+    pub(crate) fn save_if_claimed<T>(&self, run_id: u64, save: impl FnOnce() -> T) -> Option<T> {
+        let mut state = self.state.lock().expect("connection save guard poisoned");
+        if *state != ConnectionSaveState::Claimed(run_id) {
+            return None;
+        }
+        let result = save();
+        *state = ConnectionSaveState::Idle;
+        Some(result)
+    }
+}
 
 #[derive(Debug, Clone)]
 struct ActiveConnection {
@@ -100,7 +143,7 @@ pub struct BrowseSession {
     effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
     connection_save_run: AsyncRun,
-    connection_save_guard: Arc<AtomicU64>,
+    connection_save_guard: Arc<ConnectionSaveGuard>,
 
     // -- co-dependent: connection identity / lifecycle --
     dsn: Option<String>,
@@ -129,7 +172,7 @@ impl Default for BrowseSession {
             effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
             connection_save_run: AsyncRun::default(),
-            connection_save_guard: Arc::new(AtomicU64::new(0)),
+            connection_save_guard: Arc::new(ConnectionSaveGuard::default()),
             dsn: None,
             active_connection: None,
             mysql_connection_probe_run: AsyncRun::default(),
@@ -261,7 +304,7 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_connection_save(&mut self) -> u64 {
         let run_id = self.connection_save_run.begin();
-        self.connection_save_guard.store(run_id, Ordering::Release);
+        self.connection_save_guard.start(run_id);
         run_id
     }
 
@@ -270,8 +313,8 @@ impl BrowseSession {
     }
 
     pub fn cancel_connection_save(&mut self) {
+        self.connection_save_guard.cancel();
         self.connection_save_run.clear_active();
-        self.connection_save_guard.store(0, Ordering::Release);
     }
 
     pub fn cancel_connection_save_and_disconnect(&mut self) {
@@ -281,7 +324,7 @@ impl BrowseSession {
         }
     }
 
-    pub fn connection_save_guard(&self) -> Arc<AtomicU64> {
+    pub fn connection_save_guard(&self) -> Arc<ConnectionSaveGuard> {
         Arc::clone(&self.connection_save_guard)
     }
 

@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
@@ -17,6 +16,7 @@ use crate::domain::connection::{
     SqliteConnectionConfig,
 };
 use crate::model::app_state::AppState;
+use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{
     ConnectionStoreError, MetadataProvider, ServiceFileError, SqlitePathValidator,
 };
@@ -24,10 +24,27 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
-fn claim_save_run(run_guard: &AtomicU64, run_id: u64) -> bool {
-    run_guard
-        .compare_exchange(run_id, 0, Ordering::AcqRel, Ordering::Acquire)
-        .is_ok()
+fn claim_save_run(run_guard: &ConnectionSaveGuard, run_id: u64) -> bool {
+    run_guard.claim(run_id)
+}
+
+fn save_if_claimed<T>(
+    run_guard: &ConnectionSaveGuard,
+    run_id: u64,
+    save: impl FnOnce() -> T,
+) -> Option<T> {
+    run_guard.save_if_claimed(run_id, save)
+}
+
+fn claim_and_save<T>(
+    run_guard: &ConnectionSaveGuard,
+    run_id: u64,
+    save: impl FnOnce() -> T,
+) -> Option<T> {
+    if !claim_save_run(run_guard, run_id) {
+        return None;
+    }
+    save_if_claimed(run_guard, run_id, save)
 }
 
 pub(crate) async fn run(
@@ -92,11 +109,8 @@ pub(crate) async fn run(
                 let database_type = profile.database_type();
 
                 tokio::task::spawn_blocking(move || {
-                    if !claim_save_run(&run_guard, run_id) {
-                        return;
-                    }
-                    match store.save(&profile) {
-                        Ok(()) => {
+                    match claim_and_save(&run_guard, run_id, || store.save(&profile)) {
+                        Some(Ok(())) => {
                             tx.blocking_send(Action::ConnectionSaveCompleted {
                                 target: ConnectionTarget {
                                     id,
@@ -109,7 +123,7 @@ pub(crate) async fn run(
                             })
                             .ok();
                         }
-                        Err(e) => {
+                        Some(Err(e)) => {
                             tx.blocking_send(Action::ConnectionSaveFailed {
                                 error: e.into(),
                                 database_type,
@@ -117,6 +131,7 @@ pub(crate) async fn run(
                             })
                             .ok();
                         }
+                        None => {}
                     }
                 });
                 return Ok(());
@@ -143,7 +158,7 @@ pub(crate) async fn run(
                     match probe.probe(&target.dsn).await {
                         Ok(()) => {
                             let save_result = tokio::task::spawn_blocking(move || {
-                                claim_save_run(&run_guard, run_id).then(|| store.save(&profile))
+                                claim_and_save(&run_guard, run_id, || store.save(&profile))
                             })
                             .await
                             .expect("connection store save task panicked");
@@ -189,7 +204,7 @@ pub(crate) async fn run(
                     Ok(metadata) => {
                         cache.set(dsn.clone(), Arc::new(metadata)).await;
                         let save_result = tokio::task::spawn_blocking(move || {
-                            claim_save_run(&run_guard, run_id).then(|| store.save(&profile))
+                            claim_and_save(&run_guard, run_id, || store.save(&profile))
                         })
                         .await
                         .expect("connection store save task panicked");
@@ -414,6 +429,7 @@ mod tests {
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
+    use crate::model::browse::session::ConnectionSaveGuard;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
@@ -440,9 +456,9 @@ mod tests {
 
     mod save_connection {
         use super::*;
+        use crate::cmd::connection::{claim_save_run, save_if_claimed};
         use mockall::predicate::eq;
         use std::fs;
-        use std::sync::atomic::{AtomicU64, Ordering};
         use tempfile::tempdir;
 
         struct SqliteDsnBuilder;
@@ -476,6 +492,12 @@ mod tests {
                 "secret",
                 MySqlSslMode::Required,
             ))
+        }
+
+        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
+            let guard = Arc::new(ConnectionSaveGuard::default());
+            guard.start(run_id);
+            guard
         }
 
         #[tokio::test]
@@ -519,7 +541,7 @@ mod tests {
                         name: "MySQL".to_string(),
                         config: mysql_config(Some("app")),
                         run_id: 1,
-                        run_guard: Arc::new(AtomicU64::new(1)),
+                        run_guard: active_run_guard(1),
                     }],
                     &mut renderer,
                     &mut state,
@@ -583,7 +605,7 @@ mod tests {
                         name: "MySQL".to_string(),
                         config: mysql_config(None),
                         run_id: 1,
-                        run_guard: Arc::new(AtomicU64::new(1)),
+                        run_guard: active_run_guard(1),
                     }],
                     &mut renderer,
                     &mut state,
@@ -610,7 +632,7 @@ mod tests {
         #[tokio::test]
         async fn mysql_profile_is_not_saved_when_run_is_cancelled_after_probe() {
             let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
-            let run_guard = Arc::new(AtomicU64::new(1));
+            let run_guard = active_run_guard(1);
             let guard_for_probe = Arc::clone(&run_guard);
             let mut probe = MockMySqlConnectionProbe::new();
             probe
@@ -618,7 +640,7 @@ mod tests {
                 .with(eq(dsn.to_string()))
                 .once()
                 .returning(move |_| {
-                    guard_for_probe.store(0, Ordering::Release);
+                    guard_for_probe.cancel();
                     Ok(())
                 });
 
@@ -660,6 +682,18 @@ mod tests {
                     .await
                     .is_err()
             );
+        }
+
+        #[test]
+        fn cancel_after_claim_prevents_save_from_starting() {
+            let run_guard = active_run_guard(1);
+            let mut save_started = false;
+
+            assert!(claim_save_run(&run_guard, 1));
+
+            run_guard.cancel();
+            assert!(save_if_claimed(&run_guard, 1, || save_started = true).is_none());
+            assert!(!save_started);
         }
 
         #[tokio::test]
@@ -707,7 +741,7 @@ mod tests {
                             SqliteConnectionConfig::new(input_path).unwrap(),
                         ),
                         run_id: 1,
-                        run_guard: Arc::new(AtomicU64::new(1)),
+                        run_guard: active_run_guard(1),
                     }],
                     &mut renderer,
                     state,
@@ -766,7 +800,7 @@ mod tests {
                             SqliteConnectionConfig::new(path_str).unwrap(),
                         ),
                         run_id: 1,
-                        run_guard: Arc::new(AtomicU64::new(1)),
+                        run_guard: active_run_guard(1),
                     }],
                     &mut renderer,
                     state,
