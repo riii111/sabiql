@@ -420,14 +420,46 @@ mod tests {
     async fn render_frames_after_inspector_terminal(inspector_failed: bool) -> Vec<RenderFrame> {
         let (mut state, generation, detail_run_id) =
             state_with_selected_table(DatabaseType::PostgreSQL);
+        let (tx, _rx) = mpsc::channel(8);
+        let runner = test_fixtures::make_runner(
+            Arc::new(MockMetadataProvider::new()),
+            Arc::new(MockQueryExecutor::new()),
+            Arc::new(MockConnectionStore::new()),
+            TtlCache::new(300),
+            tx,
+        );
+        let completion_engine = std::cell::RefCell::new(CompletionEngine::new());
+        let mut renderer = RecordingRenderer { frames: vec![] };
         let query_action =
             query_completed_action(&mut state, preview_result(1), generation, Some(0));
-        reduce(
+        let mut query_effects = reduce(
             &mut state,
             query_action,
             Instant::now(),
             &AppServices::stub(),
         );
+        append_runtime_render(&state, &mut query_effects);
+        assert!(
+            runner
+                .run(
+                    query_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            renderer.frames,
+            [RenderFrame {
+                inspector_terminal: false,
+                result_visible: false,
+            }]
+        );
+        renderer.frames.clear();
 
         let inspector_action = if inspector_failed {
             Action::TableDetailFailed {
@@ -451,17 +483,6 @@ mod tests {
             &AppServices::stub(),
         );
         append_runtime_render(&state, &mut effects);
-
-        let (tx, _rx) = mpsc::channel(8);
-        let runner = test_fixtures::make_runner(
-            Arc::new(MockMetadataProvider::new()),
-            Arc::new(MockQueryExecutor::new()),
-            Arc::new(MockConnectionStore::new()),
-            TtlCache::new(300),
-            tx,
-        );
-        let completion_engine = std::cell::RefCell::new(CompletionEngine::new());
-        let mut renderer = RecordingRenderer { frames: vec![] };
         let pending = runner
             .run(
                 effects,
@@ -472,6 +493,13 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(
+            renderer.frames,
+            [RenderFrame {
+                inspector_terminal: true,
+                result_visible: false,
+            }]
+        );
 
         let mut next_effects = Vec::new();
         for action in pending {
