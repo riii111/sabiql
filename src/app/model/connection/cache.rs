@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, Table};
+use crate::model::browse::query_execution::PaginationState;
 use crate::model::browse::result_history::ResultHistory;
 use crate::model::shared::inspector_tab::InspectorTab;
 
@@ -16,6 +17,7 @@ pub struct ConnectionCache {
     pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
     pub result_history: ResultHistory,
+    pub pagination: PaginationState,
     pub explorer_selected: usize,
     pub inspector_tab: InspectorTab,
 }
@@ -73,6 +75,9 @@ mod tests {
         assert!(cache.table_detail.is_none());
         assert!(cache.selected_table_key.is_none());
         assert!(cache.query_result.is_none());
+        assert_eq!(cache.pagination.current_page(), 0);
+        assert!(cache.pagination.schema().is_empty());
+        assert!(cache.pagination.table().is_empty());
         assert_eq!(cache.explorer_selected, 0);
         assert_eq!(cache.inspector_tab, InspectorTab::default());
     }

@@ -193,6 +193,10 @@ impl QueryExecution {
         self.post_delete_row_selection = PostDeleteRowSelection::Keep;
     }
 
+    pub fn restore_pagination(&mut self, pagination: PaginationState) {
+        self.pagination = pagination;
+    }
+
     pub fn is_current_run(&self, run_id: u64) -> bool {
         self.run.is_current(run_id)
     }
