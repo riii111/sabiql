@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, SmartErRefreshFetched};
@@ -19,7 +21,7 @@ pub(super) fn reduce_smart_refresh_fetched(state: &AppState, action: &Action) ->
                 dsn: dsn.clone(),
                 run_id: *run_id,
                 new_metadata: new_metadata.clone(),
-                signature_snapshot: signature_snapshot.clone(),
+                signature_snapshot: Arc::clone(signature_snapshot),
             }])
         }
         _ => DispatchResult::pass(),

@@ -515,10 +515,10 @@ mod tests {
                 dsn: dsn.to_string(),
                 run_id,
                 new_metadata: make_metadata(1),
-                signature_snapshot: TableSignatureSnapshot {
+                signature_snapshot: Arc::new(TableSignatureSnapshot {
                     signatures: Vec::new(),
                     table_details: Vec::new(),
-                },
+                }),
             })
         }
 

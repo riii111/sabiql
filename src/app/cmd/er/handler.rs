@@ -251,7 +251,7 @@ fn handle_smart_refresh(
             dsn,
             run_id,
             new_metadata: Arc::new(new_metadata),
-            signature_snapshot,
+            signature_snapshot: Arc::new(signature_snapshot),
         }))
         .await
         .ok();
@@ -265,7 +265,7 @@ async fn handle_smart_refresh_cache_and_diff(
     dsn: String,
     run_id: u64,
     new_metadata: Arc<DatabaseMetadata>,
-    signature_snapshot: TableSignatureSnapshot,
+    signature_snapshot: Arc<TableSignatureSnapshot>,
 ) -> Result<()> {
     if !state.session.dsn_matches(&dsn) || !state.er_preparation.is_current_run(run_id) {
         return Ok(());
@@ -274,7 +274,7 @@ async fn handle_smart_refresh_cache_and_diff(
     let TableSignatureSnapshot {
         signatures,
         table_details,
-    } = signature_snapshot;
+    } = Arc::unwrap_or_clone(signature_snapshot);
     {
         let mut engine = completion_engine.borrow_mut();
         for detail in table_details {
@@ -426,14 +426,14 @@ mod tests {
             dsn.to_string(),
             1,
             Arc::new(DatabaseMetadata::new("app".to_string())),
-            TableSignatureSnapshot {
+            Arc::new(TableSignatureSnapshot {
                 signatures: vec![TableSignature {
                     schema: "app".to_string(),
                     name: "items".to_string(),
                     signature: "signature".to_string(),
                 }],
                 table_details: vec![table],
-            },
+            }),
         )
         .await
         .unwrap();

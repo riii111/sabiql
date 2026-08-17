@@ -154,7 +154,7 @@ pub enum Effect {
         dsn: String,
         run_id: u64,
         new_metadata: Arc<DatabaseMetadata>,
-        signature_snapshot: TableSignatureSnapshot,
+        signature_snapshot: Arc<TableSignatureSnapshot>,
     },
 
     CopyToClipboard {

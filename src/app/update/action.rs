@@ -251,7 +251,7 @@ pub struct SmartErRefreshFetched {
     pub dsn: String,
     pub run_id: u64,
     pub new_metadata: Arc<DatabaseMetadata>,
-    pub signature_snapshot: TableSignatureSnapshot,
+    pub signature_snapshot: Arc<TableSignatureSnapshot>,
 }
 
 #[derive(Debug, Clone)]
