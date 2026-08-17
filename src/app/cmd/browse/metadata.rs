@@ -12,15 +12,10 @@ use crate::cmd::query_task::TableDetailTaskRegistry;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
 use crate::domain::sqlite_path_from_dsn;
-use crate::model::app_state::AppState;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "metadata effects use separate task registries for table details and connection context"
-)]
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
@@ -29,7 +24,6 @@ pub async fn run(
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
     table_detail_tasks: &TableDetailTaskRegistry,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
-    _state: &mut AppState,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {

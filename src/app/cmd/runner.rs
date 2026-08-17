@@ -233,7 +233,6 @@ impl EffectRunner {
                     &self.connection.sqlite_path_validator,
                     &self.table_detail_tasks,
                     &self.metadata_tasks,
-                    state,
                     completion_engine,
                 )
                 .await?;
