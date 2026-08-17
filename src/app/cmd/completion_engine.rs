@@ -298,7 +298,9 @@ impl CompletionEngine {
         let all_tokens = lexer.tokenize(content, content.len());
         let context = lexer.build_context(&all_tokens, cursor_pos);
         let candidate_context = lexer.build_context_before_cursor(&all_tokens, cursor_pos);
-        let tokens = lexer.tokens_for_statement(&all_tokens, cursor_pos).to_vec();
+        let tokens = lexer
+            .tokens_for_statement_before_cursor(&all_tokens, cursor_pos)
+            .to_vec();
         let in_string_or_comment =
             SqlLexer::is_in_string_or_comment_from_tokens(&all_tokens, cursor_pos);
         let before_cursor: String = content.chars().take(cursor_pos).collect();
@@ -3746,6 +3748,53 @@ mod tests {
 
     mod prepared_context {
         use super::*;
+
+        #[test]
+        fn candidate_tokens_exclude_tokens_crossing_cursor_for_each_database() {
+            let engine = engine();
+            let sql = "SELECT * FROM public.users";
+
+            for database_type in DatabaseType::all() {
+                let keyword_cursor = sql.find("FROM").unwrap() + 2;
+                let keyword_prep = engine.prepare_for_database(sql, keyword_cursor, *database_type);
+                assert!(
+                    keyword_prep
+                        .tokens
+                        .iter()
+                        .all(|token| token.end <= keyword_cursor)
+                );
+                assert!(
+                    !keyword_prep
+                        .candidate_context
+                        .tables
+                        .iter()
+                        .any(|table| { table.table == "users" })
+                );
+
+                let identifier_cursor = sql.find("users").unwrap() + 2;
+                let identifier_prep =
+                    engine.prepare_for_database(sql, identifier_cursor, *database_type);
+                assert!(
+                    identifier_prep
+                        .tokens
+                        .iter()
+                        .all(|token| token.end <= identifier_cursor)
+                );
+                assert!(
+                    !identifier_prep
+                        .tokens
+                        .iter()
+                        .any(|token| token.text == "users")
+                );
+                assert!(
+                    !identifier_prep
+                        .candidate_context
+                        .tables
+                        .iter()
+                        .any(|table| { table.table == "users" })
+                );
+            }
+        }
 
         #[test]
         fn is_in_string_or_comment_from_tokens_edges() {

@@ -1127,7 +1127,7 @@ impl SqlLexer {
         &tokens[start_idx..end_idx]
     }
 
-    fn tokens_for_statement_before_cursor<'a>(
+    pub(crate) fn tokens_for_statement_before_cursor<'a>(
         &self,
         tokens: &'a [Token],
         cursor_pos: usize,
@@ -1135,7 +1135,7 @@ impl SqlLexer {
         let statement_tokens = self.tokens_for_statement(tokens, cursor_pos);
         let end_idx = statement_tokens
             .iter()
-            .position(|token| token.start >= cursor_pos)
+            .position(|token| token.end > cursor_pos)
             .unwrap_or(statement_tokens.len());
 
         &statement_tokens[..end_idx]
