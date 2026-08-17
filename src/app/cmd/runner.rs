@@ -246,7 +246,8 @@ impl EffectRunner {
             e @ (Effect::GenerateErDiagramFromCache { .. }
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
-            | Effect::SmartErRefresh { .. }) => {
+            | Effect::SmartErRefresh { .. }
+            | Effect::SmartErRefreshCacheAndDiff { .. }) => {
                 cmd_er::run(
                     e,
                     &self.action_tx,
@@ -293,7 +294,7 @@ impl EffectRunner {
 mod tests {
     use super::*;
     use crate::cmd::test_fixtures;
-    use crate::domain::{DatabaseMetadata, TableSummary};
+    use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
     use crate::model::shared::render_output::{
         BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
     };
@@ -536,7 +537,7 @@ mod tests {
 
         use super::*;
         use crate::domain::connection::{ConnectionId, DatabaseType};
-        use crate::domain::{QueryResult, Table, TableSignature, WriteExecutionResult};
+        use crate::domain::{QueryResult, Table, WriteExecutionResult};
         use crate::model::connection::cache::ConnectionCache;
         use crate::ports::outbound::{AccessMode, DbOperationError};
         use crate::update::action::ConnectionTarget;
@@ -655,7 +656,7 @@ mod tests {
             async fn fetch_table_signatures(
                 &self,
                 _dsn: &str,
-            ) -> Result<Vec<TableSignature>, DbOperationError> {
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 unreachable!("test only starts table detail")
             }
         }

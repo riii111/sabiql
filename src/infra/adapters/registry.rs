@@ -8,7 +8,7 @@ use crate::app::ports::outbound::{
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table,
-    TableSignature, WriteExecutionResult,
+    TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
 
@@ -132,7 +132,7 @@ impl MetadataProvider for DbAdapterRegistry {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_signatures(dsn).await,
             DatabaseType::SQLite => self.sqlite.fetch_table_signatures(dsn).await,
@@ -544,7 +544,7 @@ mod tests {
 
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
 
-        assert_eq!(signatures[0].qualified_name(), "main.users");
+        assert_eq!(signatures.signatures[0].qualified_name(), "main.users");
     }
 
     #[tokio::test]

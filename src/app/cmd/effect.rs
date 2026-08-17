@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{QueryValue, Table};
+use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -149,6 +149,12 @@ pub enum Effect {
     SmartErRefresh {
         dsn: String,
         run_id: u64,
+    },
+    SmartErRefreshCacheAndDiff {
+        dsn: String,
+        run_id: u64,
+        new_metadata: Arc<DatabaseMetadata>,
+        signature_snapshot: TableSignatureSnapshot,
     },
 
     CopyToClipboard {

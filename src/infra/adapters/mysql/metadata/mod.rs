@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::domain::{DatabaseMetadata, Schema, Table, TableSignature};
+use crate::domain::{DatabaseMetadata, Schema, Table, TableSignatureSnapshot};
 
 use super::adapter::MySqlAdapter;
 use super::cli::MySqlResultSet;
@@ -55,7 +55,7 @@ impl MetadataProvider for MySqlAdapter {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
         signature::fetch_table_signatures(dsn).await
     }
 }

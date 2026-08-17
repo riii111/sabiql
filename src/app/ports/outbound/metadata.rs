@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::domain::{DatabaseMetadata, Table, TableSignature};
+use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
 
 use super::DbOperationError;
 
@@ -30,5 +30,5 @@ pub trait MetadataProvider: Send + Sync {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError>;
+    ) -> Result<TableSignatureSnapshot, DbOperationError>;
 }

@@ -25,7 +25,7 @@ mod table_signatures {
 
         let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
 
-        assert_eq!(signatures.len(), 3);
+        assert_eq!(signatures.signatures.len(), 3);
         assert_eq!(process_counter.count(), 1);
     }
 
@@ -41,12 +41,17 @@ mod table_signatures {
 
         let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
         let names: Vec<_> = signatures
+            .signatures
             .iter()
             .map(|signature| signature.name.as_str())
             .collect();
 
         assert_eq!(names, ["notes_fts", "users"]);
-        assert!(signatures[0].signature.contains("CREATE VIRTUAL TABLE"));
+        assert!(
+            signatures.signatures[0]
+                .signature
+                .contains("CREATE VIRTUAL TABLE")
+        );
     }
 
     #[tokio::test]
@@ -57,10 +62,18 @@ mod table_signatures {
 
         let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
 
-        assert_eq!(signatures.len(), 1);
-        assert_eq!(signatures[0].qualified_name(), "main.users");
-        assert!(signatures[0].signature.contains("CREATE TABLE users"));
-        assert!(signatures[0].signature.contains("col=id:INTEGER"));
+        assert_eq!(signatures.signatures.len(), 1);
+        assert_eq!(signatures.signatures[0].qualified_name(), "main.users");
+        assert!(
+            signatures.signatures[0]
+                .signature
+                .contains("CREATE TABLE users")
+        );
+        assert!(
+            signatures.signatures[0]
+                .signature
+                .contains("col=id:INTEGER")
+        );
     }
 
     #[tokio::test]
@@ -79,6 +92,7 @@ mod table_signatures {
 
         let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
         let signature = signatures
+            .signatures
             .iter()
             .find(|signature| signature.name == "users")
             .unwrap();
@@ -104,6 +118,7 @@ mod table_signatures {
 
         let signatures = adapter.fetch_table_signatures(&dsn).await.unwrap();
         let signature = signatures
+            .signatures
             .iter()
             .find(|signature| signature.name == "child")
             .expect("child table signature");
@@ -147,6 +162,7 @@ mod table_signatures {
             .fetch_table_signatures(&asc_dsn)
             .await
             .unwrap()
+            .signatures
             .into_iter()
             .find(|signature| signature.name == "users")
             .unwrap()
@@ -155,6 +171,7 @@ mod table_signatures {
             .fetch_table_signatures(&desc_dsn)
             .await
             .unwrap()
+            .signatures
             .into_iter()
             .find(|signature| signature.name == "users")
             .unwrap()
@@ -163,6 +180,7 @@ mod table_signatures {
             .fetch_table_signatures(&binary_dsn)
             .await
             .unwrap()
+            .signatures
             .into_iter()
             .find(|signature| signature.name == "users")
             .unwrap()
@@ -171,6 +189,7 @@ mod table_signatures {
             .fetch_table_signatures(&nocase_dsn)
             .await
             .unwrap()
+            .signatures
             .into_iter()
             .find(|signature| signature.name == "users")
             .unwrap()
@@ -206,6 +225,7 @@ mod table_signatures {
 
         let before = adapter.fetch_table_signatures(&dsn).await.unwrap();
         let before_signature = before
+            .signatures
             .iter()
             .find(|signature| signature.name == "users")
             .unwrap()
@@ -219,6 +239,7 @@ mod table_signatures {
 
         let after = adapter.fetch_table_signatures(&dsn).await.unwrap();
         let after_signature = &after
+            .signatures
             .iter()
             .find(|signature| signature.name == "users")
             .unwrap()

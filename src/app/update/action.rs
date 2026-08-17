@@ -23,7 +23,9 @@ use crate::ports::outbound::{AppSettings, DbOperationError};
 use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
-use crate::domain::{DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table};
+use crate::domain::{
+    DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table, TableSignatureSnapshot,
+};
 
 #[derive(Clone, thiserror::Error)]
 pub enum ConnectionSaveError {
@@ -242,6 +244,14 @@ pub struct SmartErRefreshResult {
     pub removed_tables: Vec<String>,
     pub missing_in_cache: Vec<String>,
     pub new_signatures: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SmartErRefreshFetched {
+    pub dsn: String,
+    pub run_id: u64,
+    pub new_metadata: Arc<DatabaseMetadata>,
+    pub signature_snapshot: TableSignatureSnapshot,
 }
 
 #[derive(Debug, Clone)]
@@ -701,6 +711,7 @@ pub enum Action {
     ErConfirmSelection,
     ErOpenDiagram,
     ErGenerateFromCache,
+    SmartErRefreshFetched(SmartErRefreshFetched),
     SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
@@ -731,6 +742,7 @@ impl Action {
             | Self::ErConfirmSelection
             | Self::ErOpenDiagram
             | Self::ErGenerateFromCache
+            | Self::SmartErRefreshFetched(_)
             | Self::SmartErRefreshCompleted(_)
             | Self::SmartErRefreshFailed(_)
             | Self::ErDiagramOpened(_)
