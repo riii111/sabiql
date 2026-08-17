@@ -64,6 +64,9 @@ mod tests {
             "INSERT INTO users VALUES (1)",
             "REPLACE INTO users VALUES (1)",
             "SELECT * FROM users FOR UPDATE",
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
             "SELECT 1; SELECT 2",
         ] {
             assert_eq!(build_explain_analyze_sql(query), None, "{query}");

@@ -424,6 +424,9 @@ mod tests {
             "SELECT @value := 1",
             "SELECT value FROM items WHERE FALSE FOR UPDATE",
             "SELECT GET_LOCK('sabiql', 0) WHERE FALSE",
+            "SELECT `GET_LOCK`('sabiql', 0) WHERE FALSE",
+            "SELECT `RELEASE_LOCK`('sabiql') WHERE FALSE",
+            "SELECT `RELEASE_ALL_LOCKS`() WHERE FALSE",
             "SELECT @value := 1 WHERE FALSE",
         ] {
             assert!(
@@ -508,6 +511,26 @@ mod tests {
                 Err(DbOperationError::UnsupportedOperation(_))
             ));
             assert!(!log_file.exists(), "{query}");
+        }
+    }
+
+    #[test]
+    fn read_only_rejects_quoted_side_effect_functions_before_starting_mysql() {
+        for query in [
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
+        ] {
+            let result = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly);
+
+            assert!(
+                matches!(
+                    result,
+                    Err(DbOperationError::PermissionDenied(details))
+                        if details.contains("read-only mode blocks MySQL write statements")
+                ),
+                "{query}"
+            );
         }
     }
 

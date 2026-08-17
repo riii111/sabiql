@@ -45,7 +45,10 @@ pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLe
 }
 
 fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usize) -> bool {
-    let Some(TokenKind::Word(word)) = tokens.get(index).map(|token| &token.kind) else {
+    let Some(word) = tokens.get(index).and_then(|token| match &token.kind {
+        TokenKind::Word(word) | TokenKind::Identifier(word) => Some(word.as_str()),
+        _ => None,
+    }) else {
         return false;
     };
     if !matches!(
@@ -55,14 +58,17 @@ fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usiz
         return false;
     }
 
-    match word.as_str() {
-        "GET_LOCK" | "RELEASE_LOCK" | "RELEASE_ALL_LOCKS" => true,
-        "LAST_INSERT_ID" => !matches!(
+    if ["GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS"]
+        .iter()
+        .any(|name| word.eq_ignore_ascii_case(name))
+    {
+        return true;
+    }
+    word.eq_ignore_ascii_case("LAST_INSERT_ID")
+        && !matches!(
             tokens.get(index + 2).map(|token| &token.kind),
             Some(TokenKind::Symbol(')'))
-        ),
-        _ => false,
-    }
+        )
 }
 
 pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
@@ -223,4 +229,35 @@ fn contains_mysql_client_command(sql: &str) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_word_and_quoted_mysql_side_effect_functions() {
+        for function in ["GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS"] {
+            for quoted in [false, true] {
+                let name = if quoted {
+                    format!("`{function}`")
+                } else {
+                    function.to_string()
+                };
+                let sql = match function {
+                    "GET_LOCK" => format!("SELECT {name}('sabiql', 0)"),
+                    "RELEASE_LOCK" => format!("SELECT {name}('sabiql')"),
+                    "RELEASE_ALL_LOCKS" => format!("SELECT {name}()"),
+                    _ => unreachable!(),
+                };
+                assert!(has_mysql_read_only_side_effect(&sql).unwrap(), "{sql}");
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_mixed_case_quoted_last_insert_id_with_an_argument() {
+        assert!(has_mysql_read_only_side_effect("SELECT `Last_Insert_Id`(42)").unwrap());
+        assert!(!has_mysql_read_only_side_effect("SELECT `Last_Insert_Id`()").unwrap());
+    }
 }
