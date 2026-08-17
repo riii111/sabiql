@@ -1,5 +1,6 @@
 use super::splitter::{
-    first_sqlite_keyword, split_sqlite_statements, statement_keyword, top_level_keywords,
+    first_sqlite_keyword, keywords_with_depth, split_sqlite_statements, statement_keyword,
+    top_level_keywords,
 };
 
 pub const SQLITE_EXPLAIN_QUERY_PLAN_PREFIX: &str = "EXPLAIN QUERY PLAN";
@@ -28,6 +29,13 @@ pub fn is_sqlite_explain_query_plan_sql(query: &str) -> bool {
 
 fn supports_sqlite_query_plan(statement: &str) -> bool {
     if split_sqlite_statements(statement).statements().len() != 1 {
+        return false;
+    }
+    if first_sqlite_keyword(statement).as_deref() == Some("WITH")
+        && keywords_with_depth(statement)
+            .iter()
+            .any(|(keyword, depth)| *depth == 1 && keyword == "MERGE")
+    {
         return false;
     }
     let effective_keyword = statement_keyword(statement);
@@ -124,6 +132,14 @@ mod tests {
             build_sqlite_explain_query_plan_sql(
                 "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload"
             ),
+            None
+        );
+        assert_eq!(
+            build_sqlite_explain_query_plan_sql(concat!(
+                "WITH x AS (MERGE INTO users USING incoming ON users.id = incoming.id ",
+                "WHEN MATCHED THEN UPDATE SET name = incoming.name RETURNING *) ",
+                "SELECT * FROM x"
+            )),
             None
         );
         assert_eq!(
