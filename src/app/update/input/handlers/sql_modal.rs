@@ -59,6 +59,7 @@ fn handle_sql_modal_keys_internal(
         let ctrl = combo.modifiers.contains(Modifiers::CTRL);
         let alt = combo.modifiers.contains(Modifiers::ALT);
         let shift = combo.modifiers.contains(Modifiers::SHIFT);
+        let ctrl_shift = combo.modifiers == Modifiers::CTRL_SHIFT;
         let plain = !ctrl && !alt && !shift;
 
         if let Some(prefix) = pending_prefix {
@@ -108,7 +109,9 @@ fn handle_sql_modal_keys_internal(
             }
 
             return match combo.key {
-                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
+                Key::Char('e') if ctrl_shift && supports_explain_analyze => {
+                    Action::ExplainAnalyzeRequest
+                }
                 _ => Action::None,
             };
         }
@@ -123,7 +126,9 @@ fn handle_sql_modal_keys_internal(
             }
 
             return match combo.key {
-                Key::Char('e') if alt && supports_explain_analyze => Action::ExplainAnalyzeRequest,
+                Key::Char('e') if ctrl_shift && supports_explain_analyze => {
+                    Action::ExplainAnalyzeRequest
+                }
                 Key::Char('e')
                     if plain && feature_policy.is_enabled(FeatureRequirement::PlanComparison) =>
                 {
@@ -133,7 +138,7 @@ fn handle_sql_modal_keys_internal(
             };
         }
 
-        if alt && combo.key == Key::Char('e') && supports_explain_analyze {
+        if ctrl_shift && combo.key == Key::Char('e') && supports_explain_analyze {
             return Action::ExplainAnalyzeRequest;
         }
         if sql_modal_normal_query_history(keymap_preset)
@@ -296,6 +301,7 @@ fn handle_sql_modal_keys_internal(
     let ctrl = combo.modifiers.contains(Modifiers::CTRL);
     let alt = combo.modifiers.contains(Modifiers::ALT);
     let shift = combo.modifiers.contains(Modifiers::SHIFT);
+    let ctrl_shift = combo.modifiers == Modifiers::CTRL_SHIFT;
     let ctrl_only = ctrl && !alt && !shift;
 
     let plain = !ctrl && !alt && !shift;
@@ -320,7 +326,7 @@ fn handle_sql_modal_keys_internal(
         return Action::SqlModalClear;
     }
 
-    if alt && combo.key == Key::Char('e') {
+    if ctrl_shift && combo.key == Key::Char('e') {
         return if supports_explain_analyze {
             Action::ExplainAnalyzeRequest
         } else {
@@ -407,6 +413,10 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn combo_ctrl_shift(k: Key) -> KeyCombo {
+        KeyCombo::ctrl_shift(k)
     }
 
     fn handle_sql_modal_keys(
@@ -1211,9 +1221,9 @@ mod tests {
         }
 
         #[test]
-        fn alt_e_requests_explain_analyze() {
+        fn ctrl_shift_e_requests_explain_analyze() {
             let result = handle_sql_modal_keys(
-                combo_alt(Key::Char('e')),
+                combo_ctrl_shift(Key::Char('e')),
                 false,
                 &SqlModalStatus::Normal,
                 SqlModalTab::Sql,
@@ -1384,9 +1394,9 @@ mod tests {
         #[rstest]
         #[case(SqlModalTab::Plan)]
         #[case(SqlModalTab::Compare)]
-        fn alt_e_requests_analyze(#[case] tab: SqlModalTab) {
+        fn ctrl_shift_e_requests_analyze(#[case] tab: SqlModalTab) {
             let result = handle_sql_modal_keys(
-                combo_alt(Key::Char('e')),
+                combo_ctrl_shift(Key::Char('e')),
                 false,
                 &SqlModalStatus::Normal,
                 tab,
@@ -1407,11 +1417,13 @@ mod tests {
             assert_action(result, Expected::CompareEditQuery);
         }
 
-        #[test]
-        fn editing_alt_e_requests_analyze() {
+        #[rstest]
+        #[case(false)]
+        #[case(true)]
+        fn editing_ctrl_shift_e_requests_analyze(#[case] completion_visible: bool) {
             let result = handle_sql_modal_keys(
-                combo_alt(Key::Char('e')),
-                false,
+                combo_ctrl_shift(Key::Char('e')),
+                completion_visible,
                 &SqlModalStatus::Editing,
                 SqlModalTab::Sql,
             );
@@ -1420,9 +1432,9 @@ mod tests {
         }
 
         #[test]
-        fn editing_alt_e_is_noop_when_analyze_is_unsupported() {
+        fn editing_ctrl_shift_e_is_noop_when_analyze_is_unsupported() {
             let result = handle_sql_modal_keys_with_prefix(
-                combo_alt(Key::Char('e')),
+                combo_ctrl_shift(Key::Char('e')),
                 false,
                 &SqlModalStatus::Editing,
                 SqlModalTab::Sql,
@@ -1437,9 +1449,9 @@ mod tests {
         #[rstest]
         #[case(SqlModalTab::Plan)]
         #[case(SqlModalTab::Compare)]
-        fn alt_e_is_noop_when_analyze_is_unsupported(#[case] tab: SqlModalTab) {
+        fn ctrl_shift_e_is_noop_when_analyze_is_unsupported(#[case] tab: SqlModalTab) {
             let result = handle_sql_modal_keys_with_prefix(
-                combo_alt(Key::Char('e')),
+                combo_ctrl_shift(Key::Char('e')),
                 false,
                 &SqlModalStatus::Normal,
                 tab,
@@ -1449,6 +1461,17 @@ mod tests {
             );
 
             assert!(matches!(result, Action::None));
+        }
+
+        #[rstest]
+        #[case(SqlModalStatus::Normal, SqlModalTab::Sql)]
+        #[case(SqlModalStatus::Normal, SqlModalTab::Plan)]
+        #[case(SqlModalStatus::Normal, SqlModalTab::Compare)]
+        #[case(SqlModalStatus::Editing, SqlModalTab::Sql)]
+        fn alt_e_is_no_longer_bound(#[case] status: SqlModalStatus, #[case] tab: SqlModalTab) {
+            let result = handle_sql_modal_keys(combo_alt(Key::Char('e')), false, &status, tab);
+
+            assert!(!matches!(result, Action::ExplainAnalyzeRequest));
         }
 
         #[rstest]

@@ -640,4 +640,13 @@ mod tests {
             FeatureRequirement::JsonDocumentDetail
         );
     }
+
+    #[test]
+    fn explain_analyze_bindings_use_ctrl_shift_e() {
+        for binding in [&sql_modal_plan::ANALYZE, &sql_modal_compare::ANALYZE] {
+            assert_eq!(binding.key_short, "^⇧E");
+            assert_eq!(binding.key, "Ctrl+Shift+E");
+            assert_eq!(binding.combos, &[KeyCombo::ctrl_shift(Key::Char('e'))]);
+        }
+    }
 }
