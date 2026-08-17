@@ -201,7 +201,11 @@ mod mysql_tests {
             "SELECT GET_LOCK('sabiql', 0)",
             "SELECT RELEASE_LOCK('sabiql')",
             "SELECT RELEASE_ALL_LOCKS()",
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
             "SELECT LAST_INSERT_ID(42)",
+            "SELECT `LAST_INSERT_ID`(42)",
             "/*!80000 SELECT 1 */",
         ] {
             let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {

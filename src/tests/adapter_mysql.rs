@@ -2627,6 +2627,45 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn rejects_quoted_mysql_side_effects_in_read_only_adhoc() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let acquired = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "SELECT `GET_LOCK`('sabiql_sab_469', 0) AS acquired",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("quoted GET_LOCK failed on Oracle MySQL: {error:?}"))?;
+                if acquired.values() != [[QueryValue::Text("1".to_string())]] {
+                    return Err(format!("unexpected quoted GET_LOCK result: {acquired:?}"));
+                }
+
+                for query in [
+                    "SELECT `GET_LOCK`('sabiql_sab_469', 0)",
+                    "SELECT `RELEASE_LOCK`('sabiql_sab_469')",
+                    "SELECT `RELEASE_ALL_LOCKS`()",
+                ] {
+                    let result = db
+                        .adapter()
+                        .execute_adhoc(db.dsn(), query, AccessMode::ReadOnly)
+                        .await;
+                    if !matches!(result, Err(DbOperationError::PermissionDenied(_))) {
+                        return Err(format!(
+                            "quoted side effect was not rejected in read-only mode: {query}: {result:?}"
+                        ));
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn rejects_next_process_when_global_sql_mode_is_unsupported() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
