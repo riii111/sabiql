@@ -8,7 +8,7 @@ mod trigger;
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::domain::{DatabaseMetadata, Table, TableSignature};
+use crate::domain::{DatabaseMetadata, Table, TableSignatureSnapshot};
 
 use super::sqlite3::metadata::RawNamedTableMetadata;
 use super::{SqliteAdapter, schema::MAIN_SCHEMA};
@@ -60,16 +60,21 @@ impl MetadataProvider for SqliteAdapter {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
         let rows = self
             .fetch_table_signature_rows(Self::path_from_dsn(dsn)?)
             .await?;
-        rows.into_iter()
+        let signatures = rows
+            .into_iter()
             .map(|RawNamedTableMetadata { name, metadata }| {
                 let detail = table_from_metadata(&name, TableDetailMode::Signature, metadata)?;
                 Ok(signature::signature_for_table(&detail))
             })
-            .collect()
+            .collect::<Result<Vec<_>, DbOperationError>>()?;
+        Ok(TableSignatureSnapshot {
+            signatures,
+            table_details: Vec::new(),
+        })
     }
 }
 

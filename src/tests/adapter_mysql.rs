@@ -513,6 +513,7 @@ mod metadata_fetch {
                     .await
                     .map_err(|error| format!("{error:?}"))?;
                 let child_signature = signatures
+                    .signatures
                     .iter()
                     .find(|signature| signature.name == MYSQL_FK_CHILD)
                     .ok_or_else(|| "MySQL child signature was not returned".to_string())?;
@@ -634,7 +635,7 @@ mod metadata_fetch {
                     .fetch_table_signatures(db.dsn())
                     .await
                     .map_err(|error| format!("failed to fetch changed signatures: {error:?}"))?;
-                if before == after_add {
+                if before.signatures == after_add.signatures {
                     return Err("single unique index did not change the table signature".to_string());
                 }
 
@@ -651,7 +652,7 @@ mod metadata_fetch {
                     .fetch_table_signatures(db.dsn())
                     .await
                     .map_err(|error| format!("failed to fetch restored signatures: {error:?}"))?;
-                if before != after_drop {
+                if before.signatures != after_drop.signatures {
                     return Err("dropping the single unique index did not restore the signature".to_string());
                 }
                 Ok(())

@@ -33,7 +33,7 @@ pub use query_result::{ExplicitRowIdentity, QueryResult, QuerySource, QueryValue
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;
 pub use sqlite_diagnostics::{DiagnosticField, SqliteDiagnosticsSnapshot};
-pub use table::{Table, TableSignature, TableSummary};
+pub use table::{Table, TableSignature, TableSignatureSnapshot, TableSummary};
 pub use table_kind::{TableKind, TableKindInfo};
 pub use trigger::{Trigger, TriggerEvent, TriggerTiming};
 pub use write_result::WriteExecutionResult;

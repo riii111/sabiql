@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 
 use crate::app::ports::outbound::{DbOperationError, MetadataProvider};
-use crate::domain::{Column, DatabaseMetadata, Table, TableKindInfo, TableSignature};
+use crate::domain::{Column, DatabaseMetadata, Table, TableKindInfo, TableSignatureSnapshot};
 
 use super::PostgresAdapter;
 
@@ -46,11 +46,14 @@ impl MetadataProvider for PostgresAdapter {
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
         let json = self
             .execute_query(dsn, Self::table_signatures_query())
             .await?;
-        Self::parse_table_signatures(&json)
+        Ok(TableSignatureSnapshot {
+            signatures: Self::parse_table_signatures(&json)?,
+            table_details: Vec::new(),
+        })
     }
 
     async fn fetch_table_detail(

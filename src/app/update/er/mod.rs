@@ -1,6 +1,7 @@
 mod diagram;
 mod smart_refresh_completed;
 mod smart_refresh_failed;
+mod smart_refresh_fetched;
 
 use std::time::Instant;
 
@@ -10,6 +11,7 @@ use crate::update::dispatch_result::DispatchResult;
 
 pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     diagram::reduce_diagram_lifecycle(state, action, now)
+        .or_else(|| smart_refresh_fetched::reduce_smart_refresh_fetched(state, action))
         .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
         .or_else(|| smart_refresh_failed::reduce_smart_refresh_failed(state, action, now))
 }
@@ -21,11 +23,14 @@ mod tests {
 
     use super::*;
     use crate::cmd::effect::Effect;
-    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::domain::{
+        ConnectionId, DatabaseMetadata, DatabaseType, TableSignatureSnapshot, TableSummary,
+    };
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::update::action::{
-        ErDiagramError, ErDiagramFailure, ErDiagramInfo, SmartErRefreshError, SmartErRefreshResult,
+        ErDiagramError, ErDiagramFailure, ErDiagramInfo, SmartErRefreshError,
+        SmartErRefreshFetched, SmartErRefreshResult,
     };
     use std::sync::Arc;
 
@@ -499,6 +504,71 @@ mod tests {
                 5
             );
             assert_eq!(state.er_preparation.last_signatures(), &new_sigs);
+        }
+    }
+
+    mod smart_er_refresh_fetched {
+        use super::*;
+
+        fn action(dsn: &str, run_id: u64) -> Action {
+            Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                dsn: dsn.to_string(),
+                run_id,
+                new_metadata: make_metadata(1),
+                signature_snapshot: Arc::new(TableSignatureSnapshot {
+                    signatures: Vec::new(),
+                    table_details: Vec::new(),
+                }),
+            })
+        }
+
+        #[test]
+        fn matching_connection_and_run_emits_cache_diff_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            set_active_run_id(&mut state, 1);
+            state.er_preparation.mark_waiting_for_test();
+
+            let effects = reduce_er(
+                &mut state,
+                &action("postgres://localhost/test", 1),
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("reducer should handle action");
+
+            assert!(matches!(
+                &effects[0],
+                Effect::SmartErRefreshCacheAndDiff { run_id: 1, .. }
+            ));
+        }
+
+        #[test]
+        fn mismatched_connection_or_run_does_not_emit_cache_diff_effect() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            set_active_run_id(&mut state, 2);
+            state.er_preparation.mark_waiting_for_test();
+
+            assert!(
+                reduce_er(
+                    &mut state,
+                    &action("postgres://localhost/test", 1),
+                    Instant::now(),
+                )
+                .into_effects()
+                .expect("reducer should handle action")
+                .is_empty()
+            );
+
+            assert!(
+                reduce_er(
+                    &mut state,
+                    &action("postgres://localhost/other", 2),
+                    Instant::now(),
+                )
+                .into_effects()
+                .expect("reducer should handle action")
+                .is_empty()
+            );
         }
     }
 

@@ -78,6 +78,12 @@ impl TableSignature {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TableSignatureSnapshot {
+    pub signatures: Vec<TableSignature>,
+    pub table_details: Vec<Table>,
+}
+
 impl TableSummary {
     pub fn new(
         schema: String,

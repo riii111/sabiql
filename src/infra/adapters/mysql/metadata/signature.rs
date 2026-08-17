@@ -1,9 +1,13 @@
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsStr;
+use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{FkAction, Table, TableKind, TableKindInfo, TableSignature};
+use crate::domain::{
+    FkAction, Table, TableKind, TableKindInfo, TableSignature, TableSignatureSnapshot,
+};
 
-use super::super::cli::MySqlResultSet;
+use super::super::cli::{MYSQL_QUERY_TIMEOUT, MySqlResultSet};
 use super::super::sql::{
     FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
     SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
@@ -11,7 +15,7 @@ use super::super::sql::{
 };
 use super::catalog::{
     MySqlColumnMetadata, MySqlForeignKeyMetadata, MySqlTableMetadata, column_from_metadata,
-    execute_metadata_queries_in_session, expect_columns, foreign_keys_from_metadata,
+    execute_metadata_queries_in_session_with_program, expect_columns, foreign_keys_from_metadata,
     mark_single_column_unique, metadata_shape_error, metadata_snapshot_from_result,
     parse_column_metadata_row, parse_foreign_key_metadata, primary_key_names, required_text,
     selected_database,
@@ -26,9 +30,17 @@ struct MySqlSignatureColumnMetadata {
 
 pub(super) async fn fetch_table_signatures(
     dsn: &str,
-) -> Result<Vec<TableSignature>, DbOperationError> {
+) -> Result<TableSignatureSnapshot, DbOperationError> {
+    fetch_table_signatures_with_program(dsn, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT).await
+}
+
+async fn fetch_table_signatures_with_program(
+    dsn: &str,
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<TableSignatureSnapshot, DbOperationError> {
     let database = selected_database(dsn)?;
-    let results = execute_metadata_queries_in_session(
+    let results = execute_metadata_queries_in_session_with_program(
         dsn,
         &[
             (TABLES_QUERY, TABLES_RESULT_COLUMNS),
@@ -39,6 +51,8 @@ pub(super) async fn fetch_table_signatures(
                 SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS,
             ),
         ],
+        program,
+        timeout,
     )
     .await?;
     let snapshot = metadata_snapshot_from_result(&database, None, &results[0])?;
@@ -77,7 +91,7 @@ fn table_signatures_from_metadata(
     columns: Vec<MySqlSignatureColumnMetadata>,
     foreign_keys: Vec<MySqlForeignKeyMetadata>,
     mut unique_columns_by_table: HashMap<String, HashSet<String>>,
-) -> Result<Vec<TableSignature>, DbOperationError> {
+) -> Result<TableSignatureSnapshot, DbOperationError> {
     let known_tables: HashSet<(String, String)> = tables
         .iter()
         .map(|table| (table.schema.clone(), table.name.clone()))
@@ -125,59 +139,63 @@ fn table_signatures_from_metadata(
         ));
     }
 
-    tables
-        .iter()
-        .map(|table| {
-            let key = (table.schema.clone(), table.name.clone());
-            let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
-                DbOperationError::MetadataParseFailed(format!(
-                    "MySQL object has no column metadata: {}.{}",
-                    table.schema, table.name
-                ))
-            })?;
-            if columns.is_empty() {
-                return Err(DbOperationError::MetadataParseFailed(format!(
-                    "MySQL object has no column metadata: {}.{}",
-                    table.schema, table.name
-                )));
-            }
-            columns.sort_by_key(|column| column.ordinal_position);
-            let unique_columns = unique_columns_by_table
-                .remove(&table.name)
-                .unwrap_or_default();
-            mark_single_column_unique(&mut columns, &unique_columns);
-            let primary_key = primary_key_names(&columns);
-            let foreign_keys = foreign_keys_from_metadata(
-                foreign_keys_by_table.remove(&key).unwrap_or_default(),
-                database,
-            )?;
-            let detail = Table {
-                schema: table.schema.clone(),
-                name: table.name.clone(),
-                owner: None,
-                columns: columns.iter().map(column_from_metadata).collect(),
-                primary_key: (!primary_key.is_empty()).then_some(primary_key),
-                foreign_keys,
-                indexes: Vec::new(),
-                rls: None,
-                triggers: Vec::new(),
-                row_count_estimate: table.row_count_estimate,
-                comment: table.comment.clone(),
-                source_ddl: None,
-                kind_info: TableKindInfo {
-                    kind: table.kind,
-                    is_strict: false,
-                    without_rowid: false,
-                    virtual_module: None,
-                },
-            };
-            Ok(TableSignature {
-                schema: table.schema.clone(),
-                name: table.name.clone(),
-                signature: table_signature(&detail),
-            })
-        })
-        .collect()
+    let mut signatures = Vec::with_capacity(tables.len());
+    let mut table_details = Vec::with_capacity(tables.len());
+    for table in tables {
+        let key = (table.schema.clone(), table.name.clone());
+        let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
+            DbOperationError::MetadataParseFailed(format!(
+                "MySQL object has no column metadata: {}.{}",
+                table.schema, table.name
+            ))
+        })?;
+        if columns.is_empty() {
+            return Err(DbOperationError::MetadataParseFailed(format!(
+                "MySQL object has no column metadata: {}.{}",
+                table.schema, table.name
+            )));
+        }
+        columns.sort_by_key(|column| column.ordinal_position);
+        let unique_columns = unique_columns_by_table
+            .remove(&table.name)
+            .unwrap_or_default();
+        mark_single_column_unique(&mut columns, &unique_columns);
+        let primary_key = primary_key_names(&columns);
+        let foreign_keys = foreign_keys_from_metadata(
+            foreign_keys_by_table.remove(&key).unwrap_or_default(),
+            database,
+        )?;
+        let detail = Table {
+            schema: table.schema.clone(),
+            name: table.name.clone(),
+            owner: None,
+            columns: columns.iter().map(column_from_metadata).collect(),
+            primary_key: (!primary_key.is_empty()).then_some(primary_key),
+            foreign_keys,
+            indexes: Vec::new(),
+            rls: None,
+            triggers: Vec::new(),
+            row_count_estimate: None,
+            comment: None,
+            source_ddl: None,
+            kind_info: TableKindInfo {
+                kind: table.kind,
+                is_strict: false,
+                without_rowid: false,
+                virtual_module: None,
+            },
+        };
+        signatures.push(TableSignature {
+            schema: table.schema.clone(),
+            name: table.name.clone(),
+            signature: table_signature(&detail),
+        });
+        table_details.push(detail);
+    }
+    Ok(TableSignatureSnapshot {
+        signatures,
+        table_details,
+    })
 }
 
 fn table_signature(table: &Table) -> String {
@@ -583,13 +601,26 @@ mod tests {
             table_signatures_from_metadata(&tables, "App", columns, foreign_keys, HashMap::new())
                 .unwrap();
 
-        assert_eq!(signatures.len(), 2);
-        assert_eq!(signatures[0].qualified_name(), "App.child");
-        assert!(signatures[0].signature.contains("id"));
-        assert!(signatures[0].signature.contains("fk_child_parent"));
+        assert_eq!(signatures.signatures.len(), 2);
+        assert_eq!(signatures.table_details.len(), 2);
+        assert_eq!(signatures.signatures[0].qualified_name(), "App.child");
+        assert!(signatures.signatures[0].signature.contains("id"));
+        assert!(
+            signatures.signatures[0]
+                .signature
+                .contains("fk_child_parent")
+        );
+        let child = &signatures.table_details[0];
+        assert_eq!(child.columns.len(), 2);
+        assert!(child.columns[1].is_unique());
+        assert_eq!(child.foreign_keys.len(), 1);
+        assert!(child.indexes.is_empty());
+        assert!(child.triggers.is_empty());
+        assert!(child.row_count_estimate.is_none());
+        assert!(child.comment.is_none());
         assert_ne!(
-            signatures[0].signature,
-            signatures_without_unique[0].signature
+            signatures.signatures[0].signature,
+            signatures_without_unique.signatures[0].signature
         );
     }
 
@@ -611,5 +642,122 @@ mod tests {
             DbOperationError::MetadataParseFailed(message)
                 if message.contains("no column metadata: app.users")
         ));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod session_tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use tempfile::TempDir;
+
+    use super::*;
+
+    fn fake_signature_cli() -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("mysql-signature");
+        let transcript = directory.path().join("transcript.log");
+        std::fs::write(&transcript, "").unwrap();
+        let script = r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+transcript=$(dirname "$0")/transcript.log
+printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
+trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
+eof=$(printf '\004')
+while IFS= read -r line; do
+  printf 'query=%s\n' "$line" >> "$transcript"
+  [ "$line" = "$eof" ] && exit 0
+  [ "$line" = ";" ] && continue
+    case "$line" in
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_probe.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    *"SET SESSION TRANSACTION READ ONLY")
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
+    *COLUMNS*)
+      printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
+      ;;
+    *REFERENTIAL_CONSTRAINTS*)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+    *"GROUP BY s.TABLE_NAME"*)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+    *TABLES*)
+      printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
+      ;;
+    *)
+      printf '%s\n' '<resultset></resultset>'
+      ;;
+  esac
+done
+"#;
+        std::fs::write(&program, script).unwrap();
+        let mut permissions = std::fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, transcript)
+    }
+
+    fn assert_process_stopped(transcript: &std::path::Path) {
+        for _ in 0..200 {
+            let pid = std::fs::read_to_string(transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
+            if let Some(pid) = pid
+                && unsafe { libc::kill(pid, 0) } == -1
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!(
+            "fake mysql process is alive or did not start: {}",
+            std::fs::read_to_string(transcript).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn signature_metadata_uses_one_process_and_four_metadata_queries() {
+        let (_directory, program, transcript) = fake_signature_cli();
+        let snapshot = fetch_table_signatures_with_program(
+            "mysql://user:password@localhost:3306/app",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "fake signature metadata CLI failed: {error:?}\n{}",
+                std::fs::read_to_string(&transcript).unwrap()
+            )
+        });
+
+        assert_eq!(snapshot.signatures.len(), 1);
+        assert_eq!(snapshot.table_details.len(), 1);
+        let transcript_text = std::fs::read_to_string(&transcript).unwrap();
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| line.starts_with("process="))
+                .count(),
+            1
+        );
+        assert_eq!(
+            transcript_text
+                .lines()
+                .filter(|line| {
+                    line.starts_with("query=") && line.contains("INFORMATION_SCHEMA")
+                })
+                .count(),
+            4
+        );
+        assert_process_stopped(&transcript);
     }
 }
