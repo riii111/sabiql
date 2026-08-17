@@ -170,11 +170,12 @@ pub(super) fn reduce_prefetch(
             let current_in_flight = state.sql_modal.prefetch_in_flight_count();
             let available_slots = MAX_CONCURRENT_PREFETCH.saturating_sub(current_in_flight);
 
+            let queued_tables: Vec<String> = (0..available_slots)
+                .filter_map(|_| state.sql_modal.take_next_prefetch())
+                .collect();
             let mut effects = Vec::new();
-            for _ in 0..available_slots {
-                if let Some(qualified_name) = state.sql_modal.take_next_prefetch()
-                    && let Some((schema, table)) = qualified_name.split_once('.')
-                {
+            for qualified_name in queued_tables {
+                if let Some((schema, table)) = qualified_name.split_once('.') {
                     effects.extend(prefetch_table_detail(state, *run_id, schema, table, now));
                 }
             }

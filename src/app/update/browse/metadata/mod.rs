@@ -399,6 +399,39 @@ mod tests {
         }
 
         #[test]
+        fn process_queue_does_not_reprocess_requeued_backoff_table() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            let qualified = "public.users".to_string();
+            state.sql_modal.fail_table_prefetch(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+            state.sql_modal.queue_table_prefetch(qualified.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                effects
+                    .iter()
+                    .filter(|effect| matches!(effect, Effect::DelayedProcessPrefetchQueue { .. }))
+                    .count(),
+                1
+            );
+            assert_eq!(state.sql_modal.take_next_prefetch(), Some(qualified));
+            assert!(!state.sql_modal.has_pending_prefetch());
+        }
+
+        #[test]
         fn no_dsn_requeues_without_marking_in_flight() {
             let mut state = AppState::new("test".to_string());
             let run_id = state.sql_modal.begin_prefetch();
