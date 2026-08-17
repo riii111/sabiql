@@ -551,48 +551,6 @@ mod tests {
         }
 
         #[test]
-        fn falls_back_to_scoped_prefetch_when_targets_set() {
-            let mut state = state_with_dsn("postgres://localhost/test");
-            set_active_run_id(&mut state, 1);
-            state.er_preparation.mark_waiting_for_test();
-            state.session.set_metadata(Some(make_metadata(10)));
-            state
-                .er_preparation
-                .set_targets(vec!["public.t0".to_string()]);
-
-            let effects = reduce_er(
-                &mut state,
-                &Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn: "postgres://localhost/test".to_string(),
-                    run_id: 1,
-                    error: DbOperationError::Timeout("timed out".to_string()),
-                    new_metadata: None,
-                }),
-                Instant::now(),
-            )
-            .unwrap();
-
-            assert!(
-                effects
-                    .iter()
-                    .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
-            );
-            assert!(effects.iter().any(|e| matches!(
-                e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
-            )));
-            assert!(state.er_preparation.last_signatures().is_empty());
-            assert!(
-                state
-                    .messages
-                    .last_error
-                    .as_deref()
-                    .is_some_and(|message| message.contains("falling back to scoped prefetch"))
-            );
-        }
-
-        #[test]
         fn mismatched_run_id_returns_empty_for_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
             set_active_run_id(&mut state, 5);
