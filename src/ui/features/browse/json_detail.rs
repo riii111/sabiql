@@ -49,7 +49,7 @@ impl JsonDetail {
         let hints = if is_editing {
             vec![("Esc", "Normal")]
         } else {
-            let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+            let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
             let mut hints = vec![("y", "Copy")];
             hints.push(("/", "Search"));
             if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {

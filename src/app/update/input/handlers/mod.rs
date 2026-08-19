@@ -28,7 +28,7 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
     let action = Action::Paste(text);
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
         return Action::None;
     }
@@ -49,7 +49,7 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     let interaction = resolve_input_interaction(state);
     match interaction {
         InputInteraction::FormEditing(target) => {

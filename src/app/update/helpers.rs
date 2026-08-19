@@ -21,7 +21,7 @@ pub(crate) fn require_er_diagram_enabled(
     state: &mut AppState,
     now: Instant,
 ) -> Option<DispatchResult> {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         return None;
     }

@@ -156,7 +156,6 @@ pub struct BrowseSession {
     pending_mysql_connection_probe: Option<PendingMySqlConnectionProbe>,
     connection_generation: u64,
     database_generation: u64,
-    active_engine_feature_profile: EngineFeatureProfile,
     read_only: bool,
     is_reloading: bool,
 }
@@ -182,7 +181,6 @@ impl Default for BrowseSession {
             pending_mysql_connection_probe: None,
             connection_generation: 0,
             database_generation: 0,
-            active_engine_feature_profile: EngineFeatureProfile::disconnected(),
             read_only: false,
             is_reloading: false,
         }
@@ -451,7 +449,6 @@ impl BrowseSession {
             origin: ConnectionOrigin::Profile,
             database: database.map(str::to_string),
         });
-        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
         self.clear_mysql_connection_probe();
@@ -465,8 +462,6 @@ impl BrowseSession {
             origin: ConnectionOrigin::CliEphemeral,
             database: None,
         });
-        self.active_engine_feature_profile =
-            EngineFeatureProfile::for_database_type(DatabaseType::SQLite);
         self.dsn = Some(dsn.to_string());
         self.read_only = false;
         self.clear_mysql_connection_probe();
@@ -487,13 +482,6 @@ impl BrowseSession {
             origin: ConnectionOrigin::Profile,
             database: None,
         });
-        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_active_engine_feature_profile_for_test(&mut self, database_type: DatabaseType) {
-        self.active_engine_feature_profile = EngineFeatureProfile::for_database_type(database_type);
     }
 
     pub fn clear_connection(&mut self) {
@@ -501,7 +489,6 @@ impl BrowseSession {
         self.active_connection = None;
         self.cancel_connection_save_and_disconnect();
         self.clear_mysql_connection_probe();
-        self.active_engine_feature_profile = EngineFeatureProfile::disconnected();
     }
 
     pub fn mark_connected(&mut self, metadata: Arc<DatabaseMetadata>) {
@@ -806,8 +793,11 @@ impl BrowseSession {
         Some(QueryHistoryScope::new(connection_id, database))
     }
 
-    pub fn active_engine_feature_profile(&self) -> &EngineFeatureProfile {
-        &self.active_engine_feature_profile
+    pub fn active_engine_feature_profile(&self) -> EngineFeatureProfile {
+        match self.active_database_type() {
+            Some(database_type) => EngineFeatureProfile::for_database_type(database_type),
+            None => EngineFeatureProfile::disconnected(),
+        }
     }
 
     pub fn is_read_only(&self) -> bool {
@@ -1459,7 +1449,7 @@ mod tests {
             assert!(session.active_database_type().is_none());
             assert_eq!(
                 session.active_engine_feature_profile(),
-                &EngineFeatureProfile::disconnected()
+                EngineFeatureProfile::disconnected()
             );
             assert!(!session.is_read_only());
             assert!(!session.is_reloading());
@@ -1636,6 +1626,10 @@ mod tests {
 
             assert!(session.is_ephemeral_connection());
             assert!(!session.can_reenter_connection_setup());
+            assert_eq!(
+                session.active_engine_feature_profile(),
+                EngineFeatureProfile::sqlite_like()
+            );
         }
 
         #[test]
@@ -1678,6 +1672,28 @@ mod tests {
             assert!(session.selected_table_key().is_none());
             assert!(session.table_detail().is_none());
             assert_eq!(session.selection_generation(), 0);
+        }
+
+        #[test]
+        fn active_engine_feature_profile_uses_active_database_type() {
+            for (database_type, expected) in [
+                (
+                    DatabaseType::PostgreSQL,
+                    EngineFeatureProfile::postgres_like(),
+                ),
+                (DatabaseType::SQLite, EngineFeatureProfile::sqlite_like()),
+                (DatabaseType::MySQL, EngineFeatureProfile::mysql_like()),
+            ] {
+                let mut session = BrowseSession::default();
+                session.activate_connection_with_dsn(
+                    &ConnectionId::new(),
+                    "connection",
+                    database_type,
+                    "dsn",
+                );
+
+                assert_eq!(session.active_engine_feature_profile(), expected);
+            }
         }
 
         #[test]

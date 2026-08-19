@@ -49,7 +49,7 @@ pub(super) fn reduce_request(
                 .build_explain_sql(database_type, &content)
             {
                 Some(query) => query,
-                None if FeaturePolicy::new(state.session.active_engine_feature_profile())
+                None if FeaturePolicy::new(&state.session.active_engine_feature_profile())
                     .is_enabled(FeatureRequirement::Explain) =>
                 {
                     mark_explain_unsupported_query(state, &content);

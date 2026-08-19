@@ -15,9 +15,6 @@ fn initial_state_no_metadata() {
 fn explorer_shows_not_connected_when_no_active_connection() {
     let mut state = create_test_state();
     state.session.clear_connection();
-    state
-        .session
-        .set_active_engine_feature_profile_for_test(sabiql_domain::DatabaseType::PostgreSQL);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);

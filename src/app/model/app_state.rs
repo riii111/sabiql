@@ -250,7 +250,7 @@ impl AppState {
 
     pub fn inspector_view_model(&self, ddl_generator: &dyn DdlGenerator) -> InspectorViewModel {
         InspectorViewModel::build_with_detail_state(
-            self.session.active_engine_feature_profile(),
+            &self.session.active_engine_feature_profile(),
             self.ui.inspector_tab(),
             self.session.table_detail_state(),
             self.session.active_database_type_or_default(),
