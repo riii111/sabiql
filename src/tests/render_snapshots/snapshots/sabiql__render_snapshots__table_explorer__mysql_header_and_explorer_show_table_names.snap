@@ -8,7 +8,7 @@ test_project ▸ app ▸ users                                                  
 │  audit_log                            ││Comment: (none)                                                                                                           │
 │                                       ││Rows:    (none)                                                                                                           │
 │                                       ││Table:   users                                                                                                            │
-│                                       ││Kind:    Table                                                                                                            │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

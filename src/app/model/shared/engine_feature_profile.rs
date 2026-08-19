@@ -116,7 +116,6 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorInfoField::Comment,
         InspectorInfoField::RowCount,
         InspectorInfoField::TableName,
-        InspectorInfoField::TableKind,
     ],
 );
 
@@ -486,7 +485,6 @@ mod tests {
                 InspectorInfoField::Comment,
                 InspectorInfoField::RowCount,
                 InspectorInfoField::TableName,
-                InspectorInfoField::TableKind,
             ]
         );
         assert_eq!(
