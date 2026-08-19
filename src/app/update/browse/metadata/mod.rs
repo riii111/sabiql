@@ -285,7 +285,6 @@ mod tests {
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target_id,
                 "mysql-b",
-                DatabaseType::MySQL,
                 "mysql://user@localhost:3306/b",
                 Some("b"),
             );
