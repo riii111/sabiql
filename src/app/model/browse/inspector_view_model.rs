@@ -631,6 +631,39 @@ mod tests {
     }
 
     #[test]
+    fn mysql_info_has_only_comment_rows_and_table_name() {
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &table(),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        assert_eq!(model.row_count(), 3);
+        match model.section() {
+            Some(InspectorSection::Info { rows }) => assert_eq!(
+                rows,
+                &[
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::Comment,
+                        value: Some("Users".to_string()),
+                    },
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::RowCount,
+                        value: Some("~3".to_string()),
+                    },
+                    InspectorInfoRow::Field {
+                        field: InspectorInfoField::TableName,
+                        value: Some("users".to_string()),
+                    },
+                ]
+            ),
+            section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
     fn mysql_info_omits_schema_and_indexes_hide_partial_column() {
         let mut table = table();
         table.indexes = vec![Index {

@@ -8,7 +8,7 @@ test_project ▸ test_db ▸ -                                                  
 │  posts                                ││Comment: User accounts                                                                                                    │
 │  comments                             ││Rows:    ~100                                                                                                             │
 │                                       ││Table:   users                                                                                                            │
-│                                       ││Kind:    Table                                                                                                            │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
