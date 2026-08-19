@@ -75,11 +75,11 @@ struct ActiveConnection {
     database: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum TableDetailState {
     NotSelected,
     Loading,
-    Loaded,
+    Loaded(Box<Table>),
     Error(String),
 }
 
@@ -120,8 +120,8 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
 //
 // - `connection_state` and `metadata_state` always transition as a pair
 //   (e.g. `begin_connecting` sets both to Connecting/Loading).
-// - `selected_table_key`, `table_detail`, and `selection_generation` change
-//   together via `select_table` / `clear_table_selection`.
+// - `selected_table_key`, `table_detail_state`, and `selection_generation`
+//   change together via `select_table` / `clear_table_selection`.
 // - `database_name` is derived from `metadata` (single source of truth).
 // - Cache restore for a connection exits transient reload/read-only state.
 //
@@ -139,7 +139,6 @@ pub struct BrowseSession {
 
     // -- co-dependent: table selection --
     selected_table_key: Option<String>,
-    table_detail: Option<Table>,
     table_detail_state: TableDetailState,
     selection_generation: u64,
 
@@ -170,7 +169,6 @@ impl Default for BrowseSession {
             connection_state: ConnectionState::default(),
             metadata_state: MetadataState::default(),
             selected_table_key: None,
-            table_detail: None,
             table_detail_state: TableDetailState::NotSelected,
             selection_generation: 0,
             metadata: None,
@@ -201,7 +199,6 @@ impl BrowseSession {
         query.reset_for_context_change();
         query.clear_current_result();
         self.selected_table_key = Some(format!("{schema}.{table}"));
-        self.table_detail = None;
         self.table_detail_state = TableDetailState::Loading;
         self.selection_generation += 1;
         self.table_detail_run.clear_active();
@@ -212,8 +209,7 @@ impl BrowseSession {
     #[must_use]
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
-            self.table_detail = Some(detail);
-            self.table_detail_state = TableDetailState::Loaded;
+            self.table_detail_state = TableDetailState::Loaded(Box::new(detail));
             true
         } else {
             false
@@ -224,7 +220,6 @@ impl BrowseSession {
         query.reset_for_context_change();
         query.clear_current_result();
         self.selected_table_key = None;
-        self.table_detail = None;
         self.table_detail_state = TableDetailState::NotSelected;
         self.selection_generation += 1;
         self.table_detail_run.clear_active();
@@ -234,7 +229,6 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_table_detail_run(&mut self) -> u64 {
         if self.selected_table_key.is_some() {
-            self.table_detail = None;
             self.table_detail_state = TableDetailState::Loading;
         }
         self.table_detail_run.begin()
@@ -270,8 +264,7 @@ impl BrowseSession {
         if belongs_to_probe
             && self.dsn_matches(dsn)
             && self.selected_table_key.is_some()
-            && self.table_detail.is_none()
-            && self.table_detail_state == TableDetailState::Loading
+            && matches!(&self.table_detail_state, TableDetailState::Loading)
         {
             self.table_detail_state = TableDetailState::Error(error);
             true
@@ -289,8 +282,7 @@ impl BrowseSession {
             || generation != self.selection_generation
             || !self.dsn_matches(&dsn)
             || self.selected_table_key.is_none()
-            || self.table_detail.is_some()
-            || self.table_detail_state != TableDetailState::Loading
+            || !matches!(&self.table_detail_state, TableDetailState::Loading)
         {
             return None;
         }
@@ -642,7 +634,7 @@ impl BrowseSession {
             database: self.active_database().map(str::to_string),
             metadata: self.metadata.clone(),
             effective_user: self.effective_user.clone(),
-            table_detail: self.table_detail.clone(),
+            table_detail: self.table_detail().cloned(),
             selected_table_key: self.selected_table_key.clone(),
             query_result,
             result_history,
@@ -657,11 +649,10 @@ impl BrowseSession {
         query.restore_pagination(cache.pagination.clone());
         self.metadata.clone_from(&cache.metadata);
         self.effective_user.clone_from(&cache.effective_user);
-        self.table_detail.clone_from(&cache.table_detail);
         self.selected_table_key
             .clone_from(&cache.selected_table_key);
-        self.table_detail_state = match (&self.selected_table_key, &self.table_detail) {
-            (Some(_), Some(_)) => TableDetailState::Loaded,
+        self.table_detail_state = match (&self.selected_table_key, &cache.table_detail) {
+            (Some(_), Some(detail)) => TableDetailState::Loaded(Box::new(detail.clone())),
             (Some(_), None) | (None, _) => TableDetailState::NotSelected,
         };
         self.connection_state = ConnectionState::Connected;
@@ -697,7 +688,6 @@ impl BrowseSession {
     pub fn reset(&mut self, query: &mut QueryExecution) {
         query.reset_for_context_change();
         self.metadata = None;
-        self.table_detail = None;
         self.table_detail_state = TableDetailState::NotSelected;
         self.selected_table_key = None;
         self.selection_generation = 0;
@@ -743,7 +733,12 @@ impl BrowseSession {
     }
 
     pub fn table_detail(&self) -> Option<&Table> {
-        self.table_detail.as_ref()
+        match &self.table_detail_state {
+            TableDetailState::Loaded(table) => Some(table),
+            TableDetailState::NotSelected
+            | TableDetailState::Loading
+            | TableDetailState::Error(_) => None,
+        }
     }
 
     pub fn table_detail_state(&self) -> &TableDetailState {
@@ -754,7 +749,7 @@ impl BrowseSession {
         generation == self.selection_generation
             && matches!(
                 self.table_detail_state,
-                TableDetailState::Loaded | TableDetailState::Error(_)
+                TableDetailState::Loaded(_) | TableDetailState::Error(_)
             )
     }
 
@@ -865,13 +860,10 @@ impl BrowseSession {
     }
 
     pub(crate) fn set_table_detail_raw(&mut self, detail: Option<Table>) {
-        self.table_detail = detail;
-        self.table_detail_state = if self.table_detail.is_some() {
-            TableDetailState::Loaded
-        } else if self.selected_table_key.is_some() {
-            TableDetailState::Loading
-        } else {
-            TableDetailState::NotSelected
+        self.table_detail_state = match detail {
+            Some(detail) => TableDetailState::Loaded(Box::new(detail)),
+            None if self.selected_table_key.is_some() => TableDetailState::Loading,
+            None => TableDetailState::NotSelected,
         };
     }
 
@@ -944,7 +936,10 @@ mod tests {
             let _ = session.select_table("public", "users", &mut query);
 
             assert!(session.table_detail().is_none());
-            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loading
+            ));
         }
 
         #[test]
@@ -1013,7 +1008,10 @@ mod tests {
 
             assert!(accepted);
             assert!(session.table_detail().is_some());
-            assert_eq!(session.table_detail_state(), &TableDetailState::Loaded);
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loaded(_)
+            ));
         }
 
         #[test]
@@ -1036,10 +1034,10 @@ mod tests {
             let generation = session.select_table("public", "users", &mut query);
 
             assert!(session.mark_table_detail_failed(generation, "boom".to_string()));
-            assert_eq!(
+            assert!(matches!(
                 session.table_detail_state(),
-                &TableDetailState::Error("boom".to_string())
-            );
+                TableDetailState::Error(error) if error == "boom"
+            ));
         }
 
         #[test]
@@ -1050,7 +1048,10 @@ mod tests {
             let _ = session.select_table("public", "posts", &mut query);
 
             assert!(!session.mark_table_detail_failed(old_generation, "boom".to_string()));
-            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loading
+            ));
         }
 
         #[test]
@@ -1063,7 +1064,10 @@ mod tests {
             let _ = session.begin_table_detail_run();
 
             assert!(session.table_detail().is_none());
-            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loading
+            ));
         }
 
         #[test]
@@ -1077,7 +1081,10 @@ mod tests {
             let _ = session.begin_table_detail_run();
 
             assert!(query.current_result().is_some());
-            assert_eq!(session.table_detail_state(), &TableDetailState::Loading);
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loading
+            ));
         }
     }
 
@@ -1095,7 +1102,10 @@ mod tests {
 
         assert!(session.selected_table_key().is_none());
         assert!(session.table_detail().is_none());
-        assert_eq!(session.table_detail_state(), &TableDetailState::NotSelected);
+        assert!(matches!(
+            session.table_detail_state(),
+            TableDetailState::NotSelected
+        ));
         assert!(query.current_result().is_none());
         assert_eq!(query.pagination.current_page(), 0);
     }
@@ -1112,7 +1122,10 @@ mod tests {
         let accepted = session.set_table_detail(make_table_detail(), pre_clear_gen);
         assert!(!accepted);
         assert!(session.table_detail().is_none());
-        assert_eq!(session.table_detail_state(), &TableDetailState::NotSelected);
+        assert!(matches!(
+            session.table_detail_state(),
+            TableDetailState::NotSelected
+        ));
     }
 
     #[test]
@@ -1379,10 +1392,10 @@ mod tests {
             restored.restore_from_cache(&cache, &mut query);
 
             assert_eq!(restored.selected_table_key(), Some("public.users"));
-            assert_eq!(
+            assert!(matches!(
                 restored.table_detail_state(),
-                &TableDetailState::NotSelected
-            );
+                TableDetailState::NotSelected
+            ));
             assert!(!restored.is_current_table_detail_run(1));
         }
 

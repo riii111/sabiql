@@ -1605,10 +1605,10 @@ mod tests {
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
             assert!(state.session.table_detail().is_none());
-            assert_eq!(
+            assert!(matches!(
                 state.session.table_detail_state(),
-                &TableDetailState::Loading
-            );
+                TableDetailState::Loading
+            ));
             assert_eq!(state.session.selection_generation(), generation);
             assert!(!state.session.is_current_table_detail_run(detail_run_id));
             let retry_run_id = retry_effects
@@ -1715,10 +1715,10 @@ mod tests {
 
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.selected_table_key(), Some("public.users"));
-            assert_eq!(
+            assert!(matches!(
                 state.session.table_detail_state(),
-                &TableDetailState::Loaded
-            );
+                TableDetailState::Loaded(_)
+            ));
             assert!(state.session.table_detail().is_some());
             assert!(state.query.current_result().is_some());
             assert_eq!(state.query.pagination.current_page(), 2);
