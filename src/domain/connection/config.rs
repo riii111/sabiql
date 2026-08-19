@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use url::Url;
 
 use super::ssl_mode::SslMode;
@@ -26,17 +27,36 @@ impl MySqlSslMode {
             Self::VerifyIdentity,
         ]
     }
-}
 
-impl std::fmt::Display for MySqlSslMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
             Self::Disabled => "DISABLED",
             Self::Preferred => "PREFERRED",
             Self::Required => "REQUIRED",
             Self::VerifyCa => "VERIFY_CA",
             Self::VerifyIdentity => "VERIFY_IDENTITY",
-        })
+        }
+    }
+}
+
+impl std::fmt::Display for MySqlSslMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for MySqlSslMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "DISABLED" => Ok(Self::Disabled),
+            "PREFERRED" => Ok(Self::Preferred),
+            "REQUIRED" => Ok(Self::Required),
+            "VERIFY_CA" => Ok(Self::VerifyCa),
+            "VERIFY_IDENTITY" => Ok(Self::VerifyIdentity),
+            _ => Err(format!("Unknown MySQL SSL mode: {s}")),
+        }
     }
 }
 
@@ -256,14 +276,30 @@ mod tests {
 
     #[test]
     fn mysql_tls_modes_use_mysql_option_names() {
-        assert_eq!(
-            serde_json::to_string(&MySqlSslMode::VerifyCa).unwrap(),
-            "\"VERIFY_CA\""
-        );
-        assert_eq!(
-            serde_json::to_string(&MySqlSslMode::VerifyIdentity).unwrap(),
-            "\"VERIFY_IDENTITY\""
-        );
+        let expected = [
+            (MySqlSslMode::Disabled, "\"DISABLED\""),
+            (MySqlSslMode::Preferred, "\"PREFERRED\""),
+            (MySqlSslMode::Required, "\"REQUIRED\""),
+            (MySqlSslMode::VerifyCa, "\"VERIFY_CA\""),
+            (MySqlSslMode::VerifyIdentity, "\"VERIFY_IDENTITY\""),
+        ];
+
+        for (mode, serialized) in expected {
+            assert_eq!(serde_json::to_string(&mode).unwrap(), serialized);
+        }
+    }
+
+    #[test]
+    fn mysql_tls_modes_round_trip_through_canonical_names() {
+        for mode in MySqlSslMode::all_variants() {
+            assert_eq!(mode.as_str(), mode.to_string());
+            assert_eq!(mode.as_str().parse::<MySqlSslMode>().unwrap(), *mode);
+        }
+    }
+
+    #[test]
+    fn mysql_tls_modes_reject_unknown_names() {
+        assert!("unknown".parse::<MySqlSslMode>().is_err());
     }
 
     mod sqlite_deserialize {

@@ -161,7 +161,7 @@ impl ConnectionSetup {
                     field_area,
                     MySqlSslMode::all_variants()
                         .iter()
-                        .map(|mode| mysql_ssl_mode_label(*mode)),
+                        .map(MySqlSslMode::as_str),
                     form_state.ssl_dropdown().selected_index(),
                     theme,
                 );
@@ -442,16 +442,6 @@ fn ssl_mode_label_text(mode: SslMode) -> &'static str {
         SslMode::Require => "require",
         SslMode::VerifyCa => "verify-ca",
         SslMode::VerifyFull => "verify-full",
-    }
-}
-
-fn mysql_ssl_mode_label(mode: MySqlSslMode) -> &'static str {
-    match mode {
-        MySqlSslMode::Disabled => "DISABLED",
-        MySqlSslMode::Preferred => "PREFERRED",
-        MySqlSslMode::Required => "REQUIRED",
-        MySqlSslMode::VerifyCa => "VERIFY_CA",
-        MySqlSslMode::VerifyIdentity => "VERIFY_IDENTITY",
     }
 }
 
