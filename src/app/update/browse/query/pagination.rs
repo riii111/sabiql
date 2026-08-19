@@ -222,7 +222,7 @@ pub fn reduce_pagination(
                     MySqlExportPlan::CountRows { statement } => {
                         (RerunnableCsvRowCount::QueryDatabase, Some(statement))
                     }
-                    MySqlExportPlan::UseResultRowCount { .. } => {
+                    MySqlExportPlan::UseResultRowCount => {
                         (RerunnableCsvRowCount::Known(row_count), None)
                     }
                 };
