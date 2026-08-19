@@ -356,7 +356,6 @@ mod tests {
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                target.database_type,
                 &target.dsn,
                 target.database.as_deref(),
             );
@@ -403,7 +402,6 @@ mod tests {
             let probe_run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                target.database_type,
                 &target.dsn,
                 target.database.as_deref(),
             );

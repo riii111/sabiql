@@ -92,13 +92,12 @@ pub(super) fn reduce_connection_error(
                     id: pending.id,
                     dsn: pending.dsn,
                     name: pending.name,
-                    database_type: pending.database_type,
+                    database_type: DatabaseType::MySQL,
                     database: pending.database,
                 };
                 let run_id = state.session.begin_mysql_connection_probe(
                     &target.id,
                     &target.name,
-                    target.database_type,
                     &target.dsn,
                     target.database.as_deref(),
                 );
@@ -144,7 +143,6 @@ pub(super) fn reduce_connection_error(
                     let run_id = state.session.begin_mysql_connection_probe(
                         &target.id,
                         &target.name,
-                        target.database_type,
                         &target.dsn,
                         target.database.as_deref(),
                     );
@@ -311,7 +309,6 @@ mod tests {
         let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
-            DatabaseType::MySQL,
             "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
             Some("b"),
         );
@@ -351,7 +348,6 @@ mod tests {
         let _ = state.session.begin_mysql_connection_probe(
             &target_id,
             "mysql-b",
-            DatabaseType::MySQL,
             "mysql://user@localhost:3306/b?ssl-mode=PREFERRED",
             Some("b"),
         );

@@ -87,7 +87,6 @@ pub enum TableDetailState {
 pub struct PendingMySqlConnectionProbe {
     pub id: ConnectionId,
     pub name: String,
-    pub database_type: DatabaseType,
     pub dsn: String,
     pub database: Option<String>,
     pub run_id: u64,
@@ -102,7 +101,6 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
             .debug_struct("PendingMySqlConnectionProbe")
             .field("id", &self.id)
             .field("name", &self.name)
-            .field("database_type", &self.database_type)
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
             .field("run_id", &self.run_id)
@@ -332,7 +330,6 @@ impl BrowseSession {
         &mut self,
         id: &ConnectionId,
         name: &str,
-        database_type: DatabaseType,
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
@@ -345,7 +342,6 @@ impl BrowseSession {
         self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
             id: id.clone(),
             name: name.to_string(),
-            database_type,
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
             run_id,
@@ -385,7 +381,6 @@ impl BrowseSession {
         &self,
         id: &ConnectionId,
         name: &str,
-        database_type: DatabaseType,
         dsn: &str,
         database: Option<&str>,
         run_id: u64,
@@ -398,7 +393,6 @@ impl BrowseSession {
                     pending.run_id == run_id
                         && pending.id == *id
                         && pending.name == name
-                        && pending.database_type == database_type
                         && pending.dsn == dsn
                         && pending.database.as_deref() == database
                 })
@@ -1665,7 +1659,6 @@ mod tests {
             let _ = session.begin_mysql_connection_probe(
                 &id,
                 "mysql",
-                DatabaseType::MySQL,
                 "mysql://user:secret@localhost:3306/app",
                 Some("app"),
             );
@@ -1673,6 +1666,7 @@ mod tests {
             let debug = format!("{session:?}");
             assert!(!debug.contains("secret"));
             assert!(debug.contains("mysql://user:****@localhost:3306/app"));
+            assert!(!debug.contains("database_type"));
         }
 
         #[test]

@@ -45,13 +45,10 @@ pub fn reduce_connection_lifecycle(
             save_current_connection_cache(state);
 
             if *database_type == DatabaseType::MySQL {
-                let run_id = state.session.begin_mysql_connection_probe(
-                    id,
-                    name,
-                    *database_type,
-                    dsn,
-                    database.as_deref(),
-                );
+                let run_id =
+                    state
+                        .session
+                        .begin_mysql_connection_probe(id, name, dsn, database.as_deref());
                 state.query.reset_for_context_change();
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
@@ -104,7 +101,6 @@ pub fn reduce_connection_lifecycle(
                 || !state.session.is_current_mysql_connection_probe(
                     id,
                     name,
-                    *database_type,
                     dsn,
                     database.as_deref(),
                     *run_id,
@@ -137,7 +133,6 @@ pub fn reduce_connection_lifecycle(
                 || !state.session.is_current_mysql_connection_probe(
                     &target.id,
                     &target.name,
-                    target.database_type,
                     &target.dsn,
                     target.database.as_deref(),
                     *run_id,
@@ -209,7 +204,6 @@ pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<
                 let run_id = state.session.begin_mysql_connection_probe(
                     &target.id,
                     &target.name,
-                    target.database_type,
                     &target.dsn,
                     target.database.as_deref(),
                 );
@@ -2153,7 +2147,6 @@ mod tests {
             let run_id = state.session.begin_mysql_connection_probe(
                 &target.id,
                 &target.name,
-                target.database_type,
                 &target.dsn,
                 target.database.as_deref(),
             );
