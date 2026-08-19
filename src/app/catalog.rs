@@ -340,7 +340,7 @@ fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
     rows_from_binding_iter(
         COMMAND_LINE_KEYS
             .iter()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -357,10 +357,10 @@ fn reference_sections(
         &global::PANE_SWITCH,
         &global::INSPECTOR_TABS,
     ];
-    if feature_policy.is_visible(global::ER_DIAGRAM.feature_requirement()) {
+    if feature_policy.is_enabled(global::ER_DIAGRAM.feature_requirement()) {
         open_switch_rows.insert(2, &global::ER_DIAGRAM);
     }
-    if feature_policy.is_visible(sqlite_diagnostics(keymap_preset).feature_requirement()) {
+    if feature_policy.is_enabled(sqlite_diagnostics(keymap_preset).feature_requirement()) {
         open_switch_rows.insert(2, sqlite_diagnostics(keymap_preset));
     }
 
@@ -373,7 +373,7 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_visible(json_detail::YANK.feature_requirement())
+    if feature_policy.is_enabled(json_detail::YANK.feature_requirement())
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         data_action_rows.extend(rows_from_mode_row_refs_if_visible(
@@ -386,10 +386,10 @@ fn reference_sections(
         &table_picker::TYPE_FILTER,
         &query_history_picker::TYPE_FILTER,
     ]);
-    if feature_policy.is_visible(er_picker::TYPE_FILTER.feature_requirement()) {
+    if feature_policy.is_enabled(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if feature_policy.is_visible(json_search::TYPE_SEARCH.feature_requirement())
+    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement())
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         search_filter_rows.extend(rows_from_bindings_if_visible(
@@ -405,7 +405,7 @@ fn reference_sections(
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if feature_policy.is_visible(FeatureRequirement::JsonDocumentEdit)
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         editing_rows.extend(rows_from_mode_rows_if_visible(
@@ -415,27 +415,27 @@ fn reference_sections(
     }
 
     let mut advanced_rows = Vec::new();
-    if feature_policy.is_visible(FeatureRequirement::Explain) {
+    if feature_policy.is_enabled(FeatureRequirement::Explain) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Plan,
             keymap_preset,
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::PlanComparison) {
+    if feature_policy.is_enabled(FeatureRequirement::PlanComparison) {
         advanced_rows.extend(sql_current_rows(
             SqlHelpMode::Compare,
             keymap_preset,
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::ErDiagram) {
+    if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
             er_picker_rows(keymap_preset),
             feature_policy,
         ));
     }
-    if feature_policy.is_visible(FeatureRequirement::JsonDocumentDetail)
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail)
         && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
     {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
@@ -531,7 +531,7 @@ fn sql_current_rows(
         },
         SqlHelpMode::Plan => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_plan_explain(keymap_preset)];
-            if feature_policy.is_visible(sql_modal_plan::ANALYZE.feature_requirement()) {
+            if feature_policy.is_enabled(sql_modal_plan::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_plan::ANALYZE);
             }
             bindings.extend([
@@ -545,7 +545,7 @@ fn sql_current_rows(
         }
         SqlHelpMode::Compare => {
             let mut bindings: Vec<&KeyBinding> = vec![sql_modal_compare_explain(keymap_preset)];
-            if feature_policy.is_visible(sql_modal_compare::ANALYZE.feature_requirement()) {
+            if feature_policy.is_enabled(sql_modal_compare::ANALYZE.feature_requirement()) {
                 bindings.push(&sql_modal_compare::ANALYZE);
             }
             bindings.extend([
@@ -622,7 +622,7 @@ fn rows_from_bindings_if_visible(
     rows_from_binding_iter(
         bindings
             .iter()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -638,7 +638,7 @@ fn rows_from_binding_refs_if_visible(
         bindings
             .iter()
             .copied()
-            .filter(|binding| feature_policy.is_visible(binding.feature_requirement())),
+            .filter(|binding| feature_policy.is_enabled(binding.feature_requirement())),
     )
 }
 
@@ -693,7 +693,7 @@ fn rows_from_mode_rows_if_visible(
     feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
     rows.iter()
-        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
         .map(row_from_mode_row)
         .collect()
 }
@@ -707,7 +707,7 @@ fn rows_from_mode_row_refs_if_visible(
     feature_policy: &FeaturePolicy,
 ) -> Vec<HelpRow> {
     rows.iter()
-        .filter(|row| feature_policy.is_visible(row.feature_requirement()))
+        .filter(|row| feature_policy.is_enabled(row.feature_requirement()))
         .map(|&row| row_from_mode_row(row))
         .collect()
 }
