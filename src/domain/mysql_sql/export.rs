@@ -3,7 +3,7 @@ use super::{MySqlStatementKind, classify_mysql_multi_statement, has_mysql_read_o
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MySqlExportPlan {
     CountRows { statement: String },
-    UseResultRowCount { statement: String },
+    UseResultRowCount,
 }
 
 pub fn mysql_export_plan(query: &str) -> Option<MySqlExportPlan> {
@@ -28,9 +28,7 @@ pub fn mysql_export_plan(query: &str) -> Option<MySqlExportPlan> {
             statement: statement.sql.clone(),
         }),
         MySqlStatementKind::Table | MySqlStatementKind::Show | MySqlStatementKind::Describe => {
-            Some(MySqlExportPlan::UseResultRowCount {
-                statement: statement.sql.clone(),
-            })
+            Some(MySqlExportPlan::UseResultRowCount)
         }
         _ => None,
     }
@@ -43,9 +41,9 @@ mod tests {
 
     #[rstest]
     #[case::select("SELECT id FROM users", MySqlExportPlan::CountRows { statement: "SELECT id FROM users".to_string() })]
-    #[case::table("TABLE users", MySqlExportPlan::UseResultRowCount { statement: "TABLE users".to_string() })]
-    #[case::show("SHOW TABLES", MySqlExportPlan::UseResultRowCount { statement: "SHOW TABLES".to_string() })]
-    #[case::describe("DESCRIBE users", MySqlExportPlan::UseResultRowCount { statement: "DESCRIBE users".to_string() })]
+    #[case::table("TABLE users", MySqlExportPlan::UseResultRowCount)]
+    #[case::show("SHOW TABLES", MySqlExportPlan::UseResultRowCount)]
+    #[case::describe("DESCRIBE users", MySqlExportPlan::UseResultRowCount)]
     fn plans_supported_mysql_export_queries(
         #[case] query: &str,
         #[case] expected: MySqlExportPlan,
