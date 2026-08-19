@@ -26,7 +26,7 @@ pub fn render(
     now: Instant,
     theme: &ThemePalette,
 ) -> u16 {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if !feature_policy.is_enabled(FeatureRequirement::Explain) {
         let placeholder = Line::from(Span::styled(
             " EXPLAIN is unavailable for this database",

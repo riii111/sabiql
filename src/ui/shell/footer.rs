@@ -155,7 +155,7 @@ impl Footer {
                 } else {
                     // Actions → Navigation → Help → Close/Cancel → Quit
                     let capabilities = state.session.active_engine_feature_profile();
-                    let feature_policy = FeaturePolicy::new(capabilities);
+                    let feature_policy = FeaturePolicy::new(&capabilities);
                     let active_inspector_tab =
                         capabilities.normalize_inspector_tab(state.ui.inspector_tab());
                     let mut list = vec![global::RELOAD.as_hint(), global::SQL.as_hint()];
@@ -316,7 +316,7 @@ impl Footer {
             }
             InputMode::SqliteDiagnostics => {
                 let feature_policy =
-                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 let mut hints = Vec::new();
                 if feature_policy.is_enabled(FeatureRequirement::SqliteDiagnostics) {
                     hints.push(sqlite_diagnostics::SCROLL.as_hint());
@@ -334,7 +334,7 @@ impl Footer {
             }
             InputMode::ErTablePicker => {
                 let feature_policy =
-                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 let mut hints = Vec::new();
                 if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
                     hints.extend([
@@ -354,7 +354,7 @@ impl Footer {
             ],
             InputMode::JsonDetail => {
                 let feature_policy =
-                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 if !feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
                     vec![json_detail::CLOSE.as_hint()]
                 } else if matches!(state.json_detail.mode(), JsonDetailMode::Searching) {
@@ -379,7 +379,7 @@ impl Footer {
             }
             InputMode::JsonEdit => {
                 let feature_policy =
-                    FeaturePolicy::new(state.session.active_engine_feature_profile());
+                    FeaturePolicy::new(&state.session.active_engine_feature_profile());
                 if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
                     vec![
                         json_edit::ESC_NORMAL.as_hint(),

@@ -56,7 +56,7 @@ pub(super) fn mark_explain_unsupported_analyze(state: &mut AppState) {
 }
 
 fn apply_explain_unsupported_analyze_state(state: &mut AppState) {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if feature_policy.is_enabled(FeatureRequirement::Explain) {
         mark_explain_unsupported_analyze(state);
     } else {

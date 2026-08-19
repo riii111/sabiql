@@ -42,7 +42,7 @@ impl SqlModal {
             SqlModalStatus::ConfirmingHigh { .. } | SqlModalStatus::ConfirmingRisk { .. }
         );
         let engine_feature_profile = state.session.active_engine_feature_profile();
-        let feature_policy = FeaturePolicy::new(engine_feature_profile);
+        let feature_policy = FeaturePolicy::new(&engine_feature_profile);
         let active_tab =
             engine_feature_profile.normalize_sql_modal_tab(state.sql_modal.active_tab());
 
@@ -128,13 +128,13 @@ impl SqlModal {
                     Self::border_hint(
                         active_tab,
                         compare_can_yank,
-                        engine_feature_profile,
+                        &engine_feature_profile,
                         &feature_policy,
                         state.settings.saved_keymap_preset(),
                     )
                 }
             };
-            Self::render_modal_with_tabs(frame, active_tab, hint, engine_feature_profile, theme)
+            Self::render_modal_with_tabs(frame, active_tab, hint, &engine_feature_profile, theme)
         };
 
         // Add 1-char horizontal padding for breathing room inside the modal

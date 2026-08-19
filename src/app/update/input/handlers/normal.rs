@@ -13,7 +13,7 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
     let result_navigation = browse_ctx.is_result();
     let inspector_navigation = browse_ctx.is_inspector();
     let keymap_preset = state.settings.saved_keymap_preset();
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
 
     // Key sequence FSM: two-key sequences (zz, zt, zb)
     // Must be resolved before Ctrl/global actions so that the second key is

@@ -34,7 +34,7 @@ impl HelpDocument {
             filter.content(),
             filter.cursor(),
             state.settings.saved_keymap_preset(),
-            state.session.active_engine_feature_profile(),
+            &state.session.active_engine_feature_profile(),
             state.session.active_database_type().map(|database_type| {
                 let data_type = if database_type == DatabaseType::MySQL {
                     "json"
