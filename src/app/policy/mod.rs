@@ -7,5 +7,5 @@ pub mod sqlite_path;
 pub mod table_kind;
 pub mod write;
 
-pub use feature_policy::{FeatureAvailability, FeaturePolicy, FeatureRequirement};
+pub use feature_policy::{FeaturePolicy, FeatureRequirement};
 pub use password_masking::mask_password;
