@@ -130,17 +130,16 @@ impl InspectorViewModel {
     pub fn build_with_detail_state(
         profile: &EngineFeatureProfile,
         selected_tab: InspectorTab,
-        table: Option<&Table>,
         table_detail_state: &TableDetailState,
         database_type: DatabaseType,
         ddl_generator: &dyn DdlGenerator,
     ) -> Self {
         let active_tab = profile.normalize_inspector_tab(selected_tab);
-        let load_state = match table_detail_state {
-            TableDetailState::NotSelected => InspectorLoadState::NoTableSelected,
-            TableDetailState::Loading => InspectorLoadState::Loading,
-            TableDetailState::Loaded => InspectorLoadState::Success,
-            TableDetailState::Error(error) => InspectorLoadState::Error(error.clone()),
+        let (load_state, table) = match table_detail_state {
+            TableDetailState::NotSelected => (InspectorLoadState::NoTableSelected, None),
+            TableDetailState::Loading => (InspectorLoadState::Loading, None),
+            TableDetailState::Loaded(table) => (InspectorLoadState::Success, Some(table.as_ref())),
+            TableDetailState::Error(error) => (InspectorLoadState::Error(error.clone()), None),
         };
         let Some(table) = table else {
             let empty_state = matches!(&load_state, InspectorLoadState::NoTableSelected)
@@ -153,16 +152,6 @@ impl InspectorViewModel {
                 unavailable_reason: None,
             };
         };
-
-        if !matches!(&load_state, InspectorLoadState::Success) {
-            return Self {
-                active_tab,
-                load_state,
-                section: None,
-                empty_state: None,
-                unavailable_reason: None,
-            };
-        }
 
         let (section, empty_state, unavailable_reason) = match active_tab {
             InspectorTab::Info => (
@@ -568,8 +557,7 @@ mod tests {
         InspectorViewModel::build_with_detail_state(
             profile,
             selected_tab,
-            Some(table),
-            &TableDetailState::Loaded,
+            &TableDetailState::Loaded(Box::new(table.clone())),
             database_type,
             ddl_generator,
         )
@@ -580,7 +568,6 @@ mod tests {
         let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Info,
-            None,
             &TableDetailState::NotSelected,
             DatabaseType::PostgreSQL,
             &TestDdlGenerator,
@@ -596,11 +583,9 @@ mod tests {
 
     #[test]
     fn loading_detail_exposes_loading_state_without_stale_rows() {
-        let table = table();
         let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::mysql_like(),
             InspectorTab::Info,
-            Some(&table),
             &TableDetailState::Loading,
             DatabaseType::MySQL,
             &TestDdlGenerator,
@@ -613,11 +598,9 @@ mod tests {
 
     #[test]
     fn failed_detail_exposes_error_state_without_stale_rows() {
-        let table = table();
         let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::mysql_like(),
             InspectorTab::Info,
-            Some(&table),
             &TableDetailState::Error("permission denied".to_string()),
             DatabaseType::MySQL,
             &TestDdlGenerator,

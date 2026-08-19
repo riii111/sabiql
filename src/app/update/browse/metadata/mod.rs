@@ -214,10 +214,10 @@ mod tests {
             );
 
             assert_eq!(state.session.selection_generation(), current_generation);
-            assert_eq!(
+            assert!(matches!(
                 state.session.table_detail_state(),
-                &TableDetailState::Loading
-            );
+                TableDetailState::Loading
+            ));
             assert!(state.messages.last_error().is_none());
         }
 
