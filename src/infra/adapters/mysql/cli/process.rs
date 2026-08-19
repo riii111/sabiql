@@ -416,8 +416,7 @@ pub(super) async fn read_one_mysql_resultset(
 
 fn mysql_statement_input(query: &str) -> Vec<u8> {
     let query = query.trim_end();
-    let terminator = if query.ends_with(';') { "\n" } else { "\n;\n" };
-    [query.as_bytes(), terminator.as_bytes()].concat()
+    [query.as_bytes(), b"\n;\n"].concat()
 }
 
 #[cfg(test)]
@@ -425,11 +424,11 @@ mod statement_input_tests {
     use super::mysql_statement_input;
 
     #[test]
-    fn separates_semicolonless_statements_after_line_comments() {
+    fn separates_statements_after_line_comments_with_semicolons() {
         for query in [
             "SELECT 1",
-            "SELECT 1 -- trailing comment",
-            "SELECT 1 # trailing comment",
+            "SELECT 1 -- trailing comment;",
+            "SELECT 1 # trailing comment;",
         ] {
             assert_eq!(
                 mysql_statement_input(query),
@@ -439,8 +438,8 @@ mod statement_input_tests {
     }
 
     #[test]
-    fn keeps_existing_semicolon_terminator() {
-        assert_eq!(mysql_statement_input("SELECT 1;"), b"SELECT 1;\n");
+    fn adds_an_independent_separator_after_an_existing_semicolon() {
+        assert_eq!(mysql_statement_input("SELECT 1;"), b"SELECT 1;\n;\n");
     }
 }
 

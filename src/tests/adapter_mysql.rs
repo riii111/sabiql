@@ -1944,7 +1944,7 @@ mod query_execution {
                     .adapter()
                     .execute_adhoc(
                         db.dsn(),
-                        "SELECT 1 AS value WHERE FALSE -- trailing comment",
+                        "SELECT 1 AS value WHERE FALSE -- trailing comment;",
                         AccessMode::ReadWrite,
                     )
                     .await
