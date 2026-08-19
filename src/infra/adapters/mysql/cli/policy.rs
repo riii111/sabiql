@@ -100,21 +100,21 @@ pub(super) fn mysql_metadata_fallback_kind(
 pub(super) fn mysql_metadata_fallback_has_unsupported_session_state(
     statements: &[MySqlStatement],
 ) -> bool {
-    let mut temporary_table_created = false;
+    let mut active_temporary_table_count: usize = 0;
     for statement in statements {
-        if temporary_table_created
-            && matches!(
-                statement.kind(),
-                MySqlStatementKind::Show | MySqlStatementKind::Describe
-            )
-        {
-            return true;
-        }
-        if matches!(
-            statement.kind(),
-            MySqlStatementKind::CreateTable { temporary: true }
-        ) {
-            temporary_table_created = true;
+        match statement.kind() {
+            MySqlStatementKind::CreateTable { temporary: true } => {
+                active_temporary_table_count += 1;
+            }
+            MySqlStatementKind::DropTable { temporary: true } => {
+                active_temporary_table_count = active_temporary_table_count.saturating_sub(1);
+            }
+            MySqlStatementKind::Show | MySqlStatementKind::Describe
+                if active_temporary_table_count > 0 =>
+            {
+                return true;
+            }
+            _ => {}
         }
     }
     false
@@ -569,10 +569,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_metadata_fallback_after_temporary_table_creation() {
+    fn allows_empty_metadata_fallback_after_temporary_table_is_dropped() {
         for query in [
-            "CREATE TEMPORARY TABLE temp_items (id INT); DESCRIBE temp_items 'missing'; DROP TEMPORARY TABLE temp_items",
-            "CREATE TEMPORARY TABLE temp_items (id INT); SHOW COLUMNS FROM temp_items LIKE 'missing'; DROP TEMPORARY TABLE temp_items",
+            "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE temp_items; DESCRIBE temp_items 'missing'",
+            "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE temp_items; SHOW COLUMNS FROM temp_items LIKE 'missing'",
+        ] {
+            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
+                .expect("query should be classified before the session-state check");
+
+            assert!(!mysql_metadata_fallback_has_unsupported_session_state(
+                &statements
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_empty_metadata_fallback_when_a_temporary_table_remains_active() {
+        for query in [
+            "CREATE TEMPORARY TABLE temp_items (id INT); CREATE TEMPORARY TABLE temp_other (id INT); DROP TEMPORARY TABLE temp_items; DESCRIBE temp_other 'missing'",
+            "CREATE TEMPORARY TABLE temp_items (id INT); CREATE TEMPORARY TABLE temp_other (id INT); DROP TEMPORARY TABLE temp_items; SHOW COLUMNS FROM temp_other LIKE 'missing'",
         ] {
             let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
                 .expect("query should be classified before the session-state check");
@@ -581,16 +596,36 @@ mod tests {
                 &statements
             ));
         }
+    }
 
-        let statements = validate_mysql_multi_query(
-            "SHOW COLUMNS FROM items",
-            Some("app"),
-            AccessMode::ReadWrite,
-        )
-        .expect("single SHOW should be classified");
-        assert!(!mysql_metadata_fallback_has_unsupported_session_state(
-            &statements
-        ));
+    #[test]
+    fn allows_empty_metadata_fallback_after_all_temporary_tables_are_dropped() {
+        for query in [
+            "CREATE TEMPORARY TABLE temp_items (id INT); CREATE TEMPORARY TABLE temp_other (id INT); DROP TEMPORARY TABLE temp_items; DROP TEMPORARY TABLE temp_other; DESCRIBE temp_other 'missing'",
+            "CREATE TEMPORARY TABLE temp_items (id INT); CREATE TEMPORARY TABLE temp_other (id INT); DROP TEMPORARY TABLE temp_items; DROP TEMPORARY TABLE temp_other; SHOW COLUMNS FROM temp_other LIKE 'missing'",
+        ] {
+            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
+                .expect("query should be classified before the session-state check");
+
+            assert!(!mysql_metadata_fallback_has_unsupported_session_state(
+                &statements
+            ));
+        }
+    }
+
+    #[test]
+    fn allows_empty_metadata_fallback_without_temporary_tables() {
+        for query in [
+            "DESCRIBE items 'missing'",
+            "SHOW COLUMNS FROM items LIKE 'missing'",
+        ] {
+            let statements = validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite)
+                .expect("query should be classified before the session-state check");
+
+            assert!(!mysql_metadata_fallback_has_unsupported_session_state(
+                &statements
+            ));
+        }
     }
 
     #[test]
