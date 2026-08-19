@@ -215,14 +215,7 @@ fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
         if key != "ssl-mode" {
             return None;
         }
-        Some(match value.as_ref() {
-            "DISABLED" => MySqlSslMode::Disabled,
-            "PREFERRED" => MySqlSslMode::Preferred,
-            "REQUIRED" => MySqlSslMode::Required,
-            "VERIFY_CA" => MySqlSslMode::VerifyCa,
-            "VERIFY_IDENTITY" => MySqlSslMode::VerifyIdentity,
-            _ => return None,
-        })
+        value.parse().ok()
     })
 }
 

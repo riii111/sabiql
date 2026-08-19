@@ -192,16 +192,9 @@ fn normalize_mysql_host(host: &str) -> String {
 }
 
 fn parse_ssl_mode(value: &str) -> Result<MySqlSslMode, DbOperationError> {
-    match value {
-        "DISABLED" => Ok(MySqlSslMode::Disabled),
-        "PREFERRED" => Ok(MySqlSslMode::Preferred),
-        "REQUIRED" => Ok(MySqlSslMode::Required),
-        "VERIFY_CA" => Ok(MySqlSslMode::VerifyCa),
-        "VERIFY_IDENTITY" => Ok(MySqlSslMode::VerifyIdentity),
-        _ => Err(DbOperationError::ConnectionFailed(
-            "Invalid MySQL TLS mode".to_string(),
-        )),
-    }
+    value
+        .parse()
+        .map_err(|_| DbOperationError::ConnectionFailed("Invalid MySQL TLS mode".to_string()))
 }
 
 fn decode_url_component(value: &str) -> Result<String, DbOperationError> {
@@ -233,6 +226,18 @@ mod tests {
         assert_eq!(parsed.username, "user name");
         assert_eq!(parsed.password, "p@ss#word");
         assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
+    }
+
+    #[test]
+    fn rejects_unknown_ssl_mode_without_exposing_dsn_credentials() {
+        let error =
+            parse_mysql_dsn("mysql://user:secret@localhost:3306/app?ssl-mode=UNKNOWN").unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "Invalid MySQL TLS mode" && !details.contains("secret")
+        ));
     }
 
     #[test]
