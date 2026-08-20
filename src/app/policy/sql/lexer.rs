@@ -736,12 +736,21 @@ impl SqlLexer {
         )
     }
 
-    fn is_mysql_index_hint_join(&self, tokens: &[Token], join_index: usize) -> bool {
+    fn is_mysql_index_hint_scope(&self, tokens: &[Token], scope_index: usize) -> bool {
         if !self.is_mysql() {
             return false;
         }
 
-        let Some(for_index) = tokens[..join_index]
+        let is_scope = matches!(
+            &tokens[scope_index].kind,
+            TokenKind::Keyword(word)
+                if matches!(word.as_str(), "JOIN" | "ORDER" | "GROUP")
+        );
+        if !is_scope {
+            return false;
+        }
+
+        let Some(for_index) = tokens[..scope_index]
             .iter()
             .rposition(|token| token.kind != TokenKind::Whitespace)
         else {
@@ -852,7 +861,7 @@ impl SqlLexer {
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
                     "FROM" | "JOIN" | "STRAIGHT_JOIN" => {
-                        if kw == "JOIN" && self.is_mysql_index_hint_join(tokens, i) {
+                        if kw == "JOIN" && self.is_mysql_index_hint_scope(tokens, i) {
                             i += 1;
                             continue;
                         }
@@ -910,13 +919,17 @@ impl SqlLexer {
                         while next < tokens.len() && tokens[next].kind == TokenKind::Whitespace {
                             next += 1;
                         }
-                        if next >= tokens.len() || !self.is_mysql_index_hint_join(tokens, next) {
+                        if next >= tokens.len() || !self.is_mysql_index_hint_scope(tokens, next) {
                             in_for_clause = true;
                             can_start_straight_join = false;
                         }
                     }
                     // NO, KEY, SHARE are part of FOR locking clause
                     "NO" | "KEY" | "SHARE" if in_for_clause => {}
+                    "GROUP" | "ORDER" if self.is_mysql_index_hint_scope(tokens, i) => {
+                        i += 1;
+                        continue;
+                    }
                     "INSERT" | "REPLACE" => {
                         in_for_clause = false;
                         can_start_straight_join = false;
@@ -2111,6 +2124,24 @@ mod tests {
             assert_eq!(refs[0].alias, Some("u".to_string()));
             assert_eq!(refs[1].table, "orders");
             assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_index_hint_scopes_preserve_straight_join() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+
+            for scope in ["ORDER BY", "GROUP BY"] {
+                let sql = format!(
+                    "SELECT * FROM users u USE INDEX FOR {scope} (idx_users) STRAIGHT_JOIN orders o WHERE o.id = 1"
+                );
+                let tokens = l.tokenize(&sql, sql.len());
+
+                let refs = l.extract_table_references(&tokens);
+
+                assert_eq!(refs.len(), 2, "scope: {scope}");
+                assert_eq!(refs[0].alias, Some("u".to_string()), "scope: {scope}");
+                assert_eq!(refs[1].alias, Some("o".to_string()), "scope: {scope}");
+            }
         }
     }
 
