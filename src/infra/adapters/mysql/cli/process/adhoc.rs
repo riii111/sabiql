@@ -40,24 +40,6 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     .await
 }
 
-#[cfg(feature = "test-support")]
-pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_timeout_for_test(
-    option_file: &Path,
-    statements: &[MySqlStatement],
-    access_mode: AccessMode,
-    execution_timeout: Duration,
-) -> Result<MySqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
-        OsStr::new("mysql"),
-        option_file,
-        statements,
-        access_mode,
-        None,
-        execution_timeout,
-    )
-    .await
-}
-
 pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
     program: &OsStr,
     option_file: &Path,

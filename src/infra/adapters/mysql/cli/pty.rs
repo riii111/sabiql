@@ -110,17 +110,7 @@ pub(super) async fn read_pty_until_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8
     read_pty_until_idle_from(&mut pty.output, output, false, None).await
 }
 
-#[cfg(all(unix, feature = "test-support"))]
-pub(super) async fn read_pty_until_first_byte_then_idle(
-    pty: &mut MySqlPty,
-    first_byte_timeout: Duration,
-) -> io::Result<Vec<u8>> {
-    let output = std::mem::take(&mut pty.pending);
-    pty.frame_scanner.reset();
-    read_pty_until_idle_from(&mut pty.output, output, true, Some(first_byte_timeout)).await
-}
-
-async fn read_pty_until_idle_from<R>(
+pub(super) async fn read_pty_until_idle_from<R>(
     reader: &mut R,
     mut output: Vec<u8>,
     wait_for_first_byte: bool,

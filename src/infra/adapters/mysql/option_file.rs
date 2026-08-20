@@ -280,7 +280,6 @@ mod tests {
     use std::collections::HashSet;
     use std::sync::{Arc, Barrier};
 
-    use super::super::cli::test_support::MySqlProcess;
     use crate::domain::connection::MySqlSslMode;
 
     use super::*;
@@ -597,21 +596,5 @@ mod tests {
 
         drop(files);
         assert!(paths.iter().all(|path| !path.exists()));
-    }
-
-    #[test]
-    fn option_file_is_removed_when_mysql_process_start_fails() {
-        let (result, path) = {
-            let option_file = MySqlOptionFile::create(&target()).unwrap();
-            let path = option_file.path.clone();
-            let result = MySqlProcess::spawn_with_program(
-                std::ffi::OsStr::new("__sabiql_missing_mysql_binary__"),
-                &path,
-            );
-            (result, path)
-        };
-
-        assert!(result.is_err());
-        assert!(!path.exists());
     }
 }

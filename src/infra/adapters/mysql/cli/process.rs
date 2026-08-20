@@ -18,31 +18,22 @@ use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_m
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
-#[cfg(all(unix, feature = "test-support"))]
-use super::pty::read_pty_until_first_byte_then_idle;
 #[cfg(unix)]
 use super::pty::{
     MySqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
 };
-#[cfg(all(unix, feature = "test-support"))]
-use super::xml::trace_mysql_frame;
 use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
 mod session;
 pub(in crate::adapters::mysql) use session::MySqlMetadataSession;
 mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
-#[cfg(feature = "test-support")]
-pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc_with_timeout_for_test;
 mod single;
+#[cfg(feature = "test-support")]
+pub(super) mod test_support;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 mod metadata;
-pub(in crate::adapters::mysql) use metadata::mysql_metadata_columns;
-
-#[cfg(all(unix, feature = "test-support"))]
-use super::super::dsn::parse_and_validate_mysql_dsn;
-#[cfg(all(unix, feature = "test-support"))]
-use super::super::option_file::MySqlOptionFile;
+pub(super) use metadata::mysql_metadata_columns;
 
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 #[cfg(unix)]
@@ -169,7 +160,9 @@ impl MySqlProcess {
 }
 
 #[cfg(unix)]
-async fn stop_mysql_process(child: &mut Child) -> Result<(ExitStatus, bool), DbOperationError> {
+pub(super) async fn stop_mysql_process(
+    child: &mut Child,
+) -> Result<(ExitStatus, bool), DbOperationError> {
     if let Some(status) = child
         .try_wait()
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?
@@ -443,79 +436,6 @@ mod statement_input_tests {
     }
 }
 
-#[cfg(all(unix, feature = "test-support"))]
-pub(in crate::adapters::mysql) async fn run_mysql_cli_script_for_test(
-    dsn: &str,
-    script: &str,
-) -> Result<Vec<u8>, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
-    let option_file = MySqlOptionFile::create(&target)?;
-    run_mysql_cli_script_with_program(
-        OsStr::new("mysql"),
-        &option_file.path,
-        script,
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
-}
-
-#[cfg(all(unix, feature = "test-support"))]
-async fn run_mysql_cli_script_with_program(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    script: &str,
-    first_byte_timeout: Duration,
-) -> Result<Vec<u8>, DbOperationError> {
-    let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-    run_mysql_cli_script_process(&mut process, script, first_byte_timeout).await
-}
-
-#[cfg(all(test, unix, feature = "test-support"))]
-async fn run_mysql_cli_script_with_program_and_pid(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    script: &str,
-    first_byte_timeout: Duration,
-) -> Result<(u32, Result<Vec<u8>, DbOperationError>), DbOperationError> {
-    let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-    let pid = process.child.id().ok_or_else(|| {
-        DbOperationError::ConnectionLost("mysql child exited before cleanup tracking".to_string())
-    })?;
-    let result = run_mysql_cli_script_process(&mut process, script, first_byte_timeout).await;
-    Ok((pid, result))
-}
-
-#[cfg(all(unix, feature = "test-support"))]
-async fn run_mysql_cli_script_process(
-    process: &mut MySqlProcess,
-    script: &str,
-    first_byte_timeout: Duration,
-) -> Result<Vec<u8>, DbOperationError> {
-    let result = async {
-        trace_mysql_statement(script);
-        write_mysql_input(process, script.as_bytes()).await?;
-        write_mysql_input(process, b"\x04").await?;
-        let output = read_pty_until_first_byte_then_idle(&mut process.pty, first_byte_timeout)
-            .await
-            .map_err(|error| {
-                if error.kind() == io::ErrorKind::TimedOut {
-                    DbOperationError::Timeout(error.to_string())
-                } else {
-                    DbOperationError::QueryFailed(error.to_string())
-                }
-            })?;
-        trace_mysql_frame("receive script output", output.len());
-        Ok(output)
-    }
-    .await;
-    if result.is_err() {
-        cleanup_mysql_process(process).await;
-    } else {
-        let _ = stop_mysql_process(&mut process.child).await;
-    }
-    result
-}
-
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
@@ -540,6 +460,8 @@ mod tests {
 
     mod cleanup {
         use super::*;
+        use crate::adapters::mysql::dsn::parse_mysql_dsn;
+        use crate::adapters::mysql::option_file::MySqlOptionFile;
 
         #[tokio::test]
         async fn bounds_pty_drain_when_the_slave_stays_open() {
@@ -559,6 +481,23 @@ mod tests {
                 .await
                 .is_ok()
             );
+        }
+
+        #[test]
+        fn option_file_is_removed_when_mysql_process_start_fails() {
+            let target = parse_mysql_dsn("mysql://user:secret@localhost:3306").unwrap();
+            let (result, path) = {
+                let option_file = MySqlOptionFile::create(&target).unwrap();
+                let path = option_file.path.clone();
+                let result = MySqlProcess::spawn_with_program(
+                    OsStr::new("__sabiql_missing_mysql_binary__"),
+                    &path,
+                );
+                (result, path)
+            };
+
+            assert!(result.is_err());
+            assert!(!path.exists());
         }
     }
 
@@ -659,22 +598,6 @@ done
         permissions.set_mode(0o755);
         fs::set_permissions(&program, permissions).unwrap();
         (directory, program, log_file)
-    }
-
-    #[cfg(feature = "test-support")]
-    fn fake_mysql_without_output() -> (TempDir, PathBuf, PathBuf) {
-        let directory = tempfile::tempdir().unwrap();
-        let option_file = directory.path().join("option.cnf");
-        fs::write(&option_file, "[client]\n").unwrap();
-        let program = directory.path().join("mysql");
-        let script = r"#!/bin/sh
-while :; do :; done
-";
-        fs::write(&program, script).unwrap();
-        let mut permissions = fs::metadata(&program).unwrap().permissions();
-        permissions.set_mode(0o755);
-        fs::set_permissions(&program, permissions).unwrap();
-        (directory, program, option_file)
     }
 
     fn fake_mysql_multi() -> (TempDir, PathBuf, PathBuf) {
@@ -1416,36 +1339,6 @@ done
             let log =
                 fs::read_to_string(format!("{}.log", option_file.display())).unwrap_or_default();
             assert!(!log.contains("SELECT 123"));
-        }
-
-        #[cfg(feature = "test-support")]
-        #[tokio::test]
-        async fn initial_pty_output_timeout_kills_and_reaps_the_process() {
-            let (_directory, program, option_file) = fake_mysql_without_output();
-            let (pid, result) = run_mysql_cli_script_with_program_and_pid(
-                OsStr::new(&program),
-                &option_file,
-                "SELECT 123;\n",
-                Duration::from_millis(50),
-            )
-            .await
-            .expect("spawn script process");
-
-            match result {
-                Err(DbOperationError::Timeout(details)) => {
-                    assert!(
-                        details.contains("initial MySQL PTY output wait"),
-                        "{details}"
-                    );
-                }
-                result => panic!("expected initial PTY output timeout, got {result:?}"),
-            }
-            let status = std::process::Command::new("kill")
-                .args(["-0", &pid.to_string()])
-                .stderr(std::process::Stdio::null())
-                .status()
-                .expect("check script process");
-            assert!(!status.success(), "script process {pid} is still running");
         }
     }
 

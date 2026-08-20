@@ -1,11 +1,8 @@
-use std::process::Stdio;
-
 use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
 #[cfg(unix)]
 use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
-use sabiql_infra::adapters::mysql::{MySqlAdapter, create_mysql_option_file_for_test};
-use tokio::process::Command;
+use sabiql_infra::adapters::mysql::{MySqlAdapter, run_mysql_cli_query_for_test};
 
 pub const MYSQL_FIXTURE_TABLE: &str = "mysql_cli_fixture";
 
@@ -56,31 +53,9 @@ impl MySqlTestDb {
     }
 
     async fn run_cli(&self, query: &str) -> Result<String, String> {
-        let option_file =
-            create_mysql_option_file_for_test(&self.dsn).map_err(|error| error.to_string())?;
-        let output = Command::new("mysql")
-            .args([
-                format!("--defaults-file={}", option_file.path().display()),
-                "--no-login-paths".to_string(),
-                "--protocol=TCP".to_string(),
-                "--connect-timeout=10".to_string(),
-                "--batch".to_string(),
-                "--raw".to_string(),
-                "--skip-column-names".to_string(),
-                "--binary-mode".to_string(),
-                "--skip-reconnect".to_string(),
-                format!("--execute={query}"),
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+        run_mysql_cli_query_for_test(&self.dsn, query)
             .await
-            .map_err(|error| error.to_string())?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-        String::from_utf8(output.stdout).map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())
     }
 
     #[cfg(unix)]
