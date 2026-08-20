@@ -21,7 +21,7 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::services::AppServices;
-use crate::domain::{DatabaseType, TriggerCreationContext};
+use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -211,15 +211,15 @@ impl Inspector {
                 ViewportPlan::default()
             }
             Some(InspectorSection::Triggers { rows }) => {
-                Self::render_triggers(
+                return Self::render_triggers(
                     frame,
                     inner,
                     rows,
                     state.session.active_database_type_or_default(),
                     state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_horizontal_offset(),
                     theme,
                 );
-                ViewportPlan::default()
             }
             Some(InspectorSection::Ddl { rows }) => {
                 Self::render_ddl(
@@ -634,29 +634,21 @@ impl Inspector {
         rows: &[InspectorTriggerRow],
         database_type: DatabaseType,
         scroll_offset: usize,
+        horizontal_offset: usize,
         theme: &ThemePalette,
-    ) {
+    ) -> ViewportPlan {
+        if database_type == DatabaseType::MySQL {
+            return Self::render_mysql_trigger_details(
+                frame,
+                area,
+                rows,
+                scroll_offset,
+                horizontal_offset,
+                theme,
+            );
+        }
+
         let (headers, widths): (&[&str], &[Constraint]) = match database_type {
-            DatabaseType::MySQL => (
-                &[
-                    "Order",
-                    "Name",
-                    "Timing",
-                    "Event",
-                    "Action",
-                    "Definer",
-                    "Creation Context",
-                ],
-                &[
-                    Constraint::Percentage(8),
-                    Constraint::Percentage(16),
-                    Constraint::Percentage(12),
-                    Constraint::Percentage(14),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(12),
-                    Constraint::Percentage(18),
-                ],
-            ),
             DatabaseType::PostgreSQL => (
                 &["Name", "Timing", "Event", "Function", "Security"],
                 &[
@@ -676,6 +668,7 @@ impl Inspector {
                     Constraint::Percentage(40),
                 ],
             ),
+            DatabaseType::MySQL => unreachable!("MySQL uses the detail renderer"),
         };
         let data_rows: Vec<Vec<String>> = rows
             .iter()
@@ -711,6 +704,71 @@ impl Inspector {
                     .collect()
             },
         );
+
+        ViewportPlan::default()
+    }
+
+    fn render_mysql_trigger_details(
+        frame: &mut Frame,
+        area: Rect,
+        rows: &[InspectorTriggerRow],
+        scroll_offset: usize,
+        horizontal_offset: usize,
+        theme: &ThemePalette,
+    ) -> ViewportPlan {
+        use crate::primitives::atoms::scroll_indicator::{
+            VerticalScrollParams, clamp_scroll_offset, render_vertical_scroll_indicator_bar,
+        };
+
+        let lines: Vec<Line> = rows
+            .iter()
+            .flat_map(mysql_trigger_detail_lines)
+            .map(|line| Line::from(line).style(Style::default().fg(theme.semantic.text.primary)))
+            .collect();
+        let total_lines = lines.len();
+        let has_vertical_scrollbar = total_lines > area.height as usize;
+        let content_area = Rect {
+            width: area.width.saturating_sub(u16::from(has_vertical_scrollbar)),
+            ..area
+        };
+        let visible_lines = content_area.height as usize;
+        let content_width = lines.iter().map(Line::width).max().unwrap_or_default();
+        let clamped_scroll_offset = clamp_scroll_offset(scroll_offset, visible_lines, total_lines);
+        let clamped_horizontal_offset = clamp_scroll_offset(
+            horizontal_offset,
+            content_area.width as usize,
+            content_width,
+        );
+
+        frame.render_widget(
+            Paragraph::new(lines).scroll((
+                clamped_scroll_offset.min(u16::MAX as usize) as u16,
+                clamped_horizontal_offset.min(u16::MAX as usize) as u16,
+            )),
+            content_area,
+        );
+
+        if has_vertical_scrollbar {
+            render_vertical_scroll_indicator_bar(
+                frame,
+                area,
+                VerticalScrollParams {
+                    position: clamped_scroll_offset,
+                    viewport_size: visible_lines,
+                    total_items: total_lines,
+                    has_horizontal_scrollbar: false,
+                },
+                theme,
+            );
+        }
+
+        ViewportPlan {
+            column_count: 1,
+            max_offset: content_width.saturating_sub(content_area.width as usize),
+            total_columns: 1,
+            available_width: content_area.width,
+            widths_fingerprint: 0,
+        }
     }
 
     fn render_ddl(
@@ -820,29 +878,61 @@ fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> 
         row.events.clone(),
         row.definition.clone(),
     ]);
-    if database_type == DatabaseType::MySQL {
-        cells.push(row.security_context.clone().unwrap_or_default());
-        cells.push(
-            row.creation_context
-                .as_ref()
-                .map(trigger_creation_context)
-                .unwrap_or_default(),
-        );
-    } else if database_type != DatabaseType::SQLite {
+    if database_type != DatabaseType::SQLite {
         cells.push(row.security_context.clone().unwrap_or_default());
     }
     cells
 }
 
-fn trigger_creation_context(context: &TriggerCreationContext) -> String {
-    format!(
-        "SQL_MODE={}; CHARACTER_SET_CLIENT={}; COLLATION_CONNECTION={}; DATABASE_COLLATION={}; CREATED={}",
-        context.sql_mode.as_deref().unwrap_or_default(),
-        context.character_set_client.as_deref().unwrap_or_default(),
-        context.collation_connection.as_deref().unwrap_or_default(),
-        context.database_collation.as_deref().unwrap_or_default(),
-        context.created.as_deref().unwrap_or_default(),
-    )
+fn mysql_trigger_detail_lines(row: &InspectorTriggerRow) -> Vec<String> {
+    let context = row.creation_context.as_ref();
+    vec![
+        format!(
+            "Order: {}",
+            row.action_order
+                .map(|order| order.to_string())
+                .unwrap_or_default()
+        ),
+        format!("Name: {}", row.name),
+        format!("Timing: {}", row.timing),
+        format!("Event: {}", row.events),
+        format!("Action: {}", row.definition),
+        format!(
+            "Definer: {}",
+            row.security_context.as_deref().unwrap_or_default()
+        ),
+        format!(
+            "SQL_MODE: {}",
+            context
+                .and_then(|context| context.sql_mode.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "CHARACTER_SET_CLIENT: {}",
+            context
+                .and_then(|context| context.character_set_client.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "COLLATION_CONNECTION: {}",
+            context
+                .and_then(|context| context.collation_connection.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "DATABASE_COLLATION: {}",
+            context
+                .and_then(|context| context.database_collation.as_deref())
+                .unwrap_or_default()
+        ),
+        format!(
+            "CREATED: {}",
+            context
+                .and_then(|context| context.created.as_deref())
+                .unwrap_or_default()
+        ),
+        String::new(),
+    ]
 }
 
 fn checkmark(value: bool) -> String {
@@ -877,6 +967,7 @@ fn calculate_column_widths(headers: &[&str], rows: &[Vec<String>]) -> Vec<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::TriggerCreationContext;
 
     #[test]
     fn index_row_cells_match_partial_header_visibility() {
@@ -916,13 +1007,17 @@ mod tests {
     }
 
     #[test]
-    fn mysql_trigger_row_cells_include_action_order_and_creation_context() {
+    fn mysql_trigger_details_render_all_creation_context_fields() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        use ratatui::layout::Rect;
+
         let row = InspectorTriggerRow {
             name: "audit_changes".to_string(),
             timing: "BEFORE".to_string(),
             events: "UPDATE".to_string(),
             action_order: Some(2),
-            definition: "SET NEW.value = NEW.value".to_string(),
+            definition: format!("SET NEW.value = {}", "x".repeat(100)),
             security_context: Some("sabiql@%".to_string()),
             creation_context: Some(TriggerCreationContext {
                 sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
@@ -932,18 +1027,47 @@ mod tests {
                 created: Some("2026-08-21 10:20:30.00".to_string()),
             }),
         };
+        let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
+        let theme =
+            crate::theme::palette_for(crate::app::model::shared::theme_id::ThemeId::Default);
+        let mut plan = ViewportPlan::default();
 
-        assert_eq!(
-            trigger_row_cells(&row, DatabaseType::MySQL),
-            vec![
-                "2",
-                "audit_changes",
-                "BEFORE",
-                "UPDATE",
-                "SET NEW.value = NEW.value",
-                "sabiql@%",
-                "SQL_MODE=STRICT_TRANS_TABLES; CHARACTER_SET_CLIENT=utf8mb4; COLLATION_CONNECTION=utf8mb4_0900_ai_ci; DATABASE_COLLATION=utf8mb4_0900_ai_ci; CREATED=2026-08-21 10:20:30.00",
-            ]
-        );
+        terminal
+            .draw(|frame| {
+                plan = Inspector::render_triggers(
+                    frame,
+                    Rect::new(0, 0, 80, 12),
+                    &[row],
+                    DatabaseType::MySQL,
+                    0,
+                    0,
+                    theme,
+                );
+            })
+            .unwrap();
+
+        assert!(plan.max_offset > 0);
+
+        let buffer = terminal.backend().buffer();
+        let rendered: String = (0..buffer.area.height)
+            .flat_map(|y| {
+                (0..buffer.area.width)
+                    .map(move |x| buffer.cell((x, y)).unwrap().symbol())
+                    .chain(std::iter::once("\n"))
+            })
+            .collect();
+
+        for expected in [
+            "SQL_MODE: STRICT_TRANS_TABLES",
+            "CHARACTER_SET_CLIENT: utf8mb4",
+            "COLLATION_CONNECTION: utf8mb4_0900_ai_ci",
+            "DATABASE_COLLATION: utf8mb4_0900_ai_ci",
+            "CREATED: 2026-08-21 10:20:30.00",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?} in {rendered:?}"
+            );
+        }
     }
 }

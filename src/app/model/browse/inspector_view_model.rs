@@ -7,6 +7,8 @@ use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
 
+pub const MYSQL_TRIGGER_DETAIL_LINES_PER_ROW: usize = 12;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
     active_tab: InspectorTab,
@@ -14,6 +16,7 @@ pub struct InspectorViewModel {
     section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
+    mysql_trigger_details: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +159,7 @@ impl InspectorViewModel {
                 section: None,
                 empty_state,
                 unavailable_reason: None,
+                mysql_trigger_details: false,
             };
         };
 
@@ -313,6 +317,8 @@ impl InspectorViewModel {
             section: Some(section),
             empty_state,
             unavailable_reason,
+            mysql_trigger_details: database_type == DatabaseType::MySQL
+                && active_tab == InspectorTab::Triggers,
         }
     }
 
@@ -337,10 +343,27 @@ impl InspectorViewModel {
     }
 
     pub fn row_count(&self) -> usize {
+        if self.mysql_trigger_details {
+            return self
+                .section
+                .as_ref()
+                .and_then(|section| match section {
+                    InspectorSection::Triggers { rows } => {
+                        Some(rows.len() * MYSQL_TRIGGER_DETAIL_LINES_PER_ROW)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+        }
+
         self.section.as_ref().map_or(0, InspectorSection::row_count)
     }
 
     pub fn visible_rows(&self, pane_height: u16) -> usize {
+        if self.mysql_trigger_details {
+            return pane_height.saturating_sub(3) as usize;
+        }
+
         match self.section.as_ref() {
             Some(
                 InspectorSection::Info { .. }
@@ -756,6 +779,9 @@ mod tests {
             }
             section => panic!("expected trigger section, got {section:?}"),
         }
+        assert_eq!(model.row_count(), MYSQL_TRIGGER_DETAIL_LINES_PER_ROW);
+        assert_eq!(model.visible_rows(8), 5);
+        assert_eq!(model.max_scroll(8), 7);
     }
 
     #[test]
