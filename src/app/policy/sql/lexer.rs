@@ -930,9 +930,13 @@ impl SqlLexer {
                             continue;
                         }
                     }
-                    _ => {
+                    "SELECT" | "WHERE" | "GROUP" | "ORDER" | "HAVING" | "LIMIT" | "OFFSET"
+                    | "UNION" | "INTERSECT" | "EXCEPT" => {
                         in_for_clause = false;
                         can_start_straight_join = false;
+                    }
+                    _ => {
+                        in_for_clause = false;
                     }
                 }
             }
@@ -2018,6 +2022,20 @@ mod tests {
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].table, "users");
             assert_eq!(refs[0].alias, Some("id".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_after_join_condition_returns_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id STRAIGHT_JOIN items i ON i.order_id = o.id WHERE i.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 3);
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+            assert_eq!(refs[2].alias, Some("i".to_string()));
         }
     }
 

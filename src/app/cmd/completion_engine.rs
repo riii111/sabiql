@@ -2246,6 +2246,37 @@ mod tests {
         }
 
         #[test]
+        fn mysql_straight_join_after_condition_completes_final_alias_columns() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.items".to_string(),
+                create_table("app", "items", &["item_id"]),
+            );
+            let mut metadata = metadata();
+            metadata.table_summaries.extend([
+                TableSummary::new("app".to_string(), "orders".to_string(), None, false),
+                TableSummary::new("app".to_string(), "items".to_string(), None, false),
+            ]);
+
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id STRAIGHT_JOIN items i ON i.order_id = o.id WHERE i.ite";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`item_id`" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
         fn mysql_unique_case_insensitive_fallback_supports_non_ascii_names() {
             let mut e = engine();
             e.cache_table_detail(
