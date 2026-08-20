@@ -37,6 +37,10 @@ impl MySqlSslMode {
             Self::VerifyIdentity => "VERIFY_IDENTITY",
         }
     }
+
+    pub const fn uses_ca(self) -> bool {
+        matches!(self, Self::VerifyCa | Self::VerifyIdentity)
+    }
 }
 
 impl std::fmt::Display for MySqlSslMode {
@@ -135,7 +139,7 @@ impl MySqlConnectionConfig {
         ssl_cert: Option<String>,
         ssl_key: Option<String>,
     ) -> Self {
-        self.ssl_ca = ssl_ca;
+        self.ssl_ca = self.ssl_mode.uses_ca().then_some(ssl_ca).flatten();
         self.ssl_cert = ssl_cert;
         self.ssl_key = ssl_key;
         self
@@ -294,6 +298,29 @@ mod tests {
         for mode in MySqlSslMode::all_variants() {
             assert_eq!(mode.as_str(), mode.to_string());
             assert_eq!(mode.as_str().parse::<MySqlSslMode>().unwrap(), *mode);
+        }
+    }
+
+    #[test]
+    fn mysql_ca_is_only_kept_for_certificate_verification_modes() {
+        for mode in [
+            MySqlSslMode::Disabled,
+            MySqlSslMode::Preferred,
+            MySqlSslMode::Required,
+        ] {
+            let config =
+                MySqlConnectionConfig::new("localhost", 3306, None, "user", "password", mode)
+                    .with_tls_paths(Some("/tmp/ca.pem".to_string()), None, None);
+
+            assert_eq!(config.ssl_ca, None);
+        }
+
+        for mode in [MySqlSslMode::VerifyCa, MySqlSslMode::VerifyIdentity] {
+            let config =
+                MySqlConnectionConfig::new("localhost", 3306, None, "user", "password", mode)
+                    .with_tls_paths(Some("/tmp/ca.pem".to_string()), None, None);
+
+            assert_eq!(config.ssl_ca.as_deref(), Some("/tmp/ca.pem"));
         }
     }
 

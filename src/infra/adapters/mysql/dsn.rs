@@ -59,7 +59,9 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     }
     url.query_pairs_mut()
         .append_pair("ssl-mode", &config.ssl_mode.to_string());
-    if let Some(path) = config.ssl_ca.as_deref() {
+    if config.ssl_mode.uses_ca()
+        && let Some(path) = config.ssl_ca.as_deref()
+    {
         url.query_pairs_mut().append_pair("ssl-ca", path);
     }
     if let Some(path) = config.ssl_cert.as_deref() {
@@ -106,9 +108,11 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         .find_map(|(key, value)| (key == "ssl-mode").then(|| parse_ssl_mode(&value)))
         .transpose()?
         .unwrap_or_default();
-    let ssl_ca = url
-        .query_pairs()
-        .find_map(|(key, value)| (key == "ssl-ca").then(|| value.into_owned()));
+    let ssl_ca = ssl_mode.uses_ca().then(|| {
+        url.query_pairs()
+            .find_map(|(key, value)| (key == "ssl-ca").then(|| value.into_owned()))
+    });
+    let ssl_ca = ssl_ca.flatten();
     let ssl_cert = url
         .query_pairs()
         .find_map(|(key, value)| (key == "ssl-cert").then(|| value.into_owned()));
@@ -306,6 +310,24 @@ mod tests {
         assert_eq!(parsed.ssl_ca.as_deref(), Some(r"C:\certs\ca #1.pem"));
         assert_eq!(parsed.ssl_cert.as_deref(), Some(r"C:\certs\client.pem"));
         assert_eq!(parsed.ssl_key.as_deref(), Some(r"C:\certs\client-key.pem"));
+    }
+
+    #[test]
+    fn ignores_ca_when_building_or_parsing_non_verification_dsn() {
+        let config = MySqlConnectionConfig::new(
+            "db.example",
+            3307,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Required,
+        );
+        let dsn = format!("{}&ssl-ca=%2Fmissing%2Fca.pem", build_mysql_dsn(&config));
+        let parsed = parse_mysql_dsn(&dsn).unwrap();
+
+        assert_eq!(parsed.ssl_mode, MySqlSslMode::Required);
+        assert_eq!(parsed.ssl_ca, None);
+        assert!(!build_mysql_dsn(&config).contains("ssl-ca"));
     }
 
     #[test]

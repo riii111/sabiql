@@ -151,7 +151,6 @@ async fn main() -> Result<()> {
         },
         QueryDeps {
             query_executor: Arc::clone(&adapter_registry) as _,
-            mysql_query_executor: Arc::clone(&adapter_registry) as _,
             query_history_store: Arc::new(FileQueryHistoryStore::new()),
             sqlite_diagnostics: Arc::clone(&adapter_registry) as _,
             cached_result_exporter: Arc::new(CsvCachedResultExporter),

@@ -126,8 +126,7 @@ pub(super) fn reduce_high_risk_confirmation(
             );
             if matched {
                 let query = state.sql_modal.editor.content().trim().to_string();
-                let classified_mysql_statements = state.sql_modal.take_pending_mysql_statements();
-                return start_adhoc_if_connected(state, query, now, classified_mysql_statements);
+                return start_adhoc_if_connected(state, query, now);
             }
             DispatchResult::handled()
         }

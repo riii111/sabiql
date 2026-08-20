@@ -291,7 +291,6 @@ mod tests {
                         label: "DROP",
                     },
                     "users".to_string(),
-                    None,
                 );
                 InputTarget::SqlModalHighRisk
             }

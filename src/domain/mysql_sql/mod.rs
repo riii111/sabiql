@@ -118,6 +118,10 @@ pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError>
     side_effect::has_mysql_read_only_side_effect(sql)
 }
 
+pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySqlLexError> {
+    side_effect::mysql_statement_reads_session_diagnostics(sql)
+}
+
 pub fn target_is_selected_database(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
@@ -717,6 +721,16 @@ mod tests {
     }
 
     #[test]
+    fn accepts_sql_calc_found_rows_in_an_executable_select_modifier_comment() {
+        assert!(
+            classify_mysql_statement(
+                "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM items WHERE FALSE"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn rejects_multiple_drop_targets_and_ambiguous_ddl_quotes() {
         assert!(classify_mysql_statement("DROP TABLE app.keep, other.drop_me").is_err());
         assert!(classify_mysql_statement("DROP VIEW app.keep, other.drop_me").is_err());
@@ -731,9 +745,30 @@ mod tests {
             "DELETE items, prices FROM items JOIN prices ON items.id = prices.id",
             "DELETE FROM items, prices USING items JOIN prices ON items.id = prices.id",
             "DELETE items FROM items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items USING items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items JOIN prices ON items.id = prices.id",
         ] {
             let error = classify_mysql_statement(sql).unwrap_err();
             assert!(error.0.contains("multiple-table"), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn accepts_single_table_delete_clause_boundaries_and_nested_commas() {
+        for sql in [
+            "DELETE FROM items ORDER BY created_at, id LIMIT 10",
+            "DELETE FROM items WHERE id IN (SELECT item_id FROM prices, currencies)",
+            "DELETE FROM items LIMIT 10",
+            "DELETE FROM `items,archive` ORDER BY id LIMIT 10",
+        ] {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(
+                statement.kind,
+                MySqlStatementKind::Delete {
+                    has_where: sql.contains("WHERE")
+                },
+                "{sql}"
+            );
         }
     }
 

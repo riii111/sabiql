@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, ColumnAttributes, FkAction, ForeignKey, Index, IndexAttributes, IndexType, Table,
-    UNRESOLVED_FK_COLUMN,
+    TableStorageAttributes, UNRESOLVED_FK_COLUMN,
 };
 
 use super::{
@@ -151,6 +151,7 @@ pub(super) fn table_from_metadata(
         } else {
             None
         },
+        storage_attributes: TableStorageAttributes::default(),
         kind_info,
     })
 }

@@ -260,7 +260,6 @@ pub fn reduce_execution(
                     dsn,
                     run_id,
                     query: query.clone(),
-                    classified_mysql_statements: None,
                     access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }])
             } else {
@@ -335,13 +334,28 @@ fn apply_preview_result(
             .set_result_highlight(now + Duration::from_millis(500));
     }
 
-    if let Some(page) = target_page {
-        state
-            .query
-            .pagination
-            .set_page_result(page, result.data_row_count() < PREVIEW_PAGE_SIZE);
+    let should_apply_result = match target_page {
+        Some(page)
+            if !result.is_error()
+                && result.data_row_count() == 0
+                && page > state.query.pagination.current_page() =>
+        {
+            state.query.pagination.mark_reached_end();
+            false
+        }
+        Some(page) => {
+            state
+                .query
+                .pagination
+                .set_page_result(page, result.data_row_count() < PREVIEW_PAGE_SIZE);
+            true
+        }
+        None => true,
+    };
+
+    if should_apply_result {
+        state.query.set_current_result(Arc::clone(result));
     }
-    state.query.set_current_result(Arc::clone(result));
 
     match state.query.post_delete_row_selection() {
         PostDeleteRowSelection::Keep => {}
@@ -834,6 +848,117 @@ mod tests {
 
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
+        }
+
+        #[test]
+        fn applies_empty_initial_preview_at_page_zero() {
+            let mut state = create_test_state();
+            state.session.set_selection_generation(1);
+            let action = query_completed_action(&mut state, preview_result(0), 1, Some(0));
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(state.query.pagination.reached_end());
+            assert_eq!(state.query.visible_result().unwrap().data_row_count(), 0);
+        }
+
+        #[test]
+        fn applies_non_empty_forward_page() {
+            let mut state = create_test_state();
+            state.session.set_selection_generation(1);
+            let first_page = preview_result(PREVIEW_PAGE_SIZE);
+            let first_action = query_completed_action(&mut state, first_page, 1, Some(0));
+            dispatch_query(
+                &mut state,
+                &first_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let next_action = query_completed_action(&mut state, preview_result(1), 1, Some(1));
+            dispatch_query(
+                &mut state,
+                &next_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.pagination.current_page(), 1);
+            assert!(state.query.pagination.reached_end());
+            assert_eq!(state.query.visible_result().unwrap().data_row_count(), 1);
+        }
+
+        #[test]
+        fn preserves_last_page_when_forward_preview_is_empty() {
+            let mut state = create_test_state();
+            state.session.set_selection_generation(1);
+            let last_page = preview_result(PREVIEW_PAGE_SIZE);
+            let first_action =
+                query_completed_action(&mut state, Arc::clone(&last_page), 1, Some(0));
+            dispatch_query(
+                &mut state,
+                &first_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let empty_action = query_completed_action(&mut state, preview_result(0), 1, Some(1));
+            dispatch_query(
+                &mut state,
+                &empty_action,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.query.pagination.current_page(), 0);
+            assert!(state.query.pagination.reached_end());
+            assert!(Arc::ptr_eq(
+                state.query.current_result().unwrap(),
+                &last_page
+            ));
+            assert_eq!(
+                state.query.visible_result().unwrap().data_row_count(),
+                PREVIEW_PAGE_SIZE
+            );
+        }
+
+        #[test]
+        fn exact_page_boundaries_keep_next_available_until_empty() {
+            for total_rows in [PREVIEW_PAGE_SIZE, PREVIEW_PAGE_SIZE * 2] {
+                let mut state = create_test_state();
+                state.session.set_selection_generation(1);
+                let page_count = total_rows / PREVIEW_PAGE_SIZE;
+
+                for page in 0..page_count {
+                    let action = query_completed_action(
+                        &mut state,
+                        preview_result(PREVIEW_PAGE_SIZE),
+                        1,
+                        Some(page),
+                    );
+                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+                    assert!(!state.query.pagination.reached_end());
+                    assert!(state.query.pagination.can_next());
+                }
+
+                let empty_action =
+                    query_completed_action(&mut state, preview_result(0), 1, Some(page_count));
+                dispatch_query(
+                    &mut state,
+                    &empty_action,
+                    Instant::now(),
+                    &AppServices::stub(),
+                );
+
+                assert_eq!(state.query.pagination.current_page(), page_count - 1);
+                assert!(state.query.pagination.reached_end());
+                assert!(!state.query.pagination.can_next());
+                assert_eq!(
+                    state.query.visible_result().unwrap().data_row_count(),
+                    PREVIEW_PAGE_SIZE
+                );
+            }
         }
 
         #[test]

@@ -219,6 +219,21 @@ pub fn reduce_pagination(
             }
 
             if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                if result.source == QuerySource::Preview {
+                    let columns = result.columns.clone();
+                    let values = result.values().to_vec();
+                    let run_id = state.query.begin_running(now);
+                    return dispatch_cached_csv_export(
+                        state,
+                        dsn,
+                        run_id,
+                        file_name,
+                        columns,
+                        values,
+                        Some(row_count),
+                    );
+                }
+
                 let Some(plan) = mysql_export_plan(&export_query) else {
                     return DispatchResult::handled();
                 };
@@ -585,6 +600,81 @@ mod tests {
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
+        }
+
+        #[test]
+        fn prev_then_next_reopens_the_page_after_an_empty_forward_result() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.pagination.reset_for_table("public", "users");
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
+
+            let next_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
+            dispatch_query(
+                &mut state,
+                &next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let empty_next_result =
+                query_completed_action(&mut state, preview_result(0), 0, Some(2));
+            dispatch_query(
+                &mut state,
+                &empty_next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert_eq!(state.query.pagination.current_page(), 1);
+            assert!(state.query.pagination.reached_end());
+
+            let prev_effects = dispatch_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                prev_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 0, .. })
+            ));
+            assert!(!state.query.pagination.reached_end());
+
+            let prev_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
+            dispatch_query(
+                &mut state,
+                &prev_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
         }
     }
 
@@ -1082,6 +1172,53 @@ mod tests {
                     ),
                     !expects_count
                 );
+            }
+
+            #[test]
+            fn preview_exports_visible_typed_values_from_cache() {
+                let mut state = AppState::new("test_project".to_string());
+                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+                let values = vec![vec![
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1]),
+                    QueryValue::text("0x00FFA1"),
+                    QueryValue::Null,
+                    QueryValue::text("text"),
+                ]];
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success_with_values(
+                        "SELECT payload, text_value, nullable, text FROM users".to_string(),
+                        vec![
+                            "payload".to_string(),
+                            "text_value".to_string(),
+                            "nullable".to_string(),
+                            "text".to_string(),
+                        ],
+                        values.clone(),
+                        1,
+                        QuerySource::Preview,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::ExportCsvFromCache {
+                    columns,
+                    values: cached_values,
+                    row_count,
+                    ..
+                } = &effects[0]
+                else {
+                    panic!("expected cached CSV export effect");
+                };
+                assert_eq!(columns, &["payload", "text_value", "nullable", "text"]);
+                assert_eq!(cached_values, &values);
+                assert_eq!(*row_count, Some(1));
             }
 
             #[rstest]

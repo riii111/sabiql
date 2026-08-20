@@ -551,6 +551,67 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn table_metadata_reports_effective_storage_attributes_from_information_schema() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let suffix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| format!("system clock error: {error}"))?
+                    .as_nanos();
+                let table = format!("sabiql_c17_{suffix}");
+                let create = format!(
+                    "CREATE TABLE {table} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB ROW_FORMAT=COMPRESSED DEFAULT CHARACTER SET utf8mb4 COLLATE=utf8mb4_bin PARTITION BY HASH (id) PARTITIONS 2"
+                );
+                let result = async {
+                    db.adapter()
+                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("failed to create C17 fixture: {error:?}"))?;
+
+                    let detail = db
+                        .adapter()
+                        .fetch_table_detail(db.dsn(), "sabiql_test", &table)
+                        .await
+                        .map_err(|error| format!("failed to fetch C17 metadata: {error:?}"))?;
+                    let storage = &detail.storage_attributes;
+                    if storage.engine.as_deref() != Some("InnoDB")
+                        || storage.row_format.as_deref() != Some("Compressed")
+                        || storage.table_collation.as_deref() != Some("utf8mb4_bin")
+                        || !storage
+                            .create_options
+                            .as_deref()
+                            .is_some_and(|options| options.contains("partitioned"))
+                    {
+                        return Err(format!(
+                            "unexpected C17 storage metadata: engine={:?}, row_format={:?}, table_collation={:?}, create_options={:?}",
+                            storage.engine,
+                            storage.row_format,
+                            storage.table_collation,
+                            storage.create_options
+                        ));
+                    }
+                    Ok(())
+                }
+                .await;
+
+                let cleanup = db
+                    .run_cli_script(&format!("DROP TABLE IF EXISTS {table}"))
+                    .await;
+                match (result, cleanup) {
+                    (Ok(()), Ok(_)) => Ok(()),
+                    (Err(error), Ok(_)) => Err(error),
+                    (Ok(()), Err(error)) => Err(format!("C17 cleanup failed: {error}")),
+                    (Err(error), Err(cleanup_error)) => {
+                        Err(format!("{error}; C17 cleanup failed: {cleanup_error}"))
+                    }
+                }
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn columns_metadata_matches_mysql_84_collation_and_generation_ddl() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
@@ -1959,7 +2020,7 @@ mod query_execution {
     use sabiql_app::ports::outbound::{
         AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
     };
-    use sabiql_domain::{CommandTag, QueryValue, RefreshScope};
+    use sabiql_domain::{QueryValue, RefreshScope};
     use sabiql_infra::adapters::mysql::{
         execute_mysql_adhoc_with_read_only_session_for_test,
         execute_mysql_adhoc_with_timeout_for_test,
@@ -2227,7 +2288,7 @@ mod query_execution {
                     .map_err(|error| format!("{error:?}"))?;
                 if result.columns != ["empty_text"]
                     || result.values() != [[QueryValue::Text("multi statement".to_string())]]
-                    || result.command_tag != Some(CommandTag::Update(1))
+                    || result.command_tag.is_some()
                     || result.refresh_scope != RefreshScope::Data
                 {
                     return Err(format!("unexpected multi-statement result: {result:?}"));
@@ -2248,6 +2309,151 @@ mod query_execution {
                 Err(error) => Err(error),
                 Ok(()) => cleanup.map(|_| ()),
             }
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn preserves_session_row_count_and_omits_multi_statement_affected_rows() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let result = async {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'session state' WHERE id = 1; SELECT ROW_COUNT()"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("{error:?}"))?;
+                if result.columns != ["ROW_COUNT()"]
+                    || result.values() != [[QueryValue::Text("1".to_string())]]
+                    || result.command_tag.is_some()
+                    || result.refresh_scope != RefreshScope::Data
+                {
+                    return Err(format!("unexpected session-state result: {result:?}"));
+                }
+                Ok::<(), String>(())
+            }
+            .await;
+            let cleanup = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore fixture: {error:?}"));
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => cleanup.map(|_| ()),
+            }
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn preserves_multi_statement_warnings_and_found_rows() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let warnings = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "INSERT IGNORE INTO mysql_preview_composite (first_key, second_key, payload) VALUES (3, 30, 'first'); SHOW WARNINGS",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("warning query failed: {error:?}"))?;
+            if warnings.columns != ["Level", "Code", "Message"]
+                || !warnings.values().iter().any(|row| {
+                    row.iter().any(|value| {
+                        value
+                            .as_str()
+                            .is_some_and(|value| value.contains("Duplicate entry"))
+                    })
+                })
+                || warnings.command_tag.is_some()
+            {
+                return Err(format!("unexpected warning result: {warnings:?}"));
+            }
+
+            let found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite; SELECT FOUND_ROWS()",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("FOUND_ROWS query failed: {error:?}"))?;
+            if found_rows.columns != ["FOUND_ROWS()"]
+                || found_rows.values() != [[QueryValue::Text("2".to_string())]]
+                || found_rows.command_tag.is_some()
+            {
+                return Err(format!("unexpected FOUND_ROWS result: {found_rows:?}"));
+            }
+
+            let empty_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite WHERE first_key = 999; SELECT FOUND_ROWS()",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty FOUND_ROWS query failed: {error:?}"))?;
+            if empty_found_rows.columns != ["FOUND_ROWS()"]
+                || empty_found_rows.values() != [[QueryValue::Text("0".to_string())]]
+                || empty_found_rows.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected empty FOUND_ROWS result: {empty_found_rows:?}"
+                ));
+            }
+
+            let dml_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM mysql_preview_composite WHERE first_key = 999; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = FOUND_ROWS() WHERE id = 1"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("DML FOUND_ROWS query failed: {error:?}"))?;
+            let stored_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("stored FOUND_ROWS query failed: {error:?}"))?;
+            if dml_found_rows.columns != ["first_key"]
+                || !dml_found_rows.values().is_empty()
+                || dml_found_rows.command_tag.is_some()
+                || stored_found_rows.values() != [[QueryValue::Text("0".to_string())]]
+            {
+                return Err(format!(
+                    "unexpected DML FOUND_ROWS result: dml={dml_found_rows:?}, stored={stored_found_rows:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore FOUND_ROWS fixture: {error:?}"))?;
+            Ok(())
         }))
         .await;
     }
@@ -2313,7 +2519,7 @@ mod query_execution {
                 .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["empty_text"]
                 || result.values() != [[QueryValue::Text(String::new())]]
-                || result.command_tag != Some(CommandTag::Select(1))
+                || result.command_tag.is_some()
                 || result.refresh_scope != RefreshScope::Data
             {
                 return Err(format!("unexpected transaction result: {result:?}"));
@@ -2438,7 +2644,7 @@ mod query_execution {
                 .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["id"]
                 || result.values() != [[QueryValue::Text("1".to_string())], [QueryValue::Text("2".to_string())]]
-                || result.command_tag != Some(CommandTag::Insert(2))
+                || result.command_tag.is_some()
                 || result.refresh_scope != RefreshScope::Data
             {
                 return Err(format!("unexpected temporary-table result: {result:?}"));
@@ -2457,7 +2663,7 @@ mod query_execution {
                 .await
                 .map_err(|error| format!("temporary-table DDL-only query failed: {error:?}"))?;
             if ddl_only_result.command_tag
-                    != Some(CommandTag::Other("DROP TEMPORARY TABLE".to_string()))
+                    .is_some()
                 || ddl_only_result.refresh_scope != RefreshScope::None
             {
                 return Err(format!(
@@ -2480,6 +2686,162 @@ mod query_execution {
             if empty_result.columns != ["id"] || !empty_result.values().is_empty() {
                 return Err(format!("unexpected empty temporary-table result: {empty_result:?}"));
             }
+
+            let transactional_empty_table = format!("sabiql_sab533_empty_tmp_{suffix}");
+            let transactional_empty_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "START TRANSACTION; CREATE TEMPORARY TABLE {transactional_empty_table} (id INT); SELECT id FROM {transactional_empty_table} WHERE FALSE; DROP TEMPORARY TABLE {transactional_empty_table}; COMMIT"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("transactional empty-table query failed: {error:?}"))?;
+            if transactional_empty_result.columns != ["id"]
+                || !transactional_empty_result.values().is_empty()
+                || transactional_empty_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected transactional empty-table result: {transactional_empty_result:?}"
+                ));
+            }
+
+            let persistent_ddl_tail_table = format!("sabiql_sab533_ddl_tail_{suffix}");
+            let persistent_ddl_tail_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TABLE {persistent_ddl_tail_table} (id INT, retained INT); SELECT id FROM {persistent_ddl_tail_table} WHERE FALSE; ALTER TABLE {persistent_ddl_tail_table} DROP COLUMN id; DROP TABLE {persistent_ddl_tail_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("persistent DDL-tail query failed: {error:?}"))?;
+            if persistent_ddl_tail_result.columns != ["id"]
+                || !persistent_ddl_tail_result.values().is_empty()
+                || persistent_ddl_tail_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected persistent DDL-tail result: {persistent_ddl_tail_result:?}"
+                ));
+            }
+
+            let temporary_ddl_tail_table = format!("sabiql_sab533_tmp_ddl_tail_{suffix}");
+            let temporary_ddl_tail_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TEMPORARY TABLE {temporary_ddl_tail_table} (id INT, retained INT); SELECT id FROM {temporary_ddl_tail_table} WHERE FALSE; ALTER TABLE {temporary_ddl_tail_table} DROP COLUMN id; DROP TEMPORARY TABLE {temporary_ddl_tail_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("temporary DDL-tail query failed: {error:?}"))?;
+            if temporary_ddl_tail_result.columns != ["id"]
+                || !temporary_ddl_tail_result.values().is_empty()
+                || temporary_ddl_tail_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected temporary DDL-tail result: {temporary_ddl_tail_result:?}"
+                ));
+            }
+
+            let found_rows_capture_table = format!("sabiql_sab533_found_rows_{suffix}");
+            let found_rows_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {found_rows_capture_table} AS SELECT FOUND_ROWS() AS n"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("CTAS diagnostic-tail query failed: {error:?}"))?;
+            if found_rows_result.columns != ["id"]
+                || !found_rows_result.values().is_empty()
+                || found_rows_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected CTAS diagnostic-tail result: {found_rows_result:?}"
+                ));
+            }
+            let captured_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT n FROM {found_rows_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read CTAS diagnostic result: {error:?}"))?;
+            if captured_found_rows.values() != [[QueryValue::Text("1".to_string())]] {
+                return Err(format!(
+                    "unexpected CTAS diagnostic value: {captured_found_rows:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE {found_rows_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up CTAS table: {error:?}"))?;
+
+            let diagnostic_count_capture_table = format!("sabiql_sab533_diagnostic_{suffix}");
+            let diagnostic_count_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {diagnostic_count_capture_table} AS SELECT @@warning_count AS warning_count, @@error_count AS error_count"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("diagnostic-count CTAS query failed: {error:?}"))?;
+            if diagnostic_count_result.columns != ["id"]
+                || !diagnostic_count_result.values().is_empty()
+                || diagnostic_count_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected diagnostic-count CTAS result: {diagnostic_count_result:?}"
+                ));
+            }
+            let captured_diagnostic_counts = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT warning_count, error_count FROM {diagnostic_count_capture_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read diagnostic counts: {error:?}"))?;
+            if captured_diagnostic_counts.values()
+                != [[
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("0".to_string()),
+                ]]
+            {
+                return Err(format!(
+                    "unexpected diagnostic counts: {captured_diagnostic_counts:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE {diagnostic_count_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up diagnostic table: {error:?}"))?;
             Ok(())
         }))
         .await;

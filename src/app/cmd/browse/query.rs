@@ -14,9 +14,7 @@ use crate::domain::{
     sqlite_explain_query_plan_text_from_result,
 };
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{
-    CachedResultExporter, MySqlQueryExecutor, QueryExecutor, QueryHistoryStore,
-};
+use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
 use crate::update::action::Action;
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -84,7 +82,6 @@ pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
-    mysql_query_executor: &Arc<dyn MySqlQueryExecutor>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
     cached_result_exporter: &Arc<dyn CachedResultExporter>,
     query_tasks: &QueryTaskRegistry,
@@ -194,34 +191,17 @@ pub async fn run(
             dsn,
             run_id,
             query,
-            classified_mysql_statements,
             access_mode,
         } => {
             let executor = Arc::clone(query_executor);
-            let mysql_executor = Arc::clone(mysql_query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
             let history_tx = action_tx.clone();
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
-            let lower_case_table_names = state.session.mysql_lower_case_table_names();
-
             query_tasks.spawn(async move {
-                let result = match classified_mysql_statements.as_deref() {
-                    Some(statements) => {
-                        mysql_executor
-                            .execute_adhoc_with_classified_statements(
-                                &dsn,
-                                &query,
-                                statements,
-                                access_mode,
-                                lower_case_table_names,
-                            )
-                            .await
-                    }
-                    None => executor.execute_adhoc(&dsn, &query, access_mode).await,
-                };
+                let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
                 match result {
                     Ok(result) => {
                         if let Some(scope) = &history_scope {
@@ -456,15 +436,11 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
     use crate::domain::WriteExecutionResult;
-    use crate::domain::mysql_sql::classify_mysql_multi_statement;
     use crate::model::app_state::AppState;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
-    use crate::ports::outbound::mysql_query_executor::MockMySqlQueryExecutor;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{
-        AccessMode, MySqlQueryExecutor, RenderOutput, RenderResult, Renderer,
-    };
+    use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
     use crate::update::action::Action;
 
@@ -829,25 +805,11 @@ mod tests {
         }
 
         async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
-            run_effect_with_mysql_executor(
-                effect,
-                executor,
-                Arc::new(test_fixtures::NoopMySqlQueryExecutor),
-            )
-            .await
-        }
-
-        async fn run_effect_with_mysql_executor(
-            effect: Effect,
-            executor: MockQueryExecutor,
-            mysql_executor: Arc<dyn MySqlQueryExecutor>,
-        ) -> Action {
             let cache = TtlCache::new(300);
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner_with_mysql_query_executor(
+            let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(executor),
-                mysql_executor,
                 Arc::new(MockConnectionStore::new()),
                 cache,
                 tx,
@@ -887,7 +849,6 @@ mod tests {
                     dsn: "dsn://test".to_string(),
                     run_id: 1,
                     query: "SELECT 1".to_string(),
-                    classified_mysql_statements: None,
                     access_mode: AccessMode::ReadOnly,
                 },
                 executor,
@@ -895,43 +856,6 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
-        }
-
-        #[tokio::test]
-        async fn execute_adhoc_forwards_classified_mysql_statements() {
-            let statements = classify_mysql_multi_statement("SELECT 1", Some("app"))
-                .expect("classification should succeed");
-            let mut executor = MockQueryExecutor::new();
-            let mut mysql_executor = MockMySqlQueryExecutor::new();
-            executor.expect_execute_adhoc().never();
-            mysql_executor
-                .expect_execute_adhoc_with_classified_statements()
-                .once()
-                .withf(
-                    |_, query, statements, access_mode, lower_case_table_names| {
-                        query == "SELECT 1"
-                            && statements.len() == 1
-                            && statements[0].sql() == "SELECT 1"
-                            && *access_mode == AccessMode::ReadOnly
-                            && *lower_case_table_names == 0
-                    },
-                )
-                .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
-
-            let action = run_effect_with_mysql_executor(
-                Effect::ExecuteAdhoc {
-                    dsn: "mysql://test/app".to_string(),
-                    run_id: 3,
-                    query: "SELECT 1".to_string(),
-                    classified_mysql_statements: Some(statements),
-                    access_mode: AccessMode::ReadOnly,
-                },
-                executor,
-                Arc::new(mysql_executor),
-            )
-            .await;
-
-            assert!(matches!(action, Action::QueryCompleted { run_id: 3, .. }));
         }
 
         #[tokio::test]

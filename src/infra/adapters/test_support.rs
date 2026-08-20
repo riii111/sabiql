@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use sabiql_domain::{Table, TableKindInfo};
+use sabiql_domain::{Table, TableKindInfo, TableStorageAttributes};
 
 #[must_use]
 pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) -> Table {
@@ -17,6 +17,7 @@ pub(super) fn minimal_table(schema: impl Into<String>, name: impl Into<String>) 
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: TableStorageAttributes::default(),
         kind_info: TableKindInfo::default(),
     }
 }

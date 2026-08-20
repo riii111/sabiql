@@ -44,6 +44,42 @@ pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLe
     Ok(false)
 }
 
+pub(super) fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySqlLexError> {
+    let tokens = lexer::lex_mysql_statement(sql)?;
+    if tokens.windows(2).any(|window| {
+        let (TokenKind::Word(function) | TokenKind::Identifier(function)) = &window[0].kind else {
+            return false;
+        };
+        matches!(window[1].kind, TokenKind::Symbol('('))
+            && ["FOUND_ROWS", "ROW_COUNT", "LAST_INSERT_ID"]
+                .iter()
+                .any(|name| function.eq_ignore_ascii_case(name))
+    }) {
+        return Ok(true);
+    }
+    Ok((0..tokens.len().saturating_sub(2)).any(|index| {
+        if !matches!(tokens[index].kind, TokenKind::Symbol('@'))
+            || !matches!(tokens[index + 1].kind, TokenKind::Symbol('@'))
+        {
+            return false;
+        }
+        let name_index = if matches!(
+            tokens.get(index + 3).map(|token| &token.kind),
+            Some(TokenKind::Symbol('.'))
+        ) {
+            index + 4
+        } else {
+            index + 2
+        };
+        tokens.get(name_index).is_some_and(|token| {
+            matches!(&token.kind, TokenKind::Word(name) | TokenKind::Identifier(name)
+                if ["WARNING_COUNT", "ERROR_COUNT"]
+                    .iter()
+                    .any(|diagnostic| name.eq_ignore_ascii_case(diagnostic)))
+        })
+    }))
+}
+
 fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usize) -> bool {
     let Some(word) = tokens.get(index).and_then(|token| match &token.kind {
         TokenKind::Word(word) | TokenKind::Identifier(word) => Some(word.as_str()),
@@ -259,5 +295,24 @@ mod tests {
     fn rejects_mixed_case_quoted_last_insert_id_with_an_argument() {
         assert!(has_mysql_read_only_side_effect("SELECT `Last_Insert_Id`(42)").unwrap());
         assert!(!has_mysql_read_only_side_effect("SELECT `Last_Insert_Id`()").unwrap());
+    }
+
+    #[test]
+    fn detects_mysql_session_diagnostic_reads() {
+        for function in ["FOUND_ROWS", "ROW_COUNT", "LAST_INSERT_ID"] {
+            assert!(
+                mysql_statement_reads_session_diagnostics(&format!("SELECT {function}()")).unwrap()
+            );
+        }
+        for variable in ["warning_count", "error_count"] {
+            assert!(
+                mysql_statement_reads_session_diagnostics(&format!("SELECT @@{variable}")).unwrap()
+            );
+            assert!(
+                mysql_statement_reads_session_diagnostics(&format!("SELECT @@SESSION.{variable}"))
+                    .unwrap()
+            );
+        }
+        assert!(!mysql_statement_reads_session_diagnostics("SELECT 'FOUND_ROWS()'").unwrap());
     }
 }
