@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use unicode_casefold::UnicodeCaseFold;
 
+use crate::cmd::effect::Effect;
 use crate::domain::DatabaseType;
 use crate::domain::connection::{MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig};
 use crate::domain::{QueryResult, QueryValue};
@@ -42,6 +43,21 @@ pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState, now: I
         .messages
         .set_error_at("Connection switch in progress".to_string(), now);
     true
+}
+
+pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+    let run_id = state.session.begin_reload();
+
+    vec![Effect::Sequence(vec![
+        Effect::CacheInvalidate {
+            dsn: dsn.to_string(),
+        },
+        Effect::ClearCompletionEngineCache,
+        Effect::FetchMetadata {
+            dsn: dsn.to_string(),
+            run_id,
+        },
+    ])]
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

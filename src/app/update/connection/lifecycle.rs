@@ -5,6 +5,7 @@ use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::input_mode::InputMode;
 use crate::services::AppServices;
 use crate::update::action::{Action, ConnectionTarget};
+use crate::update::helpers::metadata_reload_effects;
 use crate::update::query_context::termination_effects;
 
 use crate::update::dispatch_result::DispatchResult;
@@ -119,9 +120,10 @@ pub fn reduce_connection_lifecycle(
                 cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn, database.as_deref()))
             {
                 restore_cache(state, &cached, target);
+                let reload_effects = metadata_reload_effects(state, dsn);
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![Effect::ClearCompletionEngineCache],
+                    reload_effects,
                 ));
             }
 
@@ -236,7 +238,7 @@ mod tests {
     use crate::domain::connection::DatabaseType;
     use crate::domain::{
         ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, Table,
-        TableKindInfo,
+        TableKindInfo, TableSummary,
     };
     use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
@@ -1068,7 +1070,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_switch_restores_valid_cache_without_metadata_or_user_fetch() {
+        fn mysql_switch_restores_valid_cache_and_revalidates_metadata() {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::from_string("mysql-target");
             let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
@@ -1099,18 +1101,24 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::ClearCompletionEngineCache))
-            );
-            assert!(
-                !effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
+                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
             );
             assert!(
                 !effects
                     .iter()
                     .any(|effect| matches!(effect, Effect::FetchEffectiveUser { .. }))
             );
+            let metadata_run_id = effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::Sequence(effects) => effects.iter().find_map(|effect| match effect {
+                        Effect::FetchMetadata { run_id, .. } => Some(*run_id),
+                        _ => None,
+                    }),
+                    _ => None,
+                })
+                .expect("cached MySQL state should start metadata revalidation");
+            assert!(state.session.is_reloading());
             assert!(state.session.connection_state().is_connected());
             assert_eq!(state.session.database_name(), Some("app"));
             assert_eq!(state.session.effective_user(), Some("user@localhost"));
@@ -1122,6 +1130,40 @@ mod tests {
             assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
+
+            let refreshed_metadata = Arc::new({
+                let mut metadata = DatabaseMetadata::new("app".to_string());
+                metadata.table_summaries.push(TableSummary::new(
+                    "app".to_string(),
+                    "users".to_string(),
+                    Some(1),
+                    false,
+                ));
+                metadata.table_summaries.push(TableSummary::new(
+                    "app".to_string(),
+                    "orders".to_string(),
+                    Some(10),
+                    false,
+                ));
+                metadata
+            });
+            let refresh_effects = reduce_app(
+                &mut state,
+                Action::MetadataLoaded {
+                    dsn: "mysql://user@localhost:3306/app".to_string(),
+                    run_id: metadata_run_id,
+                    metadata: refreshed_metadata,
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.tables().iter().any(|table| table.name == "orders"));
+            assert!(refresh_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchTableDetail { schema, table, .. }
+                    if schema == "app" && table == "users"
+            )));
         }
 
         #[test]
@@ -1163,6 +1205,81 @@ mod tests {
                 assert!(state.session.connection_state().is_connecting());
                 assert!(state.connection_caches.get(&target_id).is_none());
             }
+        }
+
+        #[test]
+        fn stale_cached_metadata_completion_is_ignored_after_switching_back() {
+            let mut state = AppState::new("test".to_string());
+            let target_id = ConnectionId::from_string("mysql-target");
+            let target = mysql_target(&target_id, "mysql://user@localhost:3306/app", "app");
+            state.connection_caches.save(
+                &target_id,
+                valid_mysql_cache(&target.dsn, target.database.as_deref().unwrap()),
+            );
+
+            let probe_run_id = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .unwrap()
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target: target.clone(),
+                    run_id: probe_run_id,
+                },
+            );
+            let stale_run_id = state.session.metadata_generation();
+
+            let other_id = ConnectionId::from_string("mysql-other");
+            let other = mysql_target(&other_id, "mysql://user@localhost:3306/other", "other");
+            let other_probe_run_id = reduce(&mut state, &Action::SwitchConnection(other.clone()))
+                .unwrap()
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target: other,
+                    run_id: other_probe_run_id,
+                },
+            );
+
+            let probe_run_id = reduce(&mut state, &Action::SwitchConnection(target.clone()))
+                .unwrap()
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .unwrap();
+            reduce(
+                &mut state,
+                &Action::MySqlConnectionProbeCompleted {
+                    target: target.clone(),
+                    run_id: probe_run_id,
+                },
+            );
+
+            reduce_app(
+                &mut state,
+                Action::MetadataLoaded {
+                    dsn: target.dsn,
+                    run_id: stale_run_id,
+                    metadata: Arc::new(DatabaseMetadata::new("stale".to_string())),
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert_eq!(state.session.database_name(), Some("app"));
         }
 
         #[test]
