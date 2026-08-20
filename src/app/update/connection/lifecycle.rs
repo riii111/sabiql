@@ -355,6 +355,93 @@ mod tests {
                 effect,
                 Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
             )));
+
+            let reload_effects = reduce_app(
+                &mut state,
+                Action::ReloadMetadata,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(reload_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::Sequence(effects)
+                    if effects.iter().any(|effect| matches!(
+                        effect,
+                        Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                    ))
+            )));
+        }
+
+        #[test]
+        fn same_mysql_retry_blocks_reload_until_probe_success() {
+            let mut state = active_mysql_state();
+            let target = mysql_target("mysql-a", "a");
+            state.session.set_connection_state(ConnectionState::Failed);
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::new("connection refused"));
+
+            let retry_effects = reduce_connection_error(
+                &mut state,
+                &Action::RetryConnection,
+                std::time::Instant::now(),
+            )
+            .into_effects()
+            .unwrap();
+            let retry_run_id = retry_effects
+                .iter()
+                .find_map(|effect| match effect {
+                    Effect::ProbeMySqlConnection { run_id, .. } => Some(*run_id),
+                    _ => None,
+                })
+                .expect("retry should start a MySQL probe");
+
+            let reload_effects = reduce_app(
+                &mut state,
+                Action::ReloadMetadata,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(reload_effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(retry_run_id)
+            );
+
+            let completion_effects = reduce_app(
+                &mut state,
+                Action::MySqlConnectionProbeCompleted {
+                    target: target.clone(),
+                    run_id: retry_run_id,
+                },
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(completion_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+            )));
+
+            let reload_effects = reduce_app(
+                &mut state,
+                Action::ReloadMetadata,
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(reload_effects.iter().any(|effect| matches!(
+                effect,
+                Effect::Sequence(effects)
+                    if effects.iter().any(|effect| matches!(
+                        effect,
+                        Effect::FetchMetadata { dsn, .. } if dsn == &target.dsn
+                    ))
+            )));
         }
 
         #[test]
@@ -2051,7 +2138,7 @@ mod tests {
         }
 
         #[test]
-        fn postgres_reload_retry_does_not_use_old_mysql_probe_target() {
+        fn postgres_reload_does_not_clear_failed_mysql_probe() {
             let mut state = AppState::new("test".to_string());
             let postgres_id = ConnectionId::from_string("postgres-a");
             let postgres_dsn = "postgres://localhost/a".to_string();
@@ -2089,34 +2176,24 @@ mod tests {
                 },
             );
 
-            let reload_run_id = state.session.begin_reload();
-            assert!(state.session.pending_mysql_connection_probe().is_none());
-            reduce_app(
+            let reload_effects = reduce_app(
                 &mut state,
-                Action::MetadataFailed {
-                    dsn: postgres_dsn.clone(),
-                    run_id: reload_run_id,
-                    error: DbOperationError::ConnectionFailed("reload refused".to_string()),
-                },
+                Action::ReloadMetadata,
                 std::time::Instant::now(),
                 &AppServices::stub(),
             );
 
-            let retry_effects = reduce_connection_error(
-                &mut state,
-                &Action::RetryConnection,
-                std::time::Instant::now(),
-            )
-            .into_effects()
-            .unwrap();
-            assert!(retry_effects.iter().any(|effect| matches!(
-                effect,
-                Effect::FetchMetadata { dsn, .. } if dsn == &postgres_dsn
-            )));
-            assert!(
-                !retry_effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::ProbeMySqlConnection { .. }))
+            assert!(reload_effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(mysql_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
             );
         }
 

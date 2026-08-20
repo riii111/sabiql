@@ -542,7 +542,6 @@ impl BrowseSession {
 
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
-        self.clear_mysql_connection_probe();
         self.is_reloading = true;
         self.begin_metadata_run()
     }
@@ -1273,6 +1272,32 @@ mod tests {
 
             session.finish_reload();
             assert!(!session.is_reloading());
+        }
+
+        #[test]
+        fn begin_reload_does_not_clear_pending_mysql_probe() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string("mysql-a");
+            let dsn = "mysql://user@localhost:3306/a";
+            session.activate_connection_with_target(
+                &id,
+                "mysql-a",
+                DatabaseType::MySQL,
+                dsn,
+                Some("a"),
+            );
+            session.set_connection_state(ConnectionState::Connected);
+            let probe_run_id = session.begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
+
+            let reload_run_id = session.begin_reload();
+
+            assert_eq!(
+                session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert!(session.is_current_metadata_run(reload_run_id));
         }
     }
 
