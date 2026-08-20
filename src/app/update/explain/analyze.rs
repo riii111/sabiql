@@ -110,7 +110,11 @@ pub(super) fn reduce_analyze(
                         query: explain_query,
                         source_query: content,
                         is_analyze: true,
-                        access_mode: AccessMode::from_read_only(state.session.is_read_only()),
+                        access_mode: if database_type == DatabaseType::MySQL {
+                            AccessMode::ReadOnly
+                        } else {
+                            AccessMode::from_read_only(state.session.is_read_only())
+                        },
                     }]);
                 }
             }
@@ -159,7 +163,11 @@ pub(super) fn reduce_analyze(
                     query: explain_query,
                     source_query: query,
                     is_analyze: true,
-                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
+                    access_mode: if database_type == DatabaseType::MySQL {
+                        AccessMode::ReadOnly
+                    } else {
+                        AccessMode::from_read_only(state.session.is_read_only())
+                    },
                 }]);
             }
             DispatchResult::handled()
