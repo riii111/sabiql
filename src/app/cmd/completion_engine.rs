@@ -907,6 +907,7 @@ impl CompletionEngine {
 
         let mut assignment_start = update_index + 1;
         let mut depth: usize = 0;
+        let mut current_assignment_has_equals = false;
         for (index, token) in tokens.iter().enumerate().skip(update_index + 1) {
             if token.start >= cursor_pos {
                 break;
@@ -914,8 +915,13 @@ impl CompletionEngine {
             match &token.kind {
                 TokenKind::Punctuation('(') => depth += 1,
                 TokenKind::Punctuation(')') => depth = depth.saturating_sub(1),
-                TokenKind::Punctuation(',') if depth == 0 => assignment_start = index + 1,
-                TokenKind::Operator(operator) if operator == "=" && depth == 0 => {
+                TokenKind::Punctuation(',') if depth == 0 => {
+                    assignment_start = index + 1;
+                    current_assignment_has_equals = false;
+                }
+                TokenKind::Operator(operator)
+                    if operator == "=" && depth == 0 && !current_assignment_has_equals =>
+                {
                     if let Some(name) = tokens[assignment_start..index]
                         .iter()
                         .rev()
@@ -924,11 +930,15 @@ impl CompletionEngine {
                         written.insert(name.to_lowercase());
                     }
                     assignment_start = index + 1;
+                    current_assignment_has_equals = true;
                 }
                 _ => {}
             }
         }
 
+        if current_assignment_has_equals {
+            written.clear();
+        }
         written
     }
 
@@ -2704,6 +2714,42 @@ mod tests {
                     .iter()
                     .any(|candidate| candidate.kind == CompletionKind::Table)
             );
+        }
+
+        #[test]
+        fn mysql_upsert_rhs_keeps_assigned_columns_available() {
+            let e = engine();
+            let metadata = metadata();
+            let table = create_table("app", "users", &["id", "name", "email"]);
+
+            for (sql, expected) in [
+                (
+                    "INSERT INTO users (name) VALUES ('Ada') ON DUPLICATE KEY UPDATE name = na",
+                    "`name`",
+                ),
+                (
+                    "INSERT INTO users (name) VALUES ('Ada') ON DUPLICATE KEY UPDATE id = 1, name = id",
+                    "`id`",
+                ),
+            ] {
+                let candidates = e.get_candidates_for_database(
+                    sql,
+                    sql.chars().count(),
+                    Some(&metadata),
+                    Some(&table),
+                    &[],
+                    CompletionDatabaseScope {
+                        database_type: DatabaseType::MySQL,
+                        active_database: Some("app"),
+                    },
+                );
+
+                assert!(
+                    candidates
+                        .iter()
+                        .any(|candidate| candidate.text == expected)
+                );
+            }
         }
     }
 
