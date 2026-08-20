@@ -1,13 +1,18 @@
 use std::ffi::OsStr;
+use std::io;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::Duration;
 
 use crate::adapters::csv_export::export_to_path;
-use crate::app::ports::outbound::{AccessMode, DbOperationError};
+use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use tokio::process::Command;
+use tokio::time::timeout;
 
-use super::cli::probe::run_mysql_command_with_timeout;
-use super::cli::process::test_support::run_mysql_adhoc_with_timeout_for_test;
-use super::cli::{export_mysql_csv_to_file, run_mysql_adhoc, validate_mysql_multi_query};
+use super::cli::{
+    export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_adhoc_with_timeout_for_test,
+    validate_mysql_multi_query,
+};
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
 
@@ -36,13 +41,30 @@ pub async fn run_mysql_cli_query_for_test(
         "--skip-reconnect".to_string(),
         format!("--execute={query}"),
     ];
-    let output = run_mysql_command_with_timeout(
-        args,
-        Some(&option_file.path),
-        Duration::from_secs(11),
-        "mysql test query exceeded the connection timeout",
-    )
-    .await?;
+    let mut command = Command::new("mysql");
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env_remove("MYSQL_PWD")
+        .env_remove("MYSQL_PASSWORD")
+        .kill_on_drop(true);
+    let output = match timeout(Duration::from_secs(11), command.output()).await {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details: error.to_string(),
+            });
+        }
+        Ok(Err(error)) => return Err(DbOperationError::ConnectionFailed(error.to_string())),
+        Err(_) => {
+            return Err(DbOperationError::Timeout(
+                "mysql test query exceeded the connection timeout".to_string(),
+            ));
+        }
+    };
     if !output.status.success() {
         let details = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(DbOperationError::QueryFailed(if details.is_empty() {
@@ -81,14 +103,7 @@ pub async fn execute_mysql_adhoc_with_timeout_for_test(
     let statements =
         validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    run_mysql_adhoc_with_timeout_for_test(
-        OsStr::new("mysql"),
-        &option_file.path,
-        &statements,
-        AccessMode::ReadWrite,
-        execution_timeout,
-    )
-    .await
+    run_mysql_adhoc_with_timeout_for_test(&option_file.path, &statements, execution_timeout).await
 }
 
 #[cfg(unix)]
