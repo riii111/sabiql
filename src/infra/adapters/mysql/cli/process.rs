@@ -763,6 +763,9 @@ while IFS= read -r line; do
       last_statement=update
       {update_response}
       ;;
+    *"SHOW CREATE TABLE"*)
+      printf '%s\n' '<resultset><row><field name="Create Table">CREATE TABLE items (id INT)</field></row></resultset>'
+      ;;
     *CREATE*)
       last_statement=create
       ;;
