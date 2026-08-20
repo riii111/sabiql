@@ -590,7 +590,7 @@ mod tests {
                     query,
                     database_type: DatabaseType::MySQL,
                     is_analyze: true,
-                    access_mode: AccessMode::ReadWrite,
+                    access_mode: AccessMode::ReadOnly,
                     ..
                 } if query == "EXPLAIN ANALYZE FORMAT=TREE SELECT 1"
             ));
