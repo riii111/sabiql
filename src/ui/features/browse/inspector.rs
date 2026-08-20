@@ -210,17 +210,15 @@ impl Inspector {
                 );
                 ViewportPlan::default()
             }
-            Some(InspectorSection::Triggers { rows }) => {
-                return Self::render_triggers(
-                    frame,
-                    inner,
-                    rows,
-                    state.session.active_database_type_or_default(),
-                    state.ui.inspector_scroll_offset(),
-                    state.ui.inspector_horizontal_offset(),
-                    theme,
-                );
-            }
+            Some(InspectorSection::Triggers { rows }) => Self::render_triggers(
+                frame,
+                inner,
+                rows,
+                state.session.active_database_type_or_default(),
+                state.ui.inspector_scroll_offset(),
+                state.ui.inspector_horizontal_offset(),
+                theme,
+            ),
             Some(InspectorSection::Ddl { rows }) => {
                 Self::render_ddl(
                     frame,
