@@ -241,12 +241,9 @@ pub fn build_bulk_delete_preview(
             &identity_pairs,
         )?;
         if target_pairs.is_empty() {
-            target_pairs = identity_pairs;
+            target_pairs.clone_from(&identity_pairs);
         }
-        let predicate_pairs = identity
-            .predicate_pairs_for_row(result, row_idx)
-            .ok_or(EditGuardrailError::StableKeyColumnsMissing)?;
-        predicate_pairs_per_row.push(predicate_pairs);
+        predicate_pairs_per_row.push(identity_pairs);
     }
 
     let sql = services.sql_dialect.build_bulk_delete_sql(

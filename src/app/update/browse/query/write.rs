@@ -90,13 +90,12 @@ fn build_update_preview(
     if let Some(pairs) = identity_pairs.as_deref() {
         reject_sqlite_null_pk(state.session.active_database_type_or_default(), pairs)?;
     }
-    let predicate_pairs = identity.predicate_pairs_for_row(result, row_idx);
     let target = TargetSummary {
         schema: state.query.pagination.schema().to_string(),
         table: state.query.pagination.table().to_string(),
         key_values: identity_pairs.clone().unwrap_or_default(),
     };
-    let has_where = predicate_pairs
+    let has_where = identity_pairs
         .as_ref()
         .is_some_and(|pairs| !pairs.is_empty());
     let has_stable_row_identity = identity_pairs.is_some();
@@ -114,7 +113,7 @@ fn build_update_preview(
         &target.table,
         &column_name,
         &new_value,
-        &predicate_pairs.unwrap_or_default(),
+        &identity_pairs.unwrap_or_default(),
     );
     let preview = WritePreview {
         operation: WriteOperation::Update,
@@ -426,6 +425,7 @@ fn open_write_preview_confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support;
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
@@ -1002,6 +1002,63 @@ mod tests {
 
             let preview = submit_write_preview(&mut state);
             assert!(preview.diff[0].json_diff.is_some());
+            assert!(preview.sql.contains(r#"WHERE "id" = '1'"#));
+        }
+
+        #[test]
+        fn composite_primary_key_preserves_order_in_update_preview() {
+            let mut state = AppState::new("test_project".to_string());
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success(
+                    "SELECT first_id, second_id, name FROM composite_users".to_string(),
+                    vec![
+                        "first_id".to_string(),
+                        "second_id".to_string(),
+                        "name".to_string(),
+                    ],
+                    vec![vec!["1".to_string(), "2".to_string(), "Alice".to_string()]],
+                    1,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.name = "composite_users".to_string();
+            detail.columns[0].name = "first_id".to_string();
+            detail.columns[1].name = "second_id".to_string();
+            detail.columns[1].attributes = ColumnAttributes::PRIMARY_KEY;
+            detail
+                .columns
+                .push(test_support::column::test_nullable_column(
+                    "name", "text", 3,
+                ));
+            detail.primary_key = Some(vec!["first_id".to_string(), "second_id".to_string()]);
+            state.session.set_table_detail_raw(Some(detail));
+            state
+                .query
+                .pagination
+                .reset_for_table("public", "composite_users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 2, "Alice".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("Bob".to_string());
+
+            let preview = submit_write_preview(&mut state);
+
+            assert_eq!(
+                preview.target_summary.key_values,
+                vec![
+                    ("first_id".to_string(), QueryValue::text("1")),
+                    ("second_id".to_string(), QueryValue::text("2")),
+                ]
+            );
+            assert_eq!(
+                preview.sql,
+                "UPDATE \"public\".\"composite_users\" SET \"name\" = 'Bob' WHERE \"first_id\" = '1' AND \"second_id\" = '2'"
+            );
         }
 
         #[test]
