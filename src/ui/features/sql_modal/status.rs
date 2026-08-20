@@ -15,6 +15,10 @@ use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_
 use crate::theme::ThemePalette;
 
 pub(super) fn status_height(state: &AppState, width: u16) -> u16 {
+    if !matches!(state.sql_modal.status(), SqlModalStatus::Success) {
+        return 1;
+    }
+
     let Some(snapshot) = state.sql_modal.last_adhoc_success() else {
         return 1;
     };
@@ -336,4 +340,36 @@ fn error_status_message(state: &AppState) -> String {
             || "\u{2717} Error".to_string(),
             |line| format!("\u{2717} {line}"),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::model::sql_editor::modal::AdhocSuccessSnapshot;
+
+    #[test]
+    fn diagnostics_height_only_applies_to_success_status() {
+        let mut state = AppState::new("test_project".to_string());
+        state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+            command_tag: None,
+            row_count: 1,
+            execution_time_ms: 15,
+            mysql_diagnostics: vec![MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Warning,
+                code: 1265,
+                message: "truncated".to_string(),
+            }],
+        });
+
+        assert!(status_height(&state, 80) > 1);
+        for status in [
+            SqlModalStatus::Normal,
+            SqlModalStatus::Editing,
+            SqlModalStatus::Running,
+            SqlModalStatus::Error,
+        ] {
+            state.sql_modal.set_status_for_test(status);
+            assert_eq!(status_height(&state, 80), 1);
+        }
+    }
 }

@@ -33,14 +33,18 @@ async fn execute_adhoc_with_statements(
         let option_file = MySqlOptionFile::create(&target)?;
         let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
         drop(option_file);
-        let result_set = result?;
+        let execution = result?;
+        let result_set = execution.result_set.ok_or_else(|| {
+            DbOperationError::QueryFailed("MySQL TREE EXPLAIN returned no resultset".to_string())
+        })?;
         return Ok(QueryResult::success_with_values(
             query.to_string(),
             result_set.columns,
             result_set.values,
             start.elapsed().as_millis() as u64,
             QuerySource::Adhoc,
-        ));
+        )
+        .with_mysql_diagnostics(execution.diagnostics));
     }
 
     let option_file = MySqlOptionFile::create(&target)?;

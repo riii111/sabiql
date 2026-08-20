@@ -2064,6 +2064,31 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn executes_tree_explain_successfully_on_oracle_mysql_84() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "EXPLAIN FORMAT=TREE SELECT * FROM mysql_preview_composite",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("TREE EXPLAIN failed: {error:?}"))?;
+
+                if result.is_error() || result.values().is_empty() || result.columns != ["EXPLAIN"]
+                {
+                    return Err(format!("unexpected TREE EXPLAIN result: {result:?}"));
+                }
+                Ok::<(), String>(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn preserves_xml_value_boundaries_for_real_mysql_results() {
         with_mysql_test_db(|db| Box::pin(async move {
             let result = db

@@ -478,13 +478,15 @@ mod tests {
     use tempfile::TempDir;
 
     use super::super::export::run_mysql_export_process;
+    use super::super::policy::MySqlExecutionResult;
     use super::super::xml::MySqlResultSet;
     use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
     use super::metadata::{
         mysql_metadata_columns_external_with_program,
         run_mysql_metadata_query_with_read_only_session_with_timeout,
     };
-    use super::single::run_mysql_single_statement_process;
+    use super::single::run_mysql_single_statement_process_with_diagnostics;
+    use super::single::test_support::run_mysql_single_statement_process;
     use super::*;
     use crate::adapters::csv_export::export_to_path;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
@@ -562,6 +564,20 @@ mod tests {
         .await
     }
 
+    async fn run_mysql_single_statement_with_diagnostics_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+        query: &str,
+        access_mode: AccessMode,
+        execution_timeout: Duration,
+    ) -> Result<MySqlExecutionResult, DbOperationError> {
+        let mut process = MySqlProcess::spawn_with_adhoc_program(program, option_file)?;
+        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
+            run_mysql_single_statement_process_with_diagnostics(process, query, access_mode).await
+        })
+        .await
+    }
+
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
@@ -627,6 +643,47 @@ while IFS= read -r line; do
 done
 "#,
         );
+        fs::write(&program, script).unwrap();
+        let mut permissions = fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, log_file)
+    }
+
+    fn fake_mysql_single_with_warning() -> (TempDir, PathBuf, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let option_file = directory.path().join("option.cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let program = directory.path().join("mysql");
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let script = r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+log="$option.log"
+printf 'argv=%s\n' "$*" >> "$log"
+eof=$(printf '\004')
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    *"$eof"*)
+      exit 0
+      ;;
+    ";"|"SET SESSION TRANSACTION READ ONLY"|"SET SESSION TRANSACTION READ WRITE")
+      ;;
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
+    *)
+      printf '%s\n' '<resultset><row><field name="value">tree</field></row></resultset>'
+      printf '%s\n' 'Warning (Code 1265): truncated'
+      ;;
+  esac
+done
+"#;
         fs::write(&program, script).unwrap();
         let mut permissions = fs::metadata(&program).unwrap().permissions();
         permissions.set_mode(0o755);
@@ -832,6 +889,39 @@ done
 
     mod single_statement {
         use super::*;
+
+        #[tokio::test]
+        async fn diagnostics_use_adhoc_args_and_follow_resultset_to_marker() {
+            let (_directory, program, log_file) = fake_mysql_single_with_warning();
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_diagnostics_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "EXPLAIN FORMAT=TREE SELECT 1",
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                result.result_set.unwrap().values[0][0].as_str(),
+                Some("tree")
+            );
+            assert_eq!(
+                result.diagnostics,
+                vec![MySqlDiagnostic {
+                    level: MySqlDiagnosticLevel::Warning,
+                    code: 1265,
+                    message: "truncated".to_string(),
+                }]
+            );
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.contains("--show-warnings"), "{log}");
+            assert!(log.contains("EXPLAIN FORMAT=TREE SELECT 1"), "{log}");
+            assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN), "{log}");
+        }
 
         #[tokio::test]
         async fn sends_user_sql_only_after_a_valid_mode_probe() {
