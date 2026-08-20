@@ -27,6 +27,16 @@ pub(super) fn kind_and_target(tokens: &[Token]) -> Result<MySqlClassification, M
     }
 }
 
+pub(super) fn has_on_duplicate_key_update(tokens: &[Token]) -> bool {
+    tokens.windows(4).any(|window| {
+        window.iter().all(|token| token.depth == 0)
+            && matches!(&window[0].kind, TokenKind::Word(word) if word == "ON")
+            && matches!(&window[1].kind, TokenKind::Word(word) if word == "DUPLICATE")
+            && matches!(&window[2].kind, TokenKind::Word(word) if word == "KEY")
+            && matches!(&window[3].kind, TokenKind::Word(word) if word == "UPDATE")
+    })
+}
+
 fn classify_mysql_crud_statement(
     tokens: &[Token],
     start: usize,

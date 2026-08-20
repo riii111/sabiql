@@ -233,17 +233,20 @@ pub(super) fn mysql_row_count_marker(
 }
 
 pub(super) fn mysql_command_tag(
-    kind: &MySqlStatementKind,
+    statement: &MySqlStatement,
     affected_rows: i64,
     user_result: Option<&MySqlResultSet>,
 ) -> CommandTag {
     let rows = || u64::try_from(affected_rows.max(0)).unwrap_or(0);
-    match kind {
+    match statement.kind() {
         MySqlStatementKind::Select
         | MySqlStatementKind::Table
         | MySqlStatementKind::Show
         | MySqlStatementKind::Describe => {
             CommandTag::Select(user_result.map_or(0, |result| result.values.len() as u64))
+        }
+        MySqlStatementKind::Insert if statement.has_on_duplicate_key_update() => {
+            CommandTag::Affected(rows())
         }
         MySqlStatementKind::Insert | MySqlStatementKind::Replace => CommandTag::Insert(rows()),
         MySqlStatementKind::Update { .. } => CommandTag::Update(rows()),
@@ -655,6 +658,40 @@ mod tests {
             mysql_refresh_scope(&MySqlStatementKind::CreateTable { temporary: false }),
             RefreshScope::Metadata
         );
+    }
+
+    #[test]
+    fn upsert_affected_rows_use_generic_command_tag() {
+        let statement = classify_mysql_multi_statement(
+            "INSERT INTO items (id, value) VALUES (1, 'new') ON DUPLICATE KEY UPDATE value = 'updated'",
+            Some("app"),
+        )
+        .unwrap()
+        .remove(0);
+
+        for affected_rows in [0, 1, 2] {
+            assert_eq!(
+                mysql_command_tag(&statement, affected_rows, None),
+                CommandTag::Affected(affected_rows as u64)
+            );
+        }
+        assert_eq!(mysql_refresh_scope(statement.kind()), RefreshScope::Data);
+    }
+
+    #[test]
+    fn regular_insert_command_tags_keep_insert_wording() {
+        for query in [
+            "INSERT INTO items (id, value) VALUES (1, 'new')",
+            "INSERT IGNORE INTO items (id, value) VALUES (1, 'new')",
+        ] {
+            let statement = classify_mysql_multi_statement(query, Some("app"))
+                .unwrap()
+                .remove(0);
+            assert_eq!(
+                mysql_command_tag(&statement, 1, None),
+                CommandTag::Insert(1)
+            );
+        }
     }
 
     #[test]
