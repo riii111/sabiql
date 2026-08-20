@@ -13,5 +13,6 @@ pub trait MySqlQueryExecutor: Send + Sync {
         query: &str,
         statements: &[MySqlStatement],
         access_mode: AccessMode,
+        lower_case_table_names: u8,
     ) -> Result<QueryResult, DbOperationError>;
 }

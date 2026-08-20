@@ -154,6 +154,7 @@ pub struct BrowseSession {
     active_connection: Option<ActiveConnection>,
     mysql_connection_probe_run: AsyncRun,
     pending_mysql_connection_probe: Option<PendingMySqlConnectionProbe>,
+    mysql_lower_case_table_names: u8,
     connection_generation: u64,
     database_generation: u64,
     read_only: bool,
@@ -179,6 +180,7 @@ impl Default for BrowseSession {
             active_connection: None,
             mysql_connection_probe_run: AsyncRun::default(),
             pending_mysql_connection_probe: None,
+            mysql_lower_case_table_names: 0,
             connection_generation: 0,
             database_generation: 0,
             read_only: false,
@@ -450,6 +452,7 @@ impl BrowseSession {
             database: database.map(str::to_string),
         });
         self.dsn = Some(dsn.to_string());
+        self.mysql_lower_case_table_names = 0;
         self.read_only = false;
         self.clear_mysql_connection_probe();
     }
@@ -463,6 +466,7 @@ impl BrowseSession {
             database: None,
         });
         self.dsn = Some(dsn.to_string());
+        self.mysql_lower_case_table_names = 0;
         self.read_only = false;
         self.clear_mysql_connection_probe();
     }
@@ -487,6 +491,7 @@ impl BrowseSession {
     pub fn clear_connection(&mut self) {
         self.dsn = None;
         self.active_connection = None;
+        self.mysql_lower_case_table_names = 0;
         self.cancel_connection_save_and_disconnect();
         self.clear_mysql_connection_probe();
     }
@@ -781,6 +786,14 @@ impl BrowseSession {
         self.active_connection
             .as_ref()
             .and_then(|connection| connection.database.as_deref())
+    }
+
+    pub fn mysql_lower_case_table_names(&self) -> u8 {
+        self.mysql_lower_case_table_names
+    }
+
+    pub fn set_mysql_lower_case_table_names(&mut self, value: u8) {
+        self.mysql_lower_case_table_names = value;
     }
 
     pub fn query_history_scope(&self) -> Option<QueryHistoryScope> {

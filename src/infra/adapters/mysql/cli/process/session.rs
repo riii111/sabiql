@@ -4,11 +4,11 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
+use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
 use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
     MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
-    finish_mysql_session_after_preview_frame, read_one_mysql_resultset, validate_mode_probe,
-    write_mysql_statement,
+    finish_mysql_session_after_preview_frame, read_one_mysql_resultset, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) struct MySqlMetadataSession {
@@ -27,12 +27,13 @@ impl MySqlMetadataSession {
         })
     }
 
-    pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<(), DbOperationError> {
+    pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<u8, DbOperationError> {
         let marker = Uuid::new_v4().simple().to_string();
-        let query =
-            format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
+        let query = format!(
+            "SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names"
+        );
         let result = self.execute(&query).await?;
-        validate_mode_probe(&result, &marker)
+        validate_metadata_probe(&result, &marker)
     }
 
     pub(in crate::adapters::mysql) async fn prepare_read_only(
@@ -107,4 +108,44 @@ impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
         cleanup_mysql_process(&mut self.process).await;
     }
+}
+
+fn validate_metadata_probe(result: &MySqlResultSet, marker: &str) -> Result<u8, DbOperationError> {
+    if result.values.len() != 1
+        || result.columns
+            != [
+                "__sabiql_probe",
+                "__sabiql_sql_mode",
+                "__sabiql_lower_case_table_names",
+            ]
+    {
+        return Err(DbOperationError::QueryFailed(
+            "mysql metadata probe returned an unexpected result".to_string(),
+        ));
+    }
+    let values = &result.values[0];
+    if values.len() != 3 || values[0].as_str() != Some(marker) {
+        return Err(DbOperationError::QueryFailed(
+            "mysql metadata probe returned an unexpected result".to_string(),
+        ));
+    }
+    let sql_mode = values[1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql metadata probe returned no mode".to_string())
+    })?;
+    validate_sql_mode(sql_mode)?;
+    let lower_case_table_names = values[2]
+        .as_str()
+        .ok_or_else(|| {
+            DbOperationError::QueryFailed(
+                "mysql metadata probe returned no lower_case_table_names".to_string(),
+            )
+        })?
+        .parse::<u8>()
+        .map_err(|_| {
+            DbOperationError::MetadataParseFailed(
+                "invalid MySQL lower_case_table_names value".to_string(),
+            )
+        })?;
+    validate_lower_case_table_names(lower_case_table_names)?;
+    Ok(lower_case_table_names)
 }

@@ -19,9 +19,10 @@ use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AccessMode, AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
-    FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe, MySqlQueryExecutor,
-    PgServiceEntryReader, QueryExecutor, QueryHistoryError, QueryHistoryStore, ServiceFileError,
-    SettingsStore, SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
+    FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, MySqlQueryExecutor, PgServiceEntryReader, QueryExecutor,
+    QueryHistoryError, QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
+    SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
 
@@ -127,8 +128,10 @@ impl DsnBuilder for NoopDsnBuilder {
 pub struct NoopMySqlConnectionProbe;
 #[async_trait::async_trait]
 impl MySqlConnectionProbe for NoopMySqlConnectionProbe {
-    async fn probe(&self, _dsn: &str) -> Result<(), DbOperationError> {
-        Ok(())
+    async fn probe(&self, _dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+        Ok(MySqlConnectionProbeResult {
+            lower_case_table_names: 0,
+        })
     }
 }
 
@@ -183,6 +186,7 @@ impl MySqlQueryExecutor for NoopMySqlQueryExecutor {
         _query: &str,
         _statements: &[MySqlStatement],
         _access_mode: AccessMode,
+        _lower_case_table_names: u8,
     ) -> Result<QueryResult, DbOperationError> {
         Err(DbOperationError::UnsupportedOperation(
             "classified MySQL statements require the MySQL query executor".to_string(),

@@ -89,18 +89,23 @@ pub(super) async fn fetch_metadata_snapshot(
     dsn: &str,
 ) -> Result<MySqlMetadataSnapshot, DbOperationError> {
     let database = selected_database(dsn)?;
-    let result = execute_metadata_query(dsn, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
-    metadata_snapshot_from_result(&database, None, &result)
+    let (lower_case_table_names, result) =
+        execute_metadata_query(dsn, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
+    metadata_snapshot_from_result(&database, None, &result, lower_case_table_names)
 }
 
 pub(super) fn find_table(
     schema: &str,
     table: &str,
     tables: &[MySqlTableMetadata],
+    lower_case_table_names: u8,
 ) -> Result<MySqlTableMetadata, DbOperationError> {
     tables
         .iter()
-        .find(|candidate| candidate.schema == schema && candidate.name == table)
+        .find(|candidate| {
+            mysql_database_names_match(schema, &candidate.schema, lower_case_table_names)
+                && candidate.name == table
+        })
         .cloned()
         .ok_or_else(|| {
             DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
@@ -159,22 +164,21 @@ pub(super) async fn execute_metadata_query(
     dsn: &str,
     query: &str,
     expected_columns: &[&str],
-) -> Result<MySqlResultSet, DbOperationError> {
-    execute_metadata_queries_in_session(dsn, &[(query, expected_columns)])
-        .await?
-        .into_iter()
-        .next()
-        .ok_or_else(|| {
-            DbOperationError::MetadataParseFailed(
-                "MySQL metadata query returned no result set".to_string(),
-            )
-        })
+) -> Result<(u8, MySqlResultSet), DbOperationError> {
+    let (lower_case_table_names, results) =
+        execute_metadata_queries_in_session(dsn, &[(query, expected_columns)]).await?;
+    let result = results.into_iter().next().ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "MySQL metadata query returned no result set".to_string(),
+        )
+    })?;
+    Ok((lower_case_table_names, result))
 }
 
 pub(super) async fn execute_metadata_queries_in_session(
     dsn: &str,
     queries: &[(&str, &[&str])],
-) -> Result<Vec<MySqlResultSet>, DbOperationError> {
+) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
     execute_metadata_queries_in_session_with_program(
         dsn,
         queries,
@@ -189,12 +193,12 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
     queries: &[(&str, &[&str])],
     program: &OsStr,
     timeout: Duration,
-) -> Result<Vec<MySqlResultSet>, DbOperationError> {
+) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(timeout, async {
-        session.probe().await?;
+        let lower_case_table_names = session.probe().await?;
         session.prepare_read_only().await?;
         let mut results = Vec::with_capacity(queries.len());
         for (query, expected_columns) in queries {
@@ -205,7 +209,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
             );
         }
         session.finish().await?;
-        Ok(results)
+        Ok((lower_case_table_names, results))
     })
     .await;
     let result = match result {
@@ -236,8 +240,9 @@ pub(super) fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
 pub(super) fn validate_selected_schema_name(
     database: &str,
     schema: &str,
+    lower_case_table_names: u8,
 ) -> Result<(), DbOperationError> {
-    if schema != database {
+    if !mysql_database_names_match(database, schema, lower_case_table_names) {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
@@ -245,15 +250,36 @@ pub(super) fn validate_selected_schema_name(
     Ok(())
 }
 
+pub(super) fn mysql_database_names_match(
+    left: &str,
+    right: &str,
+    lower_case_table_names: u8,
+) -> bool {
+    match lower_case_table_names {
+        0 => left == right,
+        1 | 2 => left.to_lowercase() == right.to_lowercase(),
+        _ => false,
+    }
+}
+
 pub(super) fn metadata_snapshot_from_result(
     database: &str,
     requested_schema: Option<&str>,
     result: &MySqlResultSet,
+    lower_case_table_names: u8,
 ) -> Result<MySqlMetadataSnapshot, DbOperationError> {
     if let Some(schema) = requested_schema {
-        validate_selected_schema_name(database, schema)?;
+        validate_selected_schema_name(database, schema, lower_case_table_names)?;
     }
     let tables = parse_table_metadata(result)?;
+    if tables
+        .iter()
+        .any(|table| !mysql_database_names_match(database, &table.schema, lower_case_table_names))
+    {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
     let table_summaries = tables.iter().cloned().map(table_summary).collect();
     Ok(MySqlMetadataSnapshot {
         database: database.to_string(),
@@ -430,6 +456,7 @@ pub(super) fn parse_foreign_key_metadata(
 pub(super) fn foreign_keys_from_metadata(
     mut raw: Vec<MySqlForeignKeyMetadata>,
     database: &str,
+    lower_case_table_names: u8,
 ) -> Result<Vec<ForeignKey>, DbOperationError> {
     raw.sort_by(|left, right| {
         left.name
@@ -438,7 +465,8 @@ pub(super) fn foreign_keys_from_metadata(
     });
     let mut foreign_keys = Vec::new();
     for column in raw {
-        let reference_resolved = column.to_schema == database;
+        let reference_resolved =
+            mysql_database_names_match(&column.to_schema, database, lower_case_table_names);
         if let Some(foreign_key) = foreign_keys
             .iter_mut()
             .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
@@ -659,6 +687,25 @@ mod tests {
         }
     }
 
+    fn tables_result(schema: &str) -> MySqlResultSet {
+        result(
+            &[
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "TABLE_TYPE",
+                "TABLE_ROWS",
+                "TABLE_COMMENT",
+            ],
+            vec![vec![
+                QueryValue::Text(schema.to_string()),
+                QueryValue::Text("users".to_string()),
+                QueryValue::Text("BASE TABLE".to_string()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+            ]],
+        )
+    }
+
     #[test]
     fn metadata_snapshot_uses_server_schema() {
         let snapshot = metadata_snapshot_from_result(
@@ -680,6 +727,7 @@ mod tests {
                     QueryValue::Null,
                 ]],
             ),
+            0,
         )
         .unwrap();
 
@@ -690,7 +738,7 @@ mod tests {
     #[test]
     fn metadata_rejects_database_with_different_case() {
         let error =
-            metadata_snapshot_from_result("app", Some("APP"), &result(&[], vec![])).unwrap_err();
+            metadata_snapshot_from_result("app", Some("APP"), &result(&[], vec![]), 0).unwrap_err();
 
         assert!(matches!(
             error,
@@ -700,9 +748,36 @@ mod tests {
     }
 
     #[test]
+    fn metadata_accepts_database_case_difference_for_server_modes_one_and_two() {
+        for lower_case_table_names in [1, 2] {
+            let snapshot = metadata_snapshot_from_result(
+                "app",
+                Some("APP"),
+                &tables_result("APP"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(snapshot.tables[0].schema, "APP");
+            assert_eq!(snapshot.table_summaries[0].schema, "APP");
+
+            let unicode_snapshot = metadata_snapshot_from_result(
+                "äpp",
+                Some("ÄPP"),
+                &tables_result("ÄPP"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
+            assert_eq!(unicode_snapshot.table_summaries[0].schema, "ÄPP");
+        }
+    }
+
+    #[test]
     fn metadata_schema_mismatch_rejects_before_parsing() {
-        let error =
-            metadata_snapshot_from_result("app", Some("other"), &result(&[], vec![])).unwrap_err();
+        let error = metadata_snapshot_from_result("app", Some("other"), &result(&[], vec![]), 0)
+            .unwrap_err();
 
         assert!(matches!(
             error,
@@ -723,10 +798,48 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
             }],
+            0,
         )
         .unwrap_err();
 
         assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+    }
+
+    #[test]
+    fn find_table_accepts_schema_case_difference_for_server_modes_one_and_two() {
+        for lower_case_table_names in [1, 2] {
+            let table = find_table(
+                "APP",
+                "users",
+                &[MySqlTableMetadata {
+                    schema: "app".to_string(),
+                    name: "users".to_string(),
+                    kind: TableKind::Table,
+                    row_count_estimate: None,
+                    comment: None,
+                }],
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(table.schema, "app");
+
+            let unicode_table = find_table(
+                "äpp",
+                "users",
+                &[MySqlTableMetadata {
+                    schema: "ÄPP".to_string(),
+                    name: "users".to_string(),
+                    kind: TableKind::Table,
+                    row_count_estimate: None,
+                    comment: None,
+                }],
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_table.schema, "ÄPP");
+        }
     }
 
     #[test]
@@ -1019,9 +1132,12 @@ mod tests {
             ],
         );
 
-        let foreign_keys =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "sabiql_test")
-                .unwrap();
+        let foreign_keys = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "sabiql_test",
+            0,
+        )
+        .unwrap();
 
         assert_eq!(foreign_keys.len(), 1);
         assert_eq!(
@@ -1033,9 +1149,27 @@ mod tests {
         assert_eq!(foreign_keys[0].on_delete, FkAction::SetNull);
         assert!(foreign_keys[0].is_reference_resolved());
 
-        let unresolved =
-            foreign_keys_from_metadata(parse_foreign_key_metadata(&result).unwrap(), "SABIQL_TEST")
-                .unwrap();
+        let unresolved = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "SABIQL_TEST",
+            0,
+        )
+        .unwrap();
         assert!(!unresolved[0].is_reference_resolved());
+
+        let case_insensitive = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "SABIQL_TEST",
+            1,
+        )
+        .unwrap();
+        assert!(case_insensitive[0].is_reference_resolved());
+
+        let mut unicode_raw = parse_foreign_key_metadata(&result).unwrap();
+        for column in &mut unicode_raw {
+            column.to_schema = "ÄPP".to_string();
+        }
+        let unicode_case_insensitive = foreign_keys_from_metadata(unicode_raw, "äpp", 1).unwrap();
+        assert!(unicode_case_insensitive[0].is_reference_resolved());
     }
 }

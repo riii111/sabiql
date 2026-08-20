@@ -7,7 +7,7 @@ use crate::model::shared::text_input::TextInputLike;
 use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, SqlRiskDecision,
     adhoc_label_for_table_name_confirmation, evaluate_multi_statement_for_database_with_context,
-    evaluate_mysql_multi_statement,
+    evaluate_mysql_multi_statement_with_lower_case_table_names,
 };
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::update::action::Action;
@@ -31,8 +31,11 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
             let database_type = state.session.active_database_type_or_default();
 
             if database_type == DatabaseType::MySQL {
-                return match evaluate_mysql_multi_statement(&query, state.session.active_database())
-                {
+                return match evaluate_mysql_multi_statement_with_lower_case_table_names(
+                    &query,
+                    state.session.active_database(),
+                    state.session.mysql_lower_case_table_names(),
+                ) {
                     MultiStatementDecision::Block { reason } => {
                         state.sql_modal.finish_adhoc_error(reason);
                         DispatchResult::handled()

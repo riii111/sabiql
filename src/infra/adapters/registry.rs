@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::app::ports::outbound::{
     AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
-    MySqlQueryExecutor, QueryExecutor, SqlDialect, SqliteDiagnosticsProvider,
+    MySqlConnectionProbeResult, MySqlQueryExecutor, QueryExecutor, SqlDialect,
+    SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
@@ -149,11 +150,18 @@ impl MySqlQueryExecutor for DbAdapterRegistry {
         query: &str,
         statements: &[MySqlStatement],
         access_mode: AccessMode,
+        lower_case_table_names: u8,
     ) -> Result<QueryResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::MySQL => {
                 self.mysql
-                    .execute_adhoc_with_classified_statements(dsn, query, statements, access_mode)
+                    .execute_adhoc_with_classified_statements(
+                        dsn,
+                        query,
+                        statements,
+                        access_mode,
+                        lower_case_table_names,
+                    )
                     .await
             }
             DatabaseType::PostgreSQL | DatabaseType::SQLite => {
@@ -352,7 +360,7 @@ impl SqlDialect for DbAdapterRegistry {
 
 #[async_trait]
 impl MySqlConnectionProbe for DbAdapterRegistry {
-    async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
+    async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::MySQL => self.mysql.probe(dsn).await,
             DatabaseType::PostgreSQL | DatabaseType::SQLite => {
