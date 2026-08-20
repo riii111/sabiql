@@ -85,6 +85,8 @@ pub struct InspectorForeignKeyRow {
     pub name: String,
     pub columns: String,
     pub references: String,
+    pub on_update: String,
+    pub on_delete: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -447,6 +449,8 @@ fn foreign_key_row(fk: &ForeignKey) -> InspectorForeignKeyRow {
         } else {
             format!("{references} (unresolved)")
         },
+        on_update: fk.on_update.to_string(),
+        on_delete: fk.on_delete.to_string(),
     }
 }
 
@@ -510,8 +514,8 @@ mod tests {
                 to_schema: "public".to_string(),
                 to_table: "orgs".to_string(),
                 to_columns: vec!["id".to_string()],
-                on_delete: FkAction::NoAction,
-                on_update: FkAction::NoAction,
+                on_delete: FkAction::Cascade,
+                on_update: FkAction::SetNull,
                 reference_resolved: true,
             }],
             indexes: vec![Index {
@@ -643,6 +647,31 @@ mod tests {
                 ]
             ),
             section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn foreign_key_rows_include_referential_actions() {
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::ForeignKeys,
+            &table(),
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::ForeignKeys { rows }) => assert_eq!(
+                rows,
+                &[InspectorForeignKeyRow {
+                    name: "users_org_id_fkey".to_string(),
+                    columns: "org_id".to_string(),
+                    references: "public.orgs(id)".to_string(),
+                    on_update: "SET NULL".to_string(),
+                    on_delete: "CASCADE".to_string(),
+                }]
+            ),
+            section => panic!("expected foreign keys section, got {section:?}"),
         }
     }
 
