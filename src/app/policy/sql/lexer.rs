@@ -803,6 +803,7 @@ impl SqlLexer {
         let mut i = 0;
         // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
         let mut in_for_clause = false;
+        let mut can_start_straight_join = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -810,6 +811,7 @@ impl SqlLexer {
             // Reset state on statement terminator
             if token.kind == TokenKind::Punctuation(';') {
                 in_for_clause = false;
+                can_start_straight_join = false;
                 i += 1;
                 continue;
             }
@@ -817,7 +819,12 @@ impl SqlLexer {
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
                     "FROM" | "JOIN" | "STRAIGHT_JOIN" => {
+                        if kw == "STRAIGHT_JOIN" && !can_start_straight_join {
+                            i += 1;
+                            continue;
+                        }
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -833,12 +840,14 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
                     }
                     // JOIN modifiers - skip to find JOIN, then parse table
                     "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -853,6 +862,7 @@ impl SqlLexer {
                             }
                             if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                                 refs.push(table_ref);
+                                can_start_straight_join = true;
                                 continue;
                             }
                         }
@@ -860,11 +870,13 @@ impl SqlLexer {
                     // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
                     "FOR" => {
                         in_for_clause = true;
+                        can_start_straight_join = false;
                     }
                     // NO, KEY, SHARE are part of FOR locking clause
                     "NO" | "KEY" | "SHARE" if in_for_clause => {}
                     "INSERT" | "REPLACE" => {
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -892,11 +904,13 @@ impl SqlLexer {
                         }
                     }
                     "UPDATE" if self.is_mysql_upsert_update(tokens, i) => {
+                        can_start_straight_join = false;
                         i += 1;
                         continue;
                     }
                     // UPDATE: skip if in FOR locking clause
                     "UPDATE" if !in_for_clause => {
+                        can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -918,6 +932,7 @@ impl SqlLexer {
                     }
                     _ => {
                         in_for_clause = false;
+                        can_start_straight_join = false;
                     }
                 }
             }
@@ -978,7 +993,6 @@ impl SqlLexer {
             *i += 1;
         }
 
-        // Skip MySQL's table partition clause before reading the alias.
         if self.is_mysql()
             && *i < tokens.len()
             && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
@@ -1991,6 +2005,19 @@ mod tests {
             assert_eq!(refs.len(), 1);
             assert_eq!(refs[0].table, "events");
             assert_eq!(refs[0].alias, Some("e".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_select_modifier_does_not_create_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT STRAIGHT_JOIN id FROM users id WHERE id.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("id".to_string()));
         }
     }
 
