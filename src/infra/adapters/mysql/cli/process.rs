@@ -12,15 +12,17 @@ use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use crate::domain::MySqlDiagnostic;
 
-use super::args::mysql_query_args;
+use super::args::{mysql_adhoc_args, mysql_query_args};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
 #[cfg(unix)]
 use super::pty::{
-    MySqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
+    MySqlPty, create_mysql_pty, read_one_pty_resultset, read_one_pty_resultset_with_diagnostics,
+    read_pty_all, read_pty_until_idle,
 };
 use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
@@ -64,6 +66,13 @@ impl MySqlProcess {
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
         Self::spawn_with_args(program, mysql_query_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_adhoc_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args(program, mysql_adhoc_args(option_file))
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_args(
@@ -411,6 +420,25 @@ pub(super) async fn read_one_mysql_resultset(
     .await
 }
 
+pub(super) async fn read_one_mysql_resultset_with_diagnostics(
+    process: &mut MySqlProcess,
+) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
+    #[cfg(unix)]
+    {
+        return read_one_pty_resultset_with_diagnostics(&mut process.pty).await;
+    }
+    #[cfg(not(unix))]
+    super::pipe::read_one_mysql_resultset_from_pipes_with_diagnostics(
+        &mut process.stdout,
+        &mut process.stderr,
+        &mut process.child,
+        &mut process.pending,
+        &mut process.pending_stderr,
+        &mut process.frame_scanner,
+    )
+    .await
+}
+
 fn mysql_statement_input(query: &str) -> Vec<u8> {
     let query = query.trim_end();
     [query.as_bytes(), b"\n;\n"].concat()
@@ -460,7 +488,9 @@ mod tests {
     use super::*;
     use crate::adapters::csv_export::export_to_path;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
-    use crate::domain::{CommandTag, QueryValue, RefreshScope};
+    use crate::domain::{
+        CommandTag, MySqlDiagnostic, MySqlDiagnosticLevel, QueryValue, RefreshScope,
+    };
 
     mod cleanup {
         use super::*;
@@ -774,6 +804,13 @@ while IFS= read -r line; do
       ;;
     *"SHOW CREATE TABLE"*)
       printf '%s\n' '<resultset><row><field name="Create Table">CREATE TABLE items (id INT)</field></row></resultset>'
+      ;;
+    *"INSERT IGNORE"*)
+      printf '%s\n' 'Warning (Code 1062): duplicate ignored'
+      ;;
+    *"CREATE TABLE IF NOT EXISTS"*)
+      printf '%s\n' 'Note (Code 1050): table already exists'
+      last_statement=create
       ;;
     *CREATE*)
       last_statement=create
@@ -1385,10 +1422,56 @@ done
             );
             assert_eq!(result.command_tag, None);
             assert_eq!(result.refresh_scope, RefreshScope::Data);
+            assert!(result.diagnostics.is_empty());
             let log = fs::read_to_string(log_file).unwrap();
             assert!(log.contains("UPDATE items SET value = 1"));
             assert_eq!(log.matches("__sabiql_marker").count(), 1);
             assert!(!log.contains("ROW_COUNT()"));
+        }
+
+        #[tokio::test]
+        async fn keeps_multi_statement_diagnostics_on_the_submission_result() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements(
+                "INSERT IGNORE INTO items (id) VALUES (1); CREATE TABLE IF NOT EXISTS items (id INT); SELECT 2",
+            )
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .expect("multi-statement diagnostics execution");
+
+            assert_eq!(
+                result.result_set.as_ref().map(|result| &result.values),
+                Some(&vec![vec![QueryValue::Text("two".to_string())]])
+            );
+            assert_eq!(
+                result.diagnostics,
+                vec![
+                    MySqlDiagnostic {
+                        level: MySqlDiagnosticLevel::Warning,
+                        code: 1062,
+                        message: "duplicate ignored".to_string(),
+                    },
+                    MySqlDiagnostic {
+                        level: MySqlDiagnosticLevel::Note,
+                        code: 1050,
+                        message: "table already exists".to_string(),
+                    },
+                ]
+            );
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert_eq!(log.matches("__sabiql_marker").count(), 1);
         }
 
         #[tokio::test]

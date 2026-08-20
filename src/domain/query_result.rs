@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::CommandTag;
+use super::{CommandTag, MySqlDiagnostic};
 
 const BLOB_PREVIEW_BYTES: usize = 8;
 
@@ -268,6 +268,7 @@ pub struct QueryResult {
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
     pub refresh_scope: RefreshScope,
+    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
     explicit_row_identity: Option<ExplicitRowIdentity>,
@@ -302,6 +303,7 @@ impl QueryResult {
             error: None,
             command_tag: None,
             refresh_scope: RefreshScope::None,
+            mysql_diagnostics: Vec::new(),
         }
     }
 
@@ -327,6 +329,7 @@ impl QueryResult {
             error: None,
             command_tag: None,
             refresh_scope: RefreshScope::None,
+            mysql_diagnostics: Vec::new(),
         }
     }
 
@@ -350,6 +353,7 @@ impl QueryResult {
             error: Some(error),
             command_tag: None,
             refresh_scope: RefreshScope::None,
+            mysql_diagnostics: Vec::new(),
         }
     }
 
@@ -363,6 +367,12 @@ impl QueryResult {
     #[must_use]
     pub fn with_refresh_scope(mut self, refresh_scope: RefreshScope) -> Self {
         self.refresh_scope = refresh_scope;
+        self
+    }
+
+    #[must_use]
+    pub fn with_mysql_diagnostics(mut self, diagnostics: Vec<MySqlDiagnostic>) -> Self {
+        self.mysql_diagnostics = diagnostics;
         self
     }
 
@@ -595,6 +605,7 @@ mod tests {
 
     mod builder {
         use super::*;
+        use crate::MySqlDiagnosticLevel;
 
         #[test]
         fn with_command_tag_sets_tag() {
@@ -603,6 +614,25 @@ mod tests {
                     .with_command_tag(CommandTag::Select(1));
 
             assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
+        }
+
+        #[test]
+        fn with_mysql_diagnostics_keeps_success_status_and_details() {
+            let result = QueryResult::success(
+                "INSERT IGNORE".to_string(),
+                vec![],
+                vec![],
+                0,
+                QuerySource::Adhoc,
+            )
+            .with_mysql_diagnostics(vec![MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Warning,
+                code: 1062,
+                message: "duplicate".to_string(),
+            }]);
+
+            assert!(!result.is_error());
+            assert_eq!(result.mysql_diagnostics[0].code, 1062);
         }
     }
 

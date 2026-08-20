@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
-    RefreshScope,
+    MySqlDiagnostic, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying,
         mysql_statement_is_schema_modifying, mysql_statement_reads_session_diagnostics,
@@ -20,10 +20,11 @@ use super::super::policy::{
     query_failed_after_mysql_statement,
 };
 use super::super::xml::MySqlResultSet;
-use super::metadata::mysql_metadata_columns;
+use super::metadata::mysql_metadata_columns_with_diagnostics;
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    read_one_mysql_resultset, run_mysql_process_with_timeout, write_mysql_statement,
+    read_one_mysql_resultset, read_one_mysql_resultset_with_diagnostics,
+    run_mysql_process_with_timeout, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
@@ -56,7 +57,7 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
                 .to_string(),
         ));
     }
-    let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
+    let mut process = MySqlProcess::spawn_with_adhoc_program(program, option_file)?;
     run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
         run_mysql_adhoc_process(
             process,
@@ -73,6 +74,7 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
 struct MySqlStatementExecution {
     result_set: Option<MySqlResultSet>,
     refresh_scope: RefreshScope,
+    diagnostics: Vec<MySqlDiagnostic>,
 }
 
 pub(super) async fn fill_mysql_empty_result_columns(
@@ -83,6 +85,7 @@ pub(super) async fn fill_mysql_empty_result_columns(
     kind: &MySqlStatementKind,
     access_mode: AccessMode,
     expected_columns: Option<&[&str]>,
+    diagnostics: &mut Vec<MySqlDiagnostic>,
 ) -> Result<MySqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
         return Ok(result);
@@ -100,8 +103,16 @@ pub(super) async fn fill_mysql_empty_result_columns(
                 "MySQL empty result has no supported metadata fallback".to_string(),
             )
         })?;
-    result.columns =
-        mysql_metadata_columns(process, option_file, query, fallback_kind, access_mode).await?;
+    let (columns, metadata_diagnostics) = mysql_metadata_columns_with_diagnostics(
+        process,
+        option_file,
+        query,
+        fallback_kind,
+        access_mode,
+    )
+    .await?;
+    diagnostics.extend(metadata_diagnostics);
+    result.columns = columns;
     Ok(result)
 }
 
@@ -119,10 +130,11 @@ async fn run_mysql_statement(
         return Ok(MySqlStatementExecution {
             result_set: None,
             refresh_scope: possible_refresh_scope,
+            diagnostics: Vec::new(),
         });
     }
-    let xml = match read_one_mysql_resultset(process).await {
-        Ok(xml) => xml,
+    let (xml, diagnostics) = match read_one_mysql_resultset_with_diagnostics(process).await {
+        Ok(result) => result,
         Err(error) => {
             return Err(query_failed_after_mysql_statement(
                 error,
@@ -139,6 +151,7 @@ async fn run_mysql_statement(
     Ok(MySqlStatementExecution {
         result_set: Some(result),
         refresh_scope: possible_refresh_scope,
+        diagnostics,
     })
 }
 
@@ -180,6 +193,7 @@ async fn fill_mysql_last_result_columns(
     access_mode: AccessMode,
     expected_columns: Option<&[&str]>,
     refresh_scope: RefreshScope,
+    diagnostics: &mut Vec<MySqlDiagnostic>,
 ) -> Result<(), DbOperationError> {
     let Some(result) = last_result_set.take() else {
         return Ok(());
@@ -196,6 +210,7 @@ async fn fill_mysql_last_result_columns(
         statement.kind(),
         access_mode,
         expected_columns,
+        diagnostics,
     )
     .await
     .map_err(|error| query_failed_after_change(error, refresh_scope))?;
@@ -224,6 +239,7 @@ async fn run_mysql_adhoc_process(
     let mut last_result_statement = None;
     let mut refresh_scope = RefreshScope::None;
     let mut refresh_scope_before_last_statement = RefreshScope::None;
+    let mut diagnostics = Vec::new();
     let expected_columns = (statements.len() == 1)
         .then_some(expected_columns)
         .flatten();
@@ -245,10 +261,12 @@ async fn run_mysql_adhoc_process(
                 access_mode,
                 expected_columns,
                 refresh_scope,
+                &mut diagnostics,
             )
             .await?;
         }
         let execution = run_mysql_statement(process, statement, refresh_scope).await?;
+        diagnostics.extend(execution.diagnostics);
         if let Some(result) = execution.result_set {
             last_result_set = Some(result);
             last_result_statement = Some(statement);
@@ -264,6 +282,7 @@ async fn run_mysql_adhoc_process(
         access_mode,
         expected_columns,
         refresh_scope,
+        &mut diagnostics,
     )
     .await?;
 
@@ -277,16 +296,18 @@ async fn run_mysql_adhoc_process(
     if let Err(error) = write_mysql_statement(process, &marker_query).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
-    let marker_xml = match read_one_mysql_resultset(process).await {
-        Ok(xml) => xml,
-        Err(error) => {
-            return Err(query_failed_after_mysql_statement(
-                error,
-                refresh_scope_before_last_statement,
-                refresh_scope,
-            ));
-        }
-    };
+    let (marker_xml, marker_diagnostics) =
+        match read_one_mysql_resultset_with_diagnostics(process).await {
+            Ok(result) => result,
+            Err(error) => {
+                return Err(query_failed_after_mysql_statement(
+                    error,
+                    refresh_scope_before_last_statement,
+                    refresh_scope,
+                ));
+            }
+        };
+    diagnostics.extend(marker_diagnostics);
     let marker_result = match super::parse_mysql_xml(&marker_xml) {
         Ok(result) => result,
         Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
@@ -351,5 +372,6 @@ async fn run_mysql_adhoc_process(
         result_set: last_result_set,
         command_tag,
         refresh_scope,
+        diagnostics,
     })
 }

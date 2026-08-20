@@ -2,16 +2,35 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
+use crate::domain::{MySqlDiagnostic, MySqlDiagnosticLevel};
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
-use crate::primitives::utils::text_utils::truncate_to_width_with;
+use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_count};
 use crate::theme::ThemePalette;
+
+pub(super) fn status_height(state: &AppState, width: u16) -> u16 {
+    let Some(snapshot) = state.sql_modal.last_adhoc_success() else {
+        return 1;
+    };
+    if snapshot.mysql_diagnostics.is_empty() {
+        return 1;
+    }
+
+    let status_width = width.saturating_sub(" [NORMAL]".len() as u16 + 1);
+    let base_lines = wrapped_line_count(&success_status_message(state), status_width);
+    let diagnostic_lines = snapshot
+        .mysql_diagnostics
+        .iter()
+        .map(|diagnostic| wrapped_line_count(&diagnostic_status_line(diagnostic), status_width))
+        .sum::<u16>();
+    base_lines.saturating_add(diagnostic_lines).max(1)
+}
 
 pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, theme: &ThemePalette) {
     if let SqlModalStatus::ConfirmingHigh {
@@ -26,6 +45,16 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
 
     if let SqlModalStatus::ConfirmingRisk { reason, label } = state.sql_modal.status() {
         render_confirming_risk_status(frame, area, reason, label, theme);
+        return;
+    }
+
+    if matches!(state.sql_modal.status(), SqlModalStatus::Success)
+        && state
+            .sql_modal
+            .last_adhoc_success()
+            .is_some_and(|snapshot| !snapshot.mysql_diagnostics.is_empty())
+    {
+        render_success_status_with_diagnostics(frame, area, state, theme);
         return;
     }
 
@@ -246,6 +275,56 @@ fn success_status_message(state: &AppState) -> String {
             snapshot.row_count, rows_label, time_secs
         )
     }
+}
+
+fn render_success_status_with_diagnostics(
+    frame: &mut Frame,
+    area: Rect,
+    state: &AppState,
+    theme: &ThemePalette,
+) {
+    let badge_display = " [NORMAL]";
+    let badge_width = badge_display.len() as u16 + 1;
+    let [badge_area, status_area] =
+        Layout::horizontal([Constraint::Length(badge_width), Constraint::Min(1)]).areas(area);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(
+            badge_display,
+            Style::default().fg(theme.semantic.status.success),
+        ))),
+        badge_area,
+    );
+
+    let mut lines = vec![Line::from(Span::styled(
+        format!("{} ", success_status_message(state)),
+        Style::default()
+            .fg(theme.semantic.status.success)
+            .add_modifier(Modifier::BOLD),
+    ))];
+    if let Some(snapshot) = state.sql_modal.last_adhoc_success() {
+        lines.extend(snapshot.mysql_diagnostics.iter().map(|diagnostic| {
+            Line::from(Span::styled(
+                diagnostic_status_line(diagnostic),
+                Style::default().fg(theme.semantic.status.warning),
+            ))
+        }));
+    }
+    frame.render_widget(
+        Paragraph::new(lines).wrap(Wrap { trim: false }),
+        status_area,
+    );
+}
+
+fn diagnostic_status_line(diagnostic: &MySqlDiagnostic) -> String {
+    let level = match diagnostic.level {
+        MySqlDiagnosticLevel::Warning => "Warning",
+        MySqlDiagnosticLevel::Note => "Note",
+    };
+    format!(
+        "⚠ {level} (Code {}): {}",
+        diagnostic.code, diagnostic.message
+    )
 }
 
 fn error_status_message(state: &AppState) -> String {

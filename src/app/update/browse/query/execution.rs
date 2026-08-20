@@ -70,6 +70,7 @@ pub fn reduce_execution(
                         command_tag: result.command_tag.clone(),
                         row_count: result.row_count(),
                         execution_time_ms: result.execution_time_ms,
+                        mysql_diagnostics: result.mysql_diagnostics.clone(),
                     });
                     state.query.push_history(Arc::clone(result));
                     state.query.set_current_result(Arc::clone(result));

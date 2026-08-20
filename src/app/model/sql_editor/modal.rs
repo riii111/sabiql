@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use crate::domain::CommandTag;
+use crate::domain::{CommandTag, MySqlDiagnostic};
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -47,6 +47,7 @@ pub struct AdhocSuccessSnapshot {
     pub command_tag: Option<CommandTag>,
     pub row_count: usize,
     pub execution_time_ms: u64,
+    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -768,6 +769,7 @@ mod tests {
                 command_tag: None,
                 row_count: 1,
                 execution_time_ms: 10,
+                mysql_diagnostics: Vec::new(),
             });
             assert!(ctx.last_adhoc_success().is_some());
             assert!(ctx.last_adhoc_error().is_none());

@@ -7,7 +7,7 @@ use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use sabiql_domain::{ConnectionId, QueryResult};
+use sabiql_domain::{ConnectionId, MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult};
 
 #[test]
 fn sql_modal_with_completion() {
@@ -306,6 +306,7 @@ fn sql_modal_success_select() {
         command_tag: None,
         row_count: 2,
         execution_time_ms: 15,
+        mysql_diagnostics: Vec::new(),
     });
     state
         .query
@@ -326,6 +327,54 @@ fn sql_modal_success_select() {
 }
 
 #[test]
+fn sql_modal_success_with_mysql_diagnostics() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::SqlModal);
+    state
+        .sql_modal
+        .editor_mut_for_input()
+        .set_content("INSERT IGNORE INTO users (id) VALUES (1)".to_string());
+    state.sql_modal.finish_adhoc_success(AdhocSuccessSnapshot {
+        command_tag: Some(CommandTag::Insert(1)),
+        row_count: 1,
+        execution_time_ms: 15,
+        mysql_diagnostics: vec![
+            MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Warning,
+                code: 1062,
+                message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
+            },
+            MySqlDiagnostic {
+                level: MySqlDiagnosticLevel::Note,
+                code: 1050,
+                message: "Table 'users' already exists".to_string(),
+            },
+        ],
+    });
+    state.query.set_current_result(Arc::new(
+        QueryResult::success(
+            "INSERT IGNORE INTO users (id) VALUES (1)".to_string(),
+            vec![],
+            vec![],
+            15,
+            QuerySource::Adhoc,
+        )
+        .with_command_tag(CommandTag::Insert(1))
+        .with_mysql_diagnostics(vec![MySqlDiagnostic {
+            level: MySqlDiagnosticLevel::Warning,
+            code: 1062,
+            message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
+        }]),
+    ));
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn sql_modal_success_dml_with_command_tag() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();
@@ -339,6 +388,7 @@ fn sql_modal_success_dml_with_command_tag() {
         command_tag: Some(CommandTag::Delete(3)),
         row_count: 3,
         execution_time_ms: 12,
+        mysql_diagnostics: Vec::new(),
     });
     // DML: row_count carries affected rows, not result rows (executor's command-tag path)
     state.query.set_current_result(Arc::new(
@@ -372,6 +422,7 @@ fn sql_modal_success_ddl_create_table() {
         command_tag: Some(CommandTag::Create("TABLE".to_string())),
         row_count: 0,
         execution_time_ms: 45,
+        mysql_diagnostics: Vec::new(),
     });
     state.query.set_current_result(Arc::new(
         QueryResult::success(

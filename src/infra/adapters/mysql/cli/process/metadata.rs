@@ -9,7 +9,7 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
-use crate::domain::QueryValue;
+use crate::domain::{MySqlDiagnostic, QueryValue};
 
 use super::super::args::mysql_metadata_args;
 use super::super::error::{
@@ -19,7 +19,10 @@ use super::super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
 };
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
-use super::{MYSQL_QUERY_TIMEOUT, MySqlProcess, read_one_mysql_resultset, write_mysql_statement};
+use super::{
+    MYSQL_QUERY_TIMEOUT, MySqlProcess, read_one_mysql_resultset_with_diagnostics,
+    write_mysql_statement,
+};
 
 pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
     process: &mut MySqlProcess,
@@ -28,27 +31,44 @@ pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
     kind: MySqlMetadataFallbackKind,
     access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
+    Ok(
+        mysql_metadata_columns_with_diagnostics(process, option_file, query, kind, access_mode)
+            .await?
+            .0,
+    )
+}
+
+pub(super) async fn mysql_metadata_columns_with_diagnostics(
+    process: &mut MySqlProcess,
+    option_file: &std::path::Path,
+    query: &str,
+    kind: MySqlMetadataFallbackKind,
+    access_mode: AccessMode,
+) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
     let query = match kind {
         MySqlMetadataFallbackKind::Select | MySqlMetadataFallbackKind::Table => {
-            return mysql_metadata_select_columns(process, query).await;
+            return mysql_metadata_select_columns_with_diagnostics(process, query).await;
         }
         MySqlMetadataFallbackKind::Show | MySqlMetadataFallbackKind::Describe => {
             query.trim().trim_end_matches(';').trim_end().to_string()
         }
     };
-    mysql_metadata_columns_external(option_file, &query, access_mode).await
+    Ok((
+        mysql_metadata_columns_external(option_file, &query, access_mode).await?,
+        Vec::new(),
+    ))
 }
 
-async fn mysql_metadata_select_columns(
+async fn mysql_metadata_select_columns_with_diagnostics(
     process: &mut MySqlProcess,
     query: &str,
-) -> Result<Vec<String>, DbOperationError> {
+) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
     let suffix = Uuid::new_v4().simple().to_string();
     let source_alias = format!("__sabiql_metadata_source_{suffix}");
     let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
     let query = mysql_metadata_select_query(query, &source_alias, &marker_alias)?;
     write_mysql_statement(process, &query).await?;
-    let xml = match read_one_mysql_resultset(process).await {
+    let (xml, diagnostics) = match read_one_mysql_resultset_with_diagnostics(process).await {
         Err(DbOperationError::QueryFailed(details))
             if details
                 .to_ascii_lowercase()
@@ -76,7 +96,7 @@ async fn mysql_metadata_select_columns(
             "MySQL SELECT metadata fallback returned an invalid synthetic row".to_string(),
         ));
     }
-    Ok(result.columns)
+    Ok((result.columns, diagnostics))
 }
 
 async fn mysql_metadata_columns_external(

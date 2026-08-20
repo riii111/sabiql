@@ -14,6 +14,12 @@ pub(super) fn mysql_query_args(option_file: &Path) -> Vec<String> {
     mysql_result_args(option_file, true)
 }
 
+pub(super) fn mysql_adhoc_args(option_file: &Path) -> Vec<String> {
+    let mut args = mysql_query_args(option_file);
+    args.push("--show-warnings".to_string());
+    args
+}
+
 pub(super) fn mysql_metadata_session_args(option_file: &Path) -> Vec<String> {
     mysql_result_args(option_file, false)
 }
@@ -148,5 +154,26 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|argument| argument == "--quick"));
+    }
+
+    #[test]
+    fn adhoc_arguments_enable_statement_diagnostics_without_changing_query_options() {
+        let args = mysql_adhoc_args(Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert_eq!(args.last().map(String::as_str), Some("--show-warnings"));
+        assert_eq!(
+            args.iter().filter(|arg| *arg == "--show-warnings").count(),
+            1
+        );
+        assert!(
+            mysql_query_args(Path::new("/tmp/sabiql-mysql.cnf"))
+                .iter()
+                .all(|argument| argument != "--show-warnings")
+        );
+        assert!(
+            mysql_metadata_args(Path::new("/tmp/sabiql-mysql.cnf"))
+                .iter()
+                .all(|argument| argument != "--show-warnings")
+        );
     }
 }

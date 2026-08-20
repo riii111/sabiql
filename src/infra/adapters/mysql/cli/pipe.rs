@@ -8,7 +8,8 @@ use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 use super::xml::{
-    MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check, trace_mysql_frame,
+    MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check_with_diagnostics,
+    trace_mysql_frame,
 };
 
 pub(super) struct MySqlExportPipeSource<'a, O, E> {
@@ -159,6 +160,30 @@ where
     R: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
 {
+    Ok(read_one_mysql_resultset_from_pipes_with_diagnostics(
+        reader,
+        stderr,
+        child,
+        pending,
+        pending_stderr,
+        frame_scanner,
+    )
+    .await?
+    .0)
+}
+
+pub(super) async fn read_one_mysql_resultset_from_pipes_with_diagnostics<R, E>(
+    reader: &mut R,
+    stderr: &mut E,
+    child: &mut tokio::process::Child,
+    pending: &mut Vec<u8>,
+    pending_stderr: &mut Vec<u8>,
+    frame_scanner: &mut MySqlResultsetFrameScanner,
+) -> Result<(Vec<u8>, Vec<crate::domain::MySqlDiagnostic>), DbOperationError>
+where
+    R: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
     let mut chunk = [0; 4096];
     let mut stderr_chunk = [0; 4096];
     let mut stderr_closed = false;
@@ -177,10 +202,12 @@ where
                 () = tokio::task::yield_now() => {}
             }
         }
-        if let Some(frame) =
-            take_mysql_resultset_frame_after_error_check(pending, pending_stderr, frame_scanner)?
-        {
-            trace_mysql_frame("receive resultset", frame.len());
+        if let Some(frame) = take_mysql_resultset_frame_after_error_check_with_diagnostics(
+            pending,
+            pending_stderr,
+            frame_scanner,
+        )? {
+            trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
         }
         if stderr_closed {

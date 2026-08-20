@@ -82,7 +82,9 @@ async fn execute_adhoc_with_statements(
     if let Some(tag) = execution.command_tag {
         result = result.with_command_tag(tag);
     }
-    Ok(result.with_refresh_scope(execution.refresh_scope))
+    Ok(result
+        .with_mysql_diagnostics(execution.diagnostics)
+        .with_refresh_scope(execution.refresh_scope))
 }
 
 #[async_trait]

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
-    CommandTag, QueryValue, RefreshScope,
+    CommandTag, MySqlDiagnostic, QueryValue, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
         classify_mysql_multi_statement_with_lower_case_table_names,
@@ -29,6 +29,7 @@ pub(in crate::adapters::mysql) struct MySqlExecutionResult {
     pub(in crate::adapters::mysql) result_set: Option<MySqlResultSet>,
     pub(in crate::adapters::mysql) command_tag: Option<CommandTag>,
     pub(in crate::adapters::mysql) refresh_scope: RefreshScope,
+    pub(in crate::adapters::mysql) diagnostics: Vec<MySqlDiagnostic>,
 }
 
 pub(in crate::adapters::mysql) fn validate_mysql_multi_query(

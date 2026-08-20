@@ -150,7 +150,7 @@ impl SqlModal {
         ) {
             3
         } else {
-            1
+            status::status_height(state, content_area.width)
         };
 
         let [main_area, separator_area, status_area] = Layout::vertical([
