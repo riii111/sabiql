@@ -136,7 +136,7 @@ where
     .await
 }
 
-pub(super) async fn run_mysql_command_with_timeout<I, S>(
+pub(in crate::adapters::mysql) async fn run_mysql_command_with_timeout<I, S>(
     args: I,
     option_file: Option<&PathBuf>,
     command_timeout: Duration,
