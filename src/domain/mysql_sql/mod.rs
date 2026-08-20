@@ -125,6 +125,18 @@ pub fn target_is_selected_database(
     target::target_is_selected_database(statement, selected_database)
 }
 
+pub fn target_is_selected_database_with_lower_case_table_names(
+    statement: &MySqlStatement,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> bool {
+    target::target_is_selected_database_with_lower_case_table_names(
+        statement,
+        selected_database,
+        lower_case_table_names,
+    )
+}
+
 pub fn statement_contains_unsupported_mysql_control(sql: &str) -> bool {
     side_effect::statement_contains_unsupported_mysql_control(sql)
 }
@@ -168,6 +180,14 @@ pub fn classify_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
 ) -> Result<Vec<MySqlStatement>, String> {
+    classify_mysql_multi_statement_with_lower_case_table_names(sql, selected_database, 0)
+}
+
+pub fn classify_mysql_multi_statement_with_lower_case_table_names(
+    sql: &str,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> Result<Vec<MySqlStatement>, String> {
     if statement_contains_unsupported_mysql_control(sql) {
         return Err("unsupported MySQL session or table-lock statement".to_string());
     }
@@ -184,13 +204,25 @@ pub fn classify_mysql_multi_statement(
         classified.push(statement);
     }
 
-    validate_mysql_statements(&classified, selected_database)?;
+    validate_mysql_statements_with_lower_case_table_names(
+        &classified,
+        selected_database,
+        lower_case_table_names,
+    )?;
     Ok(classified)
 }
 
 pub fn validate_mysql_statements(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,
+) -> Result<(), String> {
+    validate_mysql_statements_with_lower_case_table_names(statements, selected_database, 0)
+}
+
+pub fn validate_mysql_statements_with_lower_case_table_names(
+    statements: &[MySqlStatement],
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
 ) -> Result<(), String> {
     if statements.is_empty() {
         return Err("Empty MySQL input".to_string());
@@ -212,23 +244,37 @@ pub fn validate_mysql_statements(
         }
         if (mysql_statement_is_schema_modifying(&statement.kind)
             || mysql_statement_is_data_modifying(&statement.kind))
-            && !target_is_selected_database(statement, selected_database)
+            && !target_is_selected_database_with_lower_case_table_names(
+                statement,
+                selected_database,
+                lower_case_table_names,
+            )
         {
             return Err("MySQL target must be in the selected database".to_string());
         }
     }
 
-    validate_mysql_submission_state(statements, selected_database)
+    validate_mysql_submission_state(statements, selected_database, lower_case_table_names)
 }
 
-fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>) -> Option<String> {
+fn mysql_target_key(
+    statement: &MySqlStatement,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> Option<String> {
+    let database = statement
+        .target_database
+        .as_deref()
+        .or(selected_database)
+        .unwrap_or_default();
+    let database = match lower_case_table_names {
+        0 => database.to_string(),
+        1 | 2 => database.to_ascii_lowercase(),
+        _ => return None,
+    };
     Some(format!(
         "{}:{}",
-        statement
-            .target_database
-            .as_deref()
-            .or(selected_database)
-            .unwrap_or_default(),
+        database,
         statement.target.as_deref()?.to_ascii_uppercase()
     ))
 }
@@ -236,6 +282,7 @@ fn mysql_target_key(statement: &MySqlStatement, selected_database: Option<&str>)
 fn validate_mysql_submission_state(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,
+    lower_case_table_names: u8,
 ) -> Result<(), String> {
     let mut transaction_open = false;
     let mut savepoints = Vec::<String>::new();
@@ -302,7 +349,7 @@ fn validate_mysql_submission_state(
                 savepoints.remove(index);
             }
             MySqlStatementKind::CreateTable { temporary: true } => {
-                let key = mysql_target_key(statement, selected_database)
+                let key = mysql_target_key(statement, selected_database, lower_case_table_names)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 if temporary_tables.iter().any(|current| current == &key) {
                     return Err("MySQL temporary table is created more than once".to_string());
@@ -310,7 +357,7 @@ fn validate_mysql_submission_state(
                 temporary_tables.push(key);
             }
             MySqlStatementKind::DropTable { temporary: true } => {
-                let key = mysql_target_key(statement, selected_database)
+                let key = mysql_target_key(statement, selected_database, lower_case_table_names)
                     .ok_or_else(|| "MySQL temporary table target is ambiguous".to_string())?;
                 let Some(index) = temporary_tables.iter().position(|current| current == &key)
                 else {
@@ -892,6 +939,43 @@ mod tests {
                 "{sql}"
             );
         }
+    }
+
+    #[test]
+    fn qualified_mysql_mutations_follow_lower_case_table_names() {
+        for lower_case_table_names in [1, 2] {
+            for sql in [
+                "INSERT INTO APP.items VALUES (1)",
+                "UPDATE APP.items SET value = 1",
+                "DELETE FROM APP.items WHERE id = 1",
+            ] {
+                let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                    sql,
+                    Some("app"),
+                    lower_case_table_names,
+                )
+                .unwrap_or_else(|error| panic!("{sql}: {error}"));
+                assert_eq!(statements[0].target_database(), Some("APP"));
+                assert_eq!(statements[0].target(), Some("items"));
+            }
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE APP.items SET value = 1",
+                Some("app"),
+                0,
+            )
+            .is_err()
+        );
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE other.items SET value = 1",
+                Some("app"),
+                1,
+            )
+            .is_err()
+        );
     }
 
     #[test]

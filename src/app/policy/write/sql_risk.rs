@@ -2,8 +2,9 @@ use super::write_guardrails::{self, RiskLevel};
 use crate::domain::{
     DatabaseType,
     mysql_sql::{
-        MySqlLexError, MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
-        classify_mysql_statement, has_mysql_read_only_side_effect, split_mysql_statements,
+        MySqlLexError, MySqlStatement, MySqlStatementKind,
+        classify_mysql_multi_statement_with_lower_case_table_names, classify_mysql_statement,
+        has_mysql_read_only_side_effect, split_mysql_statements,
         statement_contains_unsupported_mysql_control,
     },
     sqlite_sql::{
@@ -170,7 +171,19 @@ pub fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
 ) -> MultiStatementDecision<MySqlStatement> {
-    let statements = match classify_mysql_multi_statement(sql, selected_database) {
+    evaluate_mysql_multi_statement_with_lower_case_table_names(sql, selected_database, 0)
+}
+
+pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
+    sql: &str,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> MultiStatementDecision<MySqlStatement> {
+    let statements = match classify_mysql_multi_statement_with_lower_case_table_names(
+        sql,
+        selected_database,
+        lower_case_table_names,
+    ) {
         Ok(statements) => statements,
         Err(reason) => return MultiStatementDecision::Block { reason },
     };

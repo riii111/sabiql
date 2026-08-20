@@ -944,7 +944,11 @@ mod tests {
 
         #[async_trait::async_trait]
         impl MySqlConnectionProbe for ProbeThatObservesDrop {
-            async fn probe(&self, _dsn: &str) -> Result<(), DbOperationError> {
+            async fn probe(
+                &self,
+                _dsn: &str,
+            ) -> Result<crate::ports::outbound::MySqlConnectionProbeResult, DbOperationError>
+            {
                 self.started
                     .lock()
                     .expect("probe started signal lock poisoned")
@@ -952,7 +956,9 @@ mod tests {
                     .expect("probe should start once")
                     .send(self.metadata_dropped.load(Ordering::SeqCst) > 0)
                     .ok();
-                Ok(())
+                Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                    lower_case_table_names: 0,
+                })
             }
         }
 
@@ -1128,7 +1134,11 @@ mod tests {
 
         #[async_trait::async_trait]
         impl MySqlConnectionProbe for PendingMySqlConnectionProbe {
-            async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
+            async fn probe(
+                &self,
+                dsn: &str,
+            ) -> Result<crate::ports::outbound::MySqlConnectionProbeResult, DbOperationError>
+            {
                 let _drop_signal = DropSignal(Arc::clone(&self.dropped));
                 self.started
                     .send(dsn.to_string())

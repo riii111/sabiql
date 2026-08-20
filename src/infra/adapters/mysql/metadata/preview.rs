@@ -5,7 +5,10 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{Column, QueryValue};
 
 use super::super::{
-    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet, validate_mysql_multi_query},
+    cli::{
+        MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet,
+        validate_mysql_multi_query_with_lower_case_table_names,
+    },
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
@@ -73,8 +76,6 @@ async fn execute_preview_with_program(
             "MySQL metadata requires a selected database".to_string(),
         )
     })?;
-    validate_selected_schema_name(database, schema)?;
-
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
@@ -107,7 +108,8 @@ async fn execute_preview_with_session(
     limit: usize,
     offset: usize,
 ) -> Result<PreviewExecution, DbOperationError> {
-    session.probe().await?;
+    let lower_case_table_names = session.probe().await?;
+    validate_selected_schema_name(database, schema, lower_case_table_names)?;
     session.prepare_read_only().await?;
 
     let column_result = session
@@ -127,7 +129,12 @@ async fn execute_preview_with_session(
         limit,
         offset,
     );
-    validate_mysql_multi_query(&query, Some(database), AccessMode::ReadOnly)?;
+    validate_mysql_multi_query_with_lower_case_table_names(
+        &query,
+        Some(database),
+        AccessMode::ReadOnly,
+        lower_case_table_names,
+    )?;
     let expected_columns =
         preview_result_columns(&metadata.visible_columns, &metadata.identity_columns);
     let result_set = session
@@ -467,7 +474,7 @@ while IFS= read -r line; do
     ";") ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     *"SET SESSION TRANSACTION READ ONLY"*) ;;
     *__sabiql_session_marker*)

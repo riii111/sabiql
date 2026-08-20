@@ -40,7 +40,7 @@ async fn fetch_table_signatures_with_program(
     timeout: Duration,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
     let database = selected_database(dsn)?;
-    let results = execute_metadata_queries_in_session_with_program(
+    let (lower_case_table_names, results) = execute_metadata_queries_in_session_with_program(
         dsn,
         &[
             (TABLES_QUERY, TABLES_RESULT_COLUMNS),
@@ -55,10 +55,12 @@ async fn fetch_table_signatures_with_program(
         timeout,
     )
     .await?;
-    let snapshot = metadata_snapshot_from_result(&database, None, &results[0])?;
+    let snapshot =
+        metadata_snapshot_from_result(&database, None, &results[0], lower_case_table_names)?;
     table_signatures_from_metadata(
         &snapshot.tables,
         &database,
+        lower_case_table_names,
         parse_signature_column_metadata(&results[1])?,
         parse_foreign_key_metadata(&results[2])?,
         parse_signature_unique_column_metadata(&results[3])?,
@@ -88,6 +90,7 @@ fn parse_signature_column_metadata(
 fn table_signatures_from_metadata(
     tables: &[MySqlTableMetadata],
     database: &str,
+    lower_case_table_names: u8,
     columns: Vec<MySqlSignatureColumnMetadata>,
     foreign_keys: Vec<MySqlForeignKeyMetadata>,
     mut unique_columns_by_table: HashMap<String, HashSet<String>>,
@@ -164,6 +167,7 @@ fn table_signatures_from_metadata(
         let foreign_keys = foreign_keys_from_metadata(
             foreign_keys_by_table.remove(&key).unwrap_or_default(),
             database,
+            lower_case_table_names,
         )?;
         let detail = Table {
             schema: table.schema.clone(),
@@ -592,14 +596,21 @@ mod tests {
         let signatures = table_signatures_from_metadata(
             &tables,
             "App",
+            0,
             columns.clone(),
             foreign_keys.clone(),
             unique_columns,
         )
         .unwrap();
-        let signatures_without_unique =
-            table_signatures_from_metadata(&tables, "App", columns, foreign_keys, HashMap::new())
-                .unwrap();
+        let signatures_without_unique = table_signatures_from_metadata(
+            &tables,
+            "App",
+            0,
+            columns,
+            foreign_keys,
+            HashMap::new(),
+        )
+        .unwrap();
 
         assert_eq!(signatures.signatures.len(), 2);
         assert_eq!(signatures.table_details.len(), 2);
@@ -633,9 +644,15 @@ mod tests {
             row_count_estimate: None,
             comment: None,
         }];
-        let error =
-            table_signatures_from_metadata(&tables, "app", Vec::new(), Vec::new(), HashMap::new())
-                .unwrap_err();
+        let error = table_signatures_from_metadata(
+            &tables,
+            "app",
+            0,
+            Vec::new(),
+            Vec::new(),
+            HashMap::new(),
+        )
+        .unwrap_err();
 
         assert!(matches!(
             error,
@@ -671,7 +688,7 @@ while IFS= read -r line; do
     case "$line" in
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_probe.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     *"SET SESSION TRANSACTION READ ONLY")
       ;;

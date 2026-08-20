@@ -41,7 +41,7 @@ pub use er_exporter::{ErDiagramExporter, ErExportError, ErExportResult};
 pub use er_log_writer::ErLogWriter;
 pub use folder_opener::{FolderOpenError, FolderOpener};
 pub use metadata::MetadataProvider;
-pub use mysql_connection_probe::MySqlConnectionProbe;
+pub use mysql_connection_probe::{MySqlConnectionProbe, MySqlConnectionProbeResult};
 pub use mysql_query_executor::MySqlQueryExecutor;
 pub use query_executor::QueryExecutor;
 pub use query_history::{QueryHistoryError, QueryHistoryStore};

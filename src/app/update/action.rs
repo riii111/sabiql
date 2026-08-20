@@ -398,6 +398,7 @@ pub enum Action {
     ConnectionSaveCompleted {
         target: ConnectionTarget,
         run_id: u64,
+        mysql_lower_case_table_names: Option<u8>,
     },
     ConnectionSaveFailed {
         error: ConnectionSaveError,
@@ -407,6 +408,7 @@ pub enum Action {
     MySqlConnectionProbeCompleted {
         target: ConnectionTarget,
         run_id: u64,
+        lower_case_table_names: u8,
     },
     MySqlConnectionProbeFailed {
         target: ConnectionTarget,

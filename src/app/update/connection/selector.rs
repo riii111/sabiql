@@ -370,6 +370,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
                 Instant::now(),
                 &AppServices::stub(),

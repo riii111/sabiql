@@ -156,6 +156,7 @@ pub(crate) async fn run(
                                     database: None,
                                 },
                                 run_id,
+                                mysql_lower_case_table_names: None,
                             })
                             .ok();
                         }
@@ -193,7 +194,7 @@ pub(crate) async fn run(
                 mysql_connection_probe_task
                     .spawn(async move {
                         match probe.probe(&target.dsn).await {
-                            Ok(()) => {
+                            Ok(probe_result) => {
                                 let save_result = tokio::task::spawn_blocking(move || {
                                     claim_and_save(&run_guard, run_id, || store.save(&profile))
                                 })
@@ -201,9 +202,15 @@ pub(crate) async fn run(
                                 .expect("connection store save task panicked");
                                 match save_result {
                                     Some(Ok(())) => {
-                                        tx.send(Action::ConnectionSaveCompleted { target, run_id })
-                                            .await
-                                            .ok();
+                                        tx.send(Action::ConnectionSaveCompleted {
+                                            target,
+                                            run_id,
+                                            mysql_lower_case_table_names: Some(
+                                                probe_result.lower_case_table_names,
+                                            ),
+                                        })
+                                        .await
+                                        .ok();
                                     }
                                     Some(Err(e)) => {
                                         tx.send(Action::ConnectionSaveFailed {
@@ -257,6 +264,7 @@ pub(crate) async fn run(
                                         database: None,
                                     },
                                     run_id,
+                                    mysql_lower_case_table_names: None,
                                 })
                                 .await
                                 .ok();
@@ -294,8 +302,12 @@ pub(crate) async fn run(
             mysql_connection_probe_task
                 .spawn(async move {
                     match probe.probe(&target.dsn).await {
-                        Ok(()) => tx
-                            .send(Action::MySqlConnectionProbeCompleted { target, run_id })
+                        Ok(probe_result) => tx
+                            .send(Action::MySqlConnectionProbeCompleted {
+                                target,
+                                run_id,
+                                lower_case_table_names: probe_result.lower_case_table_names,
+                            })
                             .await
                             .ok(),
                         Err(error) => tx
@@ -547,7 +559,11 @@ mod tests {
                 .expect_probe()
                 .with(eq(dsn.to_string()))
                 .once()
-                .returning(|_| Ok(()));
+                .returning(|_| {
+                    Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                        lower_case_table_names: 0,
+                    })
+                });
 
             let mut store = MockConnectionStore::new();
             store.expect_save().once().returning(|profile| {
@@ -603,6 +619,7 @@ mod tests {
                         ..
                     },
                     run_id: 1,
+                    ..
                 } if database == "app"
             ));
         }
@@ -680,7 +697,9 @@ mod tests {
                 .once()
                 .returning(move |_| {
                     guard_for_probe.cancel();
-                    Ok(())
+                    Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                        lower_case_table_names: 0,
+                    })
                 });
 
             let mut store = MockConnectionStore::new();
@@ -812,6 +831,7 @@ mod tests {
                     Action::ConnectionSaveCompleted {
                         target: ConnectionTarget { ref dsn, .. },
                         run_id: 1,
+                        ..
                     } if dsn == &expected_dsn
                 ),
                 "expected sqlite ConnectionSaveCompleted, got {action:?}"

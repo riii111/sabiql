@@ -5,8 +5,10 @@ use crate::domain::{
     CommandTag, QueryValue, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, classify_mysql_multi_statement,
+        classify_mysql_multi_statement_with_lower_case_table_names,
         has_mysql_read_only_side_effect, mysql_export_plan, mysql_statement_is_data_modifying,
-        mysql_statement_is_persistent_schema_change, validate_mysql_statements,
+        mysql_statement_is_persistent_schema_change,
+        validate_mysql_statements_with_lower_case_table_names,
     },
 };
 
@@ -47,13 +49,34 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
     Ok(statements)
 }
 
-pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution(
+pub(in crate::adapters::mysql) fn validate_mysql_multi_query_with_lower_case_table_names(
+    query: &str,
+    selected_database: Option<&str>,
+    access_mode: AccessMode,
+    lower_case_table_names: u8,
+) -> Result<Vec<MySqlStatement>, DbOperationError> {
+    let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+        query,
+        selected_database,
+        lower_case_table_names,
+    )
+    .map_err(DbOperationError::UnsupportedOperation)?;
+    validate_mysql_access_mode(&statements, access_mode)?;
+    Ok(statements)
+}
+
+pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution_with_lower_case_table_names(
     statements: &[MySqlStatement],
     selected_database: Option<&str>,
     access_mode: AccessMode,
+    lower_case_table_names: u8,
 ) -> Result<(), DbOperationError> {
-    validate_mysql_statements(statements, selected_database)
-        .map_err(DbOperationError::UnsupportedOperation)?;
+    validate_mysql_statements_with_lower_case_table_names(
+        statements,
+        selected_database,
+        lower_case_table_names,
+    )
+    .map_err(DbOperationError::UnsupportedOperation)?;
     validate_mysql_access_mode(statements, access_mode)
 }
 
@@ -419,7 +442,12 @@ mod tests {
             classify_mysql_multi_statement("SELECT GET_LOCK('sabiql', 0)", Some("app"))
                 .expect("classification should succeed");
         assert!(matches!(
-            validate_mysql_statements_for_execution(&statements, Some("app"), AccessMode::ReadOnly,),
+            validate_mysql_statements_for_execution_with_lower_case_table_names(
+                &statements,
+                Some("app"),
+                AccessMode::ReadOnly,
+                0,
+            ),
             Err(DbOperationError::PermissionDenied(_))
         ));
 
@@ -427,10 +455,11 @@ mod tests {
             classify_mysql_multi_statement("UPDATE other.users SET value = 1", Some("other"))
                 .expect("classification should succeed for the original selected database");
         assert!(matches!(
-            validate_mysql_statements_for_execution(
+            validate_mysql_statements_for_execution_with_lower_case_table_names(
                 &statements,
                 Some("app"),
                 AccessMode::ReadWrite,
+                0,
             ),
             Err(DbOperationError::UnsupportedOperation(_))
         ));

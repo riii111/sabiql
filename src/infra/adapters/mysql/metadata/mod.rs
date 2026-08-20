@@ -25,7 +25,7 @@ impl MetadataProvider for MySqlAdapter {
     }
 
     async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        let result = catalog::execute_metadata_query(
+        let (_, result) = catalog::execute_metadata_query(
             dsn,
             EFFECTIVE_USER_QUERY,
             EFFECTIVE_USER_RESULT_COLUMNS,

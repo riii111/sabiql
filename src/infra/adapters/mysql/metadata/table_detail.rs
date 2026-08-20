@@ -25,7 +25,6 @@ use super::catalog::{
     metadata_snapshot_from_result, optional_text, parse_boolean_flag, parse_columns_for_table,
     parse_foreign_key_metadata, parse_optional_positive_i32, parse_positive_i32,
     parse_unique_column_metadata, primary_key_names, required_text, selected_database,
-    validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -103,29 +102,37 @@ async fn fetch_table_columns_and_fks_with_program(
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
     let database = selected_database(dsn)?;
-    validate_selected_schema_name(&database, schema)?;
     let table_query = table_query(schema, table);
     let columns_query = columns_query(schema, table);
     let unique_columns_query = unique_columns_query(schema, table);
     let foreign_keys_query = foreign_keys_query(schema, table);
-    let results = super::catalog::execute_metadata_queries_in_session_with_program(
-        dsn,
-        &[
-            (table_query.as_str(), TABLES_RESULT_COLUMNS),
-            (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
-            (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
-            (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
-        ],
-        program,
-        timeout,
-    )
-    .await?;
-    let snapshot = metadata_snapshot_from_result(&database, Some(schema), &results[0])?;
-    let table_metadata = find_table(schema, table, &snapshot.tables)?;
+    let (lower_case_table_names, results) =
+        super::catalog::execute_metadata_queries_in_session_with_program(
+            dsn,
+            &[
+                (table_query.as_str(), TABLES_RESULT_COLUMNS),
+                (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
+                (unique_columns_query.as_str(), UNIQUE_COLUMN_RESULT_COLUMNS),
+                (foreign_keys_query.as_str(), FOREIGN_KEY_RESULT_COLUMNS),
+            ],
+            program,
+            timeout,
+        )
+        .await?;
+    let snapshot = metadata_snapshot_from_result(
+        &database,
+        Some(schema),
+        &results[0],
+        lower_case_table_names,
+    )?;
+    let table_metadata = find_table(schema, table, &snapshot.tables, lower_case_table_names)?;
     let mut columns = parse_columns_for_table(&results[1], schema, table)?;
     mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[2])?);
-    let foreign_keys =
-        foreign_keys_from_metadata(parse_foreign_key_metadata(&results[3])?, &database)?;
+    let foreign_keys = foreign_keys_from_metadata(
+        parse_foreign_key_metadata(&results[3])?,
+        &database,
+        lower_case_table_names,
+    )?;
     Ok(table_from_columns_and_foreign_keys(
         table_metadata,
         columns,
@@ -146,7 +153,6 @@ async fn fetch_table_detail_in_session_with_program(
             "MySQL metadata requires a selected database".to_string(),
         )
     })?;
-    validate_selected_schema_name(database, schema)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
@@ -177,13 +183,18 @@ async fn fetch_table_detail_with_session(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    session.probe().await?;
+    let lower_case_table_names = session.probe().await?;
     session.prepare_read_only().await?;
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
         .await?;
-    let snapshot = metadata_snapshot_from_result(database, Some(schema), &tables_result)?;
-    let table_metadata = find_table(schema, table, &snapshot.tables)?;
+    let snapshot = metadata_snapshot_from_result(
+        database,
+        Some(schema),
+        &tables_result,
+        lower_case_table_names,
+    )?;
+    let table_metadata = find_table(schema, table, &snapshot.tables, lower_case_table_names)?;
 
     let mut columns = parse_columns_for_table(
         &session
@@ -213,6 +224,7 @@ async fn fetch_table_detail_with_session(
                 .await?,
         )?,
         database,
+        lower_case_table_names,
     )?;
     let triggers = triggers_from_metadata(parse_trigger_metadata(
         &session
@@ -544,7 +556,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
     else
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
     fi
     continue
   fi

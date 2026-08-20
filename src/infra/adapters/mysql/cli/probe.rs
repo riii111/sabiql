@@ -10,17 +10,17 @@ use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    UnsupportedOperationKind,
+    MySqlConnectionProbeResult, UnsupportedOperationKind,
 };
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
-const MYSQL_PROBE_QUERY: &str =
-    "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode)";
+const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
 
 #[derive(Debug, Deserialize)]
 struct MySqlProbeResponse {
     version: String,
     sql_mode: String,
+    lower_case_table_names: u8,
 }
 
 pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
@@ -41,7 +41,7 @@ pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), 
 
 pub(in crate::adapters::mysql) async fn probe_mysql_server(
     option_file: &PathBuf,
-) -> Result<(), DbOperationError> {
+) -> Result<MySqlConnectionProbeResult, DbOperationError> {
     let output = run_mysql_command(mysql_probe_args(option_file), Some(option_file)).await?;
     if !output.status.success() {
         return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
@@ -49,7 +49,21 @@ pub(in crate::adapters::mysql) async fn probe_mysql_server(
 
     let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
     validate_server_version(&response.version)?;
-    validate_sql_mode(&response.sql_mode)
+    validate_sql_mode(&response.sql_mode)?;
+    validate_lower_case_table_names(response.lower_case_table_names)?;
+    Ok(MySqlConnectionProbeResult {
+        lower_case_table_names: response.lower_case_table_names,
+    })
+}
+
+pub(super) fn validate_lower_case_table_names(value: u8) -> Result<(), DbOperationError> {
+    if value <= 2 {
+        Ok(())
+    } else {
+        Err(DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL lower_case_table_names value: {value}"
+        )))
+    }
 }
 
 fn contains_unsupported_mysql_product(value: &str) -> bool {
@@ -303,6 +317,18 @@ mod probe_tests {
                 kind: UnsupportedOperationKind::SessionMode,
                 ..
             })
+        ));
+    }
+
+    #[test]
+    fn validates_supported_lower_case_table_names_modes() {
+        for mode in [0, 1, 2] {
+            assert!(validate_lower_case_table_names(mode).is_ok());
+        }
+        assert!(matches!(
+            validate_lower_case_table_names(3),
+            Err(DbOperationError::MetadataParseFailed(message))
+                if message == "invalid MySQL lower_case_table_names value: 3"
         ));
     }
 
