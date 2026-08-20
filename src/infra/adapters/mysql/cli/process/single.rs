@@ -21,9 +21,14 @@ pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
     access_mode: AccessMode,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     let mut process = MySqlProcess::spawn_with_adhoc_program(OsStr::new("mysql"), option_file)?;
-    run_mysql_process_with_timeout(MYSQL_QUERY_TIMEOUT, &mut process, async |process| {
-        run_mysql_single_statement_process_with_diagnostics(process, query, access_mode).await
-    })
+    run_mysql_process_with_timeout(
+        MYSQL_QUERY_TIMEOUT,
+        &mut process,
+        RefreshScope::None,
+        async |process| {
+            run_mysql_single_statement_process_with_diagnostics(process, query, access_mode).await
+        },
+    )
     .await
 }
 

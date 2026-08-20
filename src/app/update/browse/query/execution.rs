@@ -1461,6 +1461,30 @@ mod tests {
         }
 
         #[test]
+        fn adhoc_timeout_after_data_change_refreshes_preview() {
+            let mut state = state_with_table("public", "users");
+            let action = query_failed_action(
+                &mut state,
+                DbOperationError::QueryFailedAfterChange {
+                    source: Arc::new(DbOperationError::Timeout(
+                        "mysql query exceeded the execution timeout".to_string(),
+                    )),
+                    refresh_scope: RefreshScope::Data,
+                },
+                0,
+                QuerySource::Adhoc,
+            );
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ExecutePreview { table, .. } if table == "users"
+            )));
+        }
+
+        #[test]
         fn adhoc_failure_after_schema_change_refreshes_metadata() {
             let mut state = state_with_table("public", "users");
             let action = query_failed_action(

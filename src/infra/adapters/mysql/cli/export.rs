@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::adapters::csv_export::CsvFileWriter;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::mysql_sql::classify_mysql_statement;
+use crate::domain::{RefreshScope, mysql_sql::classify_mysql_statement};
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
@@ -349,9 +349,12 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
-    run_mysql_process_with_timeout(MYSQL_EXPORT_TIMEOUT, &mut process, async |process| {
-        run_mysql_export_process(process, &option_file.path, query, path).await
-    })
+    run_mysql_process_with_timeout(
+        MYSQL_EXPORT_TIMEOUT,
+        &mut process,
+        RefreshScope::None,
+        async |process| run_mysql_export_process(process, &option_file.path, query, path).await,
+    )
     .await
 }
 

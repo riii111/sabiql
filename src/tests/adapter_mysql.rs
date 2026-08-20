@@ -3144,7 +3144,13 @@ mod query_execution {
                     ),
                 )
                     .await;
-                if !matches!(write, Err(DbOperationError::QueryFailed(ref details)) if details.contains("READ ONLY"))
+                if !matches!(
+                    write.as_ref(),
+                    Err(DbOperationError::QueryFailedAfterChange {
+                        source,
+                        refresh_scope: RefreshScope::Data,
+                    }) if matches!(&**source, DbOperationError::QueryFailed(details) if details.contains("READ ONLY"))
+                )
                 {
                     return Err(format!("read-only adhoc write was not rejected: {write:?}"));
                 }
