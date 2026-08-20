@@ -436,6 +436,7 @@ impl PostgresAdapter {
         Ok(WriteExecutionResult {
             affected_rows,
             execution_time_ms: elapsed,
+            diagnostics: Vec::new(),
         })
     }
 

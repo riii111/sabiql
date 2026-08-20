@@ -3,7 +3,8 @@ use std::time::Instant;
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
-    QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
+    MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult, QuerySource, WriteDiagnostic,
+    WriteDiagnosticLevel, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
 };
 use async_trait::async_trait;
 
@@ -186,6 +187,11 @@ impl QueryExecutor for MySqlAdapter {
         Ok(WriteExecutionResult {
             affected_rows,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            diagnostics: execution
+                .diagnostics
+                .into_iter()
+                .map(write_diagnostic_from_mysql)
+                .collect(),
         })
     }
 
@@ -211,6 +217,17 @@ impl QueryExecutor for MySqlAdapter {
             export_mysql_csv_to_file(target, &query, path).await
         })
         .await
+    }
+}
+
+fn write_diagnostic_from_mysql(diagnostic: MySqlDiagnostic) -> WriteDiagnostic {
+    WriteDiagnostic {
+        level: match diagnostic.level {
+            MySqlDiagnosticLevel::Warning => WriteDiagnosticLevel::Warning,
+            MySqlDiagnosticLevel::Note => WriteDiagnosticLevel::Note,
+        },
+        code: diagnostic.code,
+        message: diagnostic.message,
     }
 }
 

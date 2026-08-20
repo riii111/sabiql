@@ -41,7 +41,7 @@ pub use table::{
 };
 pub use table_kind::{TableKind, TableKindInfo};
 pub use trigger::{Trigger, TriggerCreationContext, TriggerEvent, TriggerTiming};
-pub use write_result::WriteExecutionResult;
+pub use write_result::{WriteDiagnostic, WriteDiagnosticLevel, WriteExecutionResult};
 
 pub use connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
