@@ -152,7 +152,7 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
     const MODIFIER: &[u8] = b"SQL_CALC_FOUND_ROWS";
 
     fn is_identifier_byte(byte: u8) -> bool {
-        byte.is_ascii_alphanumeric() || byte == b'_'
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || byte >= 0x80
     }
 
     let bytes = query.as_bytes();
@@ -179,6 +179,29 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
         if matches!(byte, b'\'' | b'"' | b'`') {
             quote = Some(byte);
             index += 1;
+            continue;
+        }
+        if byte == b'#' {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes[index..].starts_with(b"--")
+            && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace)
+        {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes[index..].starts_with(b"/*") {
+            index = bytes[index + 2..]
+                .windows(2)
+                .position(|window| window == b"*/")
+                .map_or(bytes.len(), |offset| index + offset + 4);
             continue;
         }
         if index + MODIFIER.len() <= bytes.len()
@@ -473,6 +496,19 @@ mod tests {
 
         assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
         assert!(fallback_query.contains("SELECT  first_key FROM items WHERE FALSE"));
+    }
+
+    #[test]
+    fn metadata_fallback_keeps_sql_calc_found_rows_identifiers_and_comments() {
+        for query in [
+            "SELECT $SQL_CALC_FOUND_ROWS FROM items WHERE FALSE",
+            "SELECT /* SQL_CALC_FOUND_ROWS */ value FROM items WHERE FALSE",
+            "SELECT 'SQL_CALC_FOUND_ROWS' AS value WHERE FALSE",
+        ] {
+            let fallback_query =
+                mysql_metadata_select_query(query, "__source", "__marker").unwrap();
+            assert!(fallback_query.contains(query), "{query}");
+        }
     }
 
     #[test]

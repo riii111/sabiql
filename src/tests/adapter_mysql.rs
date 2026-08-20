@@ -2530,6 +2530,27 @@ mod query_execution {
             if empty_result.columns != ["id"] || !empty_result.values().is_empty() {
                 return Err(format!("unexpected empty temporary-table result: {empty_result:?}"));
             }
+
+            let transactional_empty_table = format!("sabiql_sab533_empty_tmp_{suffix}");
+            let transactional_empty_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "START TRANSACTION; CREATE TEMPORARY TABLE {transactional_empty_table} (id INT); SELECT id FROM {transactional_empty_table} WHERE FALSE; DROP TEMPORARY TABLE {transactional_empty_table}; COMMIT"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("transactional empty-table query failed: {error:?}"))?;
+            if transactional_empty_result.columns != ["id"]
+                || !transactional_empty_result.values().is_empty()
+                || transactional_empty_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected transactional empty-table result: {transactional_empty_result:?}"
+                ));
+            }
             Ok(())
         }))
         .await;

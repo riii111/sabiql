@@ -150,7 +150,17 @@ fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
 }
 
 fn mysql_statement_is_safe_empty_result_metadata_tail(kind: &MySqlStatementKind) -> bool {
-    matches!(kind, MySqlStatementKind::DropTable { temporary: true })
+    matches!(
+        kind,
+        MySqlStatementKind::DropTable { temporary: true }
+            | MySqlStatementKind::Begin
+            | MySqlStatementKind::StartTransaction
+            | MySqlStatementKind::Commit
+            | MySqlStatementKind::Rollback
+            | MySqlStatementKind::Savepoint
+            | MySqlStatementKind::RollbackToSavepoint
+            | MySqlStatementKind::ReleaseSavepoint
+    )
 }
 
 fn mysql_result_needs_metadata(result: &MySqlResultSet) -> bool {
