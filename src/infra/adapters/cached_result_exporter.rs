@@ -71,6 +71,11 @@ mod tests {
         }
 
         #[test]
+        fn text_keeps_a_literal_hex_prefix() {
+            assert_eq!(cached_csv_cell(&QueryValue::text("0x00FFA1")), "0x00FFA1");
+        }
+
+        #[test]
         fn text_preserves_embedded_nul_byte() {
             assert_eq!(cached_csv_cell(&QueryValue::text("a\0bc")), "a\0bc");
         }
