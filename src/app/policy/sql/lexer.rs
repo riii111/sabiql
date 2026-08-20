@@ -769,6 +769,34 @@ impl SqlLexer {
         }
     }
 
+    fn is_mysql_upsert_update(&self, tokens: &[Token], update_index: usize) -> bool {
+        if !self.is_mysql() {
+            return false;
+        }
+
+        let mut index = update_index;
+        for expected in ["KEY", "DUPLICATE", "ON"] {
+            let Some(previous_index) = tokens[..index]
+                .iter()
+                .rposition(|token| token.kind != TokenKind::Whitespace)
+            else {
+                return false;
+            };
+            index = previous_index;
+            let token = &tokens[index];
+            let is_expected = matches!(
+                &token.kind,
+                TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                    if word.eq_ignore_ascii_case(expected)
+            );
+            if !is_expected {
+                return false;
+            }
+        }
+
+        true
+    }
+
     pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
         let mut refs = Vec::new();
         let mut i = 0;
@@ -841,6 +869,11 @@ impl SqlLexer {
                     "NO" | "KEY" | "SHARE" if in_for_clause => {
                         prev_keyword = Some(kw.as_str());
                     }
+                    "UPDATE" if self.is_mysql_upsert_update(tokens, i) => {
+                        prev_keyword = Some("UPDATE");
+                        i += 1;
+                        continue;
+                    }
                     // UPDATE: skip if in FOR locking clause
                     "UPDATE" if !in_for_clause => {
                         prev_keyword = Some("UPDATE");
@@ -864,7 +897,7 @@ impl SqlLexer {
                         }
                     }
                     // INSERT INTO table_name ... (only after INSERT, not SELECT INTO)
-                    "INTO" if prev_keyword == Some("INSERT") => {
+                    "INTO" if matches!(prev_keyword, Some("INSERT" | "REPLACE")) => {
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -1259,7 +1292,7 @@ impl SqlLexer {
                             }
                             return self.parse_table_reference(tokens, &mut i);
                         }
-                        "INSERT" => {
+                        "INSERT" | "REPLACE" => {
                             i += 1;
                             i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -2074,6 +2107,43 @@ mod tests {
                         "table reference for {sql}"
                     );
                 }
+            }
+
+            #[test]
+            fn mysql_replace_target_is_extracted() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                let sql = "REPLACE INTO users (name) VALUES ('Ada')";
+                let tokens = l.tokenize(sql, sql.len());
+
+                assert_eq!(
+                    l.extract_target_table(&tokens, sql.len())
+                        .as_ref()
+                        .map(|table| table.table.as_str()),
+                    Some("users")
+                );
+                assert_eq!(
+                    l.extract_table_references(&tokens)
+                        .first()
+                        .map(|table| table.table.as_str()),
+                    Some("users")
+                );
+            }
+
+            #[test]
+            fn mysql_upsert_update_is_not_a_table_reference() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                let sql = "INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE name = 'Ada'";
+                let tokens = l.tokenize(sql, sql.len());
+
+                let references = l.extract_table_references(&tokens);
+
+                assert_eq!(
+                    references
+                        .iter()
+                        .map(|table| table.table.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["users"]
+                );
             }
         }
 

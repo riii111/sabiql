@@ -415,6 +415,8 @@ impl CompletionEngine {
             }
             CompletionContext::Column => {
                 let keywords = self.primary_clause_keywords(&current_token);
+                let written_columns =
+                    Self::written_columns_for_completion(&prep.tokens, cursor_pos);
 
                 let before_token = prep
                     .before_cursor
@@ -480,6 +482,8 @@ impl CompletionEngine {
                     }
                     columns.extend(cached_columns);
                 }
+
+                columns.retain(|column| !written_columns.contains(&column.text.to_lowercase()));
 
                 let has_prefix = current_token.len() >= 2;
                 if has_prefix && !columns.is_empty() {
@@ -696,6 +700,12 @@ impl CompletionEngine {
     }
 
     fn detect_context_from_tokens(&self, tokens: &[Token], cursor_pos: usize) -> CompletionContext {
+        if Self::insert_target_column_list_start(tokens, cursor_pos).is_some()
+            || Self::upsert_update_index(tokens, cursor_pos).is_some()
+        {
+            return CompletionContext::Column;
+        }
+
         let keywords_table = ["FROM", "JOIN", "INTO", "UPDATE"];
         let keywords_column = ["SELECT", "WHERE", "ON", "SET", "AND", "OR", "BY"];
 
@@ -720,10 +730,181 @@ impl CompletionEngine {
 
         match (last_table_pos, last_column_pos) {
             (Some(t), Some(c)) if t > c => CompletionContext::Table,
-            (Some(t), None) if t > 0 => CompletionContext::Table,
+            (Some(_), None) => CompletionContext::Table,
             (_, Some(_)) => CompletionContext::Column,
             _ => CompletionContext::Keyword,
         }
+    }
+
+    fn token_is_word(token: &Token, word: &str) -> bool {
+        matches!(
+            &token.kind,
+            TokenKind::Keyword(value) | TokenKind::Identifier(value)
+                if value.eq_ignore_ascii_case(word)
+        )
+    }
+
+    fn column_name_from_token(token: &Token) -> Option<&str> {
+        match &token.kind {
+            TokenKind::Identifier(name) | TokenKind::BacktickIdentifier(name) => Some(name),
+            _ => None,
+        }
+    }
+
+    fn previous_non_whitespace_index(tokens: &[Token], index: usize) -> Option<usize> {
+        tokens[..index]
+            .iter()
+            .rposition(|token| token.kind != TokenKind::Whitespace)
+    }
+
+    fn insert_target_column_list_start(tokens: &[Token], cursor_pos: usize) -> Option<usize> {
+        let mut insert_started = false;
+        let mut into_seen = false;
+        let mut list_depth = 0;
+        let mut list_start = None;
+
+        for (index, token) in tokens.iter().enumerate() {
+            if token.start >= cursor_pos {
+                break;
+            }
+
+            if !into_seen {
+                if Self::token_is_word(token, "INSERT") || Self::token_is_word(token, "REPLACE") {
+                    insert_started = true;
+                } else if insert_started && Self::token_is_word(token, "INTO") {
+                    into_seen = true;
+                }
+                continue;
+            }
+
+            if list_depth > 0 {
+                match &token.kind {
+                    TokenKind::Punctuation('(') => list_depth += 1,
+                    TokenKind::Punctuation(')') => {
+                        list_depth -= 1;
+                        if list_depth == 0 {
+                            return None;
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
+
+            if Self::token_is_word(token, "VALUES")
+                || Self::token_is_word(token, "SELECT")
+                || Self::token_is_word(token, "SET")
+                || Self::token_is_word(token, "ON")
+            {
+                return None;
+            }
+
+            if token.kind == TokenKind::Punctuation('(') {
+                list_depth = 1;
+                list_start = Some(index);
+            }
+        }
+
+        list_start
+    }
+
+    fn upsert_update_index(tokens: &[Token], cursor_pos: usize) -> Option<usize> {
+        let mut insert_started = false;
+
+        for (index, token) in tokens.iter().enumerate() {
+            if token.start >= cursor_pos {
+                break;
+            }
+            if Self::token_is_word(token, "INSERT") || Self::token_is_word(token, "REPLACE") {
+                insert_started = true;
+                continue;
+            }
+            if !insert_started || !Self::token_is_word(token, "UPDATE") {
+                continue;
+            }
+
+            let Some(key_index) = Self::previous_non_whitespace_index(tokens, index) else {
+                continue;
+            };
+            if !Self::token_is_word(&tokens[key_index], "KEY") {
+                continue;
+            }
+            let Some(duplicate_index) = Self::previous_non_whitespace_index(tokens, key_index)
+            else {
+                continue;
+            };
+            if !Self::token_is_word(&tokens[duplicate_index], "DUPLICATE") {
+                continue;
+            }
+            let Some(on_index) = Self::previous_non_whitespace_index(tokens, duplicate_index)
+            else {
+                continue;
+            };
+            if Self::token_is_word(&tokens[on_index], "ON") {
+                return Some(index);
+            }
+        }
+
+        None
+    }
+
+    fn written_columns_for_completion(tokens: &[Token], cursor_pos: usize) -> HashSet<String> {
+        let mut written = HashSet::new();
+
+        if let Some(open_index) = Self::insert_target_column_list_start(tokens, cursor_pos) {
+            let mut depth = 1;
+            for token in tokens.iter().skip(open_index + 1) {
+                if token.start >= cursor_pos {
+                    break;
+                }
+                match &token.kind {
+                    TokenKind::Punctuation('(') => depth += 1,
+                    TokenKind::Punctuation(')') => {
+                        if depth == 1 {
+                            break;
+                        }
+                        depth -= 1;
+                    }
+                    _ if depth == 1 => {
+                        if let Some(name) = Self::column_name_from_token(token) {
+                            written.insert(name.to_lowercase());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            return written;
+        }
+
+        let Some(update_index) = Self::upsert_update_index(tokens, cursor_pos) else {
+            return written;
+        };
+
+        let mut assignment_start = update_index + 1;
+        let mut depth: usize = 0;
+        for (index, token) in tokens.iter().enumerate().skip(update_index + 1) {
+            if token.start >= cursor_pos {
+                break;
+            }
+            match &token.kind {
+                TokenKind::Punctuation('(') => depth += 1,
+                TokenKind::Punctuation(')') => depth = depth.saturating_sub(1),
+                TokenKind::Punctuation(',') if depth == 0 => assignment_start = index + 1,
+                TokenKind::Operator(operator) if operator == "=" && depth == 0 => {
+                    if let Some(name) = tokens[assignment_start..index]
+                        .iter()
+                        .rev()
+                        .find_map(Self::column_name_from_token)
+                    {
+                        written.insert(name.to_lowercase());
+                    }
+                    assignment_start = index + 1;
+                }
+                _ => {}
+            }
+        }
+
+        written
     }
 
     #[cfg(test)]
@@ -1450,6 +1631,34 @@ mod tests {
                 ctx,
                 CompletionContext::SchemaQualified("public".to_string())
             );
+        }
+
+        #[test]
+        fn insert_target_column_list_returns_column_context() {
+            let e = engine();
+            let (token, ctx) = e.analyze("INSERT INTO users (na", 21);
+
+            assert_eq!(token, "na");
+            assert_eq!(ctx, CompletionContext::Column);
+        }
+
+        #[test]
+        fn insert_target_table_returns_table_context() {
+            let e = engine();
+            let (token, ctx) = e.analyze("INSERT INTO us", 14);
+
+            assert_eq!(token, "us");
+            assert_eq!(ctx, CompletionContext::Table);
+        }
+
+        #[test]
+        fn upsert_assignment_returns_column_context() {
+            let e = engine();
+            let sql = "INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE na";
+            let (token, ctx) = e.analyze(sql, sql.chars().count());
+
+            assert_eq!(token, "na");
+            assert_eq!(ctx, CompletionContext::Column);
         }
     }
 
@@ -2336,6 +2545,122 @@ mod tests {
                 !candidates
                     .iter()
                     .any(|candidate| candidate.text == "`users`")
+            );
+        }
+
+        #[test]
+        fn mysql_insert_and_replace_target_columns_are_completed() {
+            let e = engine();
+            let metadata = metadata();
+            let table = create_table("app", "users", &["id", "name", "email"]);
+            let scope = CompletionDatabaseScope {
+                database_type: DatabaseType::MySQL,
+                active_database: Some("app"),
+            };
+
+            for sql in [
+                "INSERT INTO users (na",
+                "REPLACE INTO users (na",
+                "INSERT INTO app.users AS u (na",
+            ] {
+                let candidates = e.get_candidates_for_database(
+                    sql,
+                    sql.chars().count(),
+                    Some(&metadata),
+                    Some(&table),
+                    &[],
+                    scope,
+                );
+
+                assert!(candidates.iter().any(|candidate| {
+                    candidate.text == "`name`" && candidate.kind == CompletionKind::Column
+                }));
+                assert!(
+                    !candidates
+                        .iter()
+                        .any(|candidate| candidate.kind == CompletionKind::Table)
+                );
+            }
+        }
+
+        #[test]
+        fn mysql_insert_and_update_target_tables_remain_table_context() {
+            let e = engine();
+            let metadata = metadata();
+            for sql in ["INSERT INTO us", "UPDATE us"] {
+                let candidates = e.get_candidates_for_database(
+                    sql,
+                    sql.chars().count(),
+                    Some(&metadata),
+                    None,
+                    &[],
+                    CompletionDatabaseScope {
+                        database_type: DatabaseType::MySQL,
+                        active_database: Some("app"),
+                    },
+                );
+
+                assert!(candidates.iter().any(|candidate| {
+                    candidate.text == "`users`" && candidate.kind == CompletionKind::Table
+                }));
+            }
+        }
+
+        #[test]
+        fn mysql_insert_target_columns_exclude_previous_columns() {
+            let e = engine();
+            let metadata = metadata();
+            let table = create_table("app", "users", &["id", "name", "email"]);
+            let sql = "INSERT INTO users (id, na";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                Some(&table),
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "`name`")
+            );
+            assert!(!candidates.iter().any(|candidate| candidate.text == "`id`"));
+        }
+
+        #[test]
+        fn mysql_upsert_assignment_columns_are_completed_and_exclude_assignments() {
+            let e = engine();
+            let metadata = metadata();
+            let table = create_table("app", "users", &["id", "name", "email"]);
+            let sql =
+                "INSERT INTO users (id, name) VALUES (1, 'Ada') ON DUPLICATE KEY UPDATE id = 1, na";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                Some(&table),
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.text == "`name`")
+            );
+            assert!(!candidates.iter().any(|candidate| candidate.text == "`id`"));
+            assert!(
+                !candidates
+                    .iter()
+                    .any(|candidate| candidate.kind == CompletionKind::Table)
             );
         }
     }
