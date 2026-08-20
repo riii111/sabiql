@@ -219,6 +219,21 @@ pub fn reduce_pagination(
             }
 
             if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                if result.source == QuerySource::Preview {
+                    let columns = result.columns.clone();
+                    let values = result.values().to_vec();
+                    let run_id = state.query.begin_running(now);
+                    return dispatch_cached_csv_export(
+                        state,
+                        dsn,
+                        run_id,
+                        file_name,
+                        columns,
+                        values,
+                        Some(row_count),
+                    );
+                }
+
                 let Some(plan) = mysql_export_plan(&export_query) else {
                     return DispatchResult::handled();
                 };
@@ -1082,6 +1097,53 @@ mod tests {
                     ),
                     !expects_count
                 );
+            }
+
+            #[test]
+            fn preview_exports_visible_typed_values_from_cache() {
+                let mut state = AppState::new("test_project".to_string());
+                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+                let values = vec![vec![
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1]),
+                    QueryValue::text("0x00FFA1"),
+                    QueryValue::Null,
+                    QueryValue::text("text"),
+                ]];
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success_with_values(
+                        "SELECT payload, text_value, nullable, text FROM users".to_string(),
+                        vec![
+                            "payload".to_string(),
+                            "text_value".to_string(),
+                            "nullable".to_string(),
+                            "text".to_string(),
+                        ],
+                        values.clone(),
+                        1,
+                        QuerySource::Preview,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::ExportCsvFromCache {
+                    columns,
+                    values: cached_values,
+                    row_count,
+                    ..
+                } = &effects[0]
+                else {
+                    panic!("expected cached CSV export effect");
+                };
+                assert_eq!(columns, &["payload", "text_value", "nullable", "text"]);
+                assert_eq!(cached_values, &values);
+                assert_eq!(*row_count, Some(1));
             }
 
             #[rstest]
