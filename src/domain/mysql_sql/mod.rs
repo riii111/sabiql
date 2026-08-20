@@ -44,6 +44,7 @@ pub enum MySqlStatementKind {
 pub struct MySqlStatement {
     sql: String,
     kind: MySqlStatementKind,
+    on_duplicate_key_update: bool,
     target: Option<String>,
     target_database: Option<String>,
 }
@@ -55,6 +56,10 @@ impl MySqlStatement {
 
     pub fn kind(&self) -> &MySqlStatementKind {
         &self.kind
+    }
+
+    pub fn has_on_duplicate_key_update(&self) -> bool {
+        self.on_duplicate_key_update
     }
 
     pub fn target(&self) -> Option<&str> {
@@ -97,6 +102,8 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MySqlStatement, MySqlLexErr
     let (kind, target, target_database) = classifier::kind_and_target(&tokens)?;
     Ok(MySqlStatement {
         sql: sql.to_string(),
+        on_duplicate_key_update: matches!(kind, MySqlStatementKind::Insert)
+            && classifier::has_on_duplicate_key_update(&tokens),
         kind,
         target,
         target_database,
@@ -459,6 +466,19 @@ mod tests {
         assert_eq!(statement.target(), Some("users"));
         assert_eq!(statement.target_database(), None);
         assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
+    }
+
+    #[test]
+    fn classifies_insert_on_duplicate_key_update_shape() {
+        let upsert = classify_mysql_statement(
+            "INSERT INTO users (id, name) VALUES (1, 'Ada') ON DUPLICATE KEY UPDATE name = 'Grace'",
+        )
+        .unwrap();
+        let insert =
+            classify_mysql_statement("INSERT INTO users (id, name) VALUES (1, 'Ada')").unwrap();
+
+        assert!(upsert.has_on_duplicate_key_update());
+        assert!(!insert.has_on_duplicate_key_update());
     }
 
     #[test]

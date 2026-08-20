@@ -4,6 +4,7 @@ use super::query_result::RefreshScope;
 pub enum CommandTag {
     Select(u64),
     Insert(u64),
+    Affected(u64),
     Update(u64),
     Delete(u64),
     Create(String),
@@ -30,6 +31,7 @@ impl CommandTag {
         matches!(
             self,
             Self::Insert(_)
+                | Self::Affected(_)
                 | Self::Update(_)
                 | Self::Delete(_)
                 | Self::Create(_)
@@ -58,7 +60,11 @@ impl CommandTag {
 
     pub fn affected_rows(&self) -> Option<u64> {
         match self {
-            Self::Select(n) | Self::Insert(n) | Self::Update(n) | Self::Delete(n) => Some(*n),
+            Self::Select(n)
+            | Self::Insert(n)
+            | Self::Affected(n)
+            | Self::Update(n)
+            | Self::Delete(n) => Some(*n),
             _ => None,
         }
     }
@@ -67,6 +73,7 @@ impl CommandTag {
         match self {
             Self::Select(n) => row_count_label(*n, "selected"),
             Self::Insert(n) => row_count_label(*n, "inserted"),
+            Self::Affected(n) => row_count_label(*n, "affected"),
             Self::Update(n) => row_count_label(*n, "updated"),
             Self::Delete(n) => row_count_label(*n, "deleted"),
             Self::Create(obj) => format!("{} created", obj.to_lowercase()),
@@ -97,6 +104,7 @@ mod tests {
     fn affected_rows_returns_count_for_dml() {
         assert_eq!(CommandTag::Select(5).affected_rows(), Some(5));
         assert_eq!(CommandTag::Insert(3).affected_rows(), Some(3));
+        assert_eq!(CommandTag::Affected(2).affected_rows(), Some(2));
         assert_eq!(CommandTag::Update(1).affected_rows(), Some(1));
         assert_eq!(CommandTag::Delete(0).affected_rows(), Some(0));
     }
@@ -118,6 +126,7 @@ mod tests {
     #[test]
     fn display_message_singular_row() {
         assert_eq!(CommandTag::Insert(1).display_message(), "1 row inserted");
+        assert_eq!(CommandTag::Affected(1).display_message(), "1 row affected");
         assert_eq!(CommandTag::Delete(1).display_message(), "1 row deleted");
     }
 
@@ -130,6 +139,7 @@ mod tests {
     #[test]
     fn display_message_zero_rows() {
         assert_eq!(CommandTag::Delete(0).display_message(), "0 rows deleted");
+        assert_eq!(CommandTag::Affected(0).display_message(), "0 rows affected");
     }
 
     #[test]
@@ -175,6 +185,7 @@ mod tests {
     fn is_schema_modifying_false_for_non_ddl() {
         assert!(!CommandTag::Select(0).is_schema_modifying());
         assert!(!CommandTag::Insert(1).is_schema_modifying());
+        assert!(!CommandTag::Affected(1).is_schema_modifying());
         assert!(!CommandTag::Update(1).is_schema_modifying());
         assert!(!CommandTag::Delete(1).is_schema_modifying());
         assert!(!CommandTag::Truncate.is_schema_modifying());
@@ -193,6 +204,7 @@ mod tests {
     #[test]
     fn needs_refresh_true_for_dml_and_ddl() {
         assert!(CommandTag::Insert(1).needs_refresh());
+        assert!(CommandTag::Affected(1).needs_refresh());
         assert!(CommandTag::Update(1).needs_refresh());
         assert!(CommandTag::Delete(1).needs_refresh());
         assert!(CommandTag::Create("TABLE".to_string()).needs_refresh());

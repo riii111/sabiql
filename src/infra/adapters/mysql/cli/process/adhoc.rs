@@ -189,7 +189,7 @@ async fn run_mysql_statement(
         Ok(rows) => rows,
         Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
     };
-    let tag = mysql_command_tag(statement.kind(), affected_rows, user_result.as_ref());
+    let tag = mysql_command_tag(statement, affected_rows, user_result.as_ref());
 
     Ok(MySqlStatementExecution {
         result_set: user_result,
