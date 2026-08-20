@@ -9,7 +9,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, ModalKind};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::reject_pending_mysql_connection_probe;
+use crate::update::helpers::{metadata_reload_effects, reject_pending_mysql_connection_probe};
 use crate::update::query_context::termination_effects;
 
 pub(super) fn reduce_loading(
@@ -149,17 +149,12 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.session.begin_reload();
                 state.sql_modal.reset_prefetch();
                 state.er_preparation.reset();
                 state.ui.reset_er_picker_request();
                 state.messages.clear();
 
-                DispatchResult::handled_with(vec![Effect::Sequence(vec![
-                    Effect::CacheInvalidate { dsn: dsn.clone() },
-                    Effect::ClearCompletionEngineCache,
-                    Effect::FetchMetadata { dsn, run_id },
-                ])])
+                DispatchResult::handled_with(metadata_reload_effects(state, &dsn))
             } else {
                 DispatchResult::handled()
             }
