@@ -1,9 +1,13 @@
-use crate::domain::{DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table};
+use crate::domain::{
+    DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table, TriggerCreationContext,
+};
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
+
+pub const MYSQL_TRIGGER_DETAIL_LINES_PER_ROW: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InspectorViewModel {
@@ -12,6 +16,7 @@ pub struct InspectorViewModel {
     section: Option<InspectorSection>,
     empty_state: Option<InspectorEmptyState>,
     unavailable_reason: Option<InspectorUnavailableReason>,
+    mysql_trigger_details: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,8 +99,10 @@ pub struct InspectorTriggerRow {
     pub name: String,
     pub timing: String,
     pub events: String,
+    pub action_order: Option<i32>,
     pub definition: String,
     pub security_context: Option<String>,
+    pub creation_context: Option<TriggerCreationContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +159,7 @@ impl InspectorViewModel {
                 section: None,
                 empty_state,
                 unavailable_reason: None,
+                mysql_trigger_details: false,
             };
         };
 
@@ -275,8 +283,10 @@ impl InspectorViewModel {
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join("/"),
+                        action_order: trigger.action_order,
                         definition: trigger.definition.clone(),
                         security_context: trigger.security_context.clone(),
+                        creation_context: trigger.creation_context.clone(),
                     })
                     .collect();
                 (
@@ -307,6 +317,8 @@ impl InspectorViewModel {
             section: Some(section),
             empty_state,
             unavailable_reason,
+            mysql_trigger_details: database_type == DatabaseType::MySQL
+                && active_tab == InspectorTab::Triggers,
         }
     }
 
@@ -331,10 +343,27 @@ impl InspectorViewModel {
     }
 
     pub fn row_count(&self) -> usize {
+        if self.mysql_trigger_details {
+            return self
+                .section
+                .as_ref()
+                .and_then(|section| match section {
+                    InspectorSection::Triggers { rows } => {
+                        Some(rows.len() * MYSQL_TRIGGER_DETAIL_LINES_PER_ROW)
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+        }
+
         self.section.as_ref().map_or(0, InspectorSection::row_count)
     }
 
     pub fn visible_rows(&self, pane_height: u16) -> usize {
+        if self.mysql_trigger_details {
+            return pane_height.saturating_sub(3) as usize;
+        }
+
         match self.section.as_ref() {
             Some(
                 InspectorSection::Info { .. }
@@ -541,8 +570,10 @@ mod tests {
                 name: "users_updated".to_string(),
                 timing: TriggerTiming::Before,
                 events: vec![TriggerEvent::Update],
+                action_order: None,
                 definition: "set_updated_at".to_string(),
                 security_context: Some("INVOKER".to_string()),
+                creation_context: None,
             }],
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
@@ -719,6 +750,38 @@ mod tests {
             Some(InspectorSection::Indexes { show_partial, .. }) => assert!(!show_partial),
             section => panic!("expected index section, got {section:?}"),
         }
+    }
+
+    #[test]
+    fn mysql_trigger_rows_preserve_action_order_and_creation_context() {
+        let mut table = table();
+        table.triggers[0].action_order = Some(2);
+        table.triggers[0].creation_context = Some(TriggerCreationContext {
+            sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+            character_set_client: Some("utf8mb4".to_string()),
+            collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+            database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+            created: Some("2026-08-21 10:20:30.00".to_string()),
+        });
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Triggers,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Triggers { rows }) => {
+                assert_eq!(rows[0].action_order, Some(2));
+                assert_eq!(rows[0].creation_context, table.triggers[0].creation_context);
+            }
+            section => panic!("expected trigger section, got {section:?}"),
+        }
+        assert_eq!(model.row_count(), MYSQL_TRIGGER_DETAIL_LINES_PER_ROW);
+        assert_eq!(model.visible_rows(8), 5);
+        assert_eq!(model.max_scroll(8), 7);
     }
 
     #[test]

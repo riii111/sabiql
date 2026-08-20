@@ -80,13 +80,24 @@ impl FromStr for TriggerEvent {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TriggerCreationContext {
+    pub sql_mode: Option<String>,
+    pub character_set_client: Option<String>,
+    pub collation_connection: Option<String>,
+    pub database_collation: Option<String>,
+    pub created: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Trigger {
     pub name: String,
     pub timing: TriggerTiming,
     pub events: Vec<TriggerEvent>,
+    pub action_order: Option<i32>,
     pub definition: String,
     pub security_context: Option<String>,
+    pub creation_context: Option<TriggerCreationContext>,
 }
 
 #[cfg(test)]

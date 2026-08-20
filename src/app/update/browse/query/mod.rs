@@ -150,8 +150,10 @@ pub(super) mod tests {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Update],
+                action_order: None,
                 definition: "f".to_string(),
                 security_context: None,
+                creation_context: None,
             }],
             ..test_support::table::minimal("", "")
         }

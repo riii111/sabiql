@@ -368,8 +368,10 @@ impl PostgresAdapter {
                     name: t.name,
                     timing,
                     events,
+                    action_order: None,
                     definition: t.definition,
                     security_context: t.security_context,
+                    creation_context: None,
                 })
             })
             .collect::<Result<Vec<_>, MetadataParseError>>()
