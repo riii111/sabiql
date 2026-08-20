@@ -16,6 +16,7 @@ pub(super) fn mysql_query_args(option_file: &Path) -> Vec<String> {
         "--xml".to_string(),
         "--binary-as-hex".to_string(),
         "--binary-mode".to_string(),
+        "--quick".to_string(),
         "--unbuffered".to_string(),
         "--default-character-set=utf8mb4".to_string(),
         "--batch".to_string(),
@@ -61,7 +62,7 @@ mod tests {
     }
 
     #[test]
-    fn query_arguments_keep_credentials_out_of_argv_and_append_query_options() {
+    fn adhoc_preview_and_export_arguments_include_streaming_query_options() {
         let args = mysql_query_args(Path::new("/tmp/sabiql-mysql.cnf"));
 
         assert_eq!(
@@ -75,6 +76,7 @@ mod tests {
                 "--xml",
                 "--binary-as-hex",
                 "--binary-mode",
+                "--quick",
                 "--unbuffered",
                 "--default-character-set=utf8mb4",
                 "--batch",
@@ -107,6 +109,7 @@ mod tests {
                 "--prompt=",
             ]
         );
+        assert!(!args.iter().any(|argument| argument == "--quick"));
         assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 }
