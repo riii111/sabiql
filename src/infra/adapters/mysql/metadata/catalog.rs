@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
-    Column, ColumnAttributes, FkAction, ForeignKey, QueryValue, TableKind, TableKindInfo,
-    TableSummary,
+    Column, ColumnAttributes, ColumnGenerationKind, FkAction, ForeignKey, QueryValue, TableKind,
+    TableKindInfo, TableSummary,
 };
 
 use super::super::{
@@ -13,9 +13,9 @@ use super::super::{
     dsn::parse_and_validate_mysql_dsn,
     option_file::MySqlOptionFile,
     sql::{
-        COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS,
-        PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY, TABLES_RESULT_COLUMNS,
-        UNIQUE_COLUMN_RESULT_COLUMNS,
+        COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
+        FOREIGN_KEY_RESULT_COLUMNS, PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY,
+        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
     },
 };
 
@@ -30,6 +30,9 @@ pub(super) struct MySqlColumnMetadata {
     name: String,
     data_type: String,
     character_set_name: Option<String>,
+    collation_name: Option<String>,
+    generation_expression: Option<String>,
+    generation_kind: Option<ColumnGenerationKind>,
     nullable: bool,
     default: Option<String>,
     comment: Option<String>,
@@ -132,13 +135,14 @@ pub(super) fn parse_preview_columns_for_table(
                 return Err(metadata_shape_error("preview COLUMNS row"));
             }
             let mut column = parse_column_metadata_row(
-                &row[..COLUMN_METADATA_RESULT_COLUMNS.len()],
+                &row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
                 "preview COLUMNS row",
             )?;
             column.character_set_name = optional_text(
-                &row[COLUMN_METADATA_RESULT_COLUMNS.len()],
+                &row[COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
                 "CHARACTER_SET_NAME",
             )?
+            .filter(|value| !value.is_empty())
             .map(str::to_string);
             Ok(column)
         })
@@ -311,10 +315,10 @@ fn parse_column_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 8 {
+            if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("COLUMNS row"));
             }
-            parse_column_metadata_row(row, "COLUMNS row")
+            parse_column_metadata_row_with_details(row, "COLUMNS row")
         })
         .collect()
 }
@@ -323,7 +327,7 @@ pub(super) fn parse_column_metadata_row(
     row: &[QueryValue],
     field: &str,
 ) -> Result<MySqlColumnMetadata, DbOperationError> {
-    if row.len() != 8 {
+    if row.len() != COLUMN_METADATA_BASE_RESULT_COLUMNS.len() {
         return Err(metadata_shape_error(field));
     }
     let extra = required_text(&row[4], "EXTRA")?;
@@ -331,6 +335,9 @@ pub(super) fn parse_column_metadata_row(
         name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
         data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
         character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
         nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
         default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
         comment: optional_text(&row[5], "COLUMN_COMMENT")?
@@ -348,6 +355,49 @@ pub(super) fn parse_column_metadata_row(
             .split_ascii_whitespace()
             .any(|word| word.eq_ignore_ascii_case("GENERATED")),
     })
+}
+
+fn parse_column_metadata_row_with_details(
+    row: &[QueryValue],
+    field: &str,
+) -> Result<MySqlColumnMetadata, DbOperationError> {
+    if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
+        return Err(metadata_shape_error(field));
+    }
+    let mut column =
+        parse_column_metadata_row(&row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()], field)?;
+    column.character_set_name = optional_text(&row[8], "CHARACTER_SET_NAME")?
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    column.collation_name = optional_text(&row[9], "COLLATION_NAME")?
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    column.generation_expression = optional_text(&row[10], "GENERATION_EXPRESSION")?
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    column.generation_kind = generation_kind(required_text(&row[4], "EXTRA")?);
+    Ok(column)
+}
+
+fn generation_kind(extra: &str) -> Option<ColumnGenerationKind> {
+    let words = extra.split_ascii_whitespace().collect::<Vec<_>>();
+    if words.iter().any(|word| word.eq_ignore_ascii_case("STORED"))
+        && words
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED"))
+    {
+        Some(ColumnGenerationKind::Stored)
+    } else if words
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("VIRTUAL"))
+        && words
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED"))
+    {
+        Some(ColumnGenerationKind::Virtual)
+    } else {
+        None
+    }
 }
 
 pub(super) fn parse_foreign_key_metadata(
@@ -445,6 +495,10 @@ pub(super) fn column_from_metadata(metadata: &MySqlColumnMetadata) -> Column {
         attributes,
         comment: metadata.comment.clone(),
         ordinal_position: metadata.ordinal_position,
+        character_set_name: metadata.character_set_name.clone(),
+        collation_name: metadata.collation_name.clone(),
+        generation_expression: metadata.generation_expression.clone(),
+        generation_kind: metadata.generation_kind,
     }
 }
 
@@ -678,16 +732,7 @@ mod tests {
     #[test]
     fn metadata_parser_preserves_column_and_composite_key_order() {
         let result = result(
-            &[
-                "COLUMN_NAME",
-                "COLUMN_TYPE",
-                "IS_NULLABLE",
-                "COLUMN_DEFAULT",
-                "EXTRA",
-                "COLUMN_COMMENT",
-                "ORDINAL_POSITION",
-                "PRIMARY_KEY_POSITION",
-            ],
+            COLUMN_METADATA_RESULT_COLUMNS,
             vec![
                 vec![
                     QueryValue::Text("first_key".to_string()),
@@ -698,6 +743,9 @@ mod tests {
                     QueryValue::Text(String::new()),
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
                 ],
                 vec![
                     QueryValue::Text("second_key".to_string()),
@@ -708,6 +756,9 @@ mod tests {
                     QueryValue::Text(String::new()),
                     QueryValue::Text("2".to_string()),
                     QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
                 ],
                 vec![
                     QueryValue::Text("generated_value".to_string()),
@@ -717,6 +768,9 @@ mod tests {
                     QueryValue::Text("STORED GENERATED".to_string()),
                     QueryValue::Text(String::new()),
                     QueryValue::Text("3".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Null,
                 ],
             ],
@@ -735,6 +789,74 @@ mod tests {
     }
 
     #[test]
+    fn metadata_parser_preserves_character_set_collation_and_generation_details() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("collated_text".to_string()),
+                    QueryValue::Text("varchar(32)".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("utf8mb4".to_string()),
+                    QueryValue::Text("utf8mb4_bin".to_string()),
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::Text("stored_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("STORED GENERATED".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("(`id` * 2)".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("virtual_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("VIRTUAL GENERATED".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("3".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("(`id` + 1)".to_string()),
+                ],
+            ],
+        ))
+        .expect("metadata parses");
+
+        let collated = column_from_metadata(&parsed[0]);
+        assert_eq!(collated.character_set_name.as_deref(), Some("utf8mb4"));
+        assert_eq!(collated.collation_name.as_deref(), Some("utf8mb4_bin"));
+        assert_eq!(collated.generation_expression, None);
+
+        let stored = column_from_metadata(&parsed[1]);
+        assert_eq!(stored.generation_kind, Some(ColumnGenerationKind::Stored));
+        assert_eq!(stored.generation_expression.as_deref(), Some("(`id` * 2)"));
+
+        let virtual_column = column_from_metadata(&parsed[2]);
+        assert_eq!(
+            virtual_column.generation_kind,
+            Some(ColumnGenerationKind::Virtual)
+        );
+        assert_eq!(
+            virtual_column.generation_expression.as_deref(),
+            Some("(`id` + 1)")
+        );
+    }
+
+    #[test]
     fn metadata_parser_marks_invisible_columns_hidden_and_read_only() {
         let parsed = parse_column_metadata(&result(
             COLUMN_METADATA_RESULT_COLUMNS,
@@ -746,6 +868,9 @@ mod tests {
                 QueryValue::Text("INVISIBLE".to_string()),
                 QueryValue::Null,
                 QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
                 QueryValue::Null,
             ]],
         ))
@@ -818,6 +943,9 @@ mod tests {
                     QueryValue::Null,
                     QueryValue::Text("1".to_string()),
                     QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
                 ],
                 vec![
                     QueryValue::Text("email".to_string()),
@@ -827,6 +955,9 @@ mod tests {
                     QueryValue::Text(String::new()),
                     QueryValue::Null,
                     QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
                     QueryValue::Null,
                 ],
             ],

@@ -20,7 +20,7 @@ pub mod table_kind;
 pub mod trigger;
 pub mod write_result;
 
-pub use column::{Column, ColumnAttributes};
+pub use column::{Column, ColumnAttributes, ColumnGenerationKind};
 pub use command_tag::CommandTag;
 pub use er::ErTableInfo;
 pub use explain_plan::{

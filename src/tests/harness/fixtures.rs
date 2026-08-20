@@ -55,6 +55,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: Some("Primary key".to_string()),
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "name".to_string(),
@@ -63,6 +67,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: None,
             ordinal_position: 2,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "email".to_string(),
@@ -71,6 +79,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: None,
             ordinal_position: 3,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
     ];
     table.primary_key = Some(vec!["id".to_string()]);

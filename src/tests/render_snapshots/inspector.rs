@@ -1,7 +1,7 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
-use sabiql_domain::{ConnectionId, TableKind, TableKindInfo};
+use sabiql_domain::{ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo};
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
@@ -76,6 +76,33 @@ fn inspector_columns_marks_read_only_generated_columns() {
     table.columns[1].attributes =
         ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
     let _ = state.session.set_table_detail(table, 0);
+    state.ui.set_inspector_tab(InspectorTab::Columns);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_columns_shows_mysql_column_metadata() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.columns[1].character_set_name = Some("utf8mb4".to_string());
+    table.columns[1].collation_name = Some("utf8mb4_bin".to_string());
+    table.columns[2].attributes =
+        ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED | ColumnAttributes::NULLABLE;
+    table.columns[2].generation_expression = Some("(`id` * 2)".to_string());
+    table.columns[2].generation_kind = Some(ColumnGenerationKind::Stored);
+    let _ = state.session.set_table_detail(table, 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
     state.ui.set_inspector_tab(InspectorTab::Columns);
     state.ui.set_focused_pane(FocusedPane::Inspector);
 

@@ -90,6 +90,10 @@ mod tests {
             attributes: ColumnAttributes::from_parts(nullable, false, false),
             comment: None,
             ordinal_position: 0,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         }
     }
 

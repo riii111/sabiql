@@ -175,6 +175,10 @@ impl PostgresAdapter {
                 attributes: ColumnAttributes::from_parts(c.nullable, c.is_primary_key, c.is_unique),
                 comment: c.comment,
                 ordinal_position: c.ordinal_position,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             })
             .collect())
     }

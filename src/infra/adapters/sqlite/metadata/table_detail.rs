@@ -109,6 +109,10 @@ pub(super) fn table_from_metadata(
                 attributes,
                 comment: None,
                 ordinal_position: column.cid + 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             }
         })
         .collect();

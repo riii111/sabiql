@@ -162,11 +162,17 @@ impl Inspector {
             Some(InspectorSection::Columns {
                 rows,
                 show_read_only,
+                show_character_set,
+                show_collation,
+                show_generation,
             }) => Self::render_columns(
                 frame,
                 inner,
                 rows,
                 *show_read_only,
+                *show_character_set,
+                *show_collation,
+                *show_generation,
                 state.ui.inspector_scroll_offset(),
                 state.ui.inspector_horizontal_offset(),
                 state.ui.inspector_viewport_plan(),
@@ -299,6 +305,9 @@ impl Inspector {
         area: Rect,
         rows: &[InspectorColumnRow],
         show_read_only: bool,
+        show_character_set: bool,
+        show_collation: bool,
+        show_generation: bool,
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
@@ -310,10 +319,27 @@ impl Inspector {
             headers.push("Read-only");
         }
         headers.extend(["Default", "Comment"]);
+        if show_character_set {
+            headers.push("Charset");
+        }
+        if show_collation {
+            headers.push("Collation");
+        }
+        if show_generation {
+            headers.push("Generation");
+        }
 
         let data_rows: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| column_row_cells(row, show_read_only))
+            .map(|row| {
+                column_row_cells(
+                    row,
+                    show_read_only,
+                    show_character_set,
+                    show_collation,
+                    show_generation,
+                )
+            })
             .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
@@ -381,7 +407,13 @@ impl Inspector {
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
-                let cells = column_row_cells(row, show_read_only);
+                let cells = column_row_cells(
+                    row,
+                    show_read_only,
+                    show_character_set,
+                    show_collation,
+                    show_generation,
+                );
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(theme.component.table.striped_row_bg)
                 } else {
@@ -816,7 +848,13 @@ impl Inspector {
     }
 }
 
-fn column_row_cells(row: &InspectorColumnRow, show_read_only: bool) -> Vec<String> {
+fn column_row_cells(
+    row: &InspectorColumnRow,
+    show_read_only: bool,
+    show_character_set: bool,
+    show_collation: bool,
+    show_generation: bool,
+) -> Vec<String> {
     let mut cells = vec![
         row.name.clone(),
         row.data_type.clone(),
@@ -828,7 +866,25 @@ fn column_row_cells(row: &InspectorColumnRow, show_read_only: bool) -> Vec<Strin
     }
     cells.push(row.default.clone().unwrap_or_default());
     cells.push(row.comment.clone().unwrap_or_default());
+    if show_character_set {
+        cells.push(row.character_set_name.clone().unwrap_or_default());
+    }
+    if show_collation {
+        cells.push(row.collation_name.clone().unwrap_or_default());
+    }
+    if show_generation {
+        cells.push(generation_display(row));
+    }
     cells
+}
+
+fn generation_display(row: &InspectorColumnRow) -> String {
+    match (row.generation_kind, row.generation_expression.as_deref()) {
+        (Some(kind), Some(expression)) => format!("{}: {expression}", kind.label()),
+        (Some(kind), None) => kind.label().to_string(),
+        (None, Some(expression)) => expression.to_string(),
+        (None, None) => String::new(),
+    }
 }
 
 fn index_row_cells(

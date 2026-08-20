@@ -13,5 +13,9 @@ pub fn test_nullable_column(
         ordinal_position,
         default: None,
         comment: None,
+        character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
     }
 }

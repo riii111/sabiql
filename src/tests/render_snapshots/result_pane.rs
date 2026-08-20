@@ -19,6 +19,10 @@ fn json_detail_state() -> (AppState, std::time::Instant) {
         default: None,
         comment: None,
         ordinal_position: 4,
+        character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
     });
     let _ = state.session.set_table_detail(table, 0);
     state
@@ -67,6 +71,10 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             default: None,
             comment: None,
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "body".to_string(),
@@ -75,6 +83,10 @@ fn cell_detail_state() -> (AppState, std::time::Instant) {
             default: None,
             comment: None,
             ordinal_position: 2,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
     ];
     table.primary_key = Some(vec!["id".to_string()]);
@@ -118,6 +130,10 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
             default: None,
             comment: None,
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "body".to_string(),
@@ -126,6 +142,10 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
             default: None,
             comment: None,
             ordinal_position: 2,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
     ];
     table.primary_key = Some(vec!["id".to_string()]);

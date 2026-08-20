@@ -574,7 +574,7 @@ while IFS= read -r line; do
       elif [ "$mode" = "malformed" ]; then
         printf '%s\n' '<resultset><row><field name="WRONG">x</field></row></resultset>'
       else
-        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field></row></resultset>'
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="COLUMN_NAME">id</field><field name="COLUMN_TYPE">int</field><field name="IS_NULLABLE">NO</field><field name="COLUMN_DEFAULT" xsi:nil="true"/><field name="EXTRA"></field><field name="COLUMN_COMMENT" xsi:nil="true"/><field name="ORDINAL_POSITION">1</field><field name="PRIMARY_KEY_POSITION">1</field><field name="CHARACTER_SET_NAME" xsi:nil="true"/><field name="COLLATION_NAME" xsi:nil="true"/><field name="GENERATION_EXPRESSION" xsi:nil="true"/></row></resultset>'
       fi
       ;;
     *GROUP\ BY\ s.INDEX_NAME*)
