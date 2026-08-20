@@ -73,18 +73,24 @@ fn build_update_preview(
         .visible_preview_column(col_idx)
         .map_or("", |c| c.data_type.as_str());
     let handling = CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
-    let before = normalize_for_write_diff(
-        state.result_interaction.cell_edit().original_value(),
-        handling,
-    );
-    let after =
-        normalize_for_write_diff(state.result_interaction.cell_edit().draft_value(), handling);
-    if uses_structured_json_diff(handling) {
-        normalize_structured_json_for_write(state.result_interaction.cell_edit().original_value())
-            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
-        normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
-            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
-    }
+    let (before, after) = if uses_structured_json_diff(handling) {
+        (
+            normalize_structured_json_for_write(
+                state.result_interaction.cell_edit().original_value(),
+            )
+            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?,
+            normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
+                .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?,
+        )
+    } else {
+        (
+            normalize_for_write_diff(
+                state.result_interaction.cell_edit().original_value(),
+                handling,
+            ),
+            normalize_for_write_diff(state.result_interaction.cell_edit().draft_value(), handling),
+        )
+    };
     if before == after {
         return Err(EditGuardrailError::NoSemanticChanges);
     }
