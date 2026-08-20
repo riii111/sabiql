@@ -16,8 +16,8 @@ use crate::domain::{
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 use super::super::policy::{
     MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
-    mysql_refresh_scope, mysql_row_count_marker, query_failed_after_change,
-    query_failed_after_mysql_statement,
+    mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
+    query_failed_after_change, query_failed_after_mysql_statement,
 };
 use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns_with_diagnostics;
@@ -54,20 +54,26 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
     if mysql_metadata_fallback_has_unsupported_session_state(statements) {
         return Err(DbOperationError::UnsupportedOperation(
             "MySQL empty SHOW/DESCRIBE metadata fallback cannot preserve temporary-table session state"
-                .to_string(),
+            .to_string(),
         ));
     }
+    let possible_refresh_scope = mysql_possible_refresh_scope(statements);
     let mut process = MySqlProcess::spawn_with_adhoc_program(program, option_file)?;
-    run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
-        run_mysql_adhoc_process(
-            process,
-            option_file,
-            statements,
-            access_mode,
-            expected_columns,
-        )
-        .await
-    })
+    run_mysql_process_with_timeout(
+        execution_timeout,
+        &mut process,
+        possible_refresh_scope,
+        async |process| {
+            run_mysql_adhoc_process(
+                process,
+                option_file,
+                statements,
+                access_mode,
+                expected_columns,
+            )
+            .await
+        },
+    )
     .await
 }
 

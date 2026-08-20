@@ -12,13 +12,15 @@ use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
-use crate::domain::MySqlDiagnostic;
+use crate::domain::{MySqlDiagnostic, RefreshScope};
 
 use super::args::{mysql_adhoc_args, mysql_query_args};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
-use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
+use super::policy::{
+    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_mysql_statement, validate_mysql_session_marker,
+};
 #[cfg(unix)]
 use super::pty::{
     MySqlPty, create_mysql_pty, read_one_pty_resultset, read_one_pty_resultset_with_diagnostics,
@@ -369,6 +371,7 @@ async fn drain_mysql_pty(pty: &mut MySqlPty) {
 pub(super) async fn run_mysql_process_with_timeout<T, F>(
     execution_timeout: Duration,
     process: &mut MySqlProcess,
+    possible_refresh_scope: RefreshScope,
     execute: F,
 ) -> Result<T, DbOperationError>
 where
@@ -378,12 +381,18 @@ where
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => {
             cleanup_mysql_process(process).await;
-            Err(error)
+            Err(query_failed_after_mysql_statement(
+                error,
+                RefreshScope::None,
+                possible_refresh_scope,
+            ))
         }
         Err(_) => {
             cleanup_mysql_process(process).await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
+            Err(query_failed_after_mysql_statement(
+                DbOperationError::Timeout("mysql query exceeded the execution timeout".to_string()),
+                RefreshScope::None,
+                possible_refresh_scope,
             ))
         }
     }
@@ -545,9 +554,12 @@ mod tests {
         execution_timeout: Duration,
     ) -> Result<(), DbOperationError> {
         let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
-            run_mysql_export_process(process, option_file, query, path).await
-        })
+        run_mysql_process_with_timeout(
+            execution_timeout,
+            &mut process,
+            RefreshScope::None,
+            async |process| run_mysql_export_process(process, option_file, query, path).await,
+        )
         .await
     }
     async fn run_mysql_single_statement_with_program(
@@ -558,9 +570,12 @@ mod tests {
         execution_timeout: Duration,
     ) -> Result<MySqlResultSet, DbOperationError> {
         let mut process = MySqlProcess::spawn_with_program(program, option_file)?;
-        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
-            run_mysql_single_statement_process(process, query, access_mode).await
-        })
+        run_mysql_process_with_timeout(
+            execution_timeout,
+            &mut process,
+            RefreshScope::None,
+            async |process| run_mysql_single_statement_process(process, query, access_mode).await,
+        )
         .await
     }
 
@@ -572,9 +587,15 @@ mod tests {
         execution_timeout: Duration,
     ) -> Result<MySqlExecutionResult, DbOperationError> {
         let mut process = MySqlProcess::spawn_with_adhoc_program(program, option_file)?;
-        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
-            run_mysql_single_statement_process_with_diagnostics(process, query, access_mode).await
-        })
+        run_mysql_process_with_timeout(
+            execution_timeout,
+            &mut process,
+            RefreshScope::None,
+            async |process| {
+                run_mysql_single_statement_process_with_diagnostics(process, query, access_mode)
+                    .await
+            },
+        )
         .await
     }
 
@@ -842,6 +863,9 @@ while IFS= read -r line; do
     *missing_column*)
       printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
       exit 1
+      ;;
+    *SLEEP*)
+      while :; do :; done
       ;;
     *SELECT*)
       case "$line" in
@@ -1729,6 +1753,57 @@ done
                     ..
                 }) if matches!(&*source, DbOperationError::ObjectMissing(_))
             ));
+        }
+
+        #[tokio::test]
+        async fn timeout_after_a_data_change_is_wrapped_for_refresh() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements("UPDATE items SET value = 1; SELECT SLEEP(40)")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_millis(100),
+            )
+            .await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailedAfterChange {
+                    source,
+                    refresh_scope: RefreshScope::Data,
+                    ..
+                }) if matches!(&*source, DbOperationError::Timeout(_))
+            ));
+        }
+
+        #[tokio::test]
+        async fn read_only_timeout_does_not_request_refresh() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements("SELECT SLEEP(40)")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_millis(100),
+            )
+            .await;
+
+            assert!(matches!(result, Err(DbOperationError::Timeout(_))));
         }
 
         #[tokio::test]

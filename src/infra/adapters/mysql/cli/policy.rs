@@ -376,7 +376,9 @@ pub(super) fn query_failed_after_change(
     error: DbOperationError,
     refresh_scope: RefreshScope,
 ) -> DbOperationError {
-    if refresh_scope == RefreshScope::None {
+    if refresh_scope == RefreshScope::None
+        || matches!(&error, DbOperationError::QueryFailedAfterChange { .. })
+    {
         error
     } else {
         DbOperationError::QueryFailedAfterChange {
@@ -391,10 +393,13 @@ pub(super) fn query_failed_after_mysql_statement(
     refresh_scope: RefreshScope,
     possible_refresh_scope: RefreshScope,
 ) -> DbOperationError {
-    let refresh_scope = if is_mysql_statement_failure(&error) {
-        refresh_scope
-    } else {
-        possible_refresh_scope
+    let refresh_scope = match &error {
+        DbOperationError::QueryFailedAfterChange {
+            refresh_scope: existing_scope,
+            ..
+        } => *existing_scope,
+        error if is_mysql_statement_failure(error) => refresh_scope,
+        _ => possible_refresh_scope,
     };
     query_failed_after_change(error, refresh_scope)
 }
@@ -491,6 +496,14 @@ pub(super) fn mysql_refresh_scope(kind: &MySqlStatementKind) -> RefreshScope {
     } else {
         RefreshScope::None
     }
+}
+
+pub(super) fn mysql_possible_refresh_scope(statements: &[MySqlStatement]) -> RefreshScope {
+    statements
+        .iter()
+        .fold(RefreshScope::None, |scope, statement| {
+            scope.merge(mysql_refresh_scope(statement.kind()))
+        })
 }
 
 #[cfg(test)]
@@ -836,6 +849,25 @@ mod tests {
         assert_eq!(
             mysql_refresh_scope(&MySqlStatementKind::CreateTable { temporary: false }),
             RefreshScope::Metadata
+        );
+    }
+
+    #[test]
+    fn possible_refresh_scope_includes_all_classified_statements() {
+        let statements = classify_mysql_multi_statement(
+            "UPDATE items SET value = 1; CREATE TABLE created (id INT)",
+            Some("app"),
+        )
+        .unwrap();
+        assert_eq!(
+            mysql_possible_refresh_scope(&statements),
+            RefreshScope::Metadata
+        );
+
+        let statements = classify_mysql_multi_statement("SELECT SLEEP(40)", Some("app")).unwrap();
+        assert_eq!(
+            mysql_possible_refresh_scope(&statements),
+            RefreshScope::None
         );
     }
 
