@@ -1,3 +1,4 @@
+#[cfg(unix)]
 use std::ffi::OsStr;
 use std::io;
 use std::path::PathBuf;
