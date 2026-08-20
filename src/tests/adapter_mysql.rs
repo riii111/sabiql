@@ -2593,6 +2593,49 @@ mod query_execution {
                     "unexpected temporary DDL-tail result: {temporary_ddl_tail_result:?}"
                 ));
             }
+
+            let found_rows_capture_table = format!("sabiql_sab533_found_rows_{suffix}");
+            let found_rows_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {found_rows_capture_table} AS SELECT FOUND_ROWS() AS n"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("CTAS diagnostic-tail query failed: {error:?}"))?;
+            if found_rows_result.columns != ["id"]
+                || !found_rows_result.values().is_empty()
+                || found_rows_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected CTAS diagnostic-tail result: {found_rows_result:?}"
+                ));
+            }
+            let captured_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT n FROM {found_rows_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read CTAS diagnostic result: {error:?}"))?;
+            if captured_found_rows.values() != [[QueryValue::Text("1".to_string())]] {
+                return Err(format!(
+                    "unexpected CTAS diagnostic value: {captured_found_rows:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE {found_rows_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up CTAS table: {error:?}"))?;
             Ok(())
         }))
         .await;

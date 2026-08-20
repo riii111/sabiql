@@ -9,7 +9,7 @@ use crate::domain::{
     RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying,
-        mysql_statement_is_schema_modifying,
+        mysql_statement_is_schema_modifying, mysql_statement_reads_session_diagnostics,
     },
 };
 
@@ -152,18 +152,20 @@ fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
     )
 }
 
-fn mysql_statement_is_safe_empty_result_metadata_tail(kind: &MySqlStatementKind) -> bool {
-    mysql_statement_is_schema_modifying(kind)
-        || matches!(
-            kind,
-            MySqlStatementKind::Begin
-                | MySqlStatementKind::StartTransaction
-                | MySqlStatementKind::Commit
-                | MySqlStatementKind::Rollback
-                | MySqlStatementKind::Savepoint
-                | MySqlStatementKind::RollbackToSavepoint
-                | MySqlStatementKind::ReleaseSavepoint
-        )
+fn mysql_statement_is_safe_empty_result_metadata_tail(statement: &MySqlStatement) -> bool {
+    if mysql_statement_is_schema_modifying(statement.kind()) {
+        return !mysql_statement_reads_session_diagnostics(statement.sql()).unwrap_or(true);
+    }
+    matches!(
+        statement.kind(),
+        MySqlStatementKind::Begin
+            | MySqlStatementKind::StartTransaction
+            | MySqlStatementKind::Commit
+            | MySqlStatementKind::Rollback
+            | MySqlStatementKind::Savepoint
+            | MySqlStatementKind::RollbackToSavepoint
+            | MySqlStatementKind::ReleaseSavepoint
+    )
 }
 
 fn mysql_result_needs_metadata(result: &MySqlResultSet) -> bool {
@@ -231,9 +233,9 @@ async fn run_mysql_adhoc_process(
         if last_result_set
             .as_ref()
             .is_some_and(mysql_result_needs_metadata)
-            && statements[index..].iter().all(|statement| {
-                mysql_statement_is_safe_empty_result_metadata_tail(statement.kind())
-            })
+            && statements[index..]
+                .iter()
+                .all(mysql_statement_is_safe_empty_result_metadata_tail)
         {
             fill_mysql_last_result_columns(
                 process,

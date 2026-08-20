@@ -118,6 +118,10 @@ pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError>
     side_effect::has_mysql_read_only_side_effect(sql)
 }
 
+pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySqlLexError> {
+    side_effect::mysql_statement_reads_session_diagnostics(sql)
+}
+
 pub fn target_is_selected_database(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
