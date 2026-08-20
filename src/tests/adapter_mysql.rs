@@ -2259,6 +2259,44 @@ mod query_execution {
                     "unexpected empty FOUND_ROWS result: {empty_found_rows:?}"
                 ));
             }
+
+            let dml_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite WHERE first_key = 999; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = FOUND_ROWS() WHERE id = 1"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("DML FOUND_ROWS query failed: {error:?}"))?;
+            let stored_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("SELECT empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("stored FOUND_ROWS query failed: {error:?}"))?;
+            if dml_found_rows.columns != ["first_key"]
+                || !dml_found_rows.values().is_empty()
+                || dml_found_rows.command_tag.is_some()
+                || stored_found_rows.values() != [[QueryValue::Text("0".to_string())]]
+            {
+                return Err(format!(
+                    "unexpected DML FOUND_ROWS result: dml={dml_found_rows:?}, stored={stored_found_rows:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore FOUND_ROWS fixture: {error:?}"))?;
             Ok(())
         }))
         .await;

@@ -104,11 +104,7 @@ pub(super) async fn fill_mysql_empty_result_columns(
 
 async fn run_mysql_statement(
     process: &mut MySqlProcess,
-    option_file: &Path,
     statement: &MySqlStatement,
-    access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
-    defer_empty_result_metadata: bool,
     refresh_scope: RefreshScope,
 ) -> Result<MySqlStatementExecution, DbOperationError> {
     let statement_scope = mysql_refresh_scope(statement.kind());
@@ -137,22 +133,6 @@ async fn run_mysql_statement(
         Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
     };
 
-    let result = if defer_empty_result_metadata {
-        result
-    } else {
-        fill_mysql_empty_result_columns(
-            process,
-            result,
-            option_file,
-            statement.sql(),
-            statement.kind(),
-            access_mode,
-            expected_columns,
-        )
-        .await
-        .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?
-    };
-
     Ok(MySqlStatementExecution {
         result_set: Some(result),
         refresh_scope: possible_refresh_scope,
@@ -167,6 +147,45 @@ fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
             | MySqlStatementKind::Show
             | MySqlStatementKind::Describe
     )
+}
+
+fn mysql_statement_is_safe_empty_result_metadata_tail(kind: &MySqlStatementKind) -> bool {
+    matches!(kind, MySqlStatementKind::DropTable { temporary: true })
+}
+
+fn mysql_result_needs_metadata(result: &MySqlResultSet) -> bool {
+    result.columns.is_empty() && result.values.is_empty()
+}
+
+async fn fill_mysql_last_result_columns(
+    process: &mut MySqlProcess,
+    option_file: &Path,
+    last_result_set: &mut Option<MySqlResultSet>,
+    last_result_statement: Option<&MySqlStatement>,
+    access_mode: AccessMode,
+    expected_columns: Option<&[&str]>,
+    refresh_scope: RefreshScope,
+) -> Result<(), DbOperationError> {
+    let Some(result) = last_result_set.take() else {
+        return Ok(());
+    };
+    let Some(statement) = last_result_statement else {
+        *last_result_set = Some(result);
+        return Ok(());
+    };
+    let result = fill_mysql_empty_result_columns(
+        process,
+        result,
+        option_file,
+        statement.sql(),
+        statement.kind(),
+        access_mode,
+        expected_columns,
+    )
+    .await
+    .map_err(|error| query_failed_after_change(error, refresh_scope))?;
+    *last_result_set = Some(result);
+    Ok(())
 }
 
 async fn run_mysql_adhoc_process(
@@ -187,6 +206,7 @@ async fn run_mysql_adhoc_process(
     configure_mysql_session(process, access_mode).await?;
 
     let mut last_result_set = None;
+    let mut last_result_statement = None;
     let mut refresh_scope = RefreshScope::None;
     let mut refresh_scope_before_last_statement = RefreshScope::None;
     let expected_columns = (statements.len() == 1)
@@ -195,24 +215,42 @@ async fn run_mysql_adhoc_process(
 
     for (index, statement) in statements.iter().enumerate() {
         refresh_scope_before_last_statement = refresh_scope;
-        let defer_empty_result_metadata = statements[index + 1..]
-            .iter()
-            .any(|statement| mysql_statement_returns_resultset(statement.kind()));
-        let execution = run_mysql_statement(
-            process,
-            option_file,
-            statement,
-            access_mode,
-            expected_columns,
-            defer_empty_result_metadata,
-            refresh_scope,
-        )
-        .await?;
+        if last_result_set
+            .as_ref()
+            .is_some_and(mysql_result_needs_metadata)
+            && statements[index..].iter().all(|statement| {
+                mysql_statement_is_safe_empty_result_metadata_tail(statement.kind())
+            })
+        {
+            fill_mysql_last_result_columns(
+                process,
+                option_file,
+                &mut last_result_set,
+                last_result_statement,
+                access_mode,
+                expected_columns,
+                refresh_scope,
+            )
+            .await?;
+        }
+        let execution = run_mysql_statement(process, statement, refresh_scope).await?;
         if let Some(result) = execution.result_set {
             last_result_set = Some(result);
+            last_result_statement = Some(statement);
         }
         refresh_scope = execution.refresh_scope;
     }
+
+    fill_mysql_last_result_columns(
+        process,
+        option_file,
+        &mut last_result_set,
+        last_result_statement,
+        access_mode,
+        expected_columns,
+        refresh_scope,
+    )
+    .await?;
 
     let marker = Uuid::new_v4().simple().to_string();
     let marker_query =

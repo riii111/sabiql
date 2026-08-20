@@ -140,11 +140,61 @@ pub(super) fn mysql_metadata_select_query(
                 .to_string(),
         ));
     }
+    let query = strip_mysql_sql_calc_found_rows(query);
     Ok(sql::build_metadata_select_query(
-        query,
+        &query,
         source_alias,
         marker_alias,
     ))
+}
+
+fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
+    const MODIFIER: &[u8] = b"SQL_CALC_FOUND_ROWS";
+
+    fn is_identifier_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || byte == b'_'
+    }
+
+    let bytes = query.as_bytes();
+    let uppercase = bytes.to_ascii_uppercase();
+    let mut quote = None;
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(delimiter) = quote {
+            if byte == b'\\' {
+                index = (index + 2).min(bytes.len());
+                continue;
+            }
+            if byte == delimiter {
+                if bytes.get(index + 1) == Some(&delimiter) {
+                    index += 2;
+                    continue;
+                }
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"' | b'`') {
+            quote = Some(byte);
+            index += 1;
+            continue;
+        }
+        if index + MODIFIER.len() <= bytes.len()
+            && &uppercase[index..index + MODIFIER.len()] == MODIFIER
+            && (index == 0 || !is_identifier_byte(bytes[index - 1]))
+            && (index + MODIFIER.len() == bytes.len()
+                || !is_identifier_byte(bytes[index + MODIFIER.len()]))
+        {
+            let mut result = String::with_capacity(query.len() - MODIFIER.len());
+            result.push_str(&query[..index]);
+            result.push_str(&query[index + MODIFIER.len()..]);
+            return result;
+        }
+        index += 1;
+    }
+    query.to_string()
 }
 
 pub(super) fn validate_mysql_session_marker(
@@ -410,6 +460,19 @@ mod tests {
             )
         );
         assert_eq!(fallback_query.matches("SELECT SLEEP(10)").count(), 1);
+    }
+
+    #[test]
+    fn metadata_fallback_removes_sql_calc_found_rows_from_the_source_query() {
+        let fallback_query = mysql_metadata_select_query(
+            "SELECT SQL_CALC_FOUND_ROWS first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+
+        assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
+        assert!(fallback_query.contains("SELECT  first_key FROM items WHERE FALSE"));
     }
 
     #[test]
