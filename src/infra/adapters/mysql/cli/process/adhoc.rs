@@ -40,7 +40,7 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     .await
 }
 
-pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
     program: &OsStr,
     option_file: &Path,
     statements: &[MySqlStatement],

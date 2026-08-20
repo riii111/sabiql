@@ -5,11 +5,9 @@ use std::time::Duration;
 use crate::adapters::csv_export::export_to_path;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
-use super::cli::{
-    export_mysql_csv_to_file, run_mysql_adhoc,
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns,
-    run_mysql_command_with_timeout, validate_mysql_multi_query,
-};
+use super::cli::probe::run_mysql_command_with_timeout;
+use super::cli::process::test_support::run_mysql_adhoc_with_timeout_for_test;
+use super::cli::{export_mysql_csv_to_file, run_mysql_adhoc, validate_mysql_multi_query};
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
 
@@ -83,16 +81,14 @@ pub async fn execute_mysql_adhoc_with_timeout_for_test(
     let statements =
         validate_mysql_multi_query(query, target.database.as_deref(), AccessMode::ReadWrite)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+    run_mysql_adhoc_with_timeout_for_test(
         OsStr::new("mysql"),
         &option_file.path,
         &statements,
         AccessMode::ReadWrite,
-        None,
         execution_timeout,
     )
     .await
-    .map(|_| ())
 }
 
 #[cfg(unix)]

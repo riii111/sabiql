@@ -4,8 +4,8 @@ mod export;
 #[cfg(not(unix))]
 mod pipe;
 mod policy;
-mod probe;
-mod process;
+pub(super) mod probe;
+pub(super) mod process;
 #[cfg(unix)]
 mod pty;
 mod xml;
@@ -15,16 +15,12 @@ pub(super) use policy::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_statements_for_execution,
 };
-#[cfg(feature = "test-support")]
-pub(super) use probe::run_mysql_command_with_timeout;
 pub(super) use probe::{check_mysql_cli_version, probe_mysql_server};
-#[cfg(feature = "test-support")]
-pub(super) use process::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
 pub(super) use process::{
     MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, run_mysql_adhoc, run_mysql_single_statement,
 };
 
 pub(super) use xml::MySqlResultSet;
 
-#[cfg(feature = "test-support")]
+#[cfg(all(unix, feature = "test-support"))]
 pub(super) mod test_support;

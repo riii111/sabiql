@@ -1,25 +1,16 @@
 use super::process::MySqlProcess;
 
-#[cfg(all(unix, feature = "test-support"))]
 use std::ffi::OsStr;
-#[cfg(all(unix, feature = "test-support"))]
 use std::io;
-#[cfg(all(unix, feature = "test-support"))]
 use std::path::Path;
-#[cfg(all(unix, feature = "test-support"))]
 use std::time::Duration;
 
-#[cfg(all(unix, feature = "test-support"))]
 use crate::app::ports::outbound::DbOperationError;
 
-#[cfg(all(unix, feature = "test-support"))]
 use super::process::{cleanup_mysql_process, stop_mysql_process, write_mysql_input};
-#[cfg(all(unix, feature = "test-support"))]
 use super::pty::{MySqlPty, read_pty_until_idle_from};
-#[cfg(all(unix, feature = "test-support"))]
 use super::xml::{trace_mysql_frame, trace_mysql_statement};
 
-#[cfg(all(unix, feature = "test-support"))]
 async fn read_pty_until_first_byte_then_idle(
     pty: &mut MySqlPty,
     first_byte_timeout: Duration,
@@ -29,7 +20,6 @@ async fn read_pty_until_first_byte_then_idle(
     read_pty_until_idle_from(&mut pty.output, output, true, Some(first_byte_timeout)).await
 }
 
-#[cfg(all(unix, feature = "test-support"))]
 pub(in crate::adapters::mysql) async fn run_mysql_cli_script_with_program(
     program: &OsStr,
     option_file: &Path,
@@ -40,7 +30,6 @@ pub(in crate::adapters::mysql) async fn run_mysql_cli_script_with_program(
     run_mysql_cli_script_process(&mut process, script, first_byte_timeout).await
 }
 
-#[cfg(all(unix, feature = "test-support"))]
 async fn run_mysql_cli_script_process(
     process: &mut MySqlProcess,
     script: &str,
@@ -71,7 +60,7 @@ async fn run_mysql_cli_script_process(
     result
 }
 
-#[cfg(all(test, unix, feature = "test-support"))]
+#[cfg(test)]
 mod tests {
     use std::fs;
     use std::os::unix::fs::PermissionsExt;

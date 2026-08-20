@@ -28,12 +28,12 @@ mod session;
 pub(in crate::adapters::mysql) use session::MySqlMetadataSession;
 mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
-#[cfg(feature = "test-support")]
-pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
 mod single;
+#[cfg(feature = "test-support")]
+pub(in crate::adapters::mysql) mod test_support;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 mod metadata;
-pub(in crate::adapters::mysql) use metadata::mysql_metadata_columns;
+pub(super) use metadata::mysql_metadata_columns;
 
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 #[cfg(unix)]
