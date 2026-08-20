@@ -1,11 +1,7 @@
-use std::borrow::Cow;
 use std::time::Instant;
 
 use crate::adapters::csv_export::export_to_downloads;
-use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, MySqlQueryExecutor, QueryExecutor,
-};
-use crate::domain::mysql_sql::MySqlStatement;
+use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
     QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
 };
@@ -13,9 +9,9 @@ use async_trait::async_trait;
 
 use super::adapter::MySqlAdapter;
 use super::cli::{
-    export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
+    export_mysql_csv_to_file, probe_mysql_server, run_mysql_adhoc, run_mysql_single_statement,
     validate_mysql_export_query, validate_mysql_multi_query,
-    validate_mysql_statements_for_execution_with_lower_case_table_names,
+    validate_mysql_multi_query_with_lower_case_table_names,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
@@ -25,8 +21,6 @@ async fn execute_adhoc_with_statements(
     dsn: &str,
     query: &str,
     access_mode: AccessMode,
-    classified_statements: Option<&[MySqlStatement]>,
-    lower_case_table_names: u8,
 ) -> Result<QueryResult, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
 
@@ -49,30 +43,23 @@ async fn execute_adhoc_with_statements(
         ));
     }
 
-    let statements: Cow<'_, [MySqlStatement]> = match classified_statements {
-        Some(statements) => {
-            validate_mysql_statements_for_execution_with_lower_case_table_names(
-                statements,
-                target.database.as_deref(),
-                access_mode,
-                lower_case_table_names,
-            )?;
-            Cow::Borrowed(statements)
-        }
-        None => Cow::Owned(validate_mysql_multi_query(
-            query,
-            target.database.as_deref(),
-            access_mode,
-        )?),
-    };
+    let option_file = MySqlOptionFile::create(&target)?;
+    let lower_case_table_names = probe_mysql_server(&option_file.path)
+        .await?
+        .lower_case_table_names;
+    let statements = validate_mysql_multi_query_with_lower_case_table_names(
+        query,
+        target.database.as_deref(),
+        access_mode,
+        lower_case_table_names,
+    )?;
 
     #[expect(
         clippy::disallowed_methods,
         reason = "infra measures mysql execution time at the I/O boundary"
     )]
     let start = Instant::now();
-    let option_file = MySqlOptionFile::create(&target)?;
-    let result = run_mysql_adhoc(&option_file.path, statements.as_ref(), access_mode).await;
+    let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
     drop(option_file);
     let execution = result?;
     let elapsed = start.elapsed().as_millis() as u64;
@@ -154,7 +141,7 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(dsn, query, access_mode, None, 0).await
+        execute_adhoc_with_statements(dsn, query, access_mode).await
     }
 
     async fn execute_write(
@@ -217,27 +204,6 @@ impl QueryExecutor for MySqlAdapter {
         export_to_downloads(file_name, move |path| async move {
             export_mysql_csv_to_file(target, &query, path).await
         })
-        .await
-    }
-}
-
-#[async_trait]
-impl MySqlQueryExecutor for MySqlAdapter {
-    async fn execute_adhoc_with_classified_statements(
-        &self,
-        dsn: &str,
-        query: &str,
-        statements: &[MySqlStatement],
-        access_mode: AccessMode,
-        lower_case_table_names: u8,
-    ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(
-            dsn,
-            query,
-            access_mode,
-            Some(statements),
-            lower_case_table_names,
-        )
         .await
     }
 }

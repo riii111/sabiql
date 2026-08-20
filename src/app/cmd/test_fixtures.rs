@@ -13,15 +13,14 @@ use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
-    mysql_sql::MySqlStatement,
 };
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
-    AccessMode, AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
+    AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
     FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe,
-    MySqlConnectionProbeResult, MySqlQueryExecutor, PgServiceEntryReader, QueryExecutor,
-    QueryHistoryError, QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
+    MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
+    QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
     SqliteDiagnosticsProvider, SqlitePathValidator,
 };
 use crate::update::action::Action;
@@ -177,23 +176,6 @@ impl QueryHistoryStore for NoopQueryHistoryStore {
     }
 }
 
-pub struct NoopMySqlQueryExecutor;
-#[async_trait::async_trait]
-impl MySqlQueryExecutor for NoopMySqlQueryExecutor {
-    async fn execute_adhoc_with_classified_statements(
-        &self,
-        _dsn: &str,
-        _query: &str,
-        _statements: &[MySqlStatement],
-        _access_mode: AccessMode,
-        _lower_case_table_names: u8,
-    ) -> Result<QueryResult, DbOperationError> {
-        Err(DbOperationError::UnsupportedOperation(
-            "classified MySQL statements require the MySQL query executor".to_string(),
-        ))
-    }
-}
-
 pub struct NoopSettingsStore;
 impl SettingsStore for NoopSettingsStore {
     fn load(&self) -> Result<AppSettings, SettingsStoreError> {
@@ -227,24 +209,6 @@ pub fn make_runner(
     cache: TtlCache<String, Arc<DatabaseMetadata>>,
     action_tx: mpsc::Sender<Action>,
 ) -> EffectRunner {
-    make_runner_with_mysql_query_executor(
-        metadata_provider,
-        query_executor,
-        Arc::new(NoopMySqlQueryExecutor),
-        connection_store,
-        cache,
-        action_tx,
-    )
-}
-
-pub fn make_runner_with_mysql_query_executor(
-    metadata_provider: Arc<dyn MetadataProvider>,
-    query_executor: Arc<dyn QueryExecutor>,
-    mysql_query_executor: Arc<dyn MySqlQueryExecutor>,
-    connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
-    action_tx: mpsc::Sender<Action>,
-) -> EffectRunner {
     make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
@@ -254,7 +218,6 @@ pub fn make_runner_with_mysql_query_executor(
         Arc::new(NoopDsnBuilder),
         Arc::new(NoopMySqlConnectionProbe),
         Arc::new(TestCachedResultExporter),
-        mysql_query_executor,
     )
 }
 
@@ -314,7 +277,6 @@ pub fn make_runner_with_dsn_and_probe(
         dsn_builder,
         mysql_connection_probe,
         Arc::new(TestCachedResultExporter),
-        Arc::new(NoopMySqlQueryExecutor),
     )
 }
 
@@ -336,14 +298,9 @@ fn make_runner_with_dsn_and_cached_result_exporter(
         dsn_builder,
         Arc::new(NoopMySqlConnectionProbe),
         cached_result_exporter,
-        Arc::new(NoopMySqlQueryExecutor),
     )
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "test fixture wires independent effect dependencies"
-)]
 fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
     metadata_provider: Arc<dyn MetadataProvider>,
     query_executor: Arc<dyn QueryExecutor>,
@@ -353,7 +310,6 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
     dsn_builder: Arc<dyn DsnBuilder>,
     mysql_connection_probe: Arc<dyn MySqlConnectionProbe>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
-    mysql_query_executor: Arc<dyn MySqlQueryExecutor>,
 ) -> EffectRunner {
     EffectRunner::new(
         metadata_provider,
@@ -366,7 +322,6 @@ fn make_runner_with_dsn_and_cached_result_exporter_and_probe(
         },
         QueryDeps {
             query_executor,
-            mysql_query_executor,
             query_history_store: Arc::new(NoopQueryHistoryStore),
             sqlite_diagnostics: Arc::new(NoopSqliteDiagnosticsProvider),
             cached_result_exporter,

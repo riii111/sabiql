@@ -14,7 +14,6 @@ pub(super) use export::export_mysql_csv_to_file;
 pub(super) use policy::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
-    validate_mysql_statements_for_execution_with_lower_case_table_names,
 };
 pub(super) use probe::{check_mysql_cli_version, probe_mysql_server};
 #[cfg(feature = "test-support")]

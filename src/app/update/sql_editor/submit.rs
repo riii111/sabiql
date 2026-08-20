@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::domain::DatabaseType;
-use crate::domain::mysql_sql::MySqlStatement;
 use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::policy::write::sql_risk::{
@@ -40,14 +39,9 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                         state.sql_modal.finish_adhoc_error(reason);
                         DispatchResult::handled()
                     }
-                    MultiStatementDecision::Allow { statements, risk } => handle_allowed_query(
-                        state,
-                        database_type,
-                        query,
-                        now,
-                        risk,
-                        Some(statements),
-                    ),
+                    MultiStatementDecision::Allow { risk, .. } => {
+                        handle_allowed_query(state, database_type, query, now, risk)
+                    }
                 };
             }
 
@@ -61,7 +55,7 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                     DispatchResult::handled()
                 }
                 MultiStatementDecision::Allow { risk, .. } => {
-                    handle_allowed_query(state, database_type, query, now, risk, None)
+                    handle_allowed_query(state, database_type, query, now, risk)
                 }
             }
         }
@@ -75,7 +69,6 @@ fn handle_allowed_query(
     query: String,
     now: Instant,
     risk: SqlRiskDecision,
-    classified_mysql_statements: Option<Vec<MySqlStatement>>,
 ) -> DispatchResult {
     if state.session.is_read_only() && !risk.read_only_allowed {
         state
@@ -85,9 +78,7 @@ fn handle_allowed_query(
     }
 
     match risk.confirmation {
-        ConfirmationType::Immediate => {
-            start_adhoc_if_connected(state, query, now, classified_mysql_statements)
-        }
+        ConfirmationType::Immediate => start_adhoc_if_connected(state, query, now),
         ConfirmationType::Acknowledge { reason, label } => {
             state.sql_modal.begin_confirming_risk(reason, label);
             DispatchResult::handled()
@@ -99,9 +90,7 @@ fn handle_allowed_query(
                 risk_level: risk.risk_level,
                 label,
             };
-            state
-                .sql_modal
-                .begin_confirming_high(decision, target, classified_mysql_statements);
+            state.sql_modal.begin_confirming_high(decision, target);
             DispatchResult::handled()
         }
     }

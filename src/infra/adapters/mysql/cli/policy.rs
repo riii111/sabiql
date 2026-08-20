@@ -8,7 +8,6 @@ use crate::domain::{
         classify_mysql_multi_statement_with_lower_case_table_names,
         has_mysql_read_only_side_effect, mysql_export_plan, mysql_statement_is_data_modifying,
         mysql_statement_is_persistent_schema_change,
-        validate_mysql_statements_with_lower_case_table_names,
     },
 };
 
@@ -63,21 +62,6 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query_with_lower_case_tab
     .map_err(DbOperationError::UnsupportedOperation)?;
     validate_mysql_access_mode(&statements, access_mode)?;
     Ok(statements)
-}
-
-pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution_with_lower_case_table_names(
-    statements: &[MySqlStatement],
-    selected_database: Option<&str>,
-    access_mode: AccessMode,
-    lower_case_table_names: u8,
-) -> Result<(), DbOperationError> {
-    validate_mysql_statements_with_lower_case_table_names(
-        statements,
-        selected_database,
-        lower_case_table_names,
-    )
-    .map_err(DbOperationError::UnsupportedOperation)?;
-    validate_mysql_access_mode(statements, access_mode)
 }
 
 fn validate_mysql_access_mode(
@@ -437,32 +421,47 @@ mod tests {
     }
 
     #[test]
-    fn preclassified_statements_keep_execution_time_guards() {
-        let statements =
-            classify_mysql_multi_statement("SELECT GET_LOCK('sabiql', 0)", Some("app"))
-                .expect("classification should succeed");
+    fn raw_sql_revalidation_keeps_execution_guards() {
         assert!(matches!(
-            validate_mysql_statements_for_execution_with_lower_case_table_names(
-                &statements,
+            validate_mysql_multi_query(
+                "SELECT GET_LOCK('sabiql', 0)",
                 Some("app"),
-                AccessMode::ReadOnly,
-                0,
+                AccessMode::ReadOnly
             ),
             Err(DbOperationError::PermissionDenied(_))
         ));
-
-        let statements =
-            classify_mysql_multi_statement("UPDATE other.users SET value = 1", Some("other"))
-                .expect("classification should succeed for the original selected database");
         assert!(matches!(
-            validate_mysql_statements_for_execution_with_lower_case_table_names(
-                &statements,
+            validate_mysql_multi_query(
+                "UPDATE other.users SET value = 1",
                 Some("app"),
                 AccessMode::ReadWrite,
-                0,
             ),
             Err(DbOperationError::UnsupportedOperation(_))
         ));
+    }
+
+    #[test]
+    fn raw_sql_revalidation_honors_case_insensitive_database_modes() {
+        for lower_case_table_names in [1, 2] {
+            assert!(
+                validate_mysql_multi_query_with_lower_case_table_names(
+                    "UPDATE APP.items SET value = 1",
+                    Some("app"),
+                    AccessMode::ReadWrite,
+                    lower_case_table_names,
+                )
+                .is_ok()
+            );
+        }
+        assert!(
+            validate_mysql_multi_query_with_lower_case_table_names(
+                "UPDATE APP.items SET value = 1",
+                Some("app"),
+                AccessMode::ReadWrite,
+                0,
+            )
+            .is_err()
+        );
     }
 
     #[test]

@@ -260,7 +260,6 @@ pub fn reduce_execution(
                     dsn,
                     run_id,
                     query: query.clone(),
-                    classified_mysql_statements: None,
                     access_mode: AccessMode::from_read_only(state.session.is_read_only()),
                 }])
             } else {
