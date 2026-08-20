@@ -9,7 +9,7 @@ use crate::app::model::shared::text_input::TextInputState;
 use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
-use crate::domain::{MySqlDiagnostic, MySqlDiagnosticLevel};
+use crate::domain::MySqlDiagnostic;
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_count};
 use crate::theme::ThemePalette;
@@ -321,14 +321,7 @@ fn render_success_status_with_diagnostics(
 }
 
 fn diagnostic_status_line(diagnostic: &MySqlDiagnostic) -> String {
-    let level = match diagnostic.level {
-        MySqlDiagnosticLevel::Warning => "Warning",
-        MySqlDiagnosticLevel::Note => "Note",
-    };
-    format!(
-        "⚠ {level} (Code {}): {}",
-        diagnostic.code, diagnostic.message
-    )
+    format!("⚠ {}", diagnostic.display_message())
 }
 
 fn error_status_message(state: &AppState) -> String {
@@ -346,6 +339,7 @@ fn error_status_message(state: &AppState) -> String {
 mod tests {
     use super::*;
     use crate::app::model::sql_editor::modal::AdhocSuccessSnapshot;
+    use crate::domain::MySqlDiagnosticLevel;
 
     #[test]
     fn diagnostics_height_only_applies_to_success_status() {

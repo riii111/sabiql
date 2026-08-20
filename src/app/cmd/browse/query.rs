@@ -288,6 +288,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             affected_rows: result.affected_rows,
+                            mysql_diagnostics: result.mysql_diagnostics,
                         })
                         .await
                         .ok();
@@ -896,6 +897,7 @@ mod tests {
                     Ok(WriteExecutionResult {
                         affected_rows: 1,
                         execution_time_ms: 0,
+                        mysql_diagnostics: Vec::new(),
                     })
                 });
 

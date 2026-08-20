@@ -1,6 +1,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::MySqlDiagnostic;
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
@@ -609,6 +610,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         affected_rows: usize,
+        mysql_diagnostics: Vec<MySqlDiagnostic>,
     },
     ExecuteWriteFailed {
         dsn: String,

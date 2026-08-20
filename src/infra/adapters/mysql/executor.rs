@@ -186,6 +186,7 @@ impl QueryExecutor for MySqlAdapter {
         Ok(WriteExecutionResult {
             affected_rows,
             execution_time_ms: start.elapsed().as_millis() as u64,
+            mysql_diagnostics: execution.diagnostics,
         })
     }
 

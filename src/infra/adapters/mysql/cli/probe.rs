@@ -330,6 +330,7 @@ mod probe_tests {
             })
         ));
         assert!(validate_sql_mode("STRICT_TRANS_TABLES").is_ok());
+        assert!(validate_sql_mode("").is_ok());
         assert!(matches!(
             validate_sql_mode("STRICT_TRANS_TABLES,ANSI_QUOTES"),
             Err(DbOperationError::UnsupportedOperationWithKind {

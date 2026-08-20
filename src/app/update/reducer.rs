@@ -2241,6 +2241,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: 1,
                     affected_rows: 1,
+                    mysql_diagnostics: Vec::new(),
                 },
                 now,
                 &AppServices::stub(),

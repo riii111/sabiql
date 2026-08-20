@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::RefreshScope;
+use crate::domain::{MySqlDiagnostic, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -248,6 +248,7 @@ pub fn reduce_write(
             dsn,
             run_id,
             affected_rows,
+            mysql_diagnostics,
         } => {
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
@@ -263,7 +264,10 @@ pub fn reduce_write(
                 WriteOperation::Update => {
                     if *affected_rows != 1 {
                         state.messages.set_error_at(
-                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                            write_message_with_diagnostics(
+                                format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                                mysql_diagnostics,
+                            ),
                             now,
                         );
                         state.result_interaction.clear_cell_edit();
@@ -278,9 +282,13 @@ pub fn reduce_write(
                         };
                     }
 
-                    state
-                        .messages
-                        .set_success_at("Updated 1 row".to_string(), now);
+                    state.messages.set_success_at(
+                        write_message_with_diagnostics(
+                            "Updated 1 row".to_string(),
+                            mysql_diagnostics,
+                        ),
+                        now,
+                    );
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
@@ -307,17 +315,23 @@ pub fn reduce_write(
                     let row_word = |n: usize| if n == 1 { "row" } else { "rows" };
                     if *affected_rows == expected {
                         state.messages.set_success_at(
-                            format!("Deleted {} {}", expected, row_word(expected)),
+                            write_message_with_diagnostics(
+                                format!("Deleted {} {}", expected, row_word(expected)),
+                                mysql_diagnostics,
+                            ),
                             now,
                         );
                     } else {
                         state.messages.set_error_at(
-                            format!(
-                                "DELETE expected {} {}, but affected {} {}",
-                                expected,
-                                row_word(expected),
-                                affected_rows,
-                                row_word(*affected_rows),
+                            write_message_with_diagnostics(
+                                format!(
+                                    "DELETE expected {} {}, but affected {} {}",
+                                    expected,
+                                    row_word(expected),
+                                    affected_rows,
+                                    row_word(*affected_rows),
+                                ),
+                                mysql_diagnostics,
                             ),
                             now,
                         );
@@ -372,6 +386,19 @@ pub fn reduce_write(
 
         _ => DispatchResult::pass(),
     }
+}
+
+fn write_message_with_diagnostics(message: String, diagnostics: &[MySqlDiagnostic]) -> String {
+    if diagnostics.is_empty() {
+        return message;
+    }
+
+    let details = diagnostics
+        .iter()
+        .map(MySqlDiagnostic::display_message)
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("{message}; {details}")
 }
 
 fn open_write_preview_confirm(
@@ -430,7 +457,9 @@ mod tests {
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
-    use crate::domain::{ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue};
+    use crate::domain::{
+        ColumnAttributes, DatabaseType, MySqlDiagnosticLevel, QueryResult, QuerySource, QueryValue,
+    };
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
     };
@@ -444,11 +473,24 @@ mod tests {
     use std::sync::Arc;
 
     fn write_succeeded_action(state: &mut AppState, affected_rows: usize) -> Action {
+        write_succeeded_action_with_diagnostics(state, affected_rows, Vec::new())
+    }
+
+    fn write_succeeded_action_with_diagnostics(
+        state: &mut AppState,
+        affected_rows: usize,
+        mysql_diagnostics: Vec<MySqlDiagnostic>,
+    ) -> Action {
+        let dsn = state
+            .session
+            .dsn()
+            .map_or_else(|| "postgres://localhost/test".to_string(), str::to_string);
         let run_id = begin_query_run(state);
         Action::ExecuteWriteSucceeded {
-            dsn: "postgres://localhost/test".to_string(),
+            dsn,
             run_id,
             affected_rows,
+            mysql_diagnostics,
         }
     }
 
@@ -1344,6 +1386,7 @@ mod tests {
                     dsn: "mysql://localhost/test".to_string(),
                     run_id,
                     affected_rows: 0,
+                    mysql_diagnostics: Vec::new(),
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1354,6 +1397,27 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
+            );
+        }
+
+        #[test]
+        fn mysql_write_diagnostic_is_visible_in_update_success() {
+            let mut state = mysql_editable_state("enum", QueryValue::text("before"), "after");
+            let action = write_succeeded_action_with_diagnostics(
+                &mut state,
+                1,
+                vec![MySqlDiagnostic {
+                    level: MySqlDiagnosticLevel::Warning,
+                    code: 1265,
+                    message: "Data truncated".to_string(),
+                }],
+            );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(
+                state.messages.last_success.as_deref(),
+                Some("Updated 1 row; Warning (Code 1265): Data truncated")
             );
         }
 
@@ -1455,6 +1519,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     affected_rows: 1,
+                    mysql_diagnostics: Vec::new(),
                 },
                 Instant::now(),
                 &AppServices::stub(),
