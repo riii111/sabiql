@@ -760,6 +760,8 @@ impl CompletionEngine {
     fn insert_target_column_list_start(tokens: &[Token], cursor_pos: usize) -> Option<usize> {
         let mut insert_started = false;
         let mut list_depth = 0;
+        let mut partition_depth = 0;
+        let mut partition_pending = false;
         let mut list_start = None;
 
         for (index, token) in tokens.iter().enumerate() {
@@ -788,12 +790,38 @@ impl CompletionEngine {
                 continue;
             }
 
+            if partition_depth > 0 {
+                match &token.kind {
+                    TokenKind::Punctuation('(') => partition_depth += 1,
+                    TokenKind::Punctuation(')') => partition_depth -= 1,
+                    _ => {}
+                }
+                continue;
+            }
+
+            if partition_pending {
+                if token.kind == TokenKind::Whitespace {
+                    continue;
+                }
+                if token.kind == TokenKind::Punctuation('(') {
+                    partition_depth = 1;
+                    partition_pending = false;
+                    continue;
+                }
+                partition_pending = false;
+            }
+
             if Self::token_is_word(token, "VALUES")
                 || Self::token_is_word(token, "SELECT")
                 || Self::token_is_word(token, "SET")
                 || Self::token_is_word(token, "ON")
             {
                 return None;
+            }
+
+            if Self::token_is_word(token, "PARTITION") {
+                partition_pending = true;
+                continue;
             }
 
             if token.kind == TokenKind::Punctuation('(') {
@@ -1656,6 +1684,19 @@ mod tests {
 
             assert_eq!(token, "na");
             assert_eq!(ctx, CompletionContext::Column);
+        }
+
+        #[test]
+        fn insert_partition_name_does_not_return_column_context() {
+            let e = engine();
+            for sql in [
+                "INSERT INTO users PARTITION (p",
+                "REPLACE INTO users PARTITION (p",
+            ] {
+                let (_, ctx) = e.analyze(sql, sql.chars().count());
+
+                assert_ne!(ctx, CompletionContext::Column);
+            }
         }
     }
 
@@ -2560,6 +2601,8 @@ mod tests {
                 "REPLACE INTO users (na",
                 "INSERT users (na",
                 "REPLACE users (na",
+                "INSERT INTO users PARTITION (p0) (na",
+                "REPLACE INTO users PARTITION (p0) (na",
                 "INSERT INTO app.users AS u (na",
             ] {
                 let candidates = e.get_candidates_for_database(
