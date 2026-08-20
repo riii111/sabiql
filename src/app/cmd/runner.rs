@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::cmd::browse as cmd_browse;
 use crate::cmd::cache::TtlCache;
@@ -75,6 +76,7 @@ pub struct EffectRunner {
     query_tasks: QueryTaskRegistry,
     table_detail_tasks: TableDetailTaskRegistry,
     metadata_tasks: Arc<MetadataTaskRegistry>,
+    mysql_connection_probe_task: std::sync::Mutex<Option<JoinHandle<()>>>,
 }
 
 impl EffectRunner {
@@ -100,6 +102,7 @@ impl EffectRunner {
             query_tasks: QueryTaskRegistry::default(),
             table_detail_tasks: TableDetailTaskRegistry::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
+            mysql_connection_probe_task: std::sync::Mutex::new(None),
         }
     }
 
@@ -111,10 +114,23 @@ impl EffectRunner {
         self.metadata_tasks.cancel().await;
     }
 
+    async fn cancel_mysql_connection_probe(&self) {
+        let task = self
+            .mysql_connection_probe_task
+            .lock()
+            .expect("MySQL connection probe task lock poisoned")
+            .take();
+        if let Some(task) = task {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+
     async fn cancel_active_tasks(&self) {
         self.query_tasks.cancel();
         self.table_detail_tasks.cancel();
         self.cancel_metadata_tasks().await;
+        self.cancel_mysql_connection_probe().await;
     }
 
     pub async fn run<T: Renderer>(
@@ -193,6 +209,12 @@ impl EffectRunner {
             | Effect::SwitchToService { .. }) => {
                 if matches!(
                     &e,
+                    Effect::SaveAndConnect { .. } | Effect::ProbeMySqlConnection { .. }
+                ) {
+                    self.cancel_mysql_connection_probe().await;
+                }
+                if matches!(
+                    &e,
                     Effect::SaveAndConnect { .. }
                         | Effect::ProbeMySqlConnection { .. }
                         | Effect::SwitchConnection { .. }
@@ -203,7 +225,7 @@ impl EffectRunner {
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
                     self.table_detail_tasks.cancel();
                 }
-                cmd_connection::run(
+                let probe_task = cmd_connection::run(
                     e,
                     &self.action_tx,
                     &self.connection,
@@ -212,6 +234,12 @@ impl EffectRunner {
                     state,
                 )
                 .await?;
+                if let Some(task) = probe_task {
+                    *self
+                        .mysql_connection_probe_task
+                        .lock()
+                        .expect("MySQL connection probe task lock poisoned") = Some(task);
+                }
                 Ok(vec![])
             }
 
@@ -308,6 +336,19 @@ impl EffectRunner {
                 cmd_completion::run(e, &self.action_tx, state, completion_engine).await?;
                 Ok(vec![])
             }
+        }
+    }
+}
+
+impl Drop for EffectRunner {
+    fn drop(&mut self) {
+        if let Some(task) = self
+            .mysql_connection_probe_task
+            .get_mut()
+            .expect("MySQL connection probe task lock poisoned")
+            .take()
+        {
+            task.abort();
         }
     }
 }
@@ -1085,6 +1126,188 @@ mod tests {
                     .await
                     .is_err()
             );
+        }
+    }
+
+    mod mysql_connection_probe_lifecycle {
+        use std::future::pending;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tokio::sync::mpsc::UnboundedSender;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::ports::outbound::DbOperationError;
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicUsize>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingMySqlConnectionProbe {
+            started: UnboundedSender<String>,
+            dropped: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MySqlConnectionProbe for PendingMySqlConnectionProbe {
+            async fn probe(&self, dsn: &str) -> Result<(), DbOperationError> {
+                let _drop_signal = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .send(dsn.to_string())
+                    .expect("probe receiver should stay alive");
+                pending().await
+            }
+        }
+
+        fn mysql_target(dsn: &str) -> ConnectionTarget {
+            ConnectionTarget {
+                id: ConnectionId::new(),
+                dsn: dsn.to_string(),
+                name: dsn.to_string(),
+                database_type: DatabaseType::MySQL,
+                database: Some("app".to_string()),
+            }
+        }
+
+        #[tokio::test]
+        async fn replacing_probe_aborts_previous_task_before_starting_new_one() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/old"),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/old")
+            );
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/new"),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/new")
+            );
+
+            runner
+                .run(
+                    vec![Effect::CancelActiveTasks],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test]
+        async fn quitting_aborts_pending_mysql_probe_task() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/pending"),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(1), started_rx.recv())
+                .await
+                .expect("pending probe should start")
+                .expect("probe start signal should be sent");
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .run(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
         }
     }
 }

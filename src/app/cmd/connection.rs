@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::cmd::cache::TtlCache;
 use crate::cmd::effect::Effect;
@@ -44,7 +45,7 @@ pub(crate) async fn run(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     state: &AppState,
-) -> Result<()> {
+) -> Result<Option<JoinHandle<()>>> {
     match effect {
         Effect::SaveAndConnect {
             id,
@@ -67,7 +68,7 @@ pub(crate) async fn run(
                         })
                         .await
                         .ok();
-                    return Ok(());
+                    return Ok(None);
                 }
             };
             let store = Arc::clone(&connection.connection_store);
@@ -90,7 +91,7 @@ pub(crate) async fn run(
                             })
                             .await
                             .ok();
-                        return Ok(());
+                        return Ok(None);
                     }
                 };
                 let id = profile.id.clone();
@@ -124,7 +125,7 @@ pub(crate) async fn run(
                         None => {}
                     }
                 });
-                return Ok(());
+                return Ok(None);
             }
 
             let id = profile.id.clone();
@@ -144,7 +145,7 @@ pub(crate) async fn run(
                     database,
                 };
                 let probe = Arc::clone(&connection.mysql_connection_probe);
-                tokio::spawn(async move {
+                let task = tokio::spawn(async move {
                     match probe.probe(&target.dsn).await {
                         Ok(()) => {
                             let save_result = tokio::task::spawn_blocking(move || {
@@ -184,7 +185,7 @@ pub(crate) async fn run(
                         }
                     }
                 });
-                return Ok(());
+                return Ok(Some(task));
             }
 
             let provider = Arc::clone(metadata_provider);
@@ -237,13 +238,13 @@ pub(crate) async fn run(
                     }
                 }
             });
-            Ok(())
+            Ok(None)
         }
 
         Effect::ProbeMySqlConnection { target, run_id } => {
             let probe = Arc::clone(&connection.mysql_connection_probe);
             let tx = action_tx.clone();
-            tokio::spawn(async move {
+            let task = tokio::spawn(async move {
                 match probe.probe(&target.dsn).await {
                     Ok(()) => tx
                         .send(Action::MySqlConnectionProbeCompleted { target, run_id })
@@ -259,7 +260,7 @@ pub(crate) async fn run(
                         .ok(),
                 };
             });
-            Ok(())
+            Ok(Some(task))
         }
 
         Effect::LoadConnectionForEdit { id } => {
@@ -281,7 +282,7 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
                 }
             });
-            Ok(())
+            Ok(None)
         }
 
         Effect::LoadConnections => {
@@ -310,7 +311,7 @@ pub(crate) async fn run(
                 }))
                 .ok();
             });
-            Ok(())
+            Ok(None)
         }
 
         Effect::DeleteConnection { id } => {
@@ -325,7 +326,7 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
                 }
             });
-            Ok(())
+            Ok(None)
         }
 
         Effect::SwitchConnection { connection_index } => {
@@ -347,7 +348,7 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
+            Ok(None)
         }
 
         Effect::SwitchToService { service_index } => {
@@ -366,7 +367,7 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
+            Ok(None)
         }
 
         _ => unreachable!("connection::run called with non-connection effect"),
