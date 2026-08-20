@@ -887,7 +887,7 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn execute_write_forwards_access_mode() {
+        async fn execute_write_forwards_access_mode_and_diagnostics() {
             let mut executor = MockQueryExecutor::new();
             executor
                 .expect_execute_write()
