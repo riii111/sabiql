@@ -37,10 +37,28 @@ pub(super) fn target_is_selected_database(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
 ) -> bool {
+    target_is_selected_database_with_lower_case_table_names(statement, selected_database, 0)
+}
+
+pub(super) fn target_is_selected_database_with_lower_case_table_names(
+    statement: &MySqlStatement,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> bool {
     match (statement.target_database.as_deref(), selected_database) {
-        (Some(target_database), Some(selected)) => target_database == selected,
+        (Some(target_database), Some(selected)) => {
+            database_names_match(target_database, selected, lower_case_table_names)
+        }
         (None, Some(_)) => true,
         (Some(_) | None, None) => false,
+    }
+}
+
+fn database_names_match(left: &str, right: &str, lower_case_table_names: u8) -> bool {
+    match lower_case_table_names {
+        0 => left == right,
+        1 | 2 => left.to_lowercase() == right.to_lowercase(),
+        _ => false,
     }
 }
 

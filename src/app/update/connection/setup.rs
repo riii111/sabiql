@@ -240,7 +240,11 @@ pub fn reduce_connection_setup(
                 DispatchResult::handled_with(try_connect(state, now))
             }
         }
-        Action::ConnectionSaveCompleted { target, run_id } => {
+        Action::ConnectionSaveCompleted {
+            target,
+            run_id,
+            mysql_lower_case_table_names,
+        } => {
             if !state.session.is_current_connection_save(*run_id) {
                 return DispatchResult::handled();
             }
@@ -257,6 +261,11 @@ pub fn reduce_connection_setup(
             state.connection_caches.remove(id);
 
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            if let Some(lower_case_table_names) = mysql_lower_case_table_names {
+                state
+                    .session
+                    .set_mysql_lower_case_table_names(*lower_case_table_names);
+            }
             if *database_type == DatabaseType::MySQL {
                 return DispatchResult::handled_with(mysql_connection_completion_effects(
                     state, dsn,
@@ -839,6 +848,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -876,6 +886,7 @@ mod tests {
                         database: None,
                     },
                     run_id,
+                    mysql_lower_case_table_names: None,
                 },
                 Instant::now(),
             );
@@ -913,6 +924,7 @@ mod tests {
                         database: None,
                     },
                     run_id: save_run_id,
+                    mysql_lower_case_table_names: None,
                 },
                 Instant::now(),
             );
@@ -1116,6 +1128,7 @@ mod tests {
                     database: None,
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1160,6 +1173,7 @@ mod tests {
                     database: None,
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1233,6 +1247,7 @@ mod tests {
                     database: None,
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1253,6 +1268,7 @@ mod tests {
                     database: None,
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();
 
@@ -1288,6 +1304,7 @@ mod tests {
                     database: None,
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
             reduce(&mut state, &action, Instant::now());
 
@@ -1309,6 +1326,7 @@ mod tests {
                     database: Some("app".to_string()),
                 },
                 run_id,
+                mysql_lower_case_table_names: None,
             };
 
             let effects = reduce(&mut state, &action, Instant::now()).unwrap();

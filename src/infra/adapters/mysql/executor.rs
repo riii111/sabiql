@@ -15,7 +15,7 @@ use super::adapter::MySqlAdapter;
 use super::cli::{
     export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_single_statement,
     validate_mysql_export_query, validate_mysql_multi_query,
-    validate_mysql_statements_for_execution,
+    validate_mysql_statements_for_execution_with_lower_case_table_names,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::metadata;
@@ -26,6 +26,7 @@ async fn execute_adhoc_with_statements(
     query: &str,
     access_mode: AccessMode,
     classified_statements: Option<&[MySqlStatement]>,
+    lower_case_table_names: u8,
 ) -> Result<QueryResult, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
 
@@ -50,10 +51,11 @@ async fn execute_adhoc_with_statements(
 
     let statements: Cow<'_, [MySqlStatement]> = match classified_statements {
         Some(statements) => {
-            validate_mysql_statements_for_execution(
+            validate_mysql_statements_for_execution_with_lower_case_table_names(
                 statements,
                 target.database.as_deref(),
                 access_mode,
+                lower_case_table_names,
             )?;
             Cow::Borrowed(statements)
         }
@@ -152,7 +154,7 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(dsn, query, access_mode, None).await
+        execute_adhoc_with_statements(dsn, query, access_mode, None, 0).await
     }
 
     async fn execute_write(
@@ -227,8 +229,16 @@ impl MySqlQueryExecutor for MySqlAdapter {
         query: &str,
         statements: &[MySqlStatement],
         access_mode: AccessMode,
+        lower_case_table_names: u8,
     ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(dsn, query, access_mode, Some(statements)).await
+        execute_adhoc_with_statements(
+            dsn,
+            query,
+            access_mode,
+            Some(statements),
+            lower_case_table_names,
+        )
+        .await
     }
 }
 

@@ -96,7 +96,11 @@ pub fn reduce_connection_lifecycle(
             }
         }
 
-        Action::MySqlConnectionProbeCompleted { target, run_id } => {
+        Action::MySqlConnectionProbeCompleted {
+            target,
+            run_id,
+            lower_case_table_names,
+        } => {
             let ConnectionTarget {
                 id,
                 dsn,
@@ -120,6 +124,9 @@ pub fn reduce_connection_lifecycle(
                 cached.filter(|cache| cache.is_valid_mysql_snapshot(dsn, database.as_deref()))
             {
                 restore_cache(state, &cached, target);
+                state
+                    .session
+                    .set_mysql_lower_case_table_names(*lower_case_table_names);
                 let reload_effects = metadata_reload_effects(state, dsn);
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
@@ -129,6 +136,9 @@ pub fn reduce_connection_lifecycle(
 
             state.connection_caches.remove(id);
             reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            state
+                .session
+                .set_mysql_lower_case_table_names(*lower_case_table_names);
             DispatchResult::handled_with(mysql_connection_completion_effects(state, dsn))
         }
 
@@ -346,6 +356,7 @@ mod tests {
                 Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),
@@ -419,6 +430,7 @@ mod tests {
                 Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: retry_run_id,
+                    lower_case_table_names: 0,
                 },
                 std::time::Instant::now(),
                 &AppServices::stub(),
@@ -611,6 +623,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: mysql,
                     run_id,
+                    lower_case_table_names: 0,
                 },
             );
 
@@ -1094,6 +1107,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target,
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
             )
             .expect("probe completion should be handled");
@@ -1193,6 +1207,7 @@ mod tests {
                     &Action::MySqlConnectionProbeCompleted {
                         target,
                         run_id: probe_run_id,
+                        lower_case_table_names: 0,
                     },
                 )
                 .unwrap();
@@ -1230,6 +1245,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
             );
             let stale_run_id = state.session.metadata_generation();
@@ -1249,6 +1265,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: other,
                     run_id: other_probe_run_id,
+                    lower_case_table_names: 0,
                 },
             );
 
@@ -1265,6 +1282,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
             );
 
@@ -1596,6 +1614,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: target.clone(),
                     run_id: probe_run_id,
+                    lower_case_table_names: 0,
                 },
             )
             .expect("probe completion should be handled");
@@ -1687,6 +1706,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: mysql,
                     run_id: mysql_run_id,
+                    lower_case_table_names: 0,
                 },
             );
 
@@ -2000,6 +2020,7 @@ mod tests {
                 &Action::MySqlConnectionProbeCompleted {
                     target: first,
                     run_id: first_run_id,
+                    lower_case_table_names: 0,
                 },
             );
 

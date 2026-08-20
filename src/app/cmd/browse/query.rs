@@ -205,6 +205,7 @@ pub async fn run(
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
+            let lower_case_table_names = state.session.mysql_lower_case_table_names();
 
             query_tasks.spawn(async move {
                 let result = match classified_mysql_statements.as_deref() {
@@ -215,6 +216,7 @@ pub async fn run(
                                 &query,
                                 statements,
                                 access_mode,
+                                lower_case_table_names,
                             )
                             .await
                     }
@@ -905,13 +907,16 @@ mod tests {
             mysql_executor
                 .expect_execute_adhoc_with_classified_statements()
                 .once()
-                .withf(|_, query, statements, access_mode| {
-                    query == "SELECT 1"
-                        && statements.len() == 1
-                        && statements[0].sql() == "SELECT 1"
-                        && *access_mode == AccessMode::ReadOnly
-                })
-                .returning(|_, _, _, _| Ok(test_fixtures::sample_query_result()));
+                .withf(
+                    |_, query, statements, access_mode, lower_case_table_names| {
+                        query == "SELECT 1"
+                            && statements.len() == 1
+                            && statements[0].sql() == "SELECT 1"
+                            && *access_mode == AccessMode::ReadOnly
+                            && *lower_case_table_names == 0
+                    },
+                )
+                .returning(|_, _, _, _, _| Ok(test_fixtures::sample_query_result()));
 
             let action = run_effect_with_mysql_executor(
                 Effect::ExecuteAdhoc {

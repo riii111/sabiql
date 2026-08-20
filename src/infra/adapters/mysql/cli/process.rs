@@ -14,7 +14,7 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
 
 use super::args::mysql_query_args;
-use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
+use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
@@ -732,7 +732,11 @@ while IFS= read -r line; do
       ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      if printf '%s\n' "$line" | grep -q lower_case_table_names; then
+        printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      fi
       ;;
     "SET SESSION TRANSACTION READ ONLY")
       ;;
