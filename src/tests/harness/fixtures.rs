@@ -1,7 +1,7 @@
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableSummary, Trigger,
-    TriggerEvent, TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableStorageAttributes,
+    TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 pub fn minimal_table(schema: &str, name: &str) -> Table {
@@ -18,6 +18,7 @@ pub fn minimal_table(schema: &str, name: &str) -> Table {
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: TableStorageAttributes::default(),
         kind_info: TableKindInfo::default(),
     }
 }

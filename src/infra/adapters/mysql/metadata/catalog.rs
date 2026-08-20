@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     Column, ColumnAttributes, ColumnGenerationKind, FkAction, ForeignKey, QueryValue, TableKind,
-    TableKindInfo, TableSummary,
+    TableKindInfo, TableStorageAttributes, TableSummary,
 };
 
 use super::super::{
@@ -76,6 +76,21 @@ pub(super) struct MySqlTableMetadata {
     pub(super) kind: TableKind,
     pub(super) row_count_estimate: Option<i64>,
     pub(super) comment: Option<String>,
+    pub(super) engine: Option<String>,
+    pub(super) row_format: Option<String>,
+    pub(super) table_collation: Option<String>,
+    pub(super) create_options: Option<String>,
+}
+
+impl MySqlTableMetadata {
+    pub(super) fn storage_attributes(&self) -> TableStorageAttributes {
+        TableStorageAttributes {
+            engine: self.engine.clone(),
+            row_format: self.row_format.clone(),
+            table_collation: self.table_collation.clone(),
+            create_options: self.create_options.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -296,7 +311,7 @@ fn parse_table_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 5 {
+            if row.len() != TABLES_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("TABLES row"));
             }
             let schema = required_text(&row[0], "TABLE_SCHEMA")?.to_string();
@@ -322,12 +337,28 @@ fn parse_table_metadata(
             let comment = optional_text(&row[4], "TABLE_COMMENT")?
                 .filter(|value| !value.is_empty())
                 .map(str::to_string);
+            let engine = optional_text(&row[5], "ENGINE")?
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let row_format = optional_text(&row[6], "ROW_FORMAT")?
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let table_collation = optional_text(&row[7], "TABLE_COLLATION")?
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let create_options = optional_text(&row[8], "CREATE_OPTIONS")?
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
             Ok(MySqlTableMetadata {
                 schema,
                 name,
                 kind,
                 row_count_estimate,
                 comment,
+                engine,
+                row_format,
+                table_collation,
+                create_options,
             })
         })
         .collect()
@@ -689,18 +720,16 @@ mod tests {
 
     fn tables_result(schema: &str) -> MySqlResultSet {
         result(
-            &[
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "TABLE_TYPE",
-                "TABLE_ROWS",
-                "TABLE_COMMENT",
-            ],
+            TABLES_RESULT_COLUMNS,
             vec![vec![
                 QueryValue::Text(schema.to_string()),
                 QueryValue::Text("users".to_string()),
                 QueryValue::Text("BASE TABLE".to_string()),
                 QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
                 QueryValue::Null,
             ]],
         )
@@ -712,19 +741,17 @@ mod tests {
             "app",
             Some("app"),
             &result(
-                &[
-                    "TABLE_SCHEMA",
-                    "TABLE_NAME",
-                    "TABLE_TYPE",
-                    "TABLE_ROWS",
-                    "TABLE_COMMENT",
-                ],
+                TABLES_RESULT_COLUMNS,
                 vec![vec![
                     QueryValue::Text("app".to_string()),
                     QueryValue::Text("users".to_string()),
                     QueryValue::Text("BASE TABLE".to_string()),
                     QueryValue::Text("1".to_string()),
-                    QueryValue::Null,
+                    QueryValue::Text("table comment".to_string()),
+                    QueryValue::Text("InnoDB".to_string()),
+                    QueryValue::Text("Dynamic".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("partitioned".to_string()),
                 ]],
             ),
             0,
@@ -733,6 +760,16 @@ mod tests {
 
         assert_eq!(snapshot.table_summaries[0].name, "users");
         assert_eq!(snapshot.table_summaries[0].schema, "app");
+        assert_eq!(snapshot.tables[0].engine.as_deref(), Some("InnoDB"));
+        assert_eq!(snapshot.tables[0].row_format.as_deref(), Some("Dynamic"));
+        assert_eq!(
+            snapshot.tables[0].table_collation.as_deref(),
+            Some("utf8mb4_0900_ai_ci")
+        );
+        assert_eq!(
+            snapshot.tables[0].create_options.as_deref(),
+            Some("partitioned")
+        );
     }
 
     #[test]
@@ -797,6 +834,10 @@ mod tests {
                 kind: TableKind::Table,
                 row_count_estimate: None,
                 comment: None,
+                engine: None,
+                row_format: None,
+                table_collation: None,
+                create_options: None,
             }],
             0,
         )
@@ -817,6 +858,10 @@ mod tests {
                     kind: TableKind::Table,
                     row_count_estimate: None,
                     comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
                 }],
                 lower_case_table_names,
             )
@@ -833,6 +878,10 @@ mod tests {
                     kind: TableKind::Table,
                     row_count_estimate: None,
                     comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
                 }],
                 lower_case_table_names,
             )

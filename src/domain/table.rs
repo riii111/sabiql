@@ -31,7 +31,16 @@ pub struct Table {
     pub row_count_estimate: Option<i64>,
     pub comment: Option<String>,
     pub source_ddl: Option<String>,
+    pub storage_attributes: TableStorageAttributes,
     pub kind_info: TableKindInfo,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct TableStorageAttributes {
+    pub engine: Option<String>,
+    pub row_format: Option<String>,
+    pub table_collation: Option<String>,
+    pub create_options: Option<String>,
 }
 
 impl Table {
@@ -139,6 +148,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo::default(),
         }
     }

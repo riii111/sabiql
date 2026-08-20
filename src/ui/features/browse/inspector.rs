@@ -317,6 +317,10 @@ impl Inspector {
             InspectorInfoField::TableName => "Table:   ",
             InspectorInfoField::TableKind => "Kind:    ",
             InspectorInfoField::TableFlags => "Flags:   ",
+            InspectorInfoField::Engine => "Engine:  ",
+            InspectorInfoField::RowFormat => "Row format: ",
+            InspectorInfoField::TableCollation => "Collation:  ",
+            InspectorInfoField::CreateOptions => "Create options: ",
         };
         let value = value.map_or_else(
             || {

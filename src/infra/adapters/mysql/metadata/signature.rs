@@ -182,6 +182,7 @@ fn table_signatures_from_metadata(
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage_attributes: table.storage_attributes(),
             kind_info: TableKindInfo {
                 kind: table.kind,
                 is_strict: false,
@@ -353,7 +354,7 @@ fn parse_signature_unique_column_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue};
+    use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue, TableStorageAttributes};
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
         MySqlResultSet {
@@ -426,6 +427,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo {
                 kind: TableKind::Table,
                 is_strict: false,
@@ -503,6 +505,10 @@ mod tests {
                 kind: TableKind::Table,
                 row_count_estimate: None,
                 comment: None,
+                engine: Some("InnoDB".to_string()),
+                row_format: Some("Dynamic".to_string()),
+                table_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+                create_options: Some("partitioned".to_string()),
             },
             MySqlTableMetadata {
                 schema: "App".to_string(),
@@ -510,6 +516,10 @@ mod tests {
                 kind: TableKind::Table,
                 row_count_estimate: None,
                 comment: None,
+                engine: None,
+                row_format: None,
+                table_collation: None,
+                create_options: None,
             },
         ];
         let columns = parse_signature_column_metadata(&result(
@@ -637,6 +647,7 @@ mod tests {
         assert!(child.triggers.is_empty());
         assert!(child.row_count_estimate.is_none());
         assert!(child.comment.is_none());
+        assert_eq!(child.storage_attributes.engine.as_deref(), Some("InnoDB"));
         assert_ne!(
             signatures.signatures[0].signature,
             signatures_without_unique.signatures[0].signature
@@ -651,6 +662,10 @@ mod tests {
             kind: TableKind::Table,
             row_count_estimate: None,
             comment: None,
+            engine: None,
+            row_format: None,
+            table_collation: None,
+            create_options: None,
         }];
         let error = table_signatures_from_metadata(
             &tables,
@@ -714,7 +729,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset></resultset>'
       ;;
     *TABLES*)
-      printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field><field name="ENGINE">InnoDB</field><field name="ROW_FORMAT">Dynamic</field><field name="TABLE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATE_OPTIONS">partitioned</field></row></resultset>'
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -766,6 +781,13 @@ done
 
         assert_eq!(snapshot.signatures.len(), 1);
         assert_eq!(snapshot.table_details.len(), 1);
+        assert_eq!(
+            snapshot.table_details[0]
+                .storage_attributes
+                .engine
+                .as_deref(),
+            Some("InnoDB")
+        );
         let transcript_text = std::fs::read_to_string(&transcript).unwrap();
         assert_eq!(
             transcript_text

@@ -243,6 +243,7 @@ async fn fetch_table_detail_with_session(
     session.finish().await?;
 
     let primary_key = primary_key_names(&columns);
+    let storage_attributes = table_metadata.storage_attributes();
     Ok(Table {
         schema: table_metadata.schema,
         name: table_metadata.name,
@@ -256,6 +257,7 @@ async fn fetch_table_detail_with_session(
         row_count_estimate: table_metadata.row_count_estimate,
         comment: table_metadata.comment,
         source_ddl: Some(source_ddl),
+        storage_attributes,
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
             is_strict: false,
@@ -271,6 +273,7 @@ fn table_from_columns_and_foreign_keys(
     foreign_keys: Vec<ForeignKey>,
 ) -> Table {
     let primary_key = primary_key_names(&columns);
+    let storage_attributes = table_metadata.storage_attributes();
     Table {
         schema: table_metadata.schema,
         name: table_metadata.name,
@@ -284,6 +287,7 @@ fn table_from_columns_and_foreign_keys(
         row_count_estimate: table_metadata.row_count_estimate,
         comment: table_metadata.comment,
         source_ddl: None,
+        storage_attributes,
         kind_info: TableKindInfo {
             kind: table_metadata.kind,
             is_strict: false,
@@ -575,9 +579,9 @@ while IFS= read -r line; do
       if [ "$mode" = "empty" ]; then
         printf '%s\n' '<resultset></resultset>'
       elif [ "$mode" = "view" ]; then
-        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field></row></resultset>'
+        printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items_view</field><field name="TABLE_TYPE">VIEW</field><field name="TABLE_ROWS" xsi:nil="true"/><field name="TABLE_COMMENT">view comment</field><field name="ENGINE" xsi:nil="true"/><field name="ROW_FORMAT" xsi:nil="true"/><field name="TABLE_COLLATION" xsi:nil="true"/><field name="CREATE_OPTIONS"></field></row></resultset>'
       else
-        printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field></row></resultset>'
+        printf '%s\n' '<resultset><row><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="TABLE_TYPE">BASE TABLE</field><field name="TABLE_ROWS">1</field><field name="TABLE_COMMENT">table comment</field><field name="ENGINE">InnoDB</field><field name="ROW_FORMAT">Dynamic</field><field name="TABLE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATE_OPTIONS">partitioned</field></row></resultset>'
       fi
       ;;
     *COLUMNS*)
@@ -675,6 +679,26 @@ done
             assert_eq!(detail.name, table);
             assert_eq!(detail.columns.len(), 1);
             assert!(detail.source_ddl().is_some());
+            if mode == "table" {
+                assert_eq!(detail.storage_attributes.engine.as_deref(), Some("InnoDB"));
+                assert_eq!(
+                    detail.storage_attributes.row_format.as_deref(),
+                    Some("Dynamic")
+                );
+                assert_eq!(
+                    detail.storage_attributes.table_collation.as_deref(),
+                    Some("utf8mb4_0900_ai_ci")
+                );
+                assert_eq!(
+                    detail.storage_attributes.create_options.as_deref(),
+                    Some("partitioned")
+                );
+            } else {
+                assert!(detail.storage_attributes.engine.is_none());
+                assert!(detail.storage_attributes.row_format.is_none());
+                assert!(detail.storage_attributes.table_collation.is_none());
+                assert!(detail.storage_attributes.create_options.is_none());
+            }
             let transcript_text = std::fs::read_to_string(&transcript).unwrap();
             assert_eq!(
                 transcript_text

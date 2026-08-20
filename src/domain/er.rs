@@ -157,6 +157,7 @@ impl ErTableInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TableStorageAttributes;
 
     fn make_table(name: &str, schema: &str, fks: Vec<(&str, &str)>) -> ErTableInfo {
         ErTableInfo {
@@ -193,6 +194,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
+                storage_attributes: TableStorageAttributes::default(),
                 kind_info: TableKindInfo::default(),
             }
         }

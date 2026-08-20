@@ -11,6 +11,19 @@ pub enum InspectorInfoField {
     TableName,
     TableKind,
     TableFlags,
+    Engine,
+    RowFormat,
+    TableCollation,
+    CreateOptions,
+}
+
+impl InspectorInfoField {
+    pub const fn omit_when_empty(self) -> bool {
+        matches!(
+            self,
+            Self::Engine | Self::RowFormat | Self::TableCollation | Self::CreateOptions
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,6 +129,10 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorInfoField::Comment,
         InspectorInfoField::RowCount,
         InspectorInfoField::TableName,
+        InspectorInfoField::Engine,
+        InspectorInfoField::RowFormat,
+        InspectorInfoField::TableCollation,
+        InspectorInfoField::CreateOptions,
     ],
 );
 
@@ -485,6 +502,10 @@ mod tests {
                 InspectorInfoField::Comment,
                 InspectorInfoField::RowCount,
                 InspectorInfoField::TableName,
+                InspectorInfoField::Engine,
+                InspectorInfoField::RowFormat,
+                InspectorInfoField::TableCollation,
+                InspectorInfoField::CreateOptions,
             ]
         );
         assert_eq!(

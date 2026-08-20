@@ -372,6 +372,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         Column, ColumnAttributes, ConnectionId, DatabaseType, Table, TableKindInfo, TableSignature,
+        TableStorageAttributes,
     };
 
     fn state_with_mysql_dsn(dsn: &str) -> AppState {
@@ -411,6 +412,7 @@ mod tests {
             row_count_estimate: None,
             comment: None,
             source_ddl: None,
+            storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo::default(),
         }
     }
