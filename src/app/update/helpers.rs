@@ -33,6 +33,17 @@ pub(crate) fn require_er_diagram_enabled(
     Some(DispatchResult::handled())
 }
 
+pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState, now: Instant) -> bool {
+    if state.session.pending_mysql_connection_probe().is_none() {
+        return false;
+    }
+
+    state
+        .messages
+        .set_error_at("Connection switch in progress".to_string(), now);
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum EditGuardrailError {
     #[error("No result to edit")]

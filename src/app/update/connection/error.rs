@@ -20,7 +20,7 @@ pub(super) fn reduce_connection_error(
             DispatchResult::handled()
         }
         Action::CloseConnectionError => {
-            if state.session.has_pending_connection_switch() {
+            if state.session.pending_mysql_connection_probe().is_some() {
                 state.session.clear_mysql_connection_probe();
                 state.connection_error.clear();
             } else {
@@ -327,6 +327,34 @@ mod tests {
             state.session.dsn(),
             Some("mysql://user@localhost:3306/a?ssl-mode=PREFERRED")
         );
+    }
+
+    #[test]
+    fn close_after_same_mysql_retry_clears_failed_probe_context() {
+        let mut state = AppState::new("test".to_string());
+        let id = ConnectionId::from_string("mysql-a");
+        let dsn = "mysql://user@localhost:3306/a?ssl-mode=PREFERRED";
+        state.session.activate_connection_with_target(
+            &id,
+            "mysql-a",
+            DatabaseType::MySQL,
+            dsn,
+            Some("a"),
+        );
+        let _ = state
+            .session
+            .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
+        state
+            .connection_error
+            .set_error(ConnectionErrorInfo::new("connection refused"));
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        assert!(!state.session.has_pending_connection_switch());
+        reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
+
+        assert!(state.session.pending_mysql_connection_probe().is_none());
+        assert!(state.connection_error.error_info().is_none());
+        assert_eq!(state.input_mode(), InputMode::Normal);
     }
 
     #[test]

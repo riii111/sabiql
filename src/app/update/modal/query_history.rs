@@ -6,6 +6,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::{TextInputEditing, TextInputState};
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn reduce_query_history_picker(
     state: &mut AppState,
@@ -133,6 +134,9 @@ pub(super) fn reduce_query_history_picker(
             DispatchResult::handled()
         }
         Action::QueryHistoryConfirmSelection => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             let grouped = state.query_history_picker.grouped_filtered_entries();
             let selected = state.query_history_picker.clamped_selected();
             let query = grouped.get(selected).map(|g| g.entry.query.clone());

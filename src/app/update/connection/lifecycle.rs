@@ -14,6 +14,11 @@ use super::helpers::{
     save_current_connection_cache,
 };
 
+fn clear_query_confirmation(state: &mut AppState) {
+    state.confirm_dialog.take_intent();
+    state.sql_modal.enter_normal();
+}
+
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
@@ -43,6 +48,7 @@ pub fn reduce_connection_lifecycle(
             }
 
             save_current_connection_cache(state);
+            clear_query_confirmation(state);
 
             if *database_type == DatabaseType::MySQL {
                 let run_id =
@@ -207,6 +213,8 @@ pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<
                     &target.dsn,
                     target.database.as_deref(),
                 );
+                clear_query_confirmation(state);
+                state.query.reset_for_context_change();
                 state.session.mark_connecting();
                 return vec![Effect::ProbeMySqlConnection { target, run_id }];
             }
@@ -236,9 +244,11 @@ mod tests {
     use crate::model::connection::error::ConnectionErrorKind;
     use crate::model::connection::state::ConnectionState;
     use crate::model::er_state::ErStatus;
+    use crate::model::shared::confirm_dialog::ConfirmIntent;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
+    use crate::model::sql_editor::modal::SqlModalStatus;
     use crate::ports::outbound::DbOperationError;
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
@@ -409,6 +419,38 @@ mod tests {
                         && retry_target.dsn == target.dsn
                         && retry_target.database == target.database
             )));
+        }
+
+        #[test]
+        fn pending_probe_blocks_adhoc_on_old_connection_and_discards_confirmation() {
+            let mut state = active_mysql_state();
+            state.sql_modal.enter_editing();
+            state.confirm_dialog.open(
+                "Confirm UPDATE",
+                "",
+                ConfirmIntent::ExecuteWrite {
+                    sql: "UPDATE accounts SET name = 'wrong'".to_string(),
+                    blocked: false,
+                },
+            );
+            let target = mysql_target("mysql-b", "b");
+
+            reduce(&mut state, &Action::SwitchConnection(target));
+
+            assert_eq!(state.session.dsn(), Some("mysql://user@localhost:3306/a"));
+            assert!(state.session.pending_mysql_connection_probe().is_some());
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Normal));
+            assert!(state.confirm_dialog.intent().is_none());
+
+            let effects = reduce_app(
+                &mut state,
+                Action::ExecuteAdhoc("DROP TABLE accounts".to_string()),
+                std::time::Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
         }
     }
 

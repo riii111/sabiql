@@ -25,7 +25,7 @@ use crate::update::browse::query::{
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::{
     EditGuardrailError, build_bulk_delete_preview, editable_preview_base, ensure_column_writable,
-    reject_sqlite_null_pk,
+    reject_pending_mysql_connection_probe, reject_sqlite_null_pk,
 };
 
 fn build_update_preview(
@@ -179,6 +179,9 @@ pub fn reduce_write(
 ) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if !state.result_interaction.staged_delete_rows().is_empty() {
                 match build_bulk_delete_preview(state, services) {
                     Ok(result) => {
@@ -215,6 +218,9 @@ pub fn reduce_write(
         }
 
         Action::ExecuteWrite(query) => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.session.is_read_only() {
                 state.messages.set_error_at(
                     "Read-only mode: write operations are disabled".to_string(),

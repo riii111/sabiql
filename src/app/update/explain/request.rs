@@ -10,6 +10,7 @@ use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::{
     begin_explain_running, is_multi_statement, mark_explain_unavailable,
@@ -24,6 +25,9 @@ pub(super) fn reduce_request(
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             let content = state.sql_modal.editor.content().trim().to_string();
             if content.is_empty() {
                 return DispatchResult::handled();

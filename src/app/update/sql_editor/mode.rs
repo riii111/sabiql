@@ -6,11 +6,15 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 use crate::update::action::{Action, CursorMove, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
-pub(super) fn reduce_mode(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
+pub(super) fn reduce_mode(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         // Modal open/submit
         Action::OpenModal(ModalKind::SqlModal) => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.open_sql_tab();
             state.flash_timers.clear(FlashId::SqlModal);

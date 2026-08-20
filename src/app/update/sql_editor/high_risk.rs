@@ -8,6 +8,7 @@ use crate::model::sql_editor::modal::{
 };
 use crate::update::action::{Action, InputTarget};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::start_adhoc_if_connected;
 
@@ -106,6 +107,10 @@ pub(super) fn reduce_high_risk_confirmation(
         }
 
         Action::SqlModalConfirmExecute => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                state.sql_modal.cancel_confirmation();
+                return DispatchResult::handled();
+            }
             // `matches!` + flag instead of `if let` because the immutable borrow
             // from pattern matching must end before we can mutate `state.sql_modal.status`.
             let matched = matches!(
