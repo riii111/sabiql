@@ -248,7 +248,7 @@ mod tests {
     use crate::domain::connection::DatabaseType;
     use crate::domain::{
         ConnectionId, DatabaseMetadata, MetadataState, QueryResult, QuerySource, Table,
-        TableKindInfo, TableSummary,
+        TableKindInfo, TableStorageAttributes, TableSummary,
     };
     use crate::model::browse::query_execution::PaginationState;
     use crate::model::browse::session::TableDetailState;
@@ -1929,7 +1929,7 @@ mod tests {
                 row_count_estimate: None,
                 comment: None,
                 source_ddl: None,
-                storage_attributes: Default::default(),
+                storage_attributes: TableStorageAttributes::default(),
                 kind_info: TableKindInfo::default(),
             };
             assert!(state.session.set_table_detail(detail, generation));

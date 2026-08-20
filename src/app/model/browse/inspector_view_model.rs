@@ -607,7 +607,7 @@ mod tests {
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
             source_ddl: None,
-            storage_attributes: Default::default(),
+            storage_attributes: TableStorageAttributes::default(),
             kind_info: TableKindInfo::default(),
         }
     }
