@@ -1,4 +1,5 @@
 mod args;
+mod diagnostics;
 mod error;
 mod export;
 #[cfg(not(unix))]

@@ -2029,6 +2029,75 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn displays_successful_warning_and_note_diagnostics() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "INSERT IGNORE INTO mysql_preview_composite (first_key, second_key, payload) VALUES (3, 30, 'first'); CREATE TABLE IF NOT EXISTS mysql_preview_composite (id INT); SELECT 2",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("diagnostic query failed: {error:?}"))?;
+
+            if result.is_error()
+                || result.columns != ["2"]
+                || result.values() != [[QueryValue::Text("2".to_string())]]
+                || !result.mysql_diagnostics.iter().any(|diagnostic| {
+                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                        && diagnostic.code == 1062
+                        && diagnostic.message.contains("Duplicate entry")
+                })
+                || !result.mysql_diagnostics.iter().any(|diagnostic| {
+                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Note
+                        && diagnostic.code == 1050
+                        && diagnostic.message.contains("already exists")
+                })
+            {
+                return Err(format!("unexpected diagnostics result: {result:?}"));
+            }
+            Ok::<(), String>(())
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn executes_tree_explain_successfully_on_oracle_mysql_84() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        "EXPLAIN FORMAT=TREE SELECT * FROM mysql_preview_composite WHERE first_key = \"x\"",
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("TREE EXPLAIN failed: {error:?}"))?;
+
+                if result.is_error()
+                    || result.values().is_empty()
+                    || result.columns != ["EXPLAIN"]
+                    || !result.mysql_diagnostics.iter().any(|diagnostic| {
+                        diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                            && diagnostic.code == 1292
+                            && diagnostic
+                                .message
+                                .contains("Truncated incorrect DOUBLE value")
+                    })
+                {
+                    return Err(format!("unexpected TREE EXPLAIN result: {result:?}"));
+                }
+                Ok::<(), String>(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn preserves_xml_value_boundaries_for_real_mysql_results() {
         with_mysql_test_db(|db| Box::pin(async move {
             let result = db

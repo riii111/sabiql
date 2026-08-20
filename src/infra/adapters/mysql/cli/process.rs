@@ -12,15 +12,17 @@ use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use crate::domain::MySqlDiagnostic;
 
-use super::args::mysql_query_args;
+use super::args::{mysql_adhoc_args, mysql_query_args};
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{MYSQL_SESSION_MARKER_COLUMN, validate_mysql_session_marker};
 #[cfg(unix)]
 use super::pty::{
-    MySqlPty, create_mysql_pty, read_one_pty_resultset, read_pty_all, read_pty_until_idle,
+    MySqlPty, create_mysql_pty, read_one_pty_resultset, read_one_pty_resultset_with_diagnostics,
+    read_pty_all, read_pty_until_idle,
 };
 use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
@@ -64,6 +66,13 @@ impl MySqlProcess {
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
         Self::spawn_with_args(program, mysql_query_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_adhoc_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args(program, mysql_adhoc_args(option_file))
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_args(
@@ -411,6 +420,25 @@ pub(super) async fn read_one_mysql_resultset(
     .await
 }
 
+pub(super) async fn read_one_mysql_resultset_with_diagnostics(
+    process: &mut MySqlProcess,
+) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
+    #[cfg(unix)]
+    {
+        return read_one_pty_resultset_with_diagnostics(&mut process.pty).await;
+    }
+    #[cfg(not(unix))]
+    super::pipe::read_one_mysql_resultset_from_pipes_with_diagnostics(
+        &mut process.stdout,
+        &mut process.stderr,
+        &mut process.child,
+        &mut process.pending,
+        &mut process.pending_stderr,
+        &mut process.frame_scanner,
+    )
+    .await
+}
+
 fn mysql_statement_input(query: &str) -> Vec<u8> {
     let query = query.trim_end();
     [query.as_bytes(), b"\n;\n"].concat()
@@ -450,17 +478,21 @@ mod tests {
     use tempfile::TempDir;
 
     use super::super::export::run_mysql_export_process;
+    use super::super::policy::MySqlExecutionResult;
     use super::super::xml::MySqlResultSet;
     use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
     use super::metadata::{
         mysql_metadata_columns_external_with_program,
         run_mysql_metadata_query_with_read_only_session_with_timeout,
     };
-    use super::single::run_mysql_single_statement_process;
+    use super::single::run_mysql_single_statement_process_with_diagnostics;
+    use super::single::test_support::run_mysql_single_statement_process;
     use super::*;
     use crate::adapters::csv_export::export_to_path;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
-    use crate::domain::{CommandTag, QueryValue, RefreshScope};
+    use crate::domain::{
+        CommandTag, MySqlDiagnostic, MySqlDiagnosticLevel, QueryValue, RefreshScope,
+    };
 
     mod cleanup {
         use super::*;
@@ -532,6 +564,20 @@ mod tests {
         .await
     }
 
+    async fn run_mysql_single_statement_with_diagnostics_with_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+        query: &str,
+        access_mode: AccessMode,
+        execution_timeout: Duration,
+    ) -> Result<MySqlExecutionResult, DbOperationError> {
+        let mut process = MySqlProcess::spawn_with_adhoc_program(program, option_file)?;
+        run_mysql_process_with_timeout(execution_timeout, &mut process, async |process| {
+            run_mysql_single_statement_process_with_diagnostics(process, query, access_mode).await
+        })
+        .await
+    }
+
     fn fake_mysql(mode: &str) -> (TempDir, PathBuf, PathBuf) {
         let directory = tempfile::tempdir().unwrap();
         let option_file = directory.path().join("option.cnf");
@@ -597,6 +643,47 @@ while IFS= read -r line; do
 done
 "#,
         );
+        fs::write(&program, script).unwrap();
+        let mut permissions = fs::metadata(&program).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&program, permissions).unwrap();
+        (directory, program, log_file)
+    }
+
+    fn fake_mysql_single_with_warning() -> (TempDir, PathBuf, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let option_file = directory.path().join("option.cnf");
+        fs::write(&option_file, "[client]\n").unwrap();
+        let program = directory.path().join("mysql");
+        let log_file = PathBuf::from(format!("{}.log", option_file.display()));
+        let script = r#"#!/bin/sh
+option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
+log="$option.log"
+printf 'argv=%s\n' "$*" >> "$log"
+eof=$(printf '\004')
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$log"
+  case "$line" in
+    *"$eof"*)
+      exit 0
+      ;;
+    ";"|"SET SESSION TRANSACTION READ ONLY"|"SET SESSION TRANSACTION READ WRITE")
+      ;;
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
+    *)
+      printf '%s\n' '<resultset><row><field name="value">tree</field></row></resultset>'
+      printf '%s\n' 'Warning (Code 1265): truncated'
+      ;;
+  esac
+done
+"#;
         fs::write(&program, script).unwrap();
         let mut permissions = fs::metadata(&program).unwrap().permissions();
         permissions.set_mode(0o755);
@@ -775,6 +862,13 @@ while IFS= read -r line; do
     *"SHOW CREATE TABLE"*)
       printf '%s\n' '<resultset><row><field name="Create Table">CREATE TABLE items (id INT)</field></row></resultset>'
       ;;
+    *"INSERT IGNORE"*)
+      printf '%s\n' 'Warning (Code 1062): duplicate ignored'
+      ;;
+    *"CREATE TABLE IF NOT EXISTS"*)
+      printf '%s\n' 'Note (Code 1050): table already exists'
+      last_statement=create
+      ;;
     *CREATE*)
       last_statement=create
       ;;
@@ -795,6 +889,39 @@ done
 
     mod single_statement {
         use super::*;
+
+        #[tokio::test]
+        async fn diagnostics_use_adhoc_args_and_follow_resultset_to_marker() {
+            let (_directory, program, log_file) = fake_mysql_single_with_warning();
+            let option_file = log_file.with_extension("cnf");
+            fs::write(&option_file, "[client]\n").unwrap();
+            let result = run_mysql_single_statement_with_diagnostics_with_program(
+                OsStr::new(&program),
+                &option_file,
+                "EXPLAIN FORMAT=TREE SELECT 1",
+                AccessMode::ReadWrite,
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+            assert_eq!(
+                result.result_set.unwrap().values[0][0].as_str(),
+                Some("tree")
+            );
+            assert_eq!(
+                result.diagnostics,
+                vec![MySqlDiagnostic {
+                    level: MySqlDiagnosticLevel::Warning,
+                    code: 1265,
+                    message: "truncated".to_string(),
+                }]
+            );
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.contains("--show-warnings"), "{log}");
+            assert!(log.contains("EXPLAIN FORMAT=TREE SELECT 1"), "{log}");
+            assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN), "{log}");
+        }
 
         #[tokio::test]
         async fn sends_user_sql_only_after_a_valid_mode_probe() {
@@ -1385,10 +1512,56 @@ done
             );
             assert_eq!(result.command_tag, None);
             assert_eq!(result.refresh_scope, RefreshScope::Data);
+            assert!(result.diagnostics.is_empty());
             let log = fs::read_to_string(log_file).unwrap();
             assert!(log.contains("UPDATE items SET value = 1"));
             assert_eq!(log.matches("__sabiql_marker").count(), 1);
             assert!(!log.contains("ROW_COUNT()"));
+        }
+
+        #[tokio::test]
+        async fn keeps_multi_statement_diagnostics_on_the_submission_result() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements(
+                "INSERT IGNORE INTO items (id) VALUES (1); CREATE TABLE IF NOT EXISTS items (id INT); SELECT 2",
+            )
+            .unwrap()
+            .into_iter()
+            .map(|sql| classify_mysql_statement(&sql).unwrap())
+            .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .expect("multi-statement diagnostics execution");
+
+            assert_eq!(
+                result.result_set.as_ref().map(|result| &result.values),
+                Some(&vec![vec![QueryValue::Text("two".to_string())]])
+            );
+            assert_eq!(
+                result.diagnostics,
+                vec![
+                    MySqlDiagnostic {
+                        level: MySqlDiagnosticLevel::Warning,
+                        code: 1062,
+                        message: "duplicate ignored".to_string(),
+                    },
+                    MySqlDiagnostic {
+                        level: MySqlDiagnosticLevel::Note,
+                        code: 1050,
+                        message: "table already exists".to_string(),
+                    },
+                ]
+            );
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert_eq!(log.matches("__sabiql_marker").count(), 1);
         }
 
         #[tokio::test]

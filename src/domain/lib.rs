@@ -8,6 +8,7 @@ pub mod explain_plan;
 pub mod foreign_key;
 pub mod index;
 pub mod metadata;
+pub mod mysql_diagnostics;
 pub mod mysql_sql;
 pub mod query_history;
 pub mod query_result;
@@ -30,6 +31,7 @@ pub use explain_plan::{
 pub use foreign_key::{FkAction, ForeignKey, UNRESOLVED_FK_COLUMN};
 pub use index::{Index, IndexAttributes, IndexType};
 pub use metadata::{DatabaseMetadata, MetadataState};
+pub use mysql_diagnostics::{MySqlDiagnostic, MySqlDiagnosticLevel};
 pub use query_result::{ExplicitRowIdentity, QueryResult, QuerySource, QueryValue, RefreshScope};
 pub use rls::{RlsCommand, RlsInfo, RlsPolicy};
 pub use schema::Schema;

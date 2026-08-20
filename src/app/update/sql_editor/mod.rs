@@ -751,6 +751,7 @@ mod tests {
                 command_tag: None,
                 row_count: 5,
                 execution_time_ms: 10,
+                mysql_diagnostics: Vec::new(),
             });
             assert!(state.sql_modal.last_adhoc_success().is_some());
 

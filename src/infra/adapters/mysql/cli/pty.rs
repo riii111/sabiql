@@ -8,9 +8,12 @@ use tokio::fs::File as TokioFile;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
+use crate::domain::MySqlDiagnostic;
 
 use super::error::{classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error};
-use super::xml::{MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame, trace_mysql_frame};
+use super::xml::{
+    MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics, trace_mysql_frame,
+};
 
 pub(super) struct MySqlPty {
     pub(super) input: TokioFile,
@@ -59,12 +62,19 @@ fn configure_mysql_pty(fd: RawFd) -> io::Result<()> {
 pub(super) async fn read_one_pty_resultset(
     pty: &mut MySqlPty,
 ) -> Result<Vec<u8>, DbOperationError> {
+    Ok(read_one_pty_resultset_with_diagnostics(pty).await?.0)
+}
+
+pub(super) async fn read_one_pty_resultset_with_diagnostics(
+    pty: &mut MySqlPty,
+) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        if let Some(frame) =
-            take_mysql_pty_resultset_frame(&mut pty.pending, &mut pty.frame_scanner)?
-        {
-            trace_mysql_frame("receive resultset", frame.len());
+        if let Some(frame) = take_mysql_pty_resultset_frame_with_diagnostics(
+            &mut pty.pending,
+            &mut pty.frame_scanner,
+        )? {
+            trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
         }
         let count = match pty.output.read(&mut chunk).await {
