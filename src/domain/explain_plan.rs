@@ -253,10 +253,10 @@ fn parse_mysql_loops(token: &str) -> Option<u64> {
     integer.parse().ok()
 }
 
-fn parse_mysql_actual_fragment(line: &str) -> (Option<f64>, Option<f64>, Option<f64>, Option<u64>) {
-    let Some(start) = line.find("(actual time=") else {
-        return (None, None, None, None);
-    };
+type MysqlActualMetrics = (Option<f64>, Option<f64>, Option<f64>, Option<u64>);
+
+fn parse_mysql_actual_fragment(line: &str) -> Option<MysqlActualMetrics> {
+    let start = line.find("(actual time=")?;
     let fragment = line.get(start + 1..).unwrap_or_default();
     let mut actual_start_ms = None;
     let mut actual_end_ms = None;
@@ -276,7 +276,17 @@ fn parse_mysql_actual_fragment(line: &str) -> (Option<f64>, Option<f64>, Option<
         }
     }
 
-    (actual_start_ms, actual_end_ms, actual_rows, loops)
+    Some((actual_start_ms, actual_end_ms, actual_rows, loops))
+}
+
+fn parse_mysql_actual_metrics(line: &str, continuation: Option<&str>) -> MysqlActualMetrics {
+    parse_mysql_actual_fragment(line)
+        .or_else(|| {
+            continuation
+                .filter(|line| line.trim_start().starts_with("(actual time="))
+                .and_then(parse_mysql_actual_fragment)
+        })
+        .unwrap_or_default()
 }
 
 pub fn parse_explain_text(text: &str, is_analyze: bool, execution_time_ms: u64) -> ExplainPlan {
@@ -321,7 +331,13 @@ pub fn parse_mysql_tree_explain_text(
     is_analyze: bool,
     execution_time_ms: u64,
 ) -> ExplainPlan {
-    let first_cost_line = text.lines().find(|line| line.contains("(cost="));
+    let mut lines = text.lines();
+    let first_cost_line = lines.find(|line| line.contains("(cost="));
+    let continuation = if first_cost_line.is_some() {
+        lines.next()
+    } else {
+        None
+    };
     let (
         top_node_type,
         total_cost,
@@ -337,7 +353,7 @@ pub fn parse_mysql_tree_explain_text(
             _ => (None, None),
         };
         let (actual_start_ms, actual_end_ms, actual_rows, loops) =
-            parse_mysql_actual_fragment(line);
+            parse_mysql_actual_metrics(line, continuation);
         (
             mysql_node_name(line),
             cost,
@@ -569,6 +585,56 @@ Execution Time: 0.600 ms";
             assert_eq!(plan.actual_end_ms, Some(0.500));
             assert_eq!(plan.actual_rows, Some(95.0));
             assert_eq!(plan.loops, Some(1));
+        }
+
+        #[test]
+        fn mysql_tree_parses_actual_metrics_from_the_following_line() {
+            let text = "\
+-> Filter: (t3.i > 8)  (cost=0.75 rows=1.67)
+(actual time=0.0168..0.0182 rows=1 loops=1)
+    -> Table scan on t3  (cost=0.75 rows=5)
+(actual time=0.015..0.0167 rows=5 loops=1)";
+            let plan = parse_mysql_tree_explain_text(text, true, 0);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Filter: (t3.i > 8)"));
+            assert_eq!(plan.total_cost, Some(0.75));
+            assert_eq!(plan.estimated_rows, Some(1.67));
+            assert_eq!(plan.actual_start_ms, Some(0.0168));
+            assert_eq!(plan.actual_end_ms, Some(0.0182));
+            assert_eq!(plan.actual_rows, Some(1.0));
+            assert_eq!(plan.loops, Some(1));
+            assert_eq!(plan.raw_text, text);
+        }
+
+        #[test]
+        fn mysql_tree_keeps_unknown_costs_when_actual_metrics_are_wrapped() {
+            let text =
+                "-> Hash  (cost=unknown rows=unknown)\n(actual time=0.1..0.2 rows=3 loops=2)";
+            let plan = parse_mysql_tree_explain_text(text, true, 0);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Hash"));
+            assert_eq!(plan.total_cost, None);
+            assert_eq!(plan.estimated_rows, None);
+            assert_eq!(plan.actual_start_ms, Some(0.1));
+            assert_eq!(plan.actual_end_ms, Some(0.2));
+            assert_eq!(plan.actual_rows, Some(3.0));
+            assert_eq!(plan.loops, Some(2));
+            assert_eq!(plan.raw_text, text);
+        }
+
+        #[test]
+        fn mysql_tree_does_not_take_child_actual_metrics_for_the_root() {
+            let text = "\
+-> Filter: (t3.i > 8)  (cost=0.75 rows=1.67)
+    -> Table scan on t3  (cost=0.75 rows=5)
+(actual time=0.015..0.0167 rows=5 loops=1)";
+            let plan = parse_mysql_tree_explain_text(text, true, 0);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Filter: (t3.i > 8)"));
+            assert_eq!(plan.actual_start_ms, None);
+            assert_eq!(plan.actual_end_ms, None);
+            assert_eq!(plan.actual_rows, None);
+            assert_eq!(plan.loops, None);
         }
 
         #[test]
