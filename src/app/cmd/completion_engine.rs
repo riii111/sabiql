@@ -706,7 +706,7 @@ impl CompletionEngine {
             return CompletionContext::Column;
         }
 
-        let keywords_table = ["FROM", "JOIN", "INTO", "UPDATE"];
+        let keywords_table = ["FROM", "JOIN", "INTO", "UPDATE", "INSERT", "REPLACE"];
         let keywords_column = ["SELECT", "WHERE", "ON", "SET", "AND", "OR", "BY"];
 
         let mut last_table_pos = None;
@@ -759,7 +759,6 @@ impl CompletionEngine {
 
     fn insert_target_column_list_start(tokens: &[Token], cursor_pos: usize) -> Option<usize> {
         let mut insert_started = false;
-        let mut into_seen = false;
         let mut list_depth = 0;
         let mut list_start = None;
 
@@ -768,11 +767,9 @@ impl CompletionEngine {
                 break;
             }
 
-            if !into_seen {
+            if !insert_started {
                 if Self::token_is_word(token, "INSERT") || Self::token_is_word(token, "REPLACE") {
                     insert_started = true;
-                } else if insert_started && Self::token_is_word(token, "INTO") {
-                    into_seen = true;
                 }
                 continue;
             }
@@ -2561,6 +2558,8 @@ mod tests {
             for sql in [
                 "INSERT INTO users (na",
                 "REPLACE INTO users (na",
+                "INSERT users (na",
+                "REPLACE users (na",
                 "INSERT INTO app.users AS u (na",
             ] {
                 let candidates = e.get_candidates_for_database(
@@ -2587,7 +2586,7 @@ mod tests {
         fn mysql_insert_and_update_target_tables_remain_table_context() {
             let e = engine();
             let metadata = metadata();
-            for sql in ["INSERT INTO us", "UPDATE us"] {
+            for sql in ["INSERT INTO us", "UPDATE us", "INSERT us", "REPLACE us"] {
                 let candidates = e.get_candidates_for_database(
                     sql,
                     sql.chars().count(),
