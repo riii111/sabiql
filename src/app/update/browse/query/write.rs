@@ -425,6 +425,7 @@ fn open_write_preview_confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support;
     use crate::update::test_fixtures;
 
     use crate::domain::connection::ConnectionId;
@@ -1028,7 +1029,7 @@ mod tests {
             detail.columns[1].attributes = ColumnAttributes::PRIMARY_KEY;
             detail
                 .columns
-                .push(crate::test_support::column::test_nullable_column(
+                .push(test_support::column::test_nullable_column(
                     "name", "text", 3,
                 ));
             detail.primary_key = Some(vec!["first_id".to_string(), "second_id".to_string()]);
