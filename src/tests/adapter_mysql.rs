@@ -2636,6 +2636,56 @@ mod query_execution {
                 )
                 .await
                 .map_err(|error| format!("failed to clean up CTAS table: {error:?}"))?;
+
+            let diagnostic_count_capture_table = format!("sabiql_sab533_diagnostic_{suffix}");
+            let diagnostic_count_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT SQL_CALC_FOUND_ROWS id FROM {MYSQL_FIXTURE_TABLE} LIMIT 1000, 1; CREATE TABLE {diagnostic_count_capture_table} AS SELECT @@warning_count AS warning_count, @@error_count AS error_count"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("diagnostic-count CTAS query failed: {error:?}"))?;
+            if diagnostic_count_result.columns != ["id"]
+                || !diagnostic_count_result.values().is_empty()
+                || diagnostic_count_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected diagnostic-count CTAS result: {diagnostic_count_result:?}"
+                ));
+            }
+            let captured_diagnostic_counts = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT warning_count, error_count FROM {diagnostic_count_capture_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to read diagnostic counts: {error:?}"))?;
+            if captured_diagnostic_counts.values()
+                != [[
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("0".to_string()),
+                ]]
+            {
+                return Err(format!(
+                    "unexpected diagnostic counts: {captured_diagnostic_counts:?}"
+                ));
+            }
+            db.adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("DROP TABLE {diagnostic_count_capture_table}"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to clean up diagnostic table: {error:?}"))?;
             Ok(())
         }))
         .await;
