@@ -1,36 +1,43 @@
-pub(super) fn mysql_query_args(option_file: &std::path::Path) -> Vec<String> {
+use std::path::Path;
+
+pub(super) fn mysql_connection_args(option_file: &Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
         "--protocol=TCP".to_string(),
         "--connect-timeout=10".to_string(),
+        "--skip-reconnect".to_string(),
+    ]
+}
+
+pub(super) fn mysql_query_args(option_file: &Path) -> Vec<String> {
+    let mut args = mysql_connection_args(option_file);
+    args.extend([
         "--xml".to_string(),
         "--binary-as-hex".to_string(),
         "--binary-mode".to_string(),
         "--unbuffered".to_string(),
-        "--skip-reconnect".to_string(),
         "--default-character-set=utf8mb4".to_string(),
         "--batch".to_string(),
         "--silent".to_string(),
         "--prompt=".to_string(),
-    ]
+    ]);
+    args
 }
-pub(super) fn mysql_metadata_args(option_file: &std::path::Path) -> Vec<String> {
-    vec![
-        format!("--defaults-file={}", option_file.display()),
-        "--no-login-paths".to_string(),
-        "--protocol=TCP".to_string(),
-        "--connect-timeout=10".to_string(),
+
+pub(super) fn mysql_metadata_args(option_file: &Path) -> Vec<String> {
+    let mut args = mysql_connection_args(option_file);
+    args.extend([
         "--batch".to_string(),
         "--column-names".to_string(),
         "--column-type-info".to_string(),
         "--binary-as-hex".to_string(),
         "--binary-mode".to_string(),
         "--unbuffered".to_string(),
-        "--skip-reconnect".to_string(),
         "--default-character-set=utf8mb4".to_string(),
         "--prompt=".to_string(),
-    ]
+    ]);
+    args
 }
 
 #[cfg(test)]
@@ -38,30 +45,68 @@ mod tests {
     use super::*;
 
     #[test]
-    fn arguments_keep_credentials_out_of_argv() {
-        let args = mysql_query_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+    fn connection_arguments_keep_defaults_file_first_and_disable_login_paths() {
+        let args = mysql_connection_args(Path::new("/tmp/sabiql-mysql.cnf"));
 
-        assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
-        assert_eq!(args[1], "--no-login-paths");
-        for expected in [
-            "--xml",
-            "--binary-as-hex",
-            "--binary-mode",
-            "--unbuffered",
-            "--skip-reconnect",
-            "--default-character-set=utf8mb4",
-        ] {
-            assert!(args.contains(&expected.to_string()), "{expected}");
-        }
-        assert!(args.contains(&"--batch".to_string()));
+        assert_eq!(
+            args,
+            vec![
+                "--defaults-file=/tmp/sabiql-mysql.cnf",
+                "--no-login-paths",
+                "--protocol=TCP",
+                "--connect-timeout=10",
+                "--skip-reconnect",
+            ]
+        );
+    }
+
+    #[test]
+    fn query_arguments_keep_credentials_out_of_argv_and_append_query_options() {
+        let args = mysql_query_args(Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert_eq!(
+            args,
+            vec![
+                "--defaults-file=/tmp/sabiql-mysql.cnf",
+                "--no-login-paths",
+                "--protocol=TCP",
+                "--connect-timeout=10",
+                "--skip-reconnect",
+                "--xml",
+                "--binary-as-hex",
+                "--binary-mode",
+                "--unbuffered",
+                "--default-character-set=utf8mb4",
+                "--batch",
+                "--silent",
+                "--prompt=",
+            ]
+        );
         assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 
     #[test]
-    fn metadata_arguments_request_column_names_for_empty_results() {
-        let args = mysql_metadata_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+    fn metadata_arguments_append_metadata_options_after_connection_arguments() {
+        let args = mysql_metadata_args(Path::new("/tmp/sabiql-mysql.cnf"));
 
-        assert!(args.contains(&"--column-names".to_string()));
-        assert!(args.contains(&"--column-type-info".to_string()));
+        assert_eq!(
+            args,
+            vec![
+                "--defaults-file=/tmp/sabiql-mysql.cnf",
+                "--no-login-paths",
+                "--protocol=TCP",
+                "--connect-timeout=10",
+                "--skip-reconnect",
+                "--batch",
+                "--column-names",
+                "--column-type-info",
+                "--binary-as-hex",
+                "--binary-mode",
+                "--unbuffered",
+                "--default-character-set=utf8mb4",
+                "--prompt=",
+            ]
+        );
+        assert!(args.iter().all(|argument| !argument.contains("password")));
     }
 }
