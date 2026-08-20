@@ -163,6 +163,7 @@ const MYSQL_KEYWORDS: &[&str] = &[
     "FROM",
     "WHERE",
     "JOIN",
+    "STRAIGHT_JOIN",
     "LEFT",
     "RIGHT",
     "INNER",
@@ -815,7 +816,7 @@ impl SqlLexer {
 
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
-                    "FROM" | "JOIN" => {
+                    "FROM" | "JOIN" | "STRAIGHT_JOIN" => {
                         in_for_clause = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -977,6 +978,43 @@ impl SqlLexer {
             *i += 1;
         }
 
+        // Skip MySQL's table partition clause before reading the alias.
+        if self.is_mysql()
+            && *i < tokens.len()
+            && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
+        {
+            let mut partition_start = *i + 1;
+            while partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Whitespace
+            {
+                partition_start += 1;
+            }
+
+            if partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Punctuation('(')
+            {
+                *i = partition_start;
+                let mut partition_depth = 0;
+                while *i < tokens.len() {
+                    match tokens[*i].kind {
+                        TokenKind::Punctuation('(') => partition_depth += 1,
+                        TokenKind::Punctuation(')') => {
+                            partition_depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    *i += 1;
+                    if partition_depth == 0 {
+                        break;
+                    }
+                }
+
+                while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+                    *i += 1;
+                }
+            }
+        }
+
         // Check for alias (optional AS keyword)
         if *i < tokens.len()
             && let TokenKind::Keyword(kw) = &tokens[*i].kind
@@ -1019,6 +1057,7 @@ impl SqlLexer {
                 | "FROM"
                 | "WHERE"
                 | "JOIN"
+                | "STRAIGHT_JOIN"
                 | "ON"
                 | "AND"
                 | "OR"
@@ -1924,6 +1963,34 @@ mod tests {
             assert_eq!(refs[0].table, "users");
             assert_eq!(refs[1].table, "posts");
             assert_eq!(refs[2].table, "comments");
+        }
+
+        #[test]
+        fn mysql_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_partition_clause_preserves_table_alias() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM events PARTITION (p0) AS e WHERE e.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "events");
+            assert_eq!(refs[0].alias, Some("e".to_string()));
         }
     }
 
