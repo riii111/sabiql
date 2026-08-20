@@ -17,7 +17,7 @@ use super::args::mysql_connection_args;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
-const MYSQL_VERSION_ARGS: [&str; 1] = ["--version"];
+const MYSQL_VERSION_ARGS: [&str; 3] = ["--no-defaults", "--no-login-paths", "--version"];
 
 #[derive(Debug, Deserialize)]
 struct MySqlProbeResponse {
@@ -27,7 +27,11 @@ struct MySqlProbeResponse {
 }
 
 pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
-    let output = run_mysql_command(MYSQL_VERSION_ARGS, None).await?;
+    check_mysql_cli_version_with_program(OsStr::new("mysql")).await
+}
+
+async fn check_mysql_cli_version_with_program(program: &OsStr) -> Result<(), DbOperationError> {
+    let output = run_mysql_version_command(program).await?;
     let version_output = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -40,6 +44,32 @@ pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), 
         });
     }
     Ok(())
+}
+
+async fn run_mysql_version_command(
+    program: &OsStr,
+) -> Result<std::process::Output, DbOperationError> {
+    let mut command = Command::new(program);
+    command
+        .args(MYSQL_VERSION_ARGS)
+        .stdin(Stdio::null())
+        .env_remove("MYSQL_PWD")
+        .env_remove("MYSQL_PASSWORD")
+        .kill_on_drop(true);
+
+    match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
+            Err(DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details: error.to_string(),
+            })
+        }
+        Ok(Err(error)) => Err(DbOperationError::ConnectionFailed(error.to_string())),
+        Err(_) => Err(DbOperationError::Timeout(
+            "mysql probe exceeded the connection timeout".to_string(),
+        )),
+    }
 }
 
 pub(in crate::adapters::mysql) async fn probe_mysql_server(
@@ -356,7 +386,10 @@ mod probe_tests {
 
     #[test]
     fn version_arguments_stay_isolated_from_query_options() {
-        assert_eq!(MYSQL_VERSION_ARGS, ["--version"]);
+        assert_eq!(
+            MYSQL_VERSION_ARGS,
+            ["--no-defaults", "--no-login-paths", "--version"]
+        );
         assert!(!MYSQL_VERSION_ARGS.contains(&"--quick"));
     }
 
@@ -456,6 +489,92 @@ mod probe_tests {
                 mysql_tls_failure_kind(&stderr.to_ascii_lowercase()),
                 Some(expected)
             );
+        }
+    }
+
+    #[cfg(unix)]
+    mod version_command {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::Path;
+
+        use tempfile::TempDir;
+
+        use super::*;
+
+        fn fake_mysql_version_client(body: &str) -> (TempDir, PathBuf) {
+            let directory = tempfile::tempdir().unwrap();
+            let program = directory.path().join("mysql");
+            let script = format!("#!/bin/sh\n{body}\n");
+            fs::write(&program, script).unwrap();
+            let mut permissions = fs::metadata(&program).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&program, permissions).unwrap();
+            (directory, program)
+        }
+
+        fn assert_client_version_error(error: DbOperationError, expected_details: &str) {
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithKind {
+                    kind: UnsupportedOperationKind::ClientVersion,
+                    details,
+                } if details == expected_details
+            ));
+        }
+
+        #[tokio::test]
+        async fn isolates_version_check_from_ambient_unknown_options() {
+            let (_directory, program) = fake_mysql_version_client(
+                r#"if [ "$#" -ne 3 ] || [ "$1" != "--no-defaults" ] || [ "$2" != "--no-login-paths" ] || [ "$3" != "--version" ]; then
+    printf '%s\n' "unknown option '--ambient-unknown'" >&2
+    exit 1
+fi
+printf '%s\n' 'mysql  Ver 8.4.3 for macos'
+"#,
+            );
+
+            check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn preserves_binary_not_found_error() {
+            let missing = Path::new("/definitely/missing/mysql");
+
+            assert!(matches!(
+                check_mysql_cli_version_with_program(missing.as_os_str()).await,
+                Err(DbOperationError::CommandNotFound {
+                    command: DatabaseCli::MySql,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn rejects_non_oracle_client_output() {
+            let (_directory, program) = fake_mysql_version_client(
+                "printf '%s\\n' 'mysql  Ver 15.1 Distrib 10.11.8-MariaDB'",
+            );
+
+            let error = check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap_err();
+
+            assert_client_version_error(error, "mysql  Ver 15.1 Distrib 10.11.8-MariaDB");
+        }
+
+        #[tokio::test]
+        async fn rejects_unsupported_client_version() {
+            let (_directory, program) =
+                fake_mysql_version_client("printf '%s\\n' 'mysql  Ver 8.0.36 for macos'");
+
+            let error = check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap_err();
+
+            assert_client_version_error(error, "mysql  Ver 8.0.36 for macos");
         }
     }
 }
