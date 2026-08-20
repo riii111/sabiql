@@ -731,9 +731,30 @@ mod tests {
             "DELETE items, prices FROM items JOIN prices ON items.id = prices.id",
             "DELETE FROM items, prices USING items JOIN prices ON items.id = prices.id",
             "DELETE items FROM items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items USING items JOIN prices ON items.id = prices.id",
+            "DELETE FROM items JOIN prices ON items.id = prices.id",
         ] {
             let error = classify_mysql_statement(sql).unwrap_err();
             assert!(error.0.contains("multiple-table"), "{sql}: {error}");
+        }
+    }
+
+    #[test]
+    fn accepts_single_table_delete_clause_boundaries_and_nested_commas() {
+        for sql in [
+            "DELETE FROM items ORDER BY created_at, id LIMIT 10",
+            "DELETE FROM items WHERE id IN (SELECT item_id FROM prices, currencies)",
+            "DELETE FROM items LIMIT 10",
+            "DELETE FROM `items,archive` ORDER BY id LIMIT 10",
+        ] {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(
+                statement.kind,
+                MySqlStatementKind::Delete {
+                    has_where: sql.contains("WHERE")
+                },
+                "{sql}"
+            );
         }
     }
 

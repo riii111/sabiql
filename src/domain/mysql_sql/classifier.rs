@@ -94,10 +94,13 @@ fn classify_mysql_crud_statement(
                 ));
             }
             let target_index = index + 1;
-            let where_index =
-                target::find_word(tokens, "WHERE", target_index).unwrap_or(tokens.len());
-            if has_multi_table_reference(tokens, target_index, where_index)
-                || has_top_level_word(tokens, "USING", target_index, where_index)
+            let table_reference_end = ["WHERE", "ORDER", "LIMIT"]
+                .into_iter()
+                .filter_map(|word| target::find_word(tokens, word, target_index))
+                .min()
+                .unwrap_or(tokens.len());
+            if has_multi_table_reference(tokens, target_index, table_reference_end)
+                || has_top_level_word(tokens, "USING", target_index, table_reference_end)
             {
                 return Err(MySqlLexError(
                     "MySQL multiple-table DELETE statements are not supported".to_string(),
