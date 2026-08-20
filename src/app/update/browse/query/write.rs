@@ -73,17 +73,20 @@ fn build_update_preview(
         .visible_preview_column(col_idx)
         .map_or("", |c| c.data_type.as_str());
     let handling = CellPresentationPolicy::new(database_type, column_data_type, "").diff_handling();
+    let before = normalize_for_write_diff(
+        state.result_interaction.cell_edit().original_value(),
+        handling,
+    );
+    let after =
+        normalize_for_write_diff(state.result_interaction.cell_edit().draft_value(), handling);
     if uses_structured_json_diff(handling) {
-        let before = normalize_structured_json_for_write(
-            state.result_interaction.cell_edit().original_value(),
-        )
-        .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
-        let after =
-            normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
-                .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
-        if before == after {
-            return Err(EditGuardrailError::NoSemanticChanges);
-        }
+        normalize_structured_json_for_write(state.result_interaction.cell_edit().original_value())
+            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
+        normalize_structured_json_for_write(state.result_interaction.cell_edit().draft_value())
+            .map_err(|error| EditGuardrailError::InvalidJson(error.to_string()))?;
+    }
+    if before == after {
+        return Err(EditGuardrailError::NoSemanticChanges);
     }
 
     let identity_pairs = identity.identity_pairs_for_row(result, row_idx);
@@ -120,14 +123,6 @@ fn build_update_preview(
         sql,
         target_summary: target,
         diff: {
-            let before = normalize_for_write_diff(
-                state.result_interaction.cell_edit().original_value(),
-                handling,
-            );
-            let after = normalize_for_write_diff(
-                state.result_interaction.cell_edit().draft_value(),
-                handling,
-            );
             let json_diff = uses_structured_json_diff(handling)
                 .then(|| compute_json_diff(&before, &after, 1))
                 .flatten();
@@ -481,6 +476,33 @@ mod tests {
             state
         }
 
+        fn mysql_editable_state(data_type: &str, original: QueryValue, draft: &str) -> AppState {
+            let original_text = original.display_value();
+            let mut state = AppState::new("test_project".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT * FROM users".to_string(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::SqlLiteral("1".to_string()), original]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            let mut detail = users_table_detail();
+            detail.columns[1].data_type = data_type.to_string();
+            state.session.set_table_detail_raw(Some(detail));
+            state.query.pagination.reset_for_table("public", "users");
+            state.modal.set_mode(InputMode::CellEdit);
+            state
+                .result_interaction
+                .begin_cell_edit(0, 1, original_text);
+            state
+                .result_interaction
+                .replace_cell_edit_draft(draft.to_string());
+            state
+        }
+
         fn submit_write_preview(state: &mut AppState) -> WritePreview {
             let effects = dispatch_query(
                 state,
@@ -677,6 +699,77 @@ mod tests {
         }
 
         #[test]
+        fn mysql_unchanged_grid_values_return_no_changes_before_update_preview() {
+            let cases = [
+                ("text", QueryValue::text("Alice"), "Alice"),
+                (
+                    "decimal(10,2)",
+                    QueryValue::SqlLiteral("42.50".to_string()),
+                    "42.50",
+                ),
+                ("boolean", QueryValue::SqlLiteral("1".to_string()), "1"),
+                ("date", QueryValue::text("2026-08-21"), "2026-08-21"),
+                (
+                    "datetime",
+                    QueryValue::text("2026-08-21 12:34:56"),
+                    "2026-08-21 12:34:56",
+                ),
+                ("time", QueryValue::text("12:34:56"), "12:34:56"),
+            ];
+
+            for (data_type, original, draft) in cases {
+                let mut state = mysql_editable_state(data_type, original, draft);
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::SubmitCellEditWrite,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert!(effects.is_empty(), "{data_type} should not send SQL");
+                assert_eq!(
+                    state.messages.last_error.as_deref(),
+                    Some("No semantic changes to write"),
+                    "{data_type} should be a no-op"
+                );
+                assert!(state.result_interaction.pending_write_preview().is_none());
+            }
+        }
+
+        #[test]
+        fn mysql_changed_grid_values_still_open_update_preview() {
+            let cases = [
+                ("text", QueryValue::text("Alice"), "Bob"),
+                (
+                    "decimal(10,2)",
+                    QueryValue::SqlLiteral("42.50".to_string()),
+                    "43.50",
+                ),
+                ("boolean", QueryValue::SqlLiteral("1".to_string()), "0"),
+                ("date", QueryValue::text("2026-08-21"), "2026-08-22"),
+                (
+                    "datetime",
+                    QueryValue::text("2026-08-21 12:34:56"),
+                    "2026-08-21 12:34:57",
+                ),
+                ("time", QueryValue::text("12:34:56"), "12:34:57"),
+            ];
+
+            for (data_type, original, draft) in cases {
+                let before = original.display_value();
+                let mut state = mysql_editable_state(data_type, original, draft);
+
+                let preview = submit_write_preview(&mut state);
+
+                assert_eq!(preview.diff[0].before, before, "{data_type} before");
+                assert_eq!(preview.diff[0].after, draft, "{data_type} after");
+                assert!(preview.sql.contains("UPDATE"), "{data_type} SQL");
+            }
+        }
+
+        #[test]
         fn sqlite_active_database_type_uses_sqlite_update_preview() {
             let mut state = editable_state();
             state.session.activate_connection_with_dsn(
@@ -762,7 +855,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_text_cell_with_nul_keeps_raw_value_into_write_preview() {
+        fn sqlite_text_cell_with_nul_keeps_raw_values_into_write_preview() {
             let mut state = AppState::new("test_project".to_string());
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("sqlite-test"),
@@ -791,11 +884,14 @@ mod tests {
             state
                 .result_interaction
                 .begin_cell_edit(0, 1, "a\0b".to_string());
+            state
+                .result_interaction
+                .replace_cell_edit_draft("c\0d".to_string());
 
             let preview = submit_write_preview(&mut state);
 
             assert_eq!(preview.diff[0].before, "a\0b");
-            assert_eq!(preview.diff[0].after, "a\0b");
+            assert_eq!(preview.diff[0].after, "c\0d");
         }
 
         #[test]
@@ -968,6 +1064,29 @@ mod tests {
                 preview.diff[0].json_diff.is_some(),
                 "jsonb column should have structured diff"
             );
+        }
+
+        #[test]
+        fn structured_json_semantic_noop_returns_no_changes() {
+            let mut state = editable_state_with_json();
+            state
+                .result_interaction
+                .replace_cell_edit_draft(r#"{ "role": "admin" }"#.to_string());
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::SubmitCellEditWrite,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("No semantic changes to write")
+            );
+            assert!(state.result_interaction.pending_write_preview().is_none());
         }
 
         #[test]
@@ -1206,6 +1325,30 @@ mod tests {
                 effects.first(),
                 Some(Effect::ExecutePreview { .. })
             ));
+        }
+
+        #[test]
+        fn mysql_zero_affected_rows_from_predicate_mismatch_stays_error() {
+            let mut state = mysql_editable_state("text", QueryValue::text("Alice"), "Bob");
+            let run_id = begin_query_run(&mut state);
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteWriteSucceeded {
+                    dsn: "mysql://localhost/test".to_string(),
+                    run_id,
+                    affected_rows: 0,
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("UPDATE expected 1 row, but affected 0 rows")
+            );
         }
 
         #[test]
