@@ -13,6 +13,8 @@ use crate::app::ports::outbound::{
     MySqlConnectionProbeResult, UnsupportedOperationKind,
 };
 
+use super::args::mysql_connection_args;
+
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
 
@@ -119,18 +121,15 @@ fn version_major_minor(value: &str) -> Option<(u32, u32)> {
 }
 
 fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
-    vec![
-        format!("--defaults-file={}", option_file.display()),
-        "--no-login-paths".to_string(),
-        "--protocol=TCP".to_string(),
-        "--connect-timeout=10".to_string(),
+    let mut args = mysql_connection_args(option_file);
+    args.extend([
         "--batch".to_string(),
         "--raw".to_string(),
         "--skip-column-names".to_string(),
         "--binary-mode".to_string(),
-        "--skip-reconnect".to_string(),
-        format!("--execute={MYSQL_PROBE_QUERY}"),
-    ]
+    ]);
+    args.push(format!("--execute={MYSQL_PROBE_QUERY}"));
+    args
 }
 
 pub(super) async fn run_mysql_command<I, S>(
@@ -336,18 +335,20 @@ mod probe_tests {
     fn uses_tcp_and_keeps_defaults_file_first() {
         let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
 
-        assert_eq!(args[0], "--defaults-file=/tmp/sabiql-mysql.cnf");
-        assert_eq!(args[1], "--no-login-paths");
-        assert_eq!(args[2], "--protocol=TCP");
-        assert!(args.contains(&"--batch".to_string()));
-        assert!(args.contains(&"--raw".to_string()));
-        assert!(args.contains(&"--skip-column-names".to_string()));
-        assert!(args.contains(&"--binary-mode".to_string()));
-        assert!(args.contains(&"--skip-reconnect".to_string()));
-        assert!(
-            args.last()
-                .unwrap()
-                .starts_with("--execute=SELECT JSON_OBJECT")
+        assert_eq!(
+            args,
+            vec![
+                "--defaults-file=/tmp/sabiql-mysql.cnf".to_string(),
+                "--no-login-paths".to_string(),
+                "--protocol=TCP".to_string(),
+                "--connect-timeout=10".to_string(),
+                "--skip-reconnect".to_string(),
+                "--batch".to_string(),
+                "--raw".to_string(),
+                "--skip-column-names".to_string(),
+                "--binary-mode".to_string(),
+                format!("--execute={MYSQL_PROBE_QUERY}"),
+            ]
         );
     }
 
