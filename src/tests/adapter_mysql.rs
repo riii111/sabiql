@@ -2241,6 +2241,24 @@ mod query_execution {
             {
                 return Err(format!("unexpected FOUND_ROWS result: {found_rows:?}"));
             }
+
+            let empty_found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite WHERE first_key = 999; SELECT FOUND_ROWS()",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("empty FOUND_ROWS query failed: {error:?}"))?;
+            if empty_found_rows.columns != ["FOUND_ROWS()"]
+                || empty_found_rows.values() != [[QueryValue::Text("0".to_string())]]
+                || empty_found_rows.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected empty FOUND_ROWS result: {empty_found_rows:?}"
+                ));
+            }
             Ok(())
         }))
         .await;

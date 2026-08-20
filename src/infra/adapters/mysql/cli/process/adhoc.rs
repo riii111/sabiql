@@ -108,6 +108,7 @@ async fn run_mysql_statement(
     statement: &MySqlStatement,
     access_mode: AccessMode,
     expected_columns: Option<&[&str]>,
+    defer_empty_result_metadata: bool,
     refresh_scope: RefreshScope,
 ) -> Result<MySqlStatementExecution, DbOperationError> {
     let statement_scope = mysql_refresh_scope(statement.kind());
@@ -115,13 +116,7 @@ async fn run_mysql_statement(
     if let Err(error) = write_mysql_statement(process, statement.sql()).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
-    if !matches!(
-        statement.kind(),
-        MySqlStatementKind::Select
-            | MySqlStatementKind::Table
-            | MySqlStatementKind::Show
-            | MySqlStatementKind::Describe
-    ) {
+    if !mysql_statement_returns_resultset(statement.kind()) {
         return Ok(MySqlStatementExecution {
             result_set: None,
             refresh_scope: possible_refresh_scope,
@@ -141,22 +136,37 @@ async fn run_mysql_statement(
         Ok(result) => result,
         Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
     };
-    let user_result = fill_mysql_empty_result_columns(
-        process,
-        result,
-        option_file,
-        statement.sql(),
-        statement.kind(),
-        access_mode,
-        expected_columns,
-    )
-    .await
-    .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
+
+    let result = if defer_empty_result_metadata {
+        result
+    } else {
+        fill_mysql_empty_result_columns(
+            process,
+            result,
+            option_file,
+            statement.sql(),
+            statement.kind(),
+            access_mode,
+            expected_columns,
+        )
+        .await
+        .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?
+    };
 
     Ok(MySqlStatementExecution {
-        result_set: Some(user_result),
+        result_set: Some(result),
         refresh_scope: possible_refresh_scope,
     })
+}
+
+fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
+    matches!(
+        kind,
+        MySqlStatementKind::Select
+            | MySqlStatementKind::Table
+            | MySqlStatementKind::Show
+            | MySqlStatementKind::Describe
+    )
 }
 
 async fn run_mysql_adhoc_process(
@@ -183,14 +193,18 @@ async fn run_mysql_adhoc_process(
         .then_some(expected_columns)
         .flatten();
 
-    for statement in statements {
+    for (index, statement) in statements.iter().enumerate() {
         refresh_scope_before_last_statement = refresh_scope;
+        let defer_empty_result_metadata = statements[index + 1..]
+            .iter()
+            .any(|statement| mysql_statement_returns_resultset(statement.kind()));
         let execution = run_mysql_statement(
             process,
             option_file,
             statement,
             access_mode,
             expected_columns,
+            defer_empty_result_metadata,
             refresh_scope,
         )
         .await?;
