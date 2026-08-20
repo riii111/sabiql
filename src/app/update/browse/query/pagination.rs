@@ -601,6 +601,81 @@ mod tests {
             assert!(state.result_interaction.selection().cell().is_none());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
         }
+
+        #[test]
+        fn prev_then_next_reopens_the_page_after_an_empty_forward_result() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.pagination.reset_for_table("public", "users");
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
+
+            let next_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
+            dispatch_query(
+                &mut state,
+                &next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let empty_next_result =
+                query_completed_action(&mut state, preview_result(0), 0, Some(2));
+            dispatch_query(
+                &mut state,
+                &empty_next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert_eq!(state.query.pagination.current_page(), 1);
+            assert!(state.query.pagination.reached_end());
+
+            let prev_effects = dispatch_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                prev_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 0, .. })
+            ));
+            assert!(!state.query.pagination.reached_end());
+
+            let prev_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
+            dispatch_query(
+                &mut state,
+                &prev_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
+        }
     }
 
     mod prev_page {

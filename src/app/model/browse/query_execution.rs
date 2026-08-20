@@ -124,6 +124,10 @@ impl PaginationState {
         self.reached_end = false;
     }
 
+    pub fn mark_reached_end(&mut self) {
+        self.reached_end = true;
+    }
+
     pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
         self.total_rows_estimate = estimate;
     }
@@ -737,6 +741,19 @@ mod tests {
 
             assert_eq!(p.current_page(), 3);
             assert!(!p.reached_end());
+        }
+
+        #[test]
+        fn mark_reached_end_only_sets_that_flag() {
+            let mut p = PaginationState {
+                current_page: 3,
+                ..Default::default()
+            };
+
+            p.mark_reached_end();
+
+            assert_eq!(p.current_page(), 3);
+            assert!(p.reached_end());
         }
     }
 }
