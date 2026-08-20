@@ -519,7 +519,7 @@ impl Inspector {
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers = ["Name", "Columns", "References"];
+        let headers = ["Name", "Columns", "References", "On update", "On delete"];
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = rows.iter().take(50).map(foreign_key_row_cells).collect();
@@ -790,6 +790,8 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
         row.name.clone(),
         row.columns.clone(),
         row.references.clone(),
+        row.on_update.clone(),
+        row.on_delete.clone(),
     ]
 }
 
@@ -852,5 +854,27 @@ mod tests {
 
         assert_eq!(index_row_cells(&row, false, true, false).len(), 3);
         assert_eq!(index_row_cells(&row, false, true, true).len(), 5);
+    }
+
+    #[test]
+    fn foreign_key_row_cells_include_referential_actions() {
+        let row = InspectorForeignKeyRow {
+            name: "fk_users_department".to_string(),
+            columns: "department_id".to_string(),
+            references: "public.departments(id)".to_string(),
+            on_update: "NO ACTION".to_string(),
+            on_delete: "CASCADE".to_string(),
+        };
+
+        assert_eq!(
+            foreign_key_row_cells(&row),
+            vec![
+                "fk_users_department",
+                "department_id",
+                "public.departments(id)",
+                "NO ACTION",
+                "CASCADE",
+            ]
+        );
     }
 }
