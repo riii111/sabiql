@@ -2551,6 +2551,48 @@ mod query_execution {
                     "unexpected transactional empty-table result: {transactional_empty_result:?}"
                 ));
             }
+
+            let persistent_ddl_tail_table = format!("sabiql_sab533_ddl_tail_{suffix}");
+            let persistent_ddl_tail_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TABLE {persistent_ddl_tail_table} (id INT, retained INT); SELECT id FROM {persistent_ddl_tail_table} WHERE FALSE; ALTER TABLE {persistent_ddl_tail_table} DROP COLUMN id; DROP TABLE {persistent_ddl_tail_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("persistent DDL-tail query failed: {error:?}"))?;
+            if persistent_ddl_tail_result.columns != ["id"]
+                || !persistent_ddl_tail_result.values().is_empty()
+                || persistent_ddl_tail_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected persistent DDL-tail result: {persistent_ddl_tail_result:?}"
+                ));
+            }
+
+            let temporary_ddl_tail_table = format!("sabiql_sab533_tmp_ddl_tail_{suffix}");
+            let temporary_ddl_tail_result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "CREATE TEMPORARY TABLE {temporary_ddl_tail_table} (id INT, retained INT); SELECT id FROM {temporary_ddl_tail_table} WHERE FALSE; ALTER TABLE {temporary_ddl_tail_table} DROP COLUMN id; DROP TEMPORARY TABLE {temporary_ddl_tail_table}"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("temporary DDL-tail query failed: {error:?}"))?;
+            if temporary_ddl_tail_result.columns != ["id"]
+                || !temporary_ddl_tail_result.values().is_empty()
+                || temporary_ddl_tail_result.command_tag.is_some()
+            {
+                return Err(format!(
+                    "unexpected temporary DDL-tail result: {temporary_ddl_tail_result:?}"
+                ));
+            }
             Ok(())
         }))
         .await;

@@ -7,7 +7,10 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     RefreshScope,
-    mysql_sql::{MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying},
+    mysql_sql::{
+        MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying,
+        mysql_statement_is_schema_modifying,
+    },
 };
 
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
@@ -150,17 +153,17 @@ fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
 }
 
 fn mysql_statement_is_safe_empty_result_metadata_tail(kind: &MySqlStatementKind) -> bool {
-    matches!(
-        kind,
-        MySqlStatementKind::DropTable { temporary: true }
-            | MySqlStatementKind::Begin
-            | MySqlStatementKind::StartTransaction
-            | MySqlStatementKind::Commit
-            | MySqlStatementKind::Rollback
-            | MySqlStatementKind::Savepoint
-            | MySqlStatementKind::RollbackToSavepoint
-            | MySqlStatementKind::ReleaseSavepoint
-    )
+    mysql_statement_is_schema_modifying(kind)
+        || matches!(
+            kind,
+            MySqlStatementKind::Begin
+                | MySqlStatementKind::StartTransaction
+                | MySqlStatementKind::Commit
+                | MySqlStatementKind::Rollback
+                | MySqlStatementKind::Savepoint
+                | MySqlStatementKind::RollbackToSavepoint
+                | MySqlStatementKind::ReleaseSavepoint
+        )
 }
 
 fn mysql_result_needs_metadata(result: &MySqlResultSet) -> bool {
