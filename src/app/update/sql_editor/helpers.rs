@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::mysql_sql::MySqlStatement;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::AccessMode;
 use crate::update::dispatch_result::DispatchResult;
@@ -11,7 +10,6 @@ pub(super) fn start_adhoc_if_connected(
     state: &mut AppState,
     query: String,
     now: Instant,
-    classified_mysql_statements: Option<Vec<MySqlStatement>>,
 ) -> DispatchResult {
     if reject_pending_mysql_connection_probe(state, now) {
         return DispatchResult::handled();
@@ -30,7 +28,6 @@ pub(super) fn start_adhoc_if_connected(
         dsn,
         run_id,
         query,
-        classified_mysql_statements,
         access_mode: AccessMode::from_read_only(state.session.is_read_only()),
     }])
 }

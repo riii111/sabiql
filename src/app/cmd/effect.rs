@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
 use crate::domain::query_history::QueryHistoryScope;
-use crate::domain::{
-    DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot, mysql_sql::MySqlStatement,
-};
+use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
 use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
 use crate::update::action::{Action, ConnectionTarget};
@@ -80,7 +78,6 @@ pub enum Effect {
         dsn: String,
         run_id: u64,
         query: String,
-        classified_mysql_statements: Option<Vec<MySqlStatement>>,
         access_mode: AccessMode,
     },
     ExecuteExplain {
