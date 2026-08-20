@@ -587,7 +587,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
       ;;
     *TRIGGERS*)
-      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_ORDER">1</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field><field name="SQL_MODE">STRICT_TRANS_TABLES</field><field name="CHARACTER_SET_CLIENT">utf8mb4</field><field name="COLLATION_CONNECTION">utf8mb4_0900_ai_ci</field><field name="DATABASE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATED">2026-08-21 10:20:30.00</field></row></resultset>'
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
