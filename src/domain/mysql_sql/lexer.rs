@@ -64,6 +64,10 @@ pub(super) fn lex_mysql_statement(sql: &str) -> Result<Vec<Token>, MySqlLexError
                 if tokens.is_empty() && executable_statement && !contains_statement_separator {
                     tokens.extend(inner);
                     leading_executable_version_comment = true;
+                } else if is_safe_select_modifier_comment(&tokens, &inner)
+                    && !contains_statement_separator
+                {
+                    tokens.extend(inner);
                 } else if trailing_ddl_clause && !executable_statement {
                     // MySQL uses trailing executable comments for versioned DDL clauses such
                     // as DEFAULT CHARSET. Keep the clause out of statement classification.
@@ -311,6 +315,36 @@ fn is_safe_trailing_ddl_clause(tokens: &[Token], inner: &[Token]) -> bool {
         && !inner.iter().any(|token| {
             matches!(&token.kind, TokenKind::Word(word) if is_mysql_statement_keyword(word))
         })
+}
+
+fn is_safe_select_modifier_comment(tokens: &[Token], inner: &[Token]) -> bool {
+    let is_modifier = |token: &Token| {
+        matches!(
+            &token.kind,
+            TokenKind::Word(word)
+                if matches!(
+                    word.as_str(),
+                    "ALL"
+                        | "DISTINCT"
+                        | "DISTINCTROW"
+                        | "HIGH_PRIORITY"
+                        | "STRAIGHT_JOIN"
+                        | "SQL_SMALL_RESULT"
+                        | "SQL_BIG_RESULT"
+                        | "SQL_BUFFER_RESULT"
+                        | "SQL_NO_CACHE"
+                        | "SQL_CALC_FOUND_ROWS"
+                )
+        )
+    };
+    matches!(
+        tokens.first().and_then(|token| match &token.kind {
+            TokenKind::Word(word) => Some(word.as_str()),
+            _ => None,
+        }),
+        Some("SELECT")
+    ) && !inner.is_empty()
+        && tokens.iter().skip(1).chain(inner).all(is_modifier)
 }
 
 fn mysql_version_comment_content(body: &str) -> Result<Option<&str>, MySqlLexError> {

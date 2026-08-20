@@ -118,6 +118,10 @@ pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError>
     side_effect::has_mysql_read_only_side_effect(sql)
 }
 
+pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySqlLexError> {
+    side_effect::mysql_statement_reads_session_diagnostics(sql)
+}
+
 pub fn target_is_selected_database(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
@@ -714,6 +718,16 @@ mod tests {
         assert!(classify_mysql_statement("SELECT 1 /*!80000 INTO OUTFILE '/tmp/x' */").is_err());
         assert!(classify_mysql_statement("/*!80000 SELECT 1 */ SELECT 2").is_err());
         assert!(classify_mysql_statement("/*!80000 SELECT 1; DROP TABLE items */").is_err());
+    }
+
+    #[test]
+    fn accepts_sql_calc_found_rows_in_an_executable_select_modifier_comment() {
+        assert!(
+            classify_mysql_statement(
+                "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM items WHERE FALSE"
+            )
+            .is_ok()
+        );
     }
 
     #[test]

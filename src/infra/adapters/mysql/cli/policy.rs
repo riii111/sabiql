@@ -31,12 +31,6 @@ pub(in crate::adapters::mysql) struct MySqlExecutionResult {
     pub(in crate::adapters::mysql) refresh_scope: RefreshScope,
 }
 
-pub(super) struct MySqlCommandEvent {
-    pub(super) kind: MySqlStatementKind,
-    pub(super) target: Option<String>,
-    pub(super) tag: CommandTag,
-}
-
 pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
     query: &str,
     selected_database: Option<&str>,
@@ -145,7 +139,8 @@ pub(super) fn mysql_metadata_select_query(
             "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
         ));
     }
-    if has_mysql_read_only_side_effect(query)
+    let query = strip_mysql_sql_calc_found_rows(query);
+    if has_mysql_read_only_side_effect(&query)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     {
         return Err(DbOperationError::UnsupportedOperation(
@@ -154,10 +149,210 @@ pub(super) fn mysql_metadata_select_query(
         ));
     }
     Ok(sql::build_metadata_select_query(
-        query,
+        &query,
         source_alias,
         marker_alias,
     ))
+}
+
+fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
+    const MODIFIER: &[u8] = b"SQL_CALC_FOUND_ROWS";
+    const SELECT_MODIFIERS: &[&[u8]] = &[
+        b"SELECT",
+        b"ALL",
+        b"DISTINCT",
+        b"DISTINCTROW",
+        b"HIGH_PRIORITY",
+        b"STRAIGHT_JOIN",
+        b"SQL_SMALL_RESULT",
+        b"SQL_BIG_RESULT",
+        b"SQL_BUFFER_RESULT",
+        b"SQL_NO_CACHE",
+    ];
+
+    fn is_identifier_byte(byte: u8) -> bool {
+        byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || byte >= 0x80
+    }
+
+    fn is_select_modifier_prefix(uppercase: &[u8], last_word: Option<(usize, usize)>) -> bool {
+        last_word.is_some_and(|(start, end)| {
+            SELECT_MODIFIERS
+                .iter()
+                .any(|modifier| &uppercase[start..end] == *modifier)
+        })
+    }
+
+    fn executable_comment_modifier(
+        bytes: &[u8],
+        uppercase: &[u8],
+        start: usize,
+        end: usize,
+        outer_last_word: Option<(usize, usize)>,
+    ) -> Option<(usize, usize)> {
+        let mut index = start;
+        let mut last_word = outer_last_word;
+        let mut at_version_prefix = true;
+        let mut quote = None;
+        while index < end {
+            let byte = bytes[index];
+            if let Some(delimiter) = quote {
+                if byte == b'\\' {
+                    index = (index + 2).min(end);
+                    continue;
+                }
+                if byte == delimiter {
+                    if bytes.get(index + 1) == Some(&delimiter) {
+                        index += 2;
+                        continue;
+                    }
+                    quote = None;
+                }
+                index += 1;
+                continue;
+            }
+            if matches!(byte, b'\'' | b'"' | b'`') {
+                quote = Some(byte);
+                last_word = None;
+                at_version_prefix = false;
+                index += 1;
+                continue;
+            }
+            if byte.is_ascii_whitespace() {
+                index += 1;
+                continue;
+            }
+            if is_identifier_byte(byte) {
+                let word_start = index;
+                index += 1;
+                while index < end && is_identifier_byte(bytes[index]) {
+                    index += 1;
+                }
+                if index - word_start == MODIFIER.len()
+                    && &uppercase[word_start..index] == MODIFIER
+                    && is_select_modifier_prefix(uppercase, last_word)
+                    && bytes.get(index) != Some(&b'.')
+                {
+                    return Some((word_start, index));
+                }
+                let is_version =
+                    at_version_prefix && bytes[word_start..index].iter().all(u8::is_ascii_digit);
+                if !is_version {
+                    last_word = Some((word_start, index));
+                    at_version_prefix = false;
+                }
+                continue;
+            }
+            last_word = None;
+            at_version_prefix = false;
+            index += 1;
+        }
+        None
+    }
+
+    let bytes = query.as_bytes();
+    let uppercase = bytes.to_ascii_uppercase();
+    let mut quote = None;
+    let mut last_word = None;
+    let mut index = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(delimiter) = quote {
+            if byte == b'\\' {
+                index = (index + 2).min(bytes.len());
+                continue;
+            }
+            if byte == delimiter {
+                if bytes.get(index + 1) == Some(&delimiter) {
+                    index += 2;
+                    continue;
+                }
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"' | b'`') {
+            quote = Some(byte);
+            last_word = None;
+            index += 1;
+            continue;
+        }
+        if byte == b'#' {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes[index..].starts_with(b"--")
+            && bytes.get(index + 2).is_none_or(u8::is_ascii_whitespace)
+        {
+            index = bytes[index..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(bytes.len(), |offset| index + offset + 1);
+            continue;
+        }
+        if bytes[index..].starts_with(b"/*") {
+            let Some(comment_offset) = bytes[index + 2..]
+                .windows(2)
+                .position(|window| window == b"*/")
+            else {
+                break;
+            };
+            let comment_end = index + 2 + comment_offset;
+            if bytes[index..].starts_with(b"/*!")
+                && let Some((start, end)) = executable_comment_modifier(
+                    bytes,
+                    &uppercase,
+                    index + 3,
+                    comment_end,
+                    last_word,
+                )
+            {
+                let only_versioned_modifier = bytes[index + 3..start]
+                    .iter()
+                    .chain(bytes[end..comment_end].iter())
+                    .all(|byte| byte.is_ascii_whitespace() || byte.is_ascii_digit());
+                let mut result = String::with_capacity(query.len() - MODIFIER.len());
+                if only_versioned_modifier {
+                    result.push_str(&query[..index]);
+                    result.push(' ');
+                    result.push_str(&query[comment_end + 2..]);
+                } else {
+                    result.push_str(&query[..start]);
+                    result.push_str(&query[end..]);
+                }
+                return result;
+            }
+            index = comment_end + 2;
+            continue;
+        }
+        if is_identifier_byte(byte) {
+            let start = index;
+            index += 1;
+            while index < bytes.len() && is_identifier_byte(bytes[index]) {
+                index += 1;
+            }
+            if index - start == MODIFIER.len()
+                && &uppercase[start..index] == MODIFIER
+                && is_select_modifier_prefix(&uppercase, last_word)
+                && bytes.get(index) != Some(&b'.')
+            {
+                let mut result = String::with_capacity(query.len() - MODIFIER.len());
+                result.push_str(&query[..start]);
+                result.push_str(&query[index..]);
+                return result;
+            }
+            last_word = Some((start, index));
+            continue;
+        }
+        if !byte.is_ascii_whitespace() {
+            last_word = None;
+        }
+        index += 1;
+    }
+    query.to_string()
 }
 
 pub(super) fn validate_mysql_session_marker(
@@ -295,98 +490,6 @@ pub(super) fn mysql_refresh_scope(kind: &MySqlStatementKind) -> RefreshScope {
     } else {
         RefreshScope::None
     }
-}
-
-#[derive(Default)]
-struct MySqlPendingTransactionTags {
-    data: Vec<CommandTag>,
-    savepoints: Vec<(String, usize)>,
-}
-
-fn apply_pending_mysql_data(
-    pending: MySqlPendingTransactionTags,
-    committed_data: &mut Option<CommandTag>,
-) {
-    if let Some(tag) = pending.data.last() {
-        *committed_data = Some(tag.clone());
-    }
-}
-
-pub(super) fn aggregate_mysql_command_tag(events: &[MySqlCommandEvent]) -> Option<CommandTag> {
-    let mut committed_schema = None;
-    let mut committed_data = None;
-    let mut pending = None;
-    let mut last_tag = None;
-
-    for event in events {
-        last_tag = Some(event.tag.clone());
-        match &event.kind {
-            MySqlStatementKind::Begin | MySqlStatementKind::StartTransaction => {
-                pending = Some(MySqlPendingTransactionTags::default());
-            }
-            MySqlStatementKind::Commit => {
-                if let Some(transaction) = pending.take() {
-                    apply_pending_mysql_data(transaction, &mut committed_data);
-                }
-            }
-            MySqlStatementKind::Rollback => {
-                pending = None;
-            }
-            MySqlStatementKind::Savepoint => {
-                if let Some(transaction) = pending.as_mut()
-                    && let Some(name) = event.target.as_deref()
-                {
-                    transaction
-                        .savepoints
-                        .retain(|(current, _)| !current.eq_ignore_ascii_case(name));
-                    transaction
-                        .savepoints
-                        .push((name.to_string(), transaction.data.len()));
-                }
-            }
-            MySqlStatementKind::RollbackToSavepoint => {
-                if let Some(transaction) = pending.as_mut()
-                    && let Some(name) = event.target.as_deref()
-                    && let Some(index) = transaction
-                        .savepoints
-                        .iter()
-                        .position(|(current, _)| current.eq_ignore_ascii_case(name))
-                {
-                    transaction.data.truncate(transaction.savepoints[index].1);
-                    transaction.savepoints.truncate(index + 1);
-                }
-            }
-            MySqlStatementKind::ReleaseSavepoint => {
-                if let Some(transaction) = pending.as_mut()
-                    && let Some(name) = event.target.as_deref()
-                    && let Some(index) = transaction
-                        .savepoints
-                        .iter()
-                        .position(|(current, _)| current.eq_ignore_ascii_case(name))
-                {
-                    transaction.savepoints.remove(index);
-                }
-            }
-            MySqlStatementKind::CreateTable { temporary: true }
-            | MySqlStatementKind::DropTable { temporary: true } => {}
-            kind if mysql_statement_is_persistent_schema_change(kind) => {
-                if let Some(transaction) = pending.take() {
-                    apply_pending_mysql_data(transaction, &mut committed_data);
-                }
-                committed_schema = Some(event.tag.clone());
-            }
-            kind if mysql_statement_is_data_modifying(kind) => {
-                if let Some(transaction) = pending.as_mut() {
-                    transaction.data.push(event.tag.clone());
-                } else {
-                    committed_data = Some(event.tag.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    committed_schema.or(committed_data).or(last_tag)
 }
 
 #[cfg(test)]
@@ -536,6 +639,53 @@ mod tests {
             )
         );
         assert_eq!(fallback_query.matches("SELECT SLEEP(10)").count(), 1);
+    }
+
+    #[test]
+    fn metadata_fallback_removes_sql_calc_found_rows_from_the_source_query() {
+        let fallback_query = mysql_metadata_select_query(
+            "SELECT SQL_CALC_FOUND_ROWS first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+
+        assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
+        assert!(fallback_query.contains("SELECT  first_key FROM items WHERE FALSE"));
+    }
+
+    #[test]
+    fn metadata_fallback_keeps_sql_calc_found_rows_identifiers_and_comments() {
+        for query in [
+            "SELECT $SQL_CALC_FOUND_ROWS FROM items WHERE FALSE",
+            "SELECT t.SQL_CALC_FOUND_ROWS FROM items AS t WHERE FALSE",
+            "SELECT /* SQL_CALC_FOUND_ROWS */ value FROM items WHERE FALSE",
+            "SELECT 'SQL_CALC_FOUND_ROWS' AS value WHERE FALSE",
+        ] {
+            let fallback_query =
+                mysql_metadata_select_query(query, "__source", "__marker").unwrap();
+            assert!(fallback_query.contains(query), "{query}");
+        }
+    }
+
+    #[test]
+    fn metadata_fallback_removes_sql_calc_found_rows_from_executable_comments() {
+        let fallback_query = mysql_metadata_select_query(
+            "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+
+        assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
+
+        let no_space_fallback_query = mysql_metadata_select_query(
+            "SELECT/*!80000 SQL_CALC_FOUND_ROWS */first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+        assert!(no_space_fallback_query.contains("SELECT first_key FROM items WHERE FALSE"));
     }
 
     #[test]
@@ -720,67 +870,5 @@ mod tests {
                 CommandTag::Insert(1)
             );
         }
-    }
-
-    #[test]
-    fn transaction_rollback_removes_pending_data_tag() {
-        let events = vec![
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Begin,
-                target: None,
-                tag: CommandTag::Begin,
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Update { has_where: true },
-                target: Some("items".to_string()),
-                tag: CommandTag::Update(1),
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Rollback,
-                target: None,
-                tag: CommandTag::Rollback,
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Select,
-                target: None,
-                tag: CommandTag::Select(1),
-            },
-        ];
-
-        assert_eq!(
-            aggregate_mysql_command_tag(&events),
-            Some(CommandTag::Select(1))
-        );
-    }
-
-    #[test]
-    fn ddl_implicit_commit_keeps_prior_data_change() {
-        let events = vec![
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Begin,
-                target: None,
-                tag: CommandTag::Begin,
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Insert,
-                target: Some("items".to_string()),
-                tag: CommandTag::Insert(1),
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::CreateTable { temporary: false },
-                target: Some("created".to_string()),
-                tag: CommandTag::Create("TABLE".to_string()),
-            },
-            MySqlCommandEvent {
-                kind: MySqlStatementKind::Rollback,
-                target: None,
-                tag: CommandTag::Rollback,
-            },
-        ];
-
-        assert_eq!(
-            aggregate_mysql_command_tag(&events),
-            Some(CommandTag::Create("TABLE".to_string()))
-        );
     }
 }
