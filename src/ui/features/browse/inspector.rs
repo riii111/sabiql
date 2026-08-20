@@ -30,6 +30,36 @@ use crate::theme::ThemePalette;
 
 pub struct Inspector;
 
+#[derive(Debug, Clone, Copy, Default)]
+struct ColumnDisplayOptions(u8);
+
+impl ColumnDisplayOptions {
+    const READ_ONLY: u8 = 1 << 0;
+    const CHARACTER_SET: u8 = 1 << 1;
+    const COLLATION: u8 = 1 << 2;
+    const GENERATION: u8 = 1 << 3;
+
+    const fn with(self, flag: u8, enabled: bool) -> Self {
+        if enabled { Self(self.0 | flag) } else { self }
+    }
+
+    const fn show_read_only(self) -> bool {
+        self.0 & Self::READ_ONLY != 0
+    }
+
+    const fn show_character_set(self) -> bool {
+        self.0 & Self::CHARACTER_SET != 0
+    }
+
+    const fn show_collation(self) -> bool {
+        self.0 & Self::COLLATION != 0
+    }
+
+    const fn show_generation(self) -> bool {
+        self.0 & Self::GENERATION != 0
+    }
+}
+
 impl Inspector {
     pub fn render(
         frame: &mut Frame,
@@ -165,19 +195,23 @@ impl Inspector {
                 show_character_set,
                 show_collation,
                 show_generation,
-            }) => Self::render_columns(
-                frame,
-                inner,
-                rows,
-                *show_read_only,
-                *show_character_set,
-                *show_collation,
-                *show_generation,
-                state.ui.inspector_scroll_offset(),
-                state.ui.inspector_horizontal_offset(),
-                state.ui.inspector_viewport_plan(),
-                theme,
-            ),
+            }) => {
+                let options = ColumnDisplayOptions::default()
+                    .with(ColumnDisplayOptions::READ_ONLY, *show_read_only)
+                    .with(ColumnDisplayOptions::CHARACTER_SET, *show_character_set)
+                    .with(ColumnDisplayOptions::COLLATION, *show_collation)
+                    .with(ColumnDisplayOptions::GENERATION, *show_generation);
+                Self::render_columns(
+                    frame,
+                    inner,
+                    rows,
+                    options,
+                    state.ui.inspector_scroll_offset(),
+                    state.ui.inspector_horizontal_offset(),
+                    state.ui.inspector_viewport_plan(),
+                    theme,
+                )
+            }
             Some(InspectorSection::Indexes {
                 rows,
                 show_type,
@@ -304,10 +338,7 @@ impl Inspector {
         frame: &mut Frame,
         area: Rect,
         rows: &[InspectorColumnRow],
-        show_read_only: bool,
-        show_character_set: bool,
-        show_collation: bool,
-        show_generation: bool,
+        options: ColumnDisplayOptions,
         scroll_offset: usize,
         horizontal_offset: usize,
         stored_plan: &ViewportPlan,
@@ -315,31 +346,23 @@ impl Inspector {
     ) -> ViewportPlan {
         let available_width = area.width.saturating_sub(2);
         let mut headers = vec!["Name", "Type", "Null", "PK"];
-        if show_read_only {
+        if options.show_read_only() {
             headers.push("Read-only");
         }
         headers.extend(["Default", "Comment"]);
-        if show_character_set {
+        if options.show_character_set() {
             headers.push("Charset");
         }
-        if show_collation {
+        if options.show_collation() {
             headers.push("Collation");
         }
-        if show_generation {
+        if options.show_generation() {
             headers.push("Generation");
         }
 
         let data_rows: Vec<Vec<String>> = rows
             .iter()
-            .map(|row| {
-                column_row_cells(
-                    row,
-                    show_read_only,
-                    show_character_set,
-                    show_collation,
-                    show_generation,
-                )
-            })
+            .map(|row| column_row_cells(row, options))
             .collect();
 
         let header_min_widths = calculate_header_min_widths(&headers);
@@ -407,13 +430,7 @@ impl Inspector {
             .skip(clamped_scroll_offset)
             .take(data_rows_visible)
             .map(|(row_idx, row)| {
-                let cells = column_row_cells(
-                    row,
-                    show_read_only,
-                    show_character_set,
-                    show_collation,
-                    show_generation,
-                );
+                let cells = column_row_cells(row, options);
                 let base_style = if (row_idx - clamped_scroll_offset) % 2 == 1 {
                     Style::default().bg(theme.component.table.striped_row_bg)
                 } else {
@@ -425,8 +442,8 @@ impl Inspector {
                         let text = cells.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
-                        let read_only_col_idx = show_read_only.then_some(4);
-                        let comment_col_idx = if show_read_only { 6 } else { 5 };
+                        let read_only_col_idx = options.show_read_only().then_some(4);
+                        let comment_col_idx = if options.show_read_only() { 6 } else { 5 };
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(theme.semantic.text.accent)
                         } else if read_only_col_idx == Some(col_idx) && !text.is_empty() {
@@ -848,31 +865,25 @@ impl Inspector {
     }
 }
 
-fn column_row_cells(
-    row: &InspectorColumnRow,
-    show_read_only: bool,
-    show_character_set: bool,
-    show_collation: bool,
-    show_generation: bool,
-) -> Vec<String> {
+fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> Vec<String> {
     let mut cells = vec![
         row.name.clone(),
         row.data_type.clone(),
         checkmark(row.nullable),
         checkmark(row.primary_key),
     ];
-    if show_read_only {
+    if options.show_read_only() {
         cells.push(row.read_only_reason.clone().unwrap_or_default());
     }
     cells.push(row.default.clone().unwrap_or_default());
     cells.push(row.comment.clone().unwrap_or_default());
-    if show_character_set {
+    if options.show_character_set() {
         cells.push(row.character_set_name.clone().unwrap_or_default());
     }
-    if show_collation {
+    if options.show_collation() {
         cells.push(row.collation_name.clone().unwrap_or_default());
     }
-    if show_generation {
+    if options.show_generation() {
         cells.push(generation_display(row));
     }
     cells

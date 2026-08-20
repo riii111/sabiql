@@ -708,8 +708,7 @@ mod tests {
     #[test]
     fn mysql_columns_include_column_metadata_only_when_present() {
         let mut table = table();
-        table.columns[0].attributes =
-            crate::domain::ColumnAttributes::READ_ONLY | crate::domain::ColumnAttributes::GENERATED;
+        table.columns[0].attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
         table.columns[0].character_set_name = Some("utf8mb4".to_string());
         table.columns[0].collation_name = Some("utf8mb4_bin".to_string());
         table.columns[0].generation_expression = Some("(`id` * 2)".to_string());
