@@ -150,14 +150,35 @@ pub(super) fn mysql_metadata_select_query(
 
 fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
     const MODIFIER: &[u8] = b"SQL_CALC_FOUND_ROWS";
+    const SELECT_MODIFIERS: &[&[u8]] = &[
+        b"SELECT",
+        b"ALL",
+        b"DISTINCT",
+        b"DISTINCTROW",
+        b"HIGH_PRIORITY",
+        b"STRAIGHT_JOIN",
+        b"SQL_SMALL_RESULT",
+        b"SQL_BIG_RESULT",
+        b"SQL_BUFFER_RESULT",
+        b"SQL_NO_CACHE",
+    ];
 
     fn is_identifier_byte(byte: u8) -> bool {
         byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'$') || byte >= 0x80
     }
 
+    fn is_select_modifier_prefix(uppercase: &[u8], last_word: Option<(usize, usize)>) -> bool {
+        last_word.is_some_and(|(start, end)| {
+            SELECT_MODIFIERS
+                .iter()
+                .any(|modifier| &uppercase[start..end] == *modifier)
+        })
+    }
+
     let bytes = query.as_bytes();
     let uppercase = bytes.to_ascii_uppercase();
     let mut quote = None;
+    let mut last_word = None;
     let mut index = 0;
     while index < bytes.len() {
         let byte = bytes[index];
@@ -178,6 +199,7 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
         }
         if matches!(byte, b'\'' | b'"' | b'`') {
             quote = Some(byte);
+            last_word = None;
             index += 1;
             continue;
         }
@@ -204,16 +226,27 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
                 .map_or(bytes.len(), |offset| index + offset + 4);
             continue;
         }
-        if index + MODIFIER.len() <= bytes.len()
-            && &uppercase[index..index + MODIFIER.len()] == MODIFIER
-            && (index == 0 || !is_identifier_byte(bytes[index - 1]))
-            && (index + MODIFIER.len() == bytes.len()
-                || !is_identifier_byte(bytes[index + MODIFIER.len()]))
-        {
-            let mut result = String::with_capacity(query.len() - MODIFIER.len());
-            result.push_str(&query[..index]);
-            result.push_str(&query[index + MODIFIER.len()..]);
-            return result;
+        if is_identifier_byte(byte) {
+            let start = index;
+            index += 1;
+            while index < bytes.len() && is_identifier_byte(bytes[index]) {
+                index += 1;
+            }
+            if index - start == MODIFIER.len()
+                && &uppercase[start..index] == MODIFIER
+                && is_select_modifier_prefix(&uppercase, last_word)
+                && bytes.get(index) != Some(&b'.')
+            {
+                let mut result = String::with_capacity(query.len() - MODIFIER.len());
+                result.push_str(&query[..start]);
+                result.push_str(&query[index..]);
+                return result;
+            }
+            last_word = Some((start, index));
+            continue;
+        }
+        if !byte.is_ascii_whitespace() {
+            last_word = None;
         }
         index += 1;
     }
@@ -502,6 +535,7 @@ mod tests {
     fn metadata_fallback_keeps_sql_calc_found_rows_identifiers_and_comments() {
         for query in [
             "SELECT $SQL_CALC_FOUND_ROWS FROM items WHERE FALSE",
+            "SELECT t.SQL_CALC_FOUND_ROWS FROM items AS t WHERE FALSE",
             "SELECT /* SQL_CALC_FOUND_ROWS */ value FROM items WHERE FALSE",
             "SELECT 'SQL_CALC_FOUND_ROWS' AS value WHERE FALSE",
         ] {
