@@ -18,6 +18,7 @@ pub fn minimal_table(schema: &str, name: &str) -> Table {
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: Default::default(),
         kind_info: TableKindInfo::default(),
     }
 }

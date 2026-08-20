@@ -178,9 +178,10 @@ impl InspectorViewModel {
                         .supported_inspector_info_fields()
                         .iter()
                         .copied()
-                        .map(|field| InspectorInfoRow::Field {
-                            field,
-                            value: info_value(field, table),
+                        .filter_map(|field| {
+                            let value = info_value(field, table);
+                            (value.is_some() || !field.omit_when_empty())
+                                .then_some(InspectorInfoRow::Field { field, value })
                         })
                         .collect(),
                 },
@@ -443,6 +444,10 @@ fn info_value(field: InspectorInfoField, table: &Table) -> Option<String> {
         InspectorInfoField::TableName => Some(table.name.clone()),
         InspectorInfoField::TableKind => Some(inspector_kind_label(&table.kind_info)),
         InspectorInfoField::TableFlags => inspector_flags_label(&table.kind_info),
+        InspectorInfoField::Engine => table.storage_attributes.engine.clone(),
+        InspectorInfoField::RowFormat => table.storage_attributes.row_format.clone(),
+        InspectorInfoField::TableCollation => table.storage_attributes.table_collation.clone(),
+        InspectorInfoField::CreateOptions => table.storage_attributes.create_options.clone(),
     }
 }
 
@@ -530,7 +535,7 @@ mod tests {
     use super::*;
     use crate::domain::{
         Column, ColumnAttributes, FkAction, IndexAttributes, RlsCommand, RlsPolicy, TableKindInfo,
-        Trigger, TriggerEvent, TriggerTiming,
+        TableStorageAttributes, Trigger, TriggerEvent, TriggerTiming,
     };
 
     struct TestDdlGenerator;
@@ -602,6 +607,7 @@ mod tests {
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
             source_ddl: None,
+            storage_attributes: Default::default(),
             kind_info: TableKindInfo::default(),
         }
     }
@@ -699,6 +705,45 @@ mod tests {
                         field: InspectorInfoField::TableName,
                         value: Some("users".to_string()),
                     },
+                ]
+            ),
+            section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_info_shows_server_storage_attributes() {
+        let mut table = table();
+        table.storage_attributes = TableStorageAttributes {
+            engine: Some("InnoDB".to_string()),
+            row_format: Some("Compressed".to_string()),
+            table_collation: Some("utf8mb4_bin".to_string()),
+            create_options: Some("partitioned".to_string()),
+        };
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Info,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Info { rows }) => assert_eq!(
+                rows.iter()
+                    .map(|row| match row {
+                        InspectorInfoRow::Field { field, value } => (*field, value.as_deref()),
+                    })
+                    .collect::<Vec<_>>(),
+                vec![
+                    (InspectorInfoField::Comment, Some("Users")),
+                    (InspectorInfoField::RowCount, Some("~3")),
+                    (InspectorInfoField::TableName, Some("users")),
+                    (InspectorInfoField::Engine, Some("InnoDB")),
+                    (InspectorInfoField::RowFormat, Some("Compressed")),
+                    (InspectorInfoField::TableCollation, Some("utf8mb4_bin")),
+                    (InspectorInfoField::CreateOptions, Some("partitioned")),
                 ]
             ),
             section => panic!("expected info section, got {section:?}"),

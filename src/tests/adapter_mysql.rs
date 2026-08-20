@@ -551,6 +551,67 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn table_metadata_reports_effective_storage_attributes_from_information_schema() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let suffix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| format!("system clock error: {error}"))?
+                    .as_nanos();
+                let table = format!("sabiql_c17_{suffix}");
+                let create = format!(
+                    "CREATE TABLE {table} (id INT NOT NULL PRIMARY KEY) ENGINE=InnoDB ROW_FORMAT=COMPRESSED DEFAULT CHARACTER SET utf8mb4 COLLATE=utf8mb4_bin PARTITION BY HASH (id) PARTITIONS 2"
+                );
+                let result = async {
+                    db.adapter()
+                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("failed to create C17 fixture: {error:?}"))?;
+
+                    let detail = db
+                        .adapter()
+                        .fetch_table_detail(db.dsn(), "sabiql_test", &table)
+                        .await
+                        .map_err(|error| format!("failed to fetch C17 metadata: {error:?}"))?;
+                    let storage = &detail.storage_attributes;
+                    if storage.engine.as_deref() != Some("InnoDB")
+                        || storage.row_format.as_deref() != Some("Compressed")
+                        || storage.table_collation.as_deref() != Some("utf8mb4_bin")
+                        || !storage
+                            .create_options
+                            .as_deref()
+                            .is_some_and(|options| options.contains("partitioned"))
+                    {
+                        return Err(format!(
+                            "unexpected C17 storage metadata: engine={:?}, row_format={:?}, table_collation={:?}, create_options={:?}",
+                            storage.engine,
+                            storage.row_format,
+                            storage.table_collation,
+                            storage.create_options
+                        ));
+                    }
+                    Ok(())
+                }
+                .await;
+
+                let cleanup = db
+                    .run_cli_script(&format!("DROP TABLE IF EXISTS {table}"))
+                    .await;
+                match (result, cleanup) {
+                    (Ok(()), Ok(_)) => Ok(()),
+                    (Err(error), Ok(_)) => Err(error),
+                    (Ok(()), Err(error)) => Err(format!("C17 cleanup failed: {error}")),
+                    (Err(error), Err(cleanup_error)) => {
+                        Err(format!("{error}; C17 cleanup failed: {cleanup_error}"))
+                    }
+                }
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn columns_metadata_matches_mysql_84_collation_and_generation_ddl() {
         with_mysql_test_db(|db| {
             Box::pin(async move {

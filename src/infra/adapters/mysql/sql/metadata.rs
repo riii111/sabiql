@@ -3,13 +3,17 @@ use crate::domain::{Column, TableKind};
 
 pub(in crate::adapters::mysql) const EFFECTIVE_USER_QUERY: &str = "SELECT CURRENT_USER()";
 pub(in crate::adapters::mysql) const EFFECTIVE_USER_RESULT_COLUMNS: &[&str] = &["CURRENT_USER()"];
-pub(in crate::adapters::mysql) const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME";
+pub(in crate::adapters::mysql) const TABLES_QUERY: &str = "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT, ENGINE, ROW_FORMAT, TABLE_COLLATION, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME";
 pub(in crate::adapters::mysql) const TABLES_RESULT_COLUMNS: &[&str] = &[
     "TABLE_SCHEMA",
     "TABLE_NAME",
     "TABLE_TYPE",
     "TABLE_ROWS",
     "TABLE_COMMENT",
+    "ENGINE",
+    "ROW_FORMAT",
+    "TABLE_COLLATION",
+    "CREATE_OPTIONS",
 ];
 pub(in crate::adapters::mysql) const COLUMN_METADATA_BASE_RESULT_COLUMNS: &[&str] = &[
     "COLUMN_NAME",
@@ -61,7 +65,7 @@ pub(in crate::adapters::mysql) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
 
 pub(in crate::adapters::mysql) fn table_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {} ORDER BY TABLE_SCHEMA, TABLE_NAME",
+        "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT, t.ENGINE, t.ROW_FORMAT, t.TABLE_COLLATION, t.CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {} ORDER BY TABLE_SCHEMA, TABLE_NAME",
         quote_string(schema),
         quote_string(table),
     )
@@ -295,7 +299,7 @@ mod tests {
         assert_eq!(
             table_sql,
             format!(
-                "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {quoted_schema} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {quoted_table} ORDER BY TABLE_SCHEMA, TABLE_NAME"
+                "SELECT t.TABLE_SCHEMA, t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT, t.ENGINE, t.ROW_FORMAT, t.TABLE_COLLATION, t.CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {quoted_schema} AND t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {quoted_table} ORDER BY TABLE_SCHEMA, TABLE_NAME"
             )
         );
 
@@ -349,7 +353,7 @@ mod tests {
 
         assert_eq!(
             TABLES_QUERY,
-            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME"
+            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT, ENGINE, ROW_FORMAT, TABLE_COLLATION, CREATE_OPTIONS FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME"
         );
         assert_eq!(
             SIGNATURE_COLUMNS_QUERY,
@@ -371,7 +375,11 @@ mod tests {
                 "TABLE_NAME",
                 "TABLE_TYPE",
                 "TABLE_ROWS",
-                "TABLE_COMMENT"
+                "TABLE_COMMENT",
+                "ENGINE",
+                "ROW_FORMAT",
+                "TABLE_COLLATION",
+                "CREATE_OPTIONS"
             ]
         );
         assert_eq!(

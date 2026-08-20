@@ -15,6 +15,7 @@ pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: Default::default(),
         kind_info: TableKindInfo::default(),
     }
 }

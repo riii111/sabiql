@@ -1,7 +1,9 @@
 use super::*;
 use harness::table_detail_loaded_state;
 use sabiql_app::model::shared::inspector_tab::InspectorTab;
-use sabiql_domain::{ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo};
+use sabiql_domain::{
+    ColumnGenerationKind, ConnectionId, TableKind, TableKindInfo, TableStorageAttributes,
+};
 
 #[test]
 fn inspector_columns_narrow_pane_keeps_horizontal_scroll() {
@@ -433,6 +435,33 @@ fn inspector_info_tab_for_mysql_hides_schema_field() {
     let _ = state
         .session
         .set_table_detail(fixtures::sample_table_detail(), 0);
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::from_string("mysql-test"),
+        "app",
+        DatabaseType::MySQL,
+        "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+    );
+    state.ui.set_inspector_tab(InspectorTab::Info);
+    state.ui.set_focused_pane(FocusedPane::Inspector);
+
+    let output = trim_line_endings(&render_to_string(&mut terminal, &mut state));
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
+fn inspector_info_tab_for_mysql_shows_storage_attributes() {
+    let mut state = harness::explorer_selected_state();
+    let mut terminal = create_test_terminal();
+
+    let mut table = fixtures::sample_table_detail();
+    table.storage_attributes = TableStorageAttributes {
+        engine: Some("InnoDB".to_string()),
+        row_format: Some("Compressed".to_string()),
+        table_collation: Some("utf8mb4_bin".to_string()),
+        create_options: Some("partitioned".to_string()),
+    };
+    let _ = state.session.set_table_detail(table, 0);
     state.session.activate_connection_with_dsn(
         &ConnectionId::from_string("mysql-test"),
         "app",
