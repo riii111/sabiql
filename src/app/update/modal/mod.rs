@@ -1608,6 +1608,38 @@ mod tests {
 
                 assert_eq!(state.input_mode(), InputMode::Normal);
             }
+
+            #[test]
+            fn confirm_during_pending_mysql_probe_does_not_open_sql_modal() {
+                let mut state = connected_state();
+                enter_query_history(&mut state, InputMode::Normal);
+                let test_conn = ConnectionId::from_string("test-conn");
+                state
+                    .query_history_picker
+                    .replace_entries(&[make_entry("SELECT * FROM users", &test_conn)]);
+                let target_id = ConnectionId::from_string("mysql-conn");
+                let _ = state.session.begin_mysql_connection_probe(
+                    &target_id,
+                    "mysql",
+                    "mysql://localhost/app",
+                    Some("app"),
+                );
+
+                let effects = super::dispatch_modal(
+                    &mut state,
+                    &Action::QueryHistoryConfirmSelection,
+                    Instant::now(),
+                )
+                .unwrap();
+
+                assert_eq!(state.input_mode(), InputMode::QueryHistoryPicker);
+                assert_eq!(state.query_history_picker.entries().len(), 1);
+                assert_eq!(
+                    state.messages.last_error.as_deref(),
+                    Some("Connection switch in progress")
+                );
+                assert!(effects.is_empty());
+            }
         }
     }
 }

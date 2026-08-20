@@ -13,6 +13,7 @@ use crate::services::AppServices;
 use crate::update::action::{Action, ModalKind, TableTarget};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::input::command::{command_to_action, parse_command};
 
 use super::write;
@@ -215,6 +216,9 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.session.dsn().is_none() {
                 return DispatchResult::handled();
             }
@@ -247,6 +251,9 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if let Some(dsn) = state.session.dsn().map(String::from) {
                 let run_id = state.query.begin_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
@@ -759,6 +766,42 @@ mod tests {
             assert!(!state.query.pagination.reached_end());
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
+        }
+
+        #[test]
+        fn pending_probe_blocks_preview_and_adhoc_on_old_connection() {
+            let mut state = create_test_state();
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::new(),
+                "target",
+                "mysql://target",
+                Some("app"),
+            );
+
+            let preview_effects = dispatch_query(
+                &mut state,
+                &Action::ExecutePreview(TableTarget {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("preview should be handled");
+            let adhoc_effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteAdhoc("SELECT 1".to_string()),
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("adhoc should be handled");
+
+            assert!(preview_effects.is_empty());
+            assert!(adhoc_effects.is_empty());
+            assert!(!state.query.is_running());
         }
     }
 

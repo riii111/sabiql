@@ -12,12 +12,16 @@ use crate::policy::write::sql_risk::{
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::start_adhoc_if_connected;
 
 pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalSubmit => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             let query = state.sql_modal.editor.content().trim().to_string();
             if query.is_empty() {
                 return DispatchResult::handled();

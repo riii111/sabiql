@@ -1133,6 +1133,48 @@ mod tests {
         }
     }
 
+    mod pending_probe {
+        use super::*;
+
+        #[test]
+        fn blocks_sql_modal_open_and_submit() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "current",
+                DatabaseType::MySQL,
+                "mysql://current",
+                Some("app"),
+            );
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::new(),
+                "target",
+                "mysql://target",
+                Some("app"),
+            );
+
+            let effects = reduce_sql_modal(
+                &mut state,
+                &Action::OpenModal(ModalKind::SqlModal),
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("SQL modal open should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+
+            state.modal.set_mode(InputMode::SqlModal);
+            state.sql_modal.editor.set_content("SELECT 1".to_string());
+            let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
+                .into_effects()
+                .expect("SQL modal submit should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.query.is_running());
+        }
+    }
+
     mod yank {
         use super::*;
         use crate::domain::explain_plan::ExplainPlan;

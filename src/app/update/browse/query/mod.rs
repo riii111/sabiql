@@ -10,6 +10,7 @@ use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub fn dispatch_query(
     state: &mut AppState,
@@ -36,6 +37,9 @@ pub(super) fn preview_effect_for_current_table(
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
+    if reject_pending_mysql_connection_probe(state, now) {
+        return None;
+    }
     let dsn = state.session.dsn().map(String::from)?;
     let run_id = state.query.begin_running(now);
     Some(Effect::ExecutePreview {

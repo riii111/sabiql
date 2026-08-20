@@ -5,6 +5,7 @@ use crate::domain::mysql_sql::MySqlStatement;
 use crate::model::app_state::AppState;
 use crate::ports::outbound::AccessMode;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn start_adhoc_if_connected(
     state: &mut AppState,
@@ -12,6 +13,10 @@ pub(super) fn start_adhoc_if_connected(
     now: Instant,
     classified_mysql_statements: Option<Vec<MySqlStatement>>,
 ) -> DispatchResult {
+    if reject_pending_mysql_connection_probe(state, now) {
+        return DispatchResult::handled();
+    }
+
     let Some(dsn) = state.session.dsn().map(String::from) else {
         state
             .sql_modal

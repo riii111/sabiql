@@ -14,6 +14,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
@@ -165,6 +166,9 @@ pub fn reduce_pagination(
 ) -> DispatchResult {
     match action {
         Action::RequestCsvExport => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if !state.can_request_csv_export() {
                 return DispatchResult::handled();
             }
@@ -257,6 +261,9 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
@@ -278,6 +285,9 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
@@ -332,6 +342,9 @@ pub fn reduce_pagination(
         }
 
         Action::ResultNextPage => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return DispatchResult::handled();
             }
@@ -350,6 +363,9 @@ pub fn reduce_pagination(
         }
 
         Action::ResultPrevPage => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return DispatchResult::handled();
             }
