@@ -163,6 +163,7 @@ const MYSQL_KEYWORDS: &[&str] = &[
     "FROM",
     "WHERE",
     "JOIN",
+    "STRAIGHT_JOIN",
     "LEFT",
     "RIGHT",
     "INNER",
@@ -735,6 +736,48 @@ impl SqlLexer {
         )
     }
 
+    fn is_mysql_index_hint_scope(&self, tokens: &[Token], scope_index: usize) -> bool {
+        if !self.is_mysql() {
+            return false;
+        }
+
+        let is_scope = matches!(
+            &tokens[scope_index].kind,
+            TokenKind::Keyword(word)
+                if matches!(word.as_str(), "JOIN" | "ORDER" | "GROUP")
+        );
+        if !is_scope {
+            return false;
+        }
+
+        let Some(for_index) = tokens[..scope_index]
+            .iter()
+            .rposition(|token| token.kind != TokenKind::Whitespace)
+        else {
+            return false;
+        };
+        let is_for = matches!(
+            &tokens[for_index].kind,
+            TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                if word.eq_ignore_ascii_case("FOR")
+        );
+        if !is_for {
+            return false;
+        }
+
+        let Some(index_hint_index) = tokens[..for_index]
+            .iter()
+            .rposition(|token| token.kind != TokenKind::Whitespace)
+        else {
+            return false;
+        };
+        matches!(
+            &tokens[index_hint_index].kind,
+            TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                if word.eq_ignore_ascii_case("INDEX") || word.eq_ignore_ascii_case("KEY")
+        )
+    }
+
     fn is_punctuation(c: char) -> bool {
         matches!(c, '(' | ')' | ',' | ';' | '.' | '[' | ']')
     }
@@ -802,6 +845,7 @@ impl SqlLexer {
         let mut i = 0;
         // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
         let mut in_for_clause = false;
+        let mut can_start_straight_join = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -809,14 +853,24 @@ impl SqlLexer {
             // Reset state on statement terminator
             if token.kind == TokenKind::Punctuation(';') {
                 in_for_clause = false;
+                can_start_straight_join = false;
                 i += 1;
                 continue;
             }
 
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
-                    "FROM" | "JOIN" => {
+                    "FROM" | "JOIN" | "STRAIGHT_JOIN" => {
+                        if kw == "JOIN" && self.is_mysql_index_hint_scope(tokens, i) {
+                            i += 1;
+                            continue;
+                        }
+                        if kw == "STRAIGHT_JOIN" && !can_start_straight_join {
+                            i += 1;
+                            continue;
+                        }
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -832,12 +886,14 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
                     }
                     // JOIN modifiers - skip to find JOIN, then parse table
                     "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -852,18 +908,31 @@ impl SqlLexer {
                             }
                             if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                                 refs.push(table_ref);
+                                can_start_straight_join = true;
                                 continue;
                             }
                         }
                     }
                     // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
                     "FOR" => {
-                        in_for_clause = true;
+                        let mut next = i + 1;
+                        while next < tokens.len() && tokens[next].kind == TokenKind::Whitespace {
+                            next += 1;
+                        }
+                        if next >= tokens.len() || !self.is_mysql_index_hint_scope(tokens, next) {
+                            in_for_clause = true;
+                            can_start_straight_join = false;
+                        }
                     }
                     // NO, KEY, SHARE are part of FOR locking clause
                     "NO" | "KEY" | "SHARE" if in_for_clause => {}
+                    "GROUP" | "ORDER" if self.is_mysql_index_hint_scope(tokens, i) => {
+                        i += 1;
+                        continue;
+                    }
                     "INSERT" | "REPLACE" => {
                         in_for_clause = false;
+                        can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -891,11 +960,13 @@ impl SqlLexer {
                         }
                     }
                     "UPDATE" if self.is_mysql_upsert_update(tokens, i) => {
+                        can_start_straight_join = false;
                         i += 1;
                         continue;
                     }
                     // UPDATE: skip if in FOR locking clause
                     "UPDATE" if !in_for_clause => {
+                        can_start_straight_join = false;
                         i += 1;
                         i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
@@ -912,8 +983,14 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
+                    }
+                    "SELECT" | "WHERE" | "GROUP" | "ORDER" | "HAVING" | "LIMIT" | "OFFSET"
+                    | "SET" | "UNION" | "INTERSECT" | "EXCEPT" => {
+                        in_for_clause = false;
+                        can_start_straight_join = false;
                     }
                     _ => {
                         in_for_clause = false;
@@ -977,6 +1054,42 @@ impl SqlLexer {
             *i += 1;
         }
 
+        if self.is_mysql()
+            && *i < tokens.len()
+            && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
+        {
+            let mut partition_start = *i + 1;
+            while partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Whitespace
+            {
+                partition_start += 1;
+            }
+
+            if partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Punctuation('(')
+            {
+                *i = partition_start;
+                let mut partition_depth = 0;
+                while *i < tokens.len() {
+                    match tokens[*i].kind {
+                        TokenKind::Punctuation('(') => partition_depth += 1,
+                        TokenKind::Punctuation(')') => {
+                            partition_depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    *i += 1;
+                    if partition_depth == 0 {
+                        break;
+                    }
+                }
+
+                while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+                    *i += 1;
+                }
+            }
+        }
+
         // Check for alias (optional AS keyword)
         if *i < tokens.len()
             && let TokenKind::Keyword(kw) = &tokens[*i].kind
@@ -1019,6 +1132,7 @@ impl SqlLexer {
                 | "FROM"
                 | "WHERE"
                 | "JOIN"
+                | "STRAIGHT_JOIN"
                 | "ON"
                 | "AND"
                 | "OR"
@@ -1924,6 +2038,110 @@ mod tests {
             assert_eq!(refs[0].table, "users");
             assert_eq!(refs[1].table, "posts");
             assert_eq!(refs[2].table, "comments");
+        }
+
+        #[test]
+        fn mysql_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_partition_clause_preserves_table_alias() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM events PARTITION (p0) AS e WHERE e.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "events");
+            assert_eq!(refs[0].alias, Some("e".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_select_modifier_does_not_create_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT STRAIGHT_JOIN id FROM users id WHERE id.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("id".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_after_join_condition_returns_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id STRAIGHT_JOIN items i ON i.order_id = o.id WHERE i.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 3);
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+            assert_eq!(refs[2].alias, Some("i".to_string()));
+        }
+
+        #[test]
+        fn mysql_update_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql =
+                "UPDATE users u STRAIGHT_JOIN orders o ON u.id = o.user_id SET o.status = 'done'";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_index_hint_for_join_preserves_straight_join() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u USE INDEX FOR JOIN (idx_users) STRAIGHT_JOIN orders o WHERE o.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_index_hint_scopes_preserve_straight_join() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+
+            for scope in ["ORDER BY", "GROUP BY"] {
+                let sql = format!(
+                    "SELECT * FROM users u USE INDEX FOR {scope} (idx_users) STRAIGHT_JOIN orders o WHERE o.id = 1"
+                );
+                let tokens = l.tokenize(&sql, sql.len());
+
+                let refs = l.extract_table_references(&tokens);
+
+                assert_eq!(refs.len(), 2, "scope: {scope}");
+                assert_eq!(refs[0].alias, Some("u".to_string()), "scope: {scope}");
+                assert_eq!(refs[1].alias, Some("o".to_string()), "scope: {scope}");
+            }
         }
     }
 
