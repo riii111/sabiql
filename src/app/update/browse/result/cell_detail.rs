@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::query_execution::VisibleResultKind;
@@ -167,6 +168,15 @@ fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
+    let Some(row_idx) = state.result_interaction.selection().row() else {
+        return false;
+    };
+    let Some(result) = state.query.visible_result() else {
+        return false;
+    };
+    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
+        return false;
+    }
     let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
         return false;
     };
@@ -447,6 +457,48 @@ mod tests {
                 if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
         ));
         assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn json_document_null_dispatches_to_existing_json_modal() {
+        let mut state = state_with_cell("jsonb", "null");
+
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(matches!(
+            result.expect("json null dispatch should be handled").as_slice(),
+            [Effect::DispatchActions(actions)]
+                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
+        ));
+        assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn mysql_json_sql_null_opens_read_only_cell_detail() {
+        let mut state = state_with_cell("json", "");
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("mysql-test"),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                String::new(),
+                vec!["id".to_string(), "body".to_string()],
+                vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                1,
+                QuerySource::Preview,
+            )));
+
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(result.is_handled_and(Vec::is_empty));
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert_eq!(state.cell_detail.content(), "NULL");
+        assert!(!state.json_detail.is_active());
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::{Action, InputTarget, ModalKind};
@@ -14,6 +15,15 @@ fn cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
+    let Some(row_idx) = state.result_interaction.selection().row() else {
+        return false;
+    };
+    let Some(result) = state.query.visible_result() else {
+        return false;
+    };
+    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
+        return false;
+    }
     let Some(table_detail) = state.session.table_detail() else {
         return false;
     };
@@ -545,6 +555,40 @@ mod tests {
                 &effects[0],
                 Effect::DispatchActions(actions) if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
             ));
+        }
+
+        #[test]
+        fn mysql_json_sql_null_uses_null_edit_reason() {
+            let mut state = state_with_json_column();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::from_string("mysql-test"),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            let mut table = state.session.table_detail().expect("table detail").clone();
+            table.columns[1].data_type = "json".to_string();
+            state.session.set_table_detail_raw(Some(table));
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    String::new(),
+                    vec!["id".to_string(), "name".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                    1,
+                    QuerySource::Preview,
+                )));
+
+            let effects = reduce_edit(&mut state, &Action::ResultEnterCellEdit, Instant::now())
+                .into_effects()
+                .expect("reducer should handle action");
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(
+                state.messages.last_error(),
+                Some("NULL cells are not editable inline yet")
+            );
         }
 
         #[test]
