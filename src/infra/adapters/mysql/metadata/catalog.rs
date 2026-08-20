@@ -253,7 +253,7 @@ pub(super) fn mysql_database_names_match(
 ) -> bool {
     match lower_case_table_names {
         0 => left == right,
-        1 | 2 => left.eq_ignore_ascii_case(right),
+        1 | 2 => left.to_lowercase() == right.to_lowercase(),
         _ => false,
     }
 }
@@ -706,6 +706,17 @@ mod tests {
 
             assert_eq!(snapshot.tables[0].schema, "APP");
             assert_eq!(snapshot.table_summaries[0].schema, "APP");
+
+            let unicode_snapshot = metadata_snapshot_from_result(
+                "äpp",
+                Some("ÄPP"),
+                &tables_result("ÄPP"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
+            assert_eq!(unicode_snapshot.table_summaries[0].schema, "ÄPP");
         }
     }
 
@@ -758,6 +769,22 @@ mod tests {
             .unwrap();
 
             assert_eq!(table.schema, "app");
+
+            let unicode_table = find_table(
+                "äpp",
+                "users",
+                &[MySqlTableMetadata {
+                    schema: "ÄPP".to_string(),
+                    name: "users".to_string(),
+                    kind: TableKind::Table,
+                    row_count_estimate: None,
+                    comment: None,
+                }],
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_table.schema, "ÄPP");
         }
     }
 
@@ -1006,5 +1033,12 @@ mod tests {
         )
         .unwrap();
         assert!(case_insensitive[0].is_reference_resolved());
+
+        let mut unicode_raw = parse_foreign_key_metadata(&result).unwrap();
+        for column in &mut unicode_raw {
+            column.to_schema = "ÄPP".to_string();
+        }
+        let unicode_case_insensitive = foreign_keys_from_metadata(unicode_raw, "äpp", 1).unwrap();
+        assert!(unicode_case_insensitive[0].is_reference_resolved());
     }
 }

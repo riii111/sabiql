@@ -269,7 +269,7 @@ fn mysql_target_key(
         .unwrap_or_default();
     let database = match lower_case_table_names {
         0 => database.to_string(),
-        1 | 2 => database.to_ascii_lowercase(),
+        1 | 2 => database.to_lowercase(),
         _ => return None,
     };
     Some(format!(
@@ -973,6 +973,53 @@ mod tests {
                 "UPDATE other.items SET value = 1",
                 Some("app"),
                 1,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn qualified_mysql_mutations_match_unicode_database_names_without_rewriting_targets() {
+        for lower_case_table_names in [1, 2] {
+            let statements = classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE `ÄPP`.items SET value = 1",
+                Some("äpp"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(statements[0].target_database(), Some("ÄPP"));
+            assert_eq!(statements[0].target(), Some("items"));
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "UPDATE `ÄPP`.items SET value = 1",
+                Some("äpp"),
+                0,
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn temporary_mysql_table_keys_follow_unicode_database_case_rules() {
+        for lower_case_table_names in [1, 2] {
+            assert!(
+                classify_mysql_multi_statement_with_lower_case_table_names(
+                    "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE `ÄPP`.temp_items",
+                    Some("äpp"),
+                    lower_case_table_names,
+                )
+                .is_ok()
+            );
+        }
+
+        assert!(
+            classify_mysql_multi_statement_with_lower_case_table_names(
+                "CREATE TEMPORARY TABLE temp_items (id INT); DROP TEMPORARY TABLE `ÄPP`.temp_items",
+                Some("äpp"),
+                0,
             )
             .is_err()
         );

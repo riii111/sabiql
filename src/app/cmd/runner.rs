@@ -332,7 +332,7 @@ mod tests {
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{RenderOutput, RenderResult};
+    use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
     use crate::services::AppServices;
     use tokio::sync::mpsc;
 
@@ -947,8 +947,7 @@ mod tests {
             async fn probe(
                 &self,
                 _dsn: &str,
-            ) -> Result<crate::ports::outbound::MySqlConnectionProbeResult, DbOperationError>
-            {
+            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
                 self.started
                     .lock()
                     .expect("probe started signal lock poisoned")
@@ -956,7 +955,7 @@ mod tests {
                     .expect("probe should start once")
                     .send(self.metadata_dropped.load(Ordering::SeqCst) > 0)
                     .ok();
-                Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                Ok(MySqlConnectionProbeResult {
                     lower_case_table_names: 0,
                 })
             }
@@ -1137,8 +1136,7 @@ mod tests {
             async fn probe(
                 &self,
                 dsn: &str,
-            ) -> Result<crate::ports::outbound::MySqlConnectionProbeResult, DbOperationError>
-            {
+            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
                 let _drop_signal = DropSignal(Arc::clone(&self.dropped));
                 self.started
                     .send(dsn.to_string())

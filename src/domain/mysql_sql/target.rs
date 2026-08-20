@@ -57,7 +57,7 @@ pub(super) fn target_is_selected_database_with_lower_case_table_names(
 fn database_names_match(left: &str, right: &str, lower_case_table_names: u8) -> bool {
     match lower_case_table_names {
         0 => left == right,
-        1 | 2 => left.eq_ignore_ascii_case(right),
+        1 | 2 => left.to_lowercase() == right.to_lowercase(),
         _ => false,
     }
 }

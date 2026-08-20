@@ -487,7 +487,8 @@ mod tests {
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
-        ConnectionStoreError, DbOperationError, DsnBuilder, RenderOutput, RenderResult, Renderer,
+        ConnectionStoreError, DbOperationError, DsnBuilder, MySqlConnectionProbeResult,
+        RenderOutput, RenderResult, Renderer,
     };
     use crate::services::AppServices;
     use crate::update::action::{
@@ -560,7 +561,7 @@ mod tests {
                 .with(eq(dsn.to_string()))
                 .once()
                 .returning(|_| {
-                    Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                    Ok(MySqlConnectionProbeResult {
                         lower_case_table_names: 0,
                     })
                 });
@@ -697,7 +698,7 @@ mod tests {
                 .once()
                 .returning(move |_| {
                     guard_for_probe.cancel();
-                    Ok(crate::ports::outbound::MySqlConnectionProbeResult {
+                    Ok(MySqlConnectionProbeResult {
                         lower_case_table_names: 0,
                     })
                 });
