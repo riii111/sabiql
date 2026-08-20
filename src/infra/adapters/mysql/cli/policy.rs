@@ -451,7 +451,8 @@ pub(super) fn mysql_command_tag(
         MySqlStatementKind::Insert if statement.has_on_duplicate_key_update() => {
             CommandTag::Affected(rows())
         }
-        MySqlStatementKind::Insert | MySqlStatementKind::Replace => CommandTag::Insert(rows()),
+        MySqlStatementKind::Insert => CommandTag::Insert(rows()),
+        MySqlStatementKind::Replace => CommandTag::Affected(rows()),
         MySqlStatementKind::Update { .. } => CommandTag::Update(rows()),
         MySqlStatementKind::Delete { .. } => CommandTag::Delete(rows()),
         MySqlStatementKind::CreateTable { temporary: true } => {
@@ -719,6 +720,21 @@ mod tests {
     }
 
     #[test]
+    fn read_only_rejects_replace_before_starting_mysql() {
+        let result = validate_mysql_multi_query(
+            "REPLACE INTO items (id, value) VALUES (1, 'new')",
+            Some("app"),
+            AccessMode::ReadOnly,
+        );
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::PermissionDenied(details))
+                if details.contains("read-only mode blocks MySQL write statements")
+        ));
+    }
+
+    #[test]
     fn read_only_rejects_read_write_overrides_before_starting_mysql() {
         for query in [
             "SET SESSION TRANSACTION READ WRITE",
@@ -871,5 +887,21 @@ mod tests {
                 CommandTag::Insert(1)
             );
         }
+    }
+
+    #[test]
+    fn replace_command_tag_reports_affected_rows_and_refreshes_data() {
+        let statement = classify_mysql_multi_statement(
+            "REPLACE INTO items (id, value) VALUES (1, 'new')",
+            Some("app"),
+        )
+        .unwrap()
+        .remove(0);
+
+        assert_eq!(
+            mysql_command_tag(&statement, 2, None),
+            CommandTag::Affected(2)
+        );
+        assert_eq!(mysql_refresh_scope(statement.kind()), RefreshScope::Data);
     }
 }

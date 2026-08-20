@@ -236,9 +236,6 @@ pub fn validate_mysql_statements_with_lower_case_table_names(
         if statement_contains_unsupported_mysql_control(&statement.sql) {
             return Err("unsupported MySQL session or table-lock statement".to_string());
         }
-        if matches!(statement.kind, MySqlStatementKind::Replace) {
-            return Err("MySQL REPLACE execution is not supported".to_string());
-        }
         if matches!(
             statement.kind,
             MySqlStatementKind::Select | MySqlStatementKind::Table
@@ -816,13 +813,25 @@ mod tests {
             "SELECT 'unfinished",
             "SELECT 1 /* unfinished",
             "MERGE INTO items USING source ON items.id = source.id",
-            "REPLACE INTO items VALUES (1)",
         ] {
             assert!(
                 classify_mysql_multi_statement(sql, Some("app")).is_err(),
                 "{sql}"
             );
         }
+    }
+
+    #[test]
+    fn accepts_replace_for_execution() {
+        let statements = classify_mysql_multi_statement(
+            "REPLACE INTO items (id, value) VALUES (1, 'new')",
+            Some("app"),
+        )
+        .expect("REPLACE should use the regular MySQL execution path");
+
+        assert_eq!(statements.len(), 1);
+        assert_eq!(statements[0].kind(), &MySqlStatementKind::Replace);
+        assert_eq!(statements[0].target(), Some("items"));
     }
 
     #[test]
@@ -859,7 +868,6 @@ mod tests {
             "SET sql_mode = 'ANSI_QUOTES'",
             "LOCK TABLES items READ",
             "UNLOCK TABLES",
-            "REPLACE INTO items VALUES (1)",
             "CALL do_work()",
             "LOAD DATA INFILE 'x' INTO TABLE items",
             "/*! SET sql_mode='ANSI_QUOTES' */ SELECT 1",
