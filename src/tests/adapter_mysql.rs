@@ -551,6 +551,101 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn columns_metadata_matches_mysql_84_collation_and_generation_ddl() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let suffix = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_err(|error| format!("system clock error: {error}"))?
+                    .as_nanos();
+                let table = format!("sabiql_c07_{suffix}");
+                let create = format!(
+                    "CREATE TABLE {table} (id INT NOT NULL, name VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, stored_value INT GENERATED ALWAYS AS (id * 2) STORED, virtual_value INT GENERATED ALWAYS AS (id + 1) VIRTUAL, PRIMARY KEY (id)) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+                );
+                let result = async {
+                    db.adapter()
+                        .execute_adhoc(db.dsn(), &create, AccessMode::ReadWrite)
+                        .await
+                        .map_err(|error| format!("failed to create C07 fixture: {error:?}"))?;
+
+                    let detail = db
+                        .adapter()
+                        .fetch_table_detail(db.dsn(), "sabiql_test", &table)
+                        .await
+                        .map_err(|error| format!("failed to fetch C07 metadata: {error:?}"))?;
+                    let ddl = detail
+                        .source_ddl()
+                        .ok_or_else(|| "C07 metadata did not include table DDL".to_string())?;
+                    if !ddl.contains("utf8mb4_bin")
+                        || !ddl.contains("STORED")
+                        || !ddl.contains("VIRTUAL")
+                    {
+                        return Err(format!("C07 DDL omitted expected column details: {ddl}"));
+                    }
+
+                    let collated = detail
+                        .columns
+                        .iter()
+                        .find(|column| column.name == "name")
+                        .ok_or_else(|| "C07 collated column was not returned".to_string())?;
+                    if collated.character_set_name.as_deref() != Some("utf8mb4")
+                        || collated.collation_name.as_deref() != Some("utf8mb4_bin")
+                    {
+                        return Err(format!(
+                            "unexpected C07 character metadata: {collated:?}"
+                        ));
+                    }
+
+                    let stored = detail
+                        .columns
+                        .iter()
+                        .find(|column| column.name == "stored_value")
+                        .ok_or_else(|| "C07 stored column was not returned".to_string())?;
+                    if stored.generation_kind != Some(sabiql_domain::ColumnGenerationKind::Stored)
+                        || stored.generation_expression.as_deref() != Some("(`id` * 2)")
+                        || !stored.is_generated()
+                        || !stored.is_read_only()
+                    {
+                        return Err(format!("unexpected C07 stored metadata: {stored:?}"));
+                    }
+
+                    let virtual_column = detail
+                        .columns
+                        .iter()
+                        .find(|column| column.name == "virtual_value")
+                        .ok_or_else(|| "C07 virtual column was not returned".to_string())?;
+                    if virtual_column.generation_kind
+                        != Some(sabiql_domain::ColumnGenerationKind::Virtual)
+                        || virtual_column.generation_expression.as_deref() != Some("(`id` + 1)")
+                        || !virtual_column.is_generated()
+                        || !virtual_column.is_read_only()
+                    {
+                        return Err(format!(
+                            "unexpected C07 virtual metadata: {virtual_column:?}"
+                        ));
+                    }
+                    Ok(())
+                }
+                .await;
+
+                let cleanup = db
+                    .run_cli_script(&format!("DROP TABLE IF EXISTS {table}"))
+                    .await;
+                match (result, cleanup) {
+                    (Ok(()), Ok(_)) => Ok(()),
+                    (Err(error), Ok(_)) => Err(error),
+                    (Ok(()), Err(error)) => Err(format!("C07 cleanup failed: {error}")),
+                    (Err(error), Err(cleanup_error)) => {
+                        Err(format!("{error}; C07 cleanup failed: {cleanup_error}"))
+                    }
+                }
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn reflects_single_column_unique_metadata_in_columns_and_signatures() {
         with_mysql_test_db(|db| {
             Box::pin(async move {

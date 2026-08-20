@@ -383,6 +383,10 @@ mod tests {
                 attributes: ColumnAttributes::from_parts(false, true, false),
                 comment: None,
                 ordinal_position: 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             }],
             primary_key: Some(vec!["id".to_string()]),
             ..test_support::minimal_table("", "")

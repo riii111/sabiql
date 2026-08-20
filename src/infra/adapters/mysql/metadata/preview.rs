@@ -520,6 +520,10 @@ done
             attributes: ColumnAttributes::empty(),
             comment: None,
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         }
     }
 

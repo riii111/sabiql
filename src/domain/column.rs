@@ -8,6 +8,25 @@ pub struct Column {
     pub attributes: ColumnAttributes,
     pub comment: Option<String>,
     pub ordinal_position: i32,
+    pub character_set_name: Option<String>,
+    pub collation_name: Option<String>,
+    pub generation_expression: Option<String>,
+    pub generation_kind: Option<ColumnGenerationKind>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColumnGenerationKind {
+    Virtual,
+    Stored,
+}
+
+impl ColumnGenerationKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Virtual => "VIRTUAL",
+            Self::Stored => "STORED",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -115,6 +134,10 @@ mod tests {
             attributes: ColumnAttributes::from_parts(nullable, false, false),
             comment: None,
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         }
     }
 
@@ -187,6 +210,10 @@ mod tests {
                 attributes,
                 comment: None,
                 ordinal_position: 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             };
 
             assert_eq!(column.read_only_reason(), expected);

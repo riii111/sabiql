@@ -1,5 +1,6 @@
 use crate::domain::{
-    DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table, TriggerCreationContext,
+    ColumnGenerationKind, DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table,
+    TriggerCreationContext,
 };
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
@@ -35,6 +36,9 @@ pub enum InspectorSection {
     Columns {
         rows: Vec<InspectorColumnRow>,
         show_read_only: bool,
+        show_character_set: bool,
+        show_collation: bool,
+        show_generation: bool,
     },
     Indexes {
         rows: Vec<InspectorIndexRow>,
@@ -73,6 +77,10 @@ pub struct InspectorColumnRow {
     pub read_only_reason: Option<String>,
     pub default: Option<String>,
     pub comment: Option<String>,
+    pub character_set_name: Option<String>,
+    pub collation_name: Option<String>,
+    pub generation_expression: Option<String>,
+    pub generation_kind: Option<ColumnGenerationKind>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -184,7 +192,7 @@ impl InspectorViewModel {
                     .columns
                     .iter()
                     .any(|column| column.read_only_reason().is_some());
-                let rows = table
+                let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
                     .map(|column| InspectorColumnRow {
@@ -195,12 +203,24 @@ impl InspectorViewModel {
                         read_only_reason: column.read_only_reason().map(ToString::to_string),
                         default: column.default.clone(),
                         comment: column.comment.clone(),
+                        character_set_name: column.character_set_name.clone(),
+                        collation_name: column.collation_name.clone(),
+                        generation_expression: column.generation_expression.clone(),
+                        generation_kind: column.generation_kind,
                     })
                     .collect();
+                let show_character_set = rows.iter().any(|row| row.character_set_name.is_some());
+                let show_collation = rows.iter().any(|row| row.collation_name.is_some());
+                let show_generation = rows.iter().any(|row| {
+                    row.generation_expression.is_some() || row.generation_kind.is_some()
+                });
                 (
                     InspectorSection::Columns {
                         rows,
                         show_read_only,
+                        show_character_set,
+                        show_collation,
+                        show_generation,
                     },
                     table
                         .columns
@@ -533,6 +553,10 @@ mod tests {
                 default: None,
                 comment: None,
                 ordinal_position: 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             }],
             primary_key: Some(vec!["id".to_string()]),
             foreign_keys: vec![ForeignKey {
@@ -678,6 +702,42 @@ mod tests {
                 ]
             ),
             section => panic!("expected info section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_columns_include_column_metadata_only_when_present() {
+        let mut table = table();
+        table.columns[0].attributes = ColumnAttributes::READ_ONLY | ColumnAttributes::GENERATED;
+        table.columns[0].character_set_name = Some("utf8mb4".to_string());
+        table.columns[0].collation_name = Some("utf8mb4_bin".to_string());
+        table.columns[0].generation_expression = Some("(`id` * 2)".to_string());
+        table.columns[0].generation_kind = Some(ColumnGenerationKind::Stored);
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Columns,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Columns {
+                rows,
+                show_read_only,
+                show_character_set,
+                show_collation,
+                show_generation,
+            }) => {
+                assert!(*show_read_only);
+                assert!(*show_character_set);
+                assert!(*show_collation);
+                assert!(*show_generation);
+                assert_eq!(rows[0].generation_kind, Some(ColumnGenerationKind::Stored));
+                assert_eq!(rows[0].generation_expression.as_deref(), Some("(`id` * 2)"));
+            }
+            section => panic!("expected columns section, got {section:?}"),
         }
     }
 

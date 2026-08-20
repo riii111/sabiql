@@ -71,6 +71,10 @@ fn json_detail_state() -> (AppState, Instant) {
         default: None,
         comment: None,
         ordinal_position: 4,
+        character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
     });
     let _ = state.session.set_table_detail(table, 0);
     state
