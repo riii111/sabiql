@@ -310,6 +310,7 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
                 let mut result = String::with_capacity(query.len() - MODIFIER.len());
                 if only_versioned_modifier {
                     result.push_str(&query[..index]);
+                    result.push(' ');
                     result.push_str(&query[comment_end + 2..]);
                 } else {
                     result.push_str(&query[..start]);
@@ -649,6 +650,14 @@ mod tests {
         .unwrap();
 
         assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
+
+        let no_space_fallback_query = mysql_metadata_select_query(
+            "SELECT/*!80000 SQL_CALC_FOUND_ROWS */first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+        assert!(no_space_fallback_query.contains("SELECT first_key FROM items WHERE FALSE"));
     }
 
     #[test]
