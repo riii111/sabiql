@@ -288,7 +288,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             affected_rows: result.affected_rows,
-                            mysql_diagnostics: result.mysql_diagnostics,
+                            diagnostics: result.diagnostics,
                         })
                         .await
                         .ok();
@@ -436,7 +436,7 @@ mod tests {
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
-    use crate::domain::WriteExecutionResult;
+    use crate::domain::{WriteDiagnostic, WriteDiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -897,7 +897,11 @@ mod tests {
                     Ok(WriteExecutionResult {
                         affected_rows: 1,
                         execution_time_ms: 0,
-                        mysql_diagnostics: Vec::new(),
+                        diagnostics: vec![WriteDiagnostic {
+                            level: WriteDiagnosticLevel::Warning,
+                            code: 1265,
+                            message: "Data truncated".to_string(),
+                        }],
                     })
                 });
 
@@ -912,14 +916,22 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(
-                action,
+            match action {
                 Action::ExecuteWriteSucceeded {
                     run_id: 3,
                     affected_rows: 1,
+                    diagnostics,
                     ..
-                }
-            ));
+                } => assert_eq!(
+                    diagnostics,
+                    vec![WriteDiagnostic {
+                        level: WriteDiagnosticLevel::Warning,
+                        code: 1265,
+                        message: "Data truncated".to_string(),
+                    }]
+                ),
+                action => panic!("unexpected action: {action:?}"),
+            }
         }
     }
 }

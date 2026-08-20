@@ -1,7 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::domain::MySqlDiagnostic;
 use crate::domain::connection::{
     ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType, ServiceEntry,
 };
@@ -25,6 +24,7 @@ use std::collections::HashMap;
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table, TableSignatureSnapshot,
+    WriteDiagnostic,
 };
 
 #[derive(Clone, thiserror::Error)]
@@ -610,7 +610,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         affected_rows: usize,
-        mysql_diagnostics: Vec<MySqlDiagnostic>,
+        diagnostics: Vec<WriteDiagnostic>,
     },
     ExecuteWriteFailed {
         dsn: String,

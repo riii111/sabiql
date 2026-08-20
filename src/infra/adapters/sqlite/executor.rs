@@ -128,7 +128,7 @@ impl QueryExecutor for SqliteAdapter {
         Ok(WriteExecutionResult {
             affected_rows,
             execution_time_ms,
-            mysql_diagnostics: Vec::new(),
+            diagnostics: Vec::new(),
         })
     }
 
