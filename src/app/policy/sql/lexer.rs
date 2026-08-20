@@ -927,11 +927,12 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
                     }
                     "SELECT" | "WHERE" | "GROUP" | "ORDER" | "HAVING" | "LIMIT" | "OFFSET"
-                    | "UNION" | "INTERSECT" | "EXCEPT" => {
+                    | "SET" | "UNION" | "INTERSECT" | "EXCEPT" => {
                         in_for_clause = false;
                         can_start_straight_join = false;
                     }
@@ -2036,6 +2037,22 @@ mod tests {
             assert_eq!(refs[0].alias, Some("u".to_string()));
             assert_eq!(refs[1].alias, Some("o".to_string()));
             assert_eq!(refs[2].alias, Some("i".to_string()));
+        }
+
+        #[test]
+        fn mysql_update_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql =
+                "UPDATE users u STRAIGHT_JOIN orders o ON u.id = o.user_id SET o.status = 'done'";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
         }
     }
 
