@@ -2071,13 +2071,22 @@ mod query_execution {
                     .adapter()
                     .execute_adhoc(
                         db.dsn(),
-                        "EXPLAIN FORMAT=TREE SELECT * FROM mysql_preview_composite",
+                        "EXPLAIN FORMAT=TREE SELECT * FROM mysql_preview_composite WHERE first_key = \"x\"",
                         AccessMode::ReadWrite,
                     )
                     .await
                     .map_err(|error| format!("TREE EXPLAIN failed: {error:?}"))?;
 
-                if result.is_error() || result.values().is_empty() || result.columns != ["EXPLAIN"]
+                if result.is_error()
+                    || result.values().is_empty()
+                    || result.columns != ["EXPLAIN"]
+                    || !result.mysql_diagnostics.iter().any(|diagnostic| {
+                        diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                            && diagnostic.code == 1292
+                            && diagnostic
+                                .message
+                                .contains("Truncated incorrect DOUBLE value")
+                    })
                 {
                     return Err(format!("unexpected TREE EXPLAIN result: {result:?}"));
                 }
