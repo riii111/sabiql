@@ -383,7 +383,6 @@ where
             cleanup_mysql_process(process).await;
             Err(query_failed_after_mysql_statement(
                 error,
-                RefreshScope::None,
                 possible_refresh_scope,
             ))
         }
@@ -391,7 +390,6 @@ where
             cleanup_mysql_process(process).await;
             Err(query_failed_after_mysql_statement(
                 DbOperationError::Timeout("mysql query exceeded the execution timeout".to_string()),
-                RefreshScope::None,
                 possible_refresh_scope,
             ))
         }
@@ -1676,7 +1674,7 @@ done
         }
 
         #[tokio::test]
-        async fn first_change_statement_failure_keeps_the_classified_error_unwrapped() {
+        async fn first_change_statement_failure_refreshes_possible_scope() {
             for (details, summary) in [
                 (
                     "ERROR 1142 (42000): command denied to user",
@@ -1717,9 +1715,18 @@ done
                 };
 
                 assert_eq!(error.summary(), summary);
-                assert!(!matches!(
+                assert!(matches!(
                     error,
-                    DbOperationError::QueryFailedAfterChange { .. }
+                    DbOperationError::QueryFailedAfterChange {
+                        source,
+                        refresh_scope: RefreshScope::Data,
+                    } if matches!(
+                        &*source,
+                        DbOperationError::PermissionDenied(_)
+                            | DbOperationError::UniqueViolation(_)
+                            | DbOperationError::ForeignKeyViolation(_)
+                            | DbOperationError::LockTimeout(_)
+                    )
                 ));
             }
         }

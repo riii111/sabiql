@@ -144,7 +144,6 @@ async fn run_mysql_statement(
         Err(error) => {
             return Err(query_failed_after_mysql_statement(
                 error,
-                refresh_scope,
                 possible_refresh_scope,
             ));
         }
@@ -244,14 +243,12 @@ async fn run_mysql_adhoc_process(
     let mut last_result_set = None;
     let mut last_result_statement = None;
     let mut refresh_scope = RefreshScope::None;
-    let mut refresh_scope_before_last_statement = RefreshScope::None;
     let mut diagnostics = Vec::new();
     let expected_columns = (statements.len() == 1)
         .then_some(expected_columns)
         .flatten();
 
     for (index, statement) in statements.iter().enumerate() {
-        refresh_scope_before_last_statement = refresh_scope;
         if last_result_set
             .as_ref()
             .is_some_and(mysql_result_needs_metadata)
@@ -306,11 +303,7 @@ async fn run_mysql_adhoc_process(
         match read_one_mysql_resultset_with_diagnostics(process).await {
             Ok(result) => result,
             Err(error) => {
-                return Err(query_failed_after_mysql_statement(
-                    error,
-                    refresh_scope_before_last_statement,
-                    refresh_scope,
-                ));
+                return Err(query_failed_after_mysql_statement(error, refresh_scope));
             }
         };
     diagnostics.extend(marker_diagnostics);

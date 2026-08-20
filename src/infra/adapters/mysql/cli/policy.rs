@@ -390,7 +390,6 @@ pub(super) fn query_failed_after_change(
 
 pub(super) fn query_failed_after_mysql_statement(
     error: DbOperationError,
-    refresh_scope: RefreshScope,
     possible_refresh_scope: RefreshScope,
 ) -> DbOperationError {
     let refresh_scope = match &error {
@@ -398,23 +397,9 @@ pub(super) fn query_failed_after_mysql_statement(
             refresh_scope: existing_scope,
             ..
         } => *existing_scope,
-        error if is_mysql_statement_failure(error) => refresh_scope,
         _ => possible_refresh_scope,
     };
     query_failed_after_change(error, refresh_scope)
-}
-
-fn is_mysql_statement_failure(error: &DbOperationError) -> bool {
-    matches!(
-        error,
-        DbOperationError::PermissionDenied(_)
-            | DbOperationError::ForeignKeyViolation(_)
-            | DbOperationError::UniqueViolation(_)
-            | DbOperationError::LockTimeout(_)
-            | DbOperationError::ObjectMissing(_)
-            | DbOperationError::QueryFailed(_)
-            | DbOperationError::Canceled(_)
-    )
 }
 
 pub(super) fn is_mysql_row_count_marker(result: &MySqlResultSet, marker: &str) -> bool {
