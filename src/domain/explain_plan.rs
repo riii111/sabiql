@@ -184,13 +184,9 @@ fn parse_mysql_metric(token: &str) -> Option<f64> {
 }
 
 fn mysql_node_name(line: &str) -> Option<String> {
-    let node_end = ["(cost=", "(actual time="]
-        .iter()
-        .filter_map(|marker| line.find(marker))
-        .min()
-        .unwrap_or(line.len());
     let node_name = line
-        .get(..node_end)
+        .split("(cost=")
+        .next()
         .unwrap_or("")
         .trim()
         .trim_start_matches("->")
@@ -569,6 +565,19 @@ Execution Time: 0.600 ms";
             assert_eq!(plan.actual_end_ms, Some(0.2));
             assert_eq!(plan.actual_rows, Some(1.0));
             assert_eq!(plan.loops, Some(1));
+        }
+
+        #[test]
+        fn mysql_tree_preserves_actual_time_text_inside_node_expression() {
+            let text = "-> Filter: (s = '(actual time=')  (cost=1 rows=1)";
+            let plan = parse_mysql_tree_explain_text(text, false, 0);
+
+            assert_eq!(
+                plan.top_node_type.as_deref(),
+                Some("Filter: (s = '(actual time=')")
+            );
+            assert_eq!(plan.total_cost, Some(1.0));
+            assert_eq!(plan.estimated_rows, Some(1.0));
         }
 
         #[test]
