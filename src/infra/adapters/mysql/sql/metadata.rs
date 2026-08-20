@@ -119,10 +119,16 @@ pub(in crate::adapters::mysql) const INDEX_RESULT_COLUMNS: &[&str] = &[
 ];
 pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
     "TRIGGER_NAME",
+    "ACTION_ORDER",
     "ACTION_TIMING",
     "EVENT_MANIPULATION",
     "ACTION_STATEMENT",
     "DEFINER",
+    "SQL_MODE",
+    "CHARACTER_SET_CLIENT",
+    "COLLATION_CONNECTION",
+    "DATABASE_COLLATION",
+    "CREATED",
 ];
 const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
 const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
@@ -137,7 +143,7 @@ pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> St
 
 pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
     format!(
-        "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION",
+        "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
         quote_string(schema),
         quote_string(schema),
         quote_string(table),
@@ -320,7 +326,7 @@ mod tests {
         assert_eq!(
             triggers_sql,
             format!(
-                "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION"
+                "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER"
             )
         );
 
@@ -432,10 +438,16 @@ mod tests {
             TRIGGER_RESULT_COLUMNS,
             &[
                 "TRIGGER_NAME",
+                "ACTION_ORDER",
                 "ACTION_TIMING",
                 "EVENT_MANIPULATION",
                 "ACTION_STATEMENT",
                 "DEFINER",
+                "SQL_MODE",
+                "CHARACTER_SET_CLIENT",
+                "COLLATION_CONNECTION",
+                "DATABASE_COLLATION",
+                "CREATED",
             ]
         );
     }

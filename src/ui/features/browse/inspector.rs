@@ -21,7 +21,7 @@ use crate::app::model::shared::viewport::{
     widths_fingerprint,
 };
 use crate::app::services::AppServices;
-use crate::domain::DatabaseType;
+use crate::domain::{DatabaseType, TriggerCreationContext};
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
@@ -638,13 +638,23 @@ impl Inspector {
     ) {
         let (headers, widths): (&[&str], &[Constraint]) = match database_type {
             DatabaseType::MySQL => (
-                &["Name", "Timing", "Event", "Action", "Definer"],
                 &[
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(15),
+                    "Order",
+                    "Name",
+                    "Timing",
+                    "Event",
+                    "Action",
+                    "Definer",
+                    "Creation Context",
+                ],
+                &[
+                    Constraint::Percentage(8),
+                    Constraint::Percentage(16),
+                    Constraint::Percentage(12),
+                    Constraint::Percentage(14),
                     Constraint::Percentage(20),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(15),
+                    Constraint::Percentage(12),
+                    Constraint::Percentage(18),
                 ],
             ),
             DatabaseType::PostgreSQL => (
@@ -796,16 +806,43 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
 }
 
 fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
-    let mut cells = vec![
+    let mut cells = Vec::new();
+    if database_type == DatabaseType::MySQL {
+        cells.push(
+            row.action_order
+                .map(|order| order.to_string())
+                .unwrap_or_default(),
+        );
+    }
+    cells.extend([
         row.name.clone(),
         row.timing.clone(),
         row.events.clone(),
         row.definition.clone(),
-    ];
-    if !matches!(database_type, DatabaseType::SQLite) {
+    ]);
+    if database_type == DatabaseType::MySQL {
+        cells.push(row.security_context.clone().unwrap_or_default());
+        cells.push(
+            row.creation_context
+                .as_ref()
+                .map(trigger_creation_context)
+                .unwrap_or_default(),
+        );
+    } else if database_type != DatabaseType::SQLite {
         cells.push(row.security_context.clone().unwrap_or_default());
     }
     cells
+}
+
+fn trigger_creation_context(context: &TriggerCreationContext) -> String {
+    format!(
+        "SQL_MODE={}; CHARACTER_SET_CLIENT={}; COLLATION_CONNECTION={}; DATABASE_COLLATION={}; CREATED={}",
+        context.sql_mode.as_deref().unwrap_or_default(),
+        context.character_set_client.as_deref().unwrap_or_default(),
+        context.collation_connection.as_deref().unwrap_or_default(),
+        context.database_collation.as_deref().unwrap_or_default(),
+        context.created.as_deref().unwrap_or_default(),
+    )
 }
 
 fn checkmark(value: bool) -> String {
@@ -874,6 +911,38 @@ mod tests {
                 "public.departments(id)",
                 "NO ACTION",
                 "CASCADE",
+            ]
+        );
+    }
+
+    #[test]
+    fn mysql_trigger_row_cells_include_action_order_and_creation_context() {
+        let row = InspectorTriggerRow {
+            name: "audit_changes".to_string(),
+            timing: "BEFORE".to_string(),
+            events: "UPDATE".to_string(),
+            action_order: Some(2),
+            definition: "SET NEW.value = NEW.value".to_string(),
+            security_context: Some("sabiql@%".to_string()),
+            creation_context: Some(TriggerCreationContext {
+                sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+                character_set_client: Some("utf8mb4".to_string()),
+                collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+                database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+                created: Some("2026-08-21 10:20:30.00".to_string()),
+            }),
+        };
+
+        assert_eq!(
+            trigger_row_cells(&row, DatabaseType::MySQL),
+            vec![
+                "2",
+                "audit_changes",
+                "BEFORE",
+                "UPDATE",
+                "SET NEW.value = NEW.value",
+                "sabiql@%",
+                "SQL_MODE=STRICT_TRANS_TABLES; CHARACTER_SET_CLIENT=utf8mb4; COLLATION_CONNECTION=utf8mb4_0900_ai_ci; DATABASE_COLLATION=utf8mb4_0900_ai_ci; CREATED=2026-08-21 10:20:30.00",
             ]
         );
     }

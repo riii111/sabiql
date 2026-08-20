@@ -36,8 +36,10 @@ pub(super) fn parse_sqlite_trigger(
         name: trigger_name.to_string(),
         timing,
         events,
+        action_order: None,
         definition: sql.to_string(),
         security_context: None,
+        creation_context: None,
     })
 }
 

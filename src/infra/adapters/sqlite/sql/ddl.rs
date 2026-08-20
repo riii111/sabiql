@@ -172,9 +172,11 @@ mod tests {
                 name: "users_audit".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Insert],
+                action_order: None,
                 definition: "CREATE TRIGGER users_audit AFTER INSERT ON users BEGIN SELECT 1; END"
                     .to_string(),
                 security_context: None,
+                creation_context: None,
             });
 
             let ddl = adapter.generate_ddl(DatabaseType::SQLite, &table);

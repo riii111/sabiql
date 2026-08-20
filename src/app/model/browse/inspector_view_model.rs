@@ -1,4 +1,6 @@
-use crate::domain::{DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table};
+use crate::domain::{
+    DatabaseType, ForeignKey, Index, IndexType, RlsInfo, Table, TriggerCreationContext,
+};
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -94,8 +96,10 @@ pub struct InspectorTriggerRow {
     pub name: String,
     pub timing: String,
     pub events: String,
+    pub action_order: Option<i32>,
     pub definition: String,
     pub security_context: Option<String>,
+    pub creation_context: Option<TriggerCreationContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -275,8 +279,10 @@ impl InspectorViewModel {
                             .map(ToString::to_string)
                             .collect::<Vec<_>>()
                             .join("/"),
+                        action_order: trigger.action_order,
                         definition: trigger.definition.clone(),
                         security_context: trigger.security_context.clone(),
+                        creation_context: trigger.creation_context.clone(),
                     })
                     .collect();
                 (
@@ -541,8 +547,10 @@ mod tests {
                 name: "users_updated".to_string(),
                 timing: TriggerTiming::Before,
                 events: vec![TriggerEvent::Update],
+                action_order: None,
                 definition: "set_updated_at".to_string(),
                 security_context: Some("INVOKER".to_string()),
+                creation_context: None,
             }],
             row_count_estimate: Some(3),
             comment: Some("Users".to_string()),
@@ -718,6 +726,35 @@ mod tests {
         match indexes.section() {
             Some(InspectorSection::Indexes { show_partial, .. }) => assert!(!show_partial),
             section => panic!("expected index section, got {section:?}"),
+        }
+    }
+
+    #[test]
+    fn mysql_trigger_rows_preserve_action_order_and_creation_context() {
+        let mut table = table();
+        table.triggers[0].action_order = Some(2);
+        table.triggers[0].creation_context = Some(TriggerCreationContext {
+            sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+            character_set_client: Some("utf8mb4".to_string()),
+            collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+            database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+            created: Some("2026-08-21 10:20:30.00".to_string()),
+        });
+
+        let model = build_loaded(
+            &EngineFeatureProfile::mysql_like(),
+            InspectorTab::Triggers,
+            &table,
+            DatabaseType::MySQL,
+            &TestDdlGenerator,
+        );
+
+        match model.section() {
+            Some(InspectorSection::Triggers { rows }) => {
+                assert_eq!(rows[0].action_order, Some(2));
+                assert_eq!(rows[0].creation_context, table.triggers[0].creation_context);
+            }
+            section => panic!("expected trigger section, got {section:?}"),
         }
     }
 

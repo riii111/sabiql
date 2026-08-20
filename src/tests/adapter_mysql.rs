@@ -376,17 +376,35 @@ mod metadata_fetch {
                         detail.source_ddl()
                     ));
                 }
-                if detail.triggers.len() != 1 {
+                if detail.triggers.len() != 2 {
                     return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
                 }
-                let trigger = &detail.triggers[0];
-                if trigger.name != "mysql_cli_fixture_audit"
-                    || trigger.timing != TriggerTiming::Before
-                    || trigger.events != [TriggerEvent::Update]
-                    || trigger.definition != "SET NEW.empty_text = NEW.empty_text"
-                    || trigger.security_context.as_deref() != Some("sabiql@%")
+                let first_trigger = &detail.triggers[0];
+                let second_trigger = &detail.triggers[1];
+                if first_trigger.name != "mysql_cli_fixture_audit"
+                    || first_trigger.action_order != Some(1)
+                    || first_trigger.timing != TriggerTiming::Before
+                    || first_trigger.events != [TriggerEvent::Update]
+                    || first_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
+                    || first_trigger.security_context.as_deref() != Some("sabiql@%")
+                    || first_trigger
+                        .creation_context
+                        .as_ref()
+                        .is_none_or(|context| {
+                            context.sql_mode.is_none()
+                                || context.character_set_client.is_none()
+                                || context.collation_connection.is_none()
+                                || context.database_collation.is_none()
+                                || context.created.is_none()
+                        })
+                    || second_trigger.name != "a_mysql_cli_fixture_audit"
+                    || second_trigger.action_order != Some(2)
+                    || second_trigger.timing != TriggerTiming::Before
+                    || second_trigger.events != [TriggerEvent::Update]
+                    || second_trigger.definition != "SET NEW.empty_text = NEW.empty_text"
+                    || second_trigger.security_context.as_deref() != Some("sabiql@%")
                 {
-                    return Err(format!("unexpected MySQL trigger: {trigger:?}"));
+                    return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
                 }
 
                 let view_detail = db

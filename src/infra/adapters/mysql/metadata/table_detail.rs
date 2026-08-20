@@ -5,7 +5,7 @@ use std::time::Duration;
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{
     ForeignKey, Index, IndexAttributes, IndexType, Table, TableKind, TableKindInfo, Trigger,
-    TriggerEvent, TriggerTiming,
+    TriggerCreationContext, TriggerEvent, TriggerTiming,
 };
 
 use super::super::sql::{
@@ -57,10 +57,12 @@ impl MySqlIndexVisibility {
 #[derive(Debug, Clone)]
 struct MySqlTriggerMetadata {
     name: String,
+    action_order: i32,
     timing: TriggerTiming,
     event: TriggerEvent,
     definition: String,
     security_context: Option<String>,
+    creation_context: TriggerCreationContext,
 }
 
 pub(super) async fn fetch_table_detail_in_session(
@@ -216,7 +218,7 @@ async fn fetch_table_detail_with_session(
         &session
             .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
             .await?,
-    )?)?;
+    )?);
     let source_ddl = parse_source_ddl(
         &session
             .execute_with_expected_columns(
@@ -287,53 +289,49 @@ fn parse_trigger_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 5 {
+            if row.len() != 11 {
                 return Err(metadata_shape_error("TRIGGERS row"));
             }
-            let timing = required_text(&row[1], "ACTION_TIMING")?
+            let timing = required_text(&row[2], "ACTION_TIMING")?
                 .parse::<TriggerTiming>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            let event = required_text(&row[2], "EVENT_MANIPULATION")?
+            let event = required_text(&row[3], "EVENT_MANIPULATION")?
                 .parse::<TriggerEvent>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
             Ok(MySqlTriggerMetadata {
                 name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
+                action_order: parse_positive_i32(&row[1], "ACTION_ORDER")?,
                 timing,
                 event,
-                definition: required_text(&row[3], "ACTION_STATEMENT")?.to_string(),
-                security_context: optional_text(&row[4], "DEFINER")?.map(str::to_string),
+                definition: required_text(&row[4], "ACTION_STATEMENT")?.to_string(),
+                security_context: optional_text(&row[5], "DEFINER")?.map(str::to_string),
+                creation_context: TriggerCreationContext {
+                    sql_mode: optional_text(&row[6], "SQL_MODE")?.map(str::to_string),
+                    character_set_client: optional_text(&row[7], "CHARACTER_SET_CLIENT")?
+                        .map(str::to_string),
+                    collation_connection: optional_text(&row[8], "COLLATION_CONNECTION")?
+                        .map(str::to_string),
+                    database_collation: optional_text(&row[9], "DATABASE_COLLATION")?
+                        .map(str::to_string),
+                    created: optional_text(&row[10], "CREATED")?.map(str::to_string),
+                },
             })
         })
         .collect()
 }
 
-fn triggers_from_metadata(
-    raw: Vec<MySqlTriggerMetadata>,
-) -> Result<Vec<Trigger>, DbOperationError> {
-    let mut triggers = Vec::new();
-    for metadata in raw {
-        if let Some(trigger) = triggers
-            .iter_mut()
-            .find(|trigger: &&mut Trigger| trigger.name == metadata.name)
-        {
-            if trigger.timing != metadata.timing
-                || trigger.definition != metadata.definition
-                || trigger.security_context != metadata.security_context
-            {
-                return Err(metadata_shape_error("TRIGGERS definition"));
-            }
-            trigger.events.push(metadata.event);
-        } else {
-            triggers.push(Trigger {
-                name: metadata.name,
-                timing: metadata.timing,
-                events: vec![metadata.event],
-                definition: metadata.definition,
-                security_context: metadata.security_context,
-            });
-        }
-    }
-    Ok(triggers)
+fn triggers_from_metadata(raw: Vec<MySqlTriggerMetadata>) -> Vec<Trigger> {
+    raw.into_iter()
+        .map(|metadata| Trigger {
+            name: metadata.name,
+            timing: metadata.timing,
+            events: vec![metadata.event],
+            action_order: Some(metadata.action_order),
+            definition: metadata.definition,
+            security_context: metadata.security_context,
+            creation_context: Some(metadata.creation_context),
+        })
+        .collect()
 }
 
 fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
@@ -896,42 +894,72 @@ mod tests {
     }
 
     #[test]
-    fn trigger_metadata_preserves_action_definer_and_event_order() {
+    fn trigger_metadata_preserves_action_order_context_and_definition() {
         let result = result(
             &[
                 "TRIGGER_NAME",
+                "ACTION_ORDER",
                 "ACTION_TIMING",
                 "EVENT_MANIPULATION",
                 "ACTION_STATEMENT",
                 "DEFINER",
+                "SQL_MODE",
+                "CHARACTER_SET_CLIENT",
+                "COLLATION_CONNECTION",
+                "DATABASE_COLLATION",
+                "CREATED",
             ],
             vec![
                 vec![
-                    QueryValue::Text("audit_changes".to_string()),
-                    QueryValue::Text("BEFORE".to_string()),
-                    QueryValue::Text("INSERT".to_string()),
-                    QueryValue::Text("BEGIN\n  SET @seen = 1;\nEND".to_string()),
-                    QueryValue::Text("sabiql@%".to_string()),
-                ],
-                vec![
-                    QueryValue::Text("audit_changes".to_string()),
+                    QueryValue::Text("z_add".to_string()),
+                    QueryValue::Text("1".to_string()),
                     QueryValue::Text("BEFORE".to_string()),
                     QueryValue::Text("UPDATE".to_string()),
-                    QueryValue::Text("BEGIN\n  SET @seen = 1;\nEND".to_string()),
+                    QueryValue::Text("SET @seen = 1".to_string()),
                     QueryValue::Text("sabiql@%".to_string()),
+                    QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
+                    QueryValue::Text("utf8mb4".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("2026-08-21 10:20:30.00".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("a_double".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("BEFORE".to_string()),
+                    QueryValue::Text("UPDATE".to_string()),
+                    QueryValue::Text("SET @seen = 2".to_string()),
+                    QueryValue::Text("sabiql@%".to_string()),
+                    QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
+                    QueryValue::Text("utf8mb4".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("2026-08-21 10:20:31.00".to_string()),
                 ],
             ],
         );
 
-        let triggers = triggers_from_metadata(parse_trigger_metadata(&result).unwrap()).unwrap();
+        let triggers = triggers_from_metadata(parse_trigger_metadata(&result).unwrap());
 
-        assert_eq!(triggers.len(), 1);
-        assert_eq!(
-            triggers[0].events,
-            [TriggerEvent::Insert, TriggerEvent::Update]
-        );
-        assert_eq!(triggers[0].definition, "BEGIN\n  SET @seen = 1;\nEND");
+        assert_eq!(triggers.len(), 2);
+        assert_eq!(triggers[0].name, "z_add");
+        assert_eq!(triggers[0].action_order, Some(1));
+        assert_eq!(triggers[0].events, [TriggerEvent::Update]);
+        assert_eq!(triggers[0].definition, "SET @seen = 1");
         assert_eq!(triggers[0].security_context.as_deref(), Some("sabiql@%"));
+        assert_eq!(
+            triggers[0].creation_context,
+            Some(TriggerCreationContext {
+                sql_mode: Some("STRICT_TRANS_TABLES".to_string()),
+                character_set_client: Some("utf8mb4".to_string()),
+                collation_connection: Some("utf8mb4_0900_ai_ci".to_string()),
+                database_collation: Some("utf8mb4_0900_ai_ci".to_string()),
+                created: Some("2026-08-21 10:20:30.00".to_string()),
+            })
+        );
+        assert_eq!(triggers[1].name, "a_double");
+        assert_eq!(triggers[1].action_order, Some(2));
+        assert_eq!(triggers[1].events, [TriggerEvent::Update]);
     }
 
     #[test]
