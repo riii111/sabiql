@@ -1,5 +1,5 @@
 use crate::cmd::effect::Effect;
-use crate::domain::{QuerySource, QueryValue};
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::{JsonDetailMode, JsonDetailState};
 use crate::model::shared::flash_timer::FlashId;
@@ -19,9 +19,8 @@ use std::time::Instant;
 pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::JsonDetail) => {
-            let result = match state.query.visible_result() {
-                Some(r) if r.source == QuerySource::Preview && !r.is_error() => r,
-                _ => return DispatchResult::handled(),
+            let Some(result) = state.query.visible_result().filter(|r| !r.is_error()) else {
+                return DispatchResult::handled();
             };
 
             let Some(table_detail) = state.session.table_detail() else {

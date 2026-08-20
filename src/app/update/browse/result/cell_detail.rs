@@ -4,7 +4,6 @@ use crate::cmd::effect::Effect;
 use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
-use crate::model::browse::query_execution::VisibleResultKind;
 use crate::model::shared::detail_view::DetailDisplayMode;
 use crate::model::shared::flash_timer::FlashId;
 use crate::model::shared::input_mode::InputMode;
@@ -161,10 +160,6 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
 }
 
 fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
-    if state.query.visible_result_kind() != VisibleResultKind::LivePreview {
-        return false;
-    }
-
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
@@ -189,10 +184,6 @@ fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
-    if state.query.visible_result_kind() != VisibleResultKind::LivePreview {
-        return None;
-    }
-
     let table_detail = state.session.table_detail()?;
     if !state.query.pagination.matches_table(table_detail) {
         return None;

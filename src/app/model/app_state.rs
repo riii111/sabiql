@@ -7,7 +7,7 @@ use crate::domain::{Column, DatabaseType, TableSummary, mysql_sql::mysql_export_
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::browse::inspector_view_model::InspectorViewModel;
 use crate::model::browse::json_detail::JsonDetailState;
-use crate::model::browse::query_execution::QueryExecution;
+use crate::model::browse::query_execution::{QueryExecution, VisibleResultKind};
 use crate::model::browse::result_interaction::ResultInteraction;
 use crate::model::browse::row_detail::RowDetailState;
 use crate::model::browse::session::BrowseSession;
@@ -391,6 +391,10 @@ impl AppState {
     }
 
     pub fn visible_preview_column(&self, col_idx: usize) -> Option<&Column> {
+        if self.query.visible_result_kind() != VisibleResultKind::LivePreview {
+            return None;
+        }
+
         let result = self.query.visible_result()?;
         let column_name = result.columns.get(col_idx)?;
         let table_detail = self.session.table_detail()?;
