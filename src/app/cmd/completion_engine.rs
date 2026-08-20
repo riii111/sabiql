@@ -2213,6 +2213,39 @@ mod tests {
         }
 
         #[test]
+        fn mysql_index_hint_for_join_preserves_straight_join_completion() {
+            let mut e = engine();
+            e.cache_table_detail(
+                "app.orders".to_string(),
+                create_table("app", "orders", &["order_id"]),
+            );
+            let mut metadata = metadata();
+            metadata.table_summaries.push(TableSummary::new(
+                "app".to_string(),
+                "orders".to_string(),
+                None,
+                false,
+            ));
+
+            let sql = "SELECT * FROM users u USE INDEX FOR JOIN (idx_users) STRAIGHT_JOIN orders o WHERE o.ord";
+            let candidates = e.get_candidates_for_database(
+                sql,
+                sql.chars().count(),
+                Some(&metadata),
+                None,
+                &[],
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::MySQL,
+                    active_database: Some("app"),
+                },
+            );
+
+            assert!(candidates.iter().any(|candidate| {
+                candidate.text == "`order_id`" && candidate.kind == CompletionKind::Column
+            }));
+        }
+
+        #[test]
         fn mysql_partition_alias_completes_table_columns() {
             let mut e = engine();
             e.cache_table_detail(
