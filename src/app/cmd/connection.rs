@@ -25,6 +25,50 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
 };
 
+#[derive(Default)]
+pub(crate) struct MySqlConnectionProbeTaskOwner {
+    active: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl MySqlConnectionProbeTaskOwner {
+    pub(crate) async fn spawn<F>(&self, task: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.cancel().await;
+        let task = tokio::spawn(task);
+        *self
+            .active
+            .lock()
+            .expect("MySQL connection probe task lock poisoned") = Some(task);
+    }
+
+    pub(crate) async fn cancel(&self) {
+        let task = self
+            .active
+            .lock()
+            .expect("MySQL connection probe task lock poisoned")
+            .take();
+        if let Some(task) = task {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+}
+
+impl Drop for MySqlConnectionProbeTaskOwner {
+    fn drop(&mut self) {
+        if let Some(task) = self
+            .active
+            .get_mut()
+            .expect("MySQL connection probe task lock poisoned")
+            .take()
+        {
+            task.abort();
+        }
+    }
+}
+
 fn claim_and_save<T>(
     run_guard: &ConnectionSaveGuard,
     run_id: u64,
@@ -42,10 +86,11 @@ pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     connection: &ConnectionDeps,
+    mysql_connection_probe_task: &MySqlConnectionProbeTaskOwner,
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     state: &AppState,
-) -> Result<Option<JoinHandle<()>>> {
+) -> Result<()> {
     match effect {
         Effect::SaveAndConnect {
             id,
@@ -68,7 +113,7 @@ pub(crate) async fn run(
                         })
                         .await
                         .ok();
-                    return Ok(None);
+                    return Ok(());
                 }
             };
             let store = Arc::clone(&connection.connection_store);
@@ -91,7 +136,7 @@ pub(crate) async fn run(
                             })
                             .await
                             .ok();
-                        return Ok(None);
+                        return Ok(());
                     }
                 };
                 let id = profile.id.clone();
@@ -125,7 +170,7 @@ pub(crate) async fn run(
                         None => {}
                     }
                 });
-                return Ok(None);
+                return Ok(());
             }
 
             let id = profile.id.clone();
@@ -145,47 +190,49 @@ pub(crate) async fn run(
                     database,
                 };
                 let probe = Arc::clone(&connection.mysql_connection_probe);
-                let task = tokio::spawn(async move {
-                    match probe.probe(&target.dsn).await {
-                        Ok(()) => {
-                            let save_result = tokio::task::spawn_blocking(move || {
-                                claim_and_save(&run_guard, run_id, || store.save(&profile))
-                            })
-                            .await
-                            .expect("connection store save task panicked");
-                            match save_result {
-                                Some(Ok(())) => {
-                                    tx.send(Action::ConnectionSaveCompleted { target, run_id })
+                mysql_connection_probe_task
+                    .spawn(async move {
+                        match probe.probe(&target.dsn).await {
+                            Ok(()) => {
+                                let save_result = tokio::task::spawn_blocking(move || {
+                                    claim_and_save(&run_guard, run_id, || store.save(&profile))
+                                })
+                                .await
+                                .expect("connection store save task panicked");
+                                match save_result {
+                                    Some(Ok(())) => {
+                                        tx.send(Action::ConnectionSaveCompleted { target, run_id })
+                                            .await
+                                            .ok();
+                                    }
+                                    Some(Err(e)) => {
+                                        tx.send(Action::ConnectionSaveFailed {
+                                            error: e.into(),
+                                            database_type,
+                                            run_id,
+                                        })
                                         .await
                                         .ok();
+                                    }
+                                    None => {}
                                 }
-                                Some(Err(e)) => {
-                                    tx.send(Action::ConnectionSaveFailed {
-                                        error: e.into(),
-                                        database_type,
-                                        run_id,
-                                    })
-                                    .await
-                                    .ok();
-                                }
-                                None => {}
+                            }
+                            Err(e) => {
+                                tx.send(Action::ConnectionSaveFailed {
+                                    error: ConnectionSaveError::Probe {
+                                        error: e,
+                                        dsn: target.dsn.clone(),
+                                    },
+                                    database_type,
+                                    run_id,
+                                })
+                                .await
+                                .ok();
                             }
                         }
-                        Err(e) => {
-                            tx.send(Action::ConnectionSaveFailed {
-                                error: ConnectionSaveError::Probe {
-                                    error: e,
-                                    dsn: target.dsn.clone(),
-                                },
-                                database_type,
-                                run_id,
-                            })
-                            .await
-                            .ok();
-                        }
-                    }
-                });
-                return Ok(Some(task));
+                    })
+                    .await;
+                return Ok(());
             }
 
             let provider = Arc::clone(metadata_provider);
@@ -238,29 +285,31 @@ pub(crate) async fn run(
                     }
                 }
             });
-            Ok(None)
+            Ok(())
         }
 
         Effect::ProbeMySqlConnection { target, run_id } => {
             let probe = Arc::clone(&connection.mysql_connection_probe);
             let tx = action_tx.clone();
-            let task = tokio::spawn(async move {
-                match probe.probe(&target.dsn).await {
-                    Ok(()) => tx
-                        .send(Action::MySqlConnectionProbeCompleted { target, run_id })
-                        .await
-                        .ok(),
-                    Err(error) => tx
-                        .send(Action::MySqlConnectionProbeFailed {
-                            target,
-                            run_id,
-                            error,
-                        })
-                        .await
-                        .ok(),
-                };
-            });
-            Ok(Some(task))
+            mysql_connection_probe_task
+                .spawn(async move {
+                    match probe.probe(&target.dsn).await {
+                        Ok(()) => tx
+                            .send(Action::MySqlConnectionProbeCompleted { target, run_id })
+                            .await
+                            .ok(),
+                        Err(error) => tx
+                            .send(Action::MySqlConnectionProbeFailed {
+                                target,
+                                run_id,
+                                error,
+                            })
+                            .await
+                            .ok(),
+                    };
+                })
+                .await;
+            Ok(())
         }
 
         Effect::LoadConnectionForEdit { id } => {
@@ -282,7 +331,7 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
                 }
             });
-            Ok(None)
+            Ok(())
         }
 
         Effect::LoadConnections => {
@@ -311,7 +360,7 @@ pub(crate) async fn run(
                 }))
                 .ok();
             });
-            Ok(None)
+            Ok(())
         }
 
         Effect::DeleteConnection { id } => {
@@ -326,7 +375,7 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
                 }
             });
-            Ok(None)
+            Ok(())
         }
 
         Effect::SwitchConnection { connection_index } => {
@@ -348,7 +397,7 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(None)
+            Ok(())
         }
 
         Effect::SwitchToService { service_index } => {
@@ -367,7 +416,7 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(None)
+            Ok(())
         }
 
         _ => unreachable!("connection::run called with non-connection effect"),

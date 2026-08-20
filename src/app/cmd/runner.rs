@@ -7,12 +7,12 @@ use std::time::Instant;
 
 use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
 
 use crate::cmd::browse as cmd_browse;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
+use crate::cmd::connection::MySqlConnectionProbeTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
@@ -76,7 +76,7 @@ pub struct EffectRunner {
     query_tasks: QueryTaskRegistry,
     table_detail_tasks: TableDetailTaskRegistry,
     metadata_tasks: Arc<MetadataTaskRegistry>,
-    mysql_connection_probe_task: std::sync::Mutex<Option<JoinHandle<()>>>,
+    mysql_connection_probe_task: MySqlConnectionProbeTaskOwner,
 }
 
 impl EffectRunner {
@@ -102,7 +102,7 @@ impl EffectRunner {
             query_tasks: QueryTaskRegistry::default(),
             table_detail_tasks: TableDetailTaskRegistry::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
-            mysql_connection_probe_task: std::sync::Mutex::new(None),
+            mysql_connection_probe_task: MySqlConnectionProbeTaskOwner::default(),
         }
     }
 
@@ -115,15 +115,7 @@ impl EffectRunner {
     }
 
     async fn cancel_mysql_connection_probe(&self) {
-        let task = self
-            .mysql_connection_probe_task
-            .lock()
-            .expect("MySQL connection probe task lock poisoned")
-            .take();
-        if let Some(task) = task {
-            task.abort();
-            let _ = task.await;
-        }
+        self.mysql_connection_probe_task.cancel().await;
     }
 
     async fn cancel_active_tasks(&self) {
@@ -209,12 +201,6 @@ impl EffectRunner {
             | Effect::SwitchToService { .. }) => {
                 if matches!(
                     &e,
-                    Effect::SaveAndConnect { .. } | Effect::ProbeMySqlConnection { .. }
-                ) {
-                    self.cancel_mysql_connection_probe().await;
-                }
-                if matches!(
-                    &e,
                     Effect::SaveAndConnect { .. }
                         | Effect::ProbeMySqlConnection { .. }
                         | Effect::SwitchConnection { .. }
@@ -225,21 +211,16 @@ impl EffectRunner {
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
                     self.table_detail_tasks.cancel();
                 }
-                let probe_task = cmd_connection::run(
+                cmd_connection::run(
                     e,
                     &self.action_tx,
                     &self.connection,
+                    &self.mysql_connection_probe_task,
                     &self.metadata_provider,
                     &self.metadata_cache,
                     state,
                 )
                 .await?;
-                if let Some(task) = probe_task {
-                    *self
-                        .mysql_connection_probe_task
-                        .lock()
-                        .expect("MySQL connection probe task lock poisoned") = Some(task);
-                }
                 Ok(vec![])
             }
 
@@ -336,19 +317,6 @@ impl EffectRunner {
                 cmd_completion::run(e, &self.action_tx, state, completion_engine).await?;
                 Ok(vec![])
             }
-        }
-    }
-}
-
-impl Drop for EffectRunner {
-    fn drop(&mut self) {
-        if let Some(task) = self
-            .mysql_connection_probe_task
-            .get_mut()
-            .expect("MySQL connection probe task lock poisoned")
-            .take()
-        {
-            task.abort();
         }
     }
 }
@@ -1137,7 +1105,10 @@ mod tests {
         use tokio::time::{Duration, timeout};
 
         use super::*;
-        use crate::domain::connection::{ConnectionId, DatabaseType};
+        use crate::domain::connection::{
+            ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
+        };
+        use crate::model::browse::session::ConnectionSaveGuard;
         use crate::ports::outbound::DbOperationError;
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
@@ -1174,6 +1145,23 @@ mod tests {
                 database_type: DatabaseType::MySQL,
                 database: Some("app".to_string()),
             }
+        }
+
+        fn mysql_config() -> ConnectionConfig {
+            ConnectionConfig::MySQL(MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                Some("app".to_string()),
+                "user",
+                "secret",
+                MySqlSslMode::Required,
+            ))
+        }
+
+        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
+            let guard = Arc::new(ConnectionSaveGuard::default());
+            guard.start(run_id);
+            guard
         }
 
         #[tokio::test]
@@ -1215,6 +1203,79 @@ mod tests {
                 started_rx.recv().await.as_deref(),
                 Some("mysql://localhost/old")
             );
+
+            runner
+                .run(
+                    vec![Effect::ProbeMySqlConnection {
+                        target: mysql_target("mysql://localhost/new"),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("mysql://localhost/new")
+            );
+
+            runner
+                .run(
+                    vec![Effect::CancelActiveTasks],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(dropped.load(Ordering::SeqCst), 2);
+        }
+
+        #[tokio::test]
+        async fn replacing_save_probe_aborts_previous_task_before_new_probe() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let probe = PendingMySqlConnectionProbe {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "old".to_string(),
+                        config: mysql_config(),
+                        run_id: 1,
+                        run_guard: active_run_guard(1),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(started_rx.recv().await.as_deref(), Some(""));
 
             runner
                 .run(
