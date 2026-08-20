@@ -43,7 +43,7 @@ pub(in crate::adapters::mysql) fn validate_mysql_multi_query(
 ) -> Result<Vec<MySqlStatement>, DbOperationError> {
     let statements = classify_mysql_multi_statement(query, selected_database)
         .map_err(DbOperationError::UnsupportedOperation)?;
-    validate_mysql_statements_for_execution(&statements, selected_database, access_mode)?;
+    validate_mysql_access_mode(&statements, access_mode)?;
     Ok(statements)
 }
 
@@ -54,6 +54,13 @@ pub(in crate::adapters::mysql) fn validate_mysql_statements_for_execution(
 ) -> Result<(), DbOperationError> {
     validate_mysql_statements(statements, selected_database)
         .map_err(DbOperationError::UnsupportedOperation)?;
+    validate_mysql_access_mode(statements, access_mode)
+}
+
+fn validate_mysql_access_mode(
+    statements: &[MySqlStatement],
+    access_mode: AccessMode,
+) -> Result<(), DbOperationError> {
     if access_mode.is_read_only() && !statements.iter().all(mysql_statement_is_read_only_allowed) {
         return Err(DbOperationError::PermissionDenied(
             "read-only mode blocks MySQL write statements".to_string(),
