@@ -17,6 +17,7 @@ use super::args::mysql_connection_args;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
+const MYSQL_VERSION_ARGS: [&str; 1] = ["--version"];
 
 #[derive(Debug, Deserialize)]
 struct MySqlProbeResponse {
@@ -26,7 +27,7 @@ struct MySqlProbeResponse {
 }
 
 pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
-    let output = run_mysql_command(["--version"], None).await?;
+    let output = run_mysql_command(MYSQL_VERSION_ARGS, None).await?;
     let version_output = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
@@ -350,6 +351,13 @@ mod probe_tests {
                 format!("--execute={MYSQL_PROBE_QUERY}"),
             ]
         );
+        assert!(!args.iter().any(|argument| argument == "--quick"));
+    }
+
+    #[test]
+    fn version_arguments_stay_isolated_from_query_options() {
+        assert_eq!(MYSQL_VERSION_ARGS, ["--version"]);
+        assert!(!MYSQL_VERSION_ARGS.contains(&"--quick"));
     }
 
     #[test]

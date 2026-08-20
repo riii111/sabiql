@@ -211,7 +211,8 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
 ) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session =
+        MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;
     let result = tokio::time::timeout(timeout, async {
         let lower_case_table_names = session.probe().await?;
         session.prepare_read_only().await?;

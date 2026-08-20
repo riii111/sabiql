@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
+use super::super::args::{mysql_metadata_session_args, mysql_query_args};
 use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
 use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
@@ -22,8 +23,19 @@ impl MySqlMetadataSession {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args(program, mysql_query_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_metadata_program(
+        program: &OsStr,
+        option_file: &std::path::Path,
+    ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args(program, mysql_metadata_session_args(option_file))
+    }
+
+    fn spawn_with_args(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
         Ok(Self {
-            process: MySqlProcess::spawn_with_program(program, option_file)?,
+            process: MySqlProcess::spawn_with_args(program, args)?,
         })
     }
 

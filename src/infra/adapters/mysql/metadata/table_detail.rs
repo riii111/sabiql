@@ -154,7 +154,8 @@ async fn fetch_table_detail_in_session_with_program(
         )
     })?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session =
+        MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;
     let result = tokio::time::timeout(
         timeout,
         fetch_table_detail_with_session(&mut session, database, schema, table),

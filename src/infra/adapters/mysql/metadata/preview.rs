@@ -464,6 +464,7 @@ mod tests {
         let script = format!(
             r#"#!/bin/sh
 log='{log}'
+printf 'argv=%s\n' "$*" >> "$log"
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 printf 'process=%s option=%s\n' "$$" "$option" >> "$log"
 eof=$(printf '\004')
@@ -590,6 +591,8 @@ done
                 .count(),
             1
         );
+        let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
+        assert!(argv.contains("--quick"), "{argv}");
         let positions = [
             "__sabiql_probe",
             "SET SESSION TRANSACTION READ ONLY",
