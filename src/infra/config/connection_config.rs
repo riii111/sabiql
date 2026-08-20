@@ -122,7 +122,9 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry.username = Some(config.username.clone());
                 entry.password = Some(config.password.clone());
                 entry.mysql_ssl_mode = Some(config.ssl_mode);
-                entry.mysql_ssl_ca.clone_from(&config.ssl_ca);
+                if config.ssl_mode.uses_ca() {
+                    entry.mysql_ssl_ca.clone_from(&config.ssl_ca);
+                }
                 entry.mysql_ssl_cert.clone_from(&config.ssl_cert);
                 entry.mysql_ssl_key.clone_from(&config.ssl_key);
             }
@@ -427,6 +429,19 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_ca, entry.mysql_ssl_ca);
         assert_eq!(serialized.mysql_ssl_cert, entry.mysql_ssl_cert);
         assert_eq!(serialized.mysql_ssl_key, entry.mysql_ssl_key);
+    }
+
+    #[test]
+    fn mysql_entry_drops_ca_for_non_verification_mode() {
+        let mut entry = mysql_entry(Some("app"));
+        entry.mysql_ssl_ca = Some("/tmp/old-ca.pem".to_string());
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let config = profile.mysql_config().unwrap();
+        assert_eq!(config.ssl_ca, None);
+
+        let serialized = ConnectionConfigEntry::from(&profile);
+        assert_eq!(serialized.mysql_ssl_ca, None);
     }
 
     #[test]

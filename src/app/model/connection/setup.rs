@@ -459,8 +459,7 @@ impl ConnectionSetupState {
                 if let Some(mode) =
                     MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
                 {
-                    self.mysql_ssl_mode = *mode;
-                    self.retain_validation_errors_for_visible_fields();
+                    self.set_mysql_ssl_mode(*mode);
                 }
             } else if let Some(mode) = SslMode::all_variants().get(self.ssl_dropdown.selected_index)
             {
@@ -477,6 +476,14 @@ impl ConnectionSetupState {
 
     pub fn has_open_dropdown(&self) -> bool {
         self.database_type_dropdown.is_open || self.ssl_dropdown.is_open
+    }
+
+    fn set_mysql_ssl_mode(&mut self, mode: MySqlSslMode) {
+        self.mysql_ssl_mode = mode;
+        if !mode.uses_ca() {
+            self.ssl_ca.clear();
+        }
+        self.retain_validation_errors_for_visible_fields();
     }
 
     pub fn record_sqlite_config_error(&mut self, error: SqliteConnectionConfigError) {
@@ -542,7 +549,8 @@ impl ConnectionSetupState {
                     self.mysql_ssl_mode,
                 )
                 .with_tls_paths(
-                    (!matches!(self.mysql_ssl_mode, MySqlSslMode::Disabled))
+                    self.mysql_ssl_mode
+                        .uses_ca()
                         .then(|| optional_path(&self.ssl_ca))
                         .flatten(),
                     (!matches!(self.mysql_ssl_mode, MySqlSslMode::Disabled))
@@ -616,7 +624,9 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
                 state.password =
                     TextInputState::new(&config.password, config.password.chars().count());
                 state.mysql_ssl_mode = config.ssl_mode;
-                if let Some(path) = config.ssl_ca.as_deref() {
+                if config.ssl_mode.uses_ca()
+                    && let Some(path) = config.ssl_ca.as_deref()
+                {
                     state.ssl_ca = TextInputState::new(path, path.chars().count());
                 }
                 if let Some(path) = config.ssl_cert.as_deref() {
@@ -807,6 +817,49 @@ mod tests {
                     ..
                 })
             ));
+        }
+
+        #[test]
+        fn mysql_config_drops_ca_for_non_verification_mode() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state.mysql_ssl_mode = MySqlSslMode::Required;
+            state.ssl_ca.set_content("/tmp/old-ca.pem".to_string());
+
+            let ConnectionConfig::MySQL(config) = state.to_connection_config().unwrap() else {
+                panic!("expected MySQL config");
+            };
+
+            assert_eq!(config.ssl_ca, None);
+        }
+
+        #[test]
+        fn switching_to_non_verification_mode_clears_ca_without_restoring_it() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state.mysql_ssl_mode = MySqlSslMode::VerifyCa;
+            state.ssl_ca.set_content("/tmp/old-ca.pem".to_string());
+            state.ssl_dropdown.is_open = true;
+            state.ssl_dropdown.selected_index = MySqlSslMode::all_variants()
+                .iter()
+                .position(|mode| *mode == MySqlSslMode::Required)
+                .unwrap();
+
+            state.confirm_dropdown();
+
+            assert_eq!(state.mysql_ssl_mode, MySqlSslMode::Required);
+            assert!(state.ssl_ca.content().is_empty());
+
+            state.focused_field = ConnectionField::SslMode;
+            state.toggle_focused_dropdown();
+            state.ssl_dropdown.selected_index = MySqlSslMode::all_variants()
+                .iter()
+                .position(|mode| *mode == MySqlSslMode::VerifyCa)
+                .unwrap();
+            state.confirm_dropdown();
+
+            assert_eq!(state.mysql_ssl_mode, MySqlSslMode::VerifyCa);
+            assert!(state.ssl_ca.content().is_empty());
         }
 
         #[test]

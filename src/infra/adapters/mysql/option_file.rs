@@ -65,8 +65,13 @@ impl MySqlOptionFile {
 fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
     validate_mysql_tls_config(target)?;
 
+    let ca_path = target
+        .ssl_mode
+        .uses_ca()
+        .then_some(target.ssl_ca.as_deref())
+        .flatten();
     for (kind, path) in [
-        ("CA", target.ssl_ca.as_deref()),
+        ("CA", ca_path),
         ("client certificate", target.ssl_cert.as_deref()),
         ("client key", target.ssl_key.as_deref()),
     ] {
@@ -244,7 +249,9 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
         push_option(&mut contents, "database", database);
     }
     push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
-    if let Some(path) = target.ssl_ca.as_deref() {
+    if target.ssl_mode.uses_ca()
+        && let Some(path) = target.ssl_ca.as_deref()
+    {
         push_option(&mut contents, "ssl-ca", path);
     }
     if let Some(path) = target.ssl_cert.as_deref() {
@@ -355,6 +362,28 @@ mod tests {
         assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
         assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
         assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn option_file_omits_non_verification_ca_without_validating_its_path() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::Required,
+            ssl_ca: Some("/missing/ca.pem".to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert_eq!(
+            contents,
+            "[client]\n\
+host = \"localhost\"\n\
+port = \"3306\"\n\
+user = \"user\"\n\
+password = \"secret\"\n\
+ssl-mode = \"REQUIRED\"\n"
+        );
     }
 
     #[test]
