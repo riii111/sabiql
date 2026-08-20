@@ -132,7 +132,8 @@ pub(super) fn mysql_metadata_select_query(
             "MySQL empty SELECT cannot be used for metadata fallback".to_string(),
         ));
     }
-    if has_mysql_read_only_side_effect(query)
+    let query = strip_mysql_sql_calc_found_rows(query);
+    if has_mysql_read_only_side_effect(&query)
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?
     {
         return Err(DbOperationError::UnsupportedOperation(
@@ -140,7 +141,6 @@ pub(super) fn mysql_metadata_select_query(
                 .to_string(),
         ));
     }
-    let query = strip_mysql_sql_calc_found_rows(query);
     Ok(sql::build_metadata_select_query(
         &query,
         source_alias,
@@ -173,6 +173,73 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
                 .iter()
                 .any(|modifier| &uppercase[start..end] == *modifier)
         })
+    }
+
+    fn executable_comment_modifier(
+        bytes: &[u8],
+        uppercase: &[u8],
+        start: usize,
+        end: usize,
+        outer_last_word: Option<(usize, usize)>,
+    ) -> Option<(usize, usize)> {
+        let mut index = start;
+        let mut last_word = outer_last_word;
+        let mut at_version_prefix = true;
+        let mut quote = None;
+        while index < end {
+            let byte = bytes[index];
+            if let Some(delimiter) = quote {
+                if byte == b'\\' {
+                    index = (index + 2).min(end);
+                    continue;
+                }
+                if byte == delimiter {
+                    if bytes.get(index + 1) == Some(&delimiter) {
+                        index += 2;
+                        continue;
+                    }
+                    quote = None;
+                }
+                index += 1;
+                continue;
+            }
+            if matches!(byte, b'\'' | b'"' | b'`') {
+                quote = Some(byte);
+                last_word = None;
+                at_version_prefix = false;
+                index += 1;
+                continue;
+            }
+            if byte.is_ascii_whitespace() {
+                index += 1;
+                continue;
+            }
+            if is_identifier_byte(byte) {
+                let word_start = index;
+                index += 1;
+                while index < end && is_identifier_byte(bytes[index]) {
+                    index += 1;
+                }
+                if index - word_start == MODIFIER.len()
+                    && &uppercase[word_start..index] == MODIFIER
+                    && is_select_modifier_prefix(uppercase, last_word)
+                    && bytes.get(index) != Some(&b'.')
+                {
+                    return Some((word_start, index));
+                }
+                let is_version =
+                    at_version_prefix && bytes[word_start..index].iter().all(u8::is_ascii_digit);
+                if !is_version {
+                    last_word = Some((word_start, index));
+                    at_version_prefix = false;
+                }
+                continue;
+            }
+            last_word = None;
+            at_version_prefix = false;
+            index += 1;
+        }
+        None
     }
 
     let bytes = query.as_bytes();
@@ -220,10 +287,37 @@ fn strip_mysql_sql_calc_found_rows(query: &str) -> String {
             continue;
         }
         if bytes[index..].starts_with(b"/*") {
-            index = bytes[index + 2..]
+            let Some(comment_offset) = bytes[index + 2..]
                 .windows(2)
                 .position(|window| window == b"*/")
-                .map_or(bytes.len(), |offset| index + offset + 4);
+            else {
+                break;
+            };
+            let comment_end = index + 2 + comment_offset;
+            if bytes[index..].starts_with(b"/*!")
+                && let Some((start, end)) = executable_comment_modifier(
+                    bytes,
+                    &uppercase,
+                    index + 3,
+                    comment_end,
+                    last_word,
+                )
+            {
+                let only_versioned_modifier = bytes[index + 3..start]
+                    .iter()
+                    .chain(bytes[end..comment_end].iter())
+                    .all(|byte| byte.is_ascii_whitespace() || byte.is_ascii_digit());
+                let mut result = String::with_capacity(query.len() - MODIFIER.len());
+                if only_versioned_modifier {
+                    result.push_str(&query[..index]);
+                    result.push_str(&query[comment_end + 2..]);
+                } else {
+                    result.push_str(&query[..start]);
+                    result.push_str(&query[end..]);
+                }
+                return result;
+            }
+            index = comment_end + 2;
             continue;
         }
         if is_identifier_byte(byte) {
@@ -543,6 +637,18 @@ mod tests {
                 mysql_metadata_select_query(query, "__source", "__marker").unwrap();
             assert!(fallback_query.contains(query), "{query}");
         }
+    }
+
+    #[test]
+    fn metadata_fallback_removes_sql_calc_found_rows_from_executable_comments() {
+        let fallback_query = mysql_metadata_select_query(
+            "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM items WHERE FALSE",
+            "__source",
+            "__marker",
+        )
+        .unwrap();
+
+        assert!(!fallback_query.contains("SQL_CALC_FOUND_ROWS"));
     }
 
     #[test]

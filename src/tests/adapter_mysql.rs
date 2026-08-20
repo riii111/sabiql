@@ -2265,7 +2265,7 @@ mod query_execution {
                 .execute_adhoc(
                     db.dsn(),
                     &format!(
-                        "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite WHERE first_key = 999; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = FOUND_ROWS() WHERE id = 1"
+                        "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM mysql_preview_composite WHERE first_key = 999; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = FOUND_ROWS() WHERE id = 1"
                     ),
                     AccessMode::ReadWrite,
                 )

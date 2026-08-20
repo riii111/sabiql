@@ -670,6 +670,16 @@ mod tests {
     }
 
     #[test]
+    fn accepts_sql_calc_found_rows_in_an_executable_select_modifier_comment() {
+        assert!(
+            classify_mysql_statement(
+                "SELECT /*!80000 SQL_CALC_FOUND_ROWS */ first_key FROM items WHERE FALSE"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
     fn rejects_multiple_drop_targets_and_ambiguous_ddl_quotes() {
         assert!(classify_mysql_statement("DROP TABLE app.keep, other.drop_me").is_err());
         assert!(classify_mysql_statement("DROP VIEW app.keep, other.drop_me").is_err());
