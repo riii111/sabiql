@@ -684,13 +684,8 @@ exit 0
         let option_file = directory.path().join("option.cnf");
         fs::write(&option_file, "[client]\n").unwrap();
         let program = directory.path().join("mysql");
-        let update_response = statement_error.map_or_else(
-            || {
-                "printf '%s\\n' '<resultset><row><field name=\"affected\">ok</field></row></resultset>'"
-                    .to_string()
-            },
-            |error| format!("printf '%s\\n' '{error}' >&2"),
-        );
+        let update_response = statement_error
+            .map_or_else(String::new, |error| format!("printf '%s\\n' '{error}' >&2"));
         let tail = if tail_error {
             "printf '%s\\n' input_closed >> \"$log\"\nprintf '%s\\n' 'ERROR 1054 (42S02): tail error' >&2\n  exit 1"
         } else {
@@ -706,14 +701,14 @@ exit 0
                 .to_string()
         } else {
             format!("marker=$(printf '%s\\n' \"$line\" | sed \"s/.*SELECT '\\\\([^']*\\\\)' AS __sabiql_marker.*/\\\\1/\")
-      rows=0
-      case \"$line\" in *ROW_COUNT\\(\\)* ) rows=3 ;; esac
-      printf '%s\\n' '<resultset><row><field name=\"__sabiql_marker\">'\"$marker\"'</field><field name=\"affected_rows\">'\"$rows\"'</field></row></resultset>'
-      if [ \"$pending_error\" = 1 ]; then
-        sleep 0.05
-        printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
-        pending_error=0
-      fi
+      case \"$line\" in
+        *ROW_COUNT\\(\\)*)
+          printf '%s\\n' '<resultset><row><field name=\"__sabiql_marker\">'\"$marker\"'</field><field name=\"affected_rows\">3</field></row></resultset>'
+          ;;
+        *)
+          printf '%s\\n' '<resultset><row><field name=\"__sabiql_marker\">'\"$marker\"'</field></row></resultset>'
+          ;;
+      esac
       {tail_after_create}")
         };
         let script = format!(
@@ -721,7 +716,6 @@ exit 0
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 printf 'process=%s\n' "$$" >> "$log"
-pending_error=0
 last_statement=none
 eof=$(printf '\004')
 while IFS= read -r line; do
@@ -750,7 +744,8 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset></resultset>'
       ;;
     *missing_column*)
-      pending_error=1
+      printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
+      exit 1
       ;;
     *SELECT*)
       case "$line" in
@@ -770,7 +765,6 @@ while IFS= read -r line; do
       ;;
     *CREATE*)
       last_statement=create
-      printf '%s\n' '<resultset><row><field name="affected">ok</field></row></resultset>'
       ;;
     *)
       printf '%s\n' '<resultset></resultset>'
@@ -1373,11 +1367,38 @@ done
                     values: vec![vec![QueryValue::Text("two".to_string())]],
                 })
             );
-            assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
+            assert_eq!(result.command_tag, None);
             assert_eq!(result.refresh_scope, RefreshScope::Data);
             let log = fs::read_to_string(log_file).unwrap();
             assert!(log.contains("UPDATE items SET value = 1"));
-            assert!(log.matches("__sabiql_marker").count() >= 2);
+            assert_eq!(log.matches("__sabiql_marker").count(), 1);
+            assert!(!log.contains("ROW_COUNT()"));
+        }
+
+        #[tokio::test]
+        async fn single_dml_uses_the_submission_terminal_row_count() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements = split_mysql_statements("UPDATE items SET value = 1")
+                .unwrap()
+                .into_iter()
+                .map(|sql| classify_mysql_statement(&sql).unwrap())
+                .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .expect("single DML execution");
+
+            assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert_eq!(log.matches("__sabiql_marker").count(), 1);
+            assert!(log.contains("ROW_COUNT()"));
         }
 
         #[tokio::test]
@@ -1522,7 +1543,7 @@ done
         }
 
         #[tokio::test]
-        async fn rejects_error_reported_after_row_count_marker() {
+        async fn rejects_error_reported_without_a_statement_marker() {
             let (_directory, program, option_file) = fake_mysql_multi();
             let statements = split_mysql_statements("SELECT missing_column FROM items")
                 .unwrap()

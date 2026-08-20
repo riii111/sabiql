@@ -7,15 +7,14 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     RefreshScope,
-    mysql_sql::{MySqlStatement, MySqlStatementKind},
+    mysql_sql::{MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying},
 };
 
 use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
 use super::super::policy::{
-    MySqlCommandEvent, MySqlExecutionResult, aggregate_mysql_command_tag,
-    is_mysql_row_count_marker, mysql_command_tag,
-    mysql_metadata_fallback_has_unsupported_session_state, mysql_refresh_scope,
-    mysql_row_count_marker, query_failed_after_change, query_failed_after_mysql_statement,
+    MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
+    mysql_refresh_scope, mysql_row_count_marker, query_failed_after_change,
+    query_failed_after_mysql_statement,
 };
 use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns;
@@ -70,7 +69,6 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
 
 struct MySqlStatementExecution {
     result_set: Option<MySqlResultSet>,
-    command_event: MySqlCommandEvent,
     refresh_scope: RefreshScope,
 }
 
@@ -112,18 +110,24 @@ async fn run_mysql_statement(
     expected_columns: Option<&[&str]>,
     refresh_scope: RefreshScope,
 ) -> Result<MySqlStatementExecution, DbOperationError> {
-    let marker = Uuid::new_v4().simple().to_string();
     let statement_scope = mysql_refresh_scope(statement.kind());
     let possible_refresh_scope = refresh_scope.merge(statement_scope);
     if let Err(error) = write_mysql_statement(process, statement.sql()).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
-    let marker_query =
-        format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows");
-    if let Err(error) = write_mysql_statement(process, &marker_query).await {
-        return Err(query_failed_after_change(error, possible_refresh_scope));
+    if !matches!(
+        statement.kind(),
+        MySqlStatementKind::Select
+            | MySqlStatementKind::Table
+            | MySqlStatementKind::Show
+            | MySqlStatementKind::Describe
+    ) {
+        return Ok(MySqlStatementExecution {
+            result_set: None,
+            refresh_scope: possible_refresh_scope,
+        });
     }
-    let first_xml = match read_one_mysql_resultset(process).await {
+    let xml = match read_one_mysql_resultset(process).await {
         Ok(xml) => xml,
         Err(error) => {
             return Err(query_failed_after_mysql_statement(
@@ -133,53 +137,24 @@ async fn run_mysql_statement(
             ));
         }
     };
-    let first_result = match super::parse_mysql_xml(&first_xml) {
+    let result = match super::parse_mysql_xml(&xml) {
         Ok(result) => result,
         Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
     };
-    let (user_result, marker_result) = if is_mysql_row_count_marker(&first_result, &marker) {
-        (None, first_result)
-    } else {
-        let xml = match read_one_mysql_resultset(process).await {
-            Ok(xml) => xml,
-            Err(error) => {
-                return Err(query_failed_after_mysql_statement(
-                    error,
-                    refresh_scope,
-                    possible_refresh_scope,
-                ));
-            }
-        };
-        let marker_result = match super::parse_mysql_xml(&xml) {
-            Ok(result) => result,
-            Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-        };
-        let user_result = fill_mysql_empty_result_columns(
-            process,
-            first_result,
-            option_file,
-            statement.sql(),
-            statement.kind(),
-            access_mode,
-            expected_columns,
-        )
-        .await
-        .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
-        (Some(user_result), marker_result)
-    };
-    let affected_rows = match mysql_row_count_marker(&marker_result, &marker) {
-        Ok(rows) => rows,
-        Err(error) => return Err(query_failed_after_change(error, possible_refresh_scope)),
-    };
-    let tag = mysql_command_tag(statement, affected_rows, user_result.as_ref());
+    let user_result = fill_mysql_empty_result_columns(
+        process,
+        result,
+        option_file,
+        statement.sql(),
+        statement.kind(),
+        access_mode,
+        expected_columns,
+    )
+    .await
+    .map_err(|error| query_failed_after_change(error, possible_refresh_scope))?;
 
     Ok(MySqlStatementExecution {
-        result_set: user_result,
-        command_event: MySqlCommandEvent {
-            kind: statement.kind().clone(),
-            target: statement.target().map(str::to_string),
-            tag,
-        },
+        result_set: Some(user_result),
         refresh_scope: possible_refresh_scope,
     })
 }
@@ -202,13 +177,14 @@ async fn run_mysql_adhoc_process(
     configure_mysql_session(process, access_mode).await?;
 
     let mut last_result_set = None;
-    let mut command_tags = Vec::with_capacity(statements.len());
     let mut refresh_scope = RefreshScope::None;
+    let mut refresh_scope_before_last_statement = RefreshScope::None;
     let expected_columns = (statements.len() == 1)
         .then_some(expected_columns)
         .flatten();
 
     for statement in statements {
+        refresh_scope_before_last_statement = refresh_scope;
         let execution = run_mysql_statement(
             process,
             option_file,
@@ -221,9 +197,74 @@ async fn run_mysql_adhoc_process(
         if let Some(result) = execution.result_set {
             last_result_set = Some(result);
         }
-        command_tags.push(execution.command_event);
         refresh_scope = execution.refresh_scope;
     }
+
+    let marker = Uuid::new_v4().simple().to_string();
+    let marker_query =
+        if statements.len() == 1 && mysql_statement_is_data_modifying(statements[0].kind()) {
+            format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows")
+        } else {
+            format!("SELECT '{marker}' AS __sabiql_marker")
+        };
+    if let Err(error) = write_mysql_statement(process, &marker_query).await {
+        return Err(query_failed_after_change(error, refresh_scope));
+    }
+    let marker_xml = match read_one_mysql_resultset(process).await {
+        Ok(xml) => xml,
+        Err(error) => {
+            return Err(query_failed_after_mysql_statement(
+                error,
+                refresh_scope_before_last_statement,
+                refresh_scope,
+            ));
+        }
+    };
+    let marker_result = match super::parse_mysql_xml(&marker_xml) {
+        Ok(result) => result,
+        Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
+    };
+    let command_tag = if statements.len() == 1 {
+        let affected_rows = if mysql_statement_is_data_modifying(statements[0].kind()) {
+            Some(
+                mysql_row_count_marker(&marker_result, &marker)
+                    .map_err(|error| query_failed_after_change(error, refresh_scope))?,
+            )
+        } else {
+            if marker_result.columns != ["__sabiql_marker"]
+                || marker_result.values.len() != 1
+                || marker_result.values[0].len() != 1
+                || marker_result.values[0][0].as_str() != Some(marker.as_str())
+            {
+                return Err(query_failed_after_change(
+                    DbOperationError::QueryFailed(
+                        "mysql adhoc completion marker did not match".to_string(),
+                    ),
+                    refresh_scope,
+                ));
+            }
+            None
+        };
+        Some(mysql_command_tag(
+            &statements[0],
+            affected_rows.unwrap_or_default(),
+            last_result_set.as_ref(),
+        ))
+    } else {
+        if marker_result.columns != ["__sabiql_marker"]
+            || marker_result.values.len() != 1
+            || marker_result.values[0].len() != 1
+            || marker_result.values[0][0].as_str() != Some(marker.as_str())
+        {
+            return Err(query_failed_after_change(
+                DbOperationError::QueryFailed(
+                    "mysql adhoc completion marker did not match".to_string(),
+                ),
+                refresh_scope,
+            ));
+        }
+        None
+    };
 
     let result = finish_mysql_session(process).await?;
     if has_mysql_cli_error(&result.error_bytes) {
@@ -241,7 +282,7 @@ async fn run_mysql_adhoc_process(
 
     Ok(MySqlExecutionResult {
         result_set: last_result_set,
-        command_tag: aggregate_mysql_command_tag(&command_tags),
+        command_tag,
         refresh_scope,
     })
 }

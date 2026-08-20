@@ -1864,7 +1864,7 @@ mod query_execution {
     use sabiql_app::ports::outbound::{
         AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
     };
-    use sabiql_domain::{CommandTag, QueryValue, RefreshScope};
+    use sabiql_domain::{QueryValue, RefreshScope};
     use sabiql_infra::adapters::mysql::{
         execute_mysql_adhoc_with_read_only_session_for_test,
         execute_mysql_adhoc_with_timeout_for_test,
@@ -2132,7 +2132,7 @@ mod query_execution {
                     .map_err(|error| format!("{error:?}"))?;
                 if result.columns != ["empty_text"]
                     || result.values() != [[QueryValue::Text("multi statement".to_string())]]
-                    || result.command_tag != Some(CommandTag::Update(1))
+                    || result.command_tag.is_some()
                     || result.refresh_scope != RefreshScope::Data
                 {
                     return Err(format!("unexpected multi-statement result: {result:?}"));
@@ -2153,6 +2153,95 @@ mod query_execution {
                 Err(error) => Err(error),
                 Ok(()) => cleanup.map(|_| ()),
             }
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn preserves_session_row_count_and_omits_multi_statement_affected_rows() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let result = async {
+                let result = db
+                    .adapter()
+                    .execute_adhoc(
+                        db.dsn(),
+                        &format!(
+                            "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'session state' WHERE id = 1; SELECT ROW_COUNT()"
+                        ),
+                        AccessMode::ReadWrite,
+                    )
+                    .await
+                    .map_err(|error| format!("{error:?}"))?;
+                if result.columns != ["ROW_COUNT()"]
+                    || result.values() != [[QueryValue::Text("1".to_string())]]
+                    || result.command_tag.is_some()
+                    || result.refresh_scope != RefreshScope::Data
+                {
+                    return Err(format!("unexpected session-state result: {result:?}"));
+                }
+                Ok::<(), String>(())
+            }
+            .await;
+            let cleanup = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!("UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("failed to restore fixture: {error:?}"));
+            match result {
+                Err(error) => Err(error),
+                Ok(()) => cleanup.map(|_| ()),
+            }
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn preserves_multi_statement_warnings_and_found_rows() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let warnings = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "INSERT IGNORE INTO mysql_preview_composite (first_key, second_key, payload) VALUES (3, 30, 'first'); SHOW WARNINGS",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("warning query failed: {error:?}"))?;
+            if warnings.columns != ["Level", "Code", "Message"]
+                || !warnings.values().iter().any(|row| {
+                    row.iter().any(|value| {
+                        value
+                            .as_str()
+                            .is_some_and(|value| value.contains("Duplicate entry"))
+                    })
+                })
+                || warnings.command_tag.is_some()
+            {
+                return Err(format!("unexpected warning result: {warnings:?}"));
+            }
+
+            let found_rows = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    "SELECT SQL_CALC_FOUND_ROWS first_key FROM mysql_preview_composite; SELECT FOUND_ROWS()",
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("FOUND_ROWS query failed: {error:?}"))?;
+            if found_rows.columns != ["FOUND_ROWS()"]
+                || found_rows.values() != [[QueryValue::Text("2".to_string())]]
+                || found_rows.command_tag.is_some()
+            {
+                return Err(format!("unexpected FOUND_ROWS result: {found_rows:?}"));
+            }
+            Ok(())
         }))
         .await;
     }
@@ -2218,7 +2307,7 @@ mod query_execution {
                 .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["empty_text"]
                 || result.values() != [[QueryValue::Text(String::new())]]
-                || result.command_tag != Some(CommandTag::Select(1))
+                || result.command_tag.is_some()
                 || result.refresh_scope != RefreshScope::Data
             {
                 return Err(format!("unexpected transaction result: {result:?}"));
@@ -2343,7 +2432,7 @@ mod query_execution {
                 .map_err(|error| format!("{error:?}"))?;
             if result.columns != ["id"]
                 || result.values() != [[QueryValue::Text("1".to_string())], [QueryValue::Text("2".to_string())]]
-                || result.command_tag != Some(CommandTag::Insert(2))
+                || result.command_tag.is_some()
                 || result.refresh_scope != RefreshScope::Data
             {
                 return Err(format!("unexpected temporary-table result: {result:?}"));
@@ -2362,7 +2451,7 @@ mod query_execution {
                 .await
                 .map_err(|error| format!("temporary-table DDL-only query failed: {error:?}"))?;
             if ddl_only_result.command_tag
-                    != Some(CommandTag::Other("DROP TEMPORARY TABLE".to_string()))
+                    .is_some()
                 || ddl_only_result.refresh_scope != RefreshScope::None
             {
                 return Err(format!(
