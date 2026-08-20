@@ -1006,6 +1006,8 @@ mod tests {
 
     #[test]
     fn mysql_trigger_details_render_all_creation_context_fields() {
+        use crate::app::model::shared::theme_id::ThemeId;
+        use crate::theme::palette_for;
         use ratatui::Terminal;
         use ratatui::backend::TestBackend;
         use ratatui::layout::Rect;
@@ -1026,8 +1028,7 @@ mod tests {
             }),
         };
         let mut terminal = Terminal::new(TestBackend::new(80, 12)).unwrap();
-        let theme =
-            crate::theme::palette_for(crate::app::model::shared::theme_id::ThemeId::Default);
+        let theme = palette_for(ThemeId::Default);
         let mut plan = ViewportPlan::default();
 
         terminal
