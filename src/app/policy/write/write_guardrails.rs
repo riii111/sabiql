@@ -32,14 +32,6 @@ impl StableRowIdentity {
         }
     }
 
-    pub fn predicate_pairs_for_row(
-        &self,
-        result: &QueryResult,
-        row_idx: usize,
-    ) -> Option<Vec<(String, QueryValue)>> {
-        self.identity_pairs_for_row(result, row_idx)
-    }
-
     pub fn is_primary_key_column(&self, column_name: &str) -> bool {
         match self {
             Self::PrimaryKey(columns) | Self::Explicit(columns) => {
