@@ -285,6 +285,26 @@ mod tests {
     }
 
     #[test]
+    fn mysql_analyze_continuation_metrics_reach_the_compare_slot() {
+        let mut ctx = ExplainContext::default();
+
+        ctx.set_plan(
+            "-> Filter: (t3.i > 8)  (cost=0.75 rows=1.67)\n(actual time=0.0168..0.0182 rows=1 loops=1)"
+                .to_string(),
+            DatabaseType::MySQL,
+            true,
+            42,
+            "SELECT * FROM t3 WHERE i > 8",
+        );
+
+        let plan = &ctx.right().unwrap().plan;
+        assert_eq!(plan.actual_start_ms, Some(0.0168));
+        assert_eq!(plan.actual_end_ms, Some(0.0182));
+        assert_eq!(plan.actual_rows, Some(1.0));
+        assert_eq!(plan.loops, Some(1));
+    }
+
+    #[test]
     fn second_explain_auto_advances_right_to_left() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
