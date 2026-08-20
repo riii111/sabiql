@@ -63,16 +63,23 @@ impl MySqlProcess {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args(program, mysql_query_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_args(
+        program: &OsStr,
+        args: Vec<String>,
+    ) -> Result<Self, DbOperationError> {
         #[cfg(unix)]
         {
-            Self::spawn_with_pty(program, option_file)
+            Self::spawn_with_pty(program, args)
         }
 
         #[cfg(not(unix))]
         {
             let mut command = Command::new(program);
             command
-                .args(mysql_query_args(option_file))
+                .args(args)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -111,16 +118,13 @@ impl MySqlProcess {
     }
 
     #[cfg(unix)]
-    fn spawn_with_pty(
-        program: &OsStr,
-        option_file: &std::path::Path,
-    ) -> Result<Self, DbOperationError> {
+    fn spawn_with_pty(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
         let (master, slave) = create_mysql_pty().map_err(|error| {
             DbOperationError::ConnectionFailed(format!("Unable to create MySQL PTY: {error}"))
         })?;
         let mut command = Command::new(program);
         command
-            .args(mysql_query_args(option_file))
+            .args(args)
             .stdin(Stdio::from(slave.try_clone().map_err(|error| {
                 DbOperationError::ConnectionFailed(error.to_string())
             })?))
@@ -721,6 +725,7 @@ exit 0
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
 printf 'process=%s\n' "$$" >> "$log"
+printf 'argv=%s\n' "$*" >> "$log"
 pending_error=0
 last_statement=none
 eof=$(printf '\004')
@@ -1072,6 +1077,8 @@ done
                     .count(),
                 1
             );
+            let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
+            assert!(!argv.contains("--quick"), "{argv}");
             let positions = [
                 "__sabiql_probe",
                 MYSQL_READ_ONLY_STATEMENT,
