@@ -194,6 +194,11 @@ fn mysql_node_name(line: &str) -> Option<String> {
     (!node_name.is_empty()).then(|| node_name.to_string())
 }
 
+fn is_mysql_tree_node_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("->") || line.contains("(cost=")
+}
+
 fn parse_mysql_loops(token: &str) -> Option<u64> {
     let token = token.trim();
     let (mantissa, exponent) = token
@@ -331,13 +336,10 @@ pub fn parse_mysql_tree_explain_text(
     is_analyze: bool,
     execution_time_ms: u64,
 ) -> ExplainPlan {
-    let mut lines = text.lines();
-    let first_cost_line = lines.find(|line| line.contains("(cost="));
-    let continuation = if first_cost_line.is_some() {
-        lines.next()
-    } else {
-        None
-    };
+    let root = text
+        .lines()
+        .enumerate()
+        .find(|(_, line)| is_mysql_tree_node_line(line));
     let (
         top_node_type,
         total_cost,
@@ -346,24 +348,28 @@ pub fn parse_mysql_tree_explain_text(
         actual_end_ms,
         actual_rows,
         loops,
-    ) = first_cost_line.map_or((None, None, None, None, None, None, None), |line| {
-        let (cost, rows) = parse_mysql_cost_fragment(line);
-        let (cost, rows) = match (cost, rows) {
-            (Some(cost), Some(rows)) => (Some(cost), Some(rows)),
-            _ => (None, None),
-        };
-        let (actual_start_ms, actual_end_ms, actual_rows, loops) =
-            parse_mysql_actual_metrics(line, continuation);
-        (
-            mysql_node_name(line),
-            cost,
-            rows,
-            actual_start_ms,
-            actual_end_ms,
-            actual_rows,
-            loops,
-        )
-    });
+    ) = root.map_or(
+        (None, None, None, None, None, None, None),
+        |(root_index, line)| {
+            let continuation = text.lines().nth(root_index + 1);
+            let (cost, rows) = parse_mysql_cost_fragment(line);
+            let (cost, rows) = match (cost, rows) {
+                (Some(cost), Some(rows)) => (Some(cost), Some(rows)),
+                _ => (None, None),
+            };
+            let (actual_start_ms, actual_end_ms, actual_rows, loops) =
+                parse_mysql_actual_metrics(line, continuation);
+            (
+                mysql_node_name(line),
+                cost,
+                rows,
+                actual_start_ms,
+                actual_end_ms,
+                actual_rows,
+                loops,
+            )
+        },
+    );
 
     ExplainPlan {
         raw_text: text.to_string(),
@@ -534,6 +540,44 @@ Execution Time: 0.600 ms";
             assert_eq!(plan.total_cost, Some(2.5));
             assert_eq!(plan.estimated_rows, Some(375.0));
             assert_eq!(plan.raw_text, text);
+        }
+
+        #[test]
+        fn mysql_tree_preserves_costless_root_without_promoting_child_cost() {
+            let text = "-> Insert into t2\n    -> Table scan on t1  (cost=0.35 rows=4)";
+            let plan = parse_mysql_tree_explain_text(text, false, 0);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Insert into t2"));
+            assert_eq!(plan.total_cost, None);
+            assert_eq!(plan.estimated_rows, None);
+            assert_eq!(plan.raw_text, text);
+        }
+
+        #[test]
+        fn mysql_tree_preserves_costless_root_actual_metrics_from_continuation() {
+            let text = "-> Aggregate: count(0)\n(actual time=0.1..0.2 rows=1 loops=1)\n    -> Table scan on t1  (cost=0.35 rows=4)";
+            let plan = parse_mysql_tree_explain_text(text, true, 0);
+
+            assert_eq!(plan.top_node_type.as_deref(), Some("Aggregate: count(0)"));
+            assert_eq!(plan.total_cost, None);
+            assert_eq!(plan.estimated_rows, None);
+            assert_eq!(plan.actual_start_ms, Some(0.1));
+            assert_eq!(plan.actual_end_ms, Some(0.2));
+            assert_eq!(plan.actual_rows, Some(1.0));
+            assert_eq!(plan.loops, Some(1));
+        }
+
+        #[test]
+        fn mysql_tree_preserves_actual_time_text_inside_node_expression() {
+            let text = "-> Filter: (s = '(actual time=')  (cost=1 rows=1)";
+            let plan = parse_mysql_tree_explain_text(text, false, 0);
+
+            assert_eq!(
+                plan.top_node_type.as_deref(),
+                Some("Filter: (s = '(actual time=')")
+            );
+            assert_eq!(plan.total_cost, Some(1.0));
+            assert_eq!(plan.estimated_rows, Some(1.0));
         }
 
         #[test]
@@ -789,6 +833,28 @@ Execution Time: 0.600 ms";
                     .reasons
                     .iter()
                     .any(|r| r.contains("Could not parse cost"))
+            );
+        }
+
+        #[test]
+        fn costless_mysql_tree_root_remains_unavailable_for_comparison() {
+            let baseline = parse_mysql_tree_explain_text(
+                "-> Insert into t2\n    -> Table scan on t1  (cost=0.35 rows=4)",
+                false,
+                0,
+            );
+            let current = parse_mysql_tree_explain_text(
+                "-> Insert into t2\n    -> Table scan on t1  (cost=0.7 rows=4)",
+                false,
+                0,
+            );
+
+            let result = compare_plans(&baseline, &current);
+
+            assert_eq!(result.verdict, ComparisonVerdict::Unavailable);
+            assert_eq!(
+                result.reasons,
+                vec!["Could not parse cost from either plan".to_string()]
             );
         }
 
