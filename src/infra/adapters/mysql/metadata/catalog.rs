@@ -720,18 +720,16 @@ mod tests {
 
     fn tables_result(schema: &str) -> MySqlResultSet {
         result(
-            &[
-                "TABLE_SCHEMA",
-                "TABLE_NAME",
-                "TABLE_TYPE",
-                "TABLE_ROWS",
-                "TABLE_COMMENT",
-            ],
+            TABLES_RESULT_COLUMNS,
             vec![vec![
                 QueryValue::Text(schema.to_string()),
                 QueryValue::Text("users".to_string()),
                 QueryValue::Text("BASE TABLE".to_string()),
                 QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
                 QueryValue::Null,
             ]],
         )
@@ -860,6 +858,10 @@ mod tests {
                     kind: TableKind::Table,
                     row_count_estimate: None,
                     comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
                 }],
                 lower_case_table_names,
             )
@@ -876,6 +878,10 @@ mod tests {
                     kind: TableKind::Table,
                     row_count_estimate: None,
                     comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
                 }],
                 lower_case_table_names,
             )
