@@ -1043,9 +1043,11 @@ done
         #[tokio::test]
         async fn reuses_one_process_for_ordered_resultsets() {
             let (_directory, program, option_file) = fake_mysql_multi();
-            let mut session =
-                MySqlMetadataSession::spawn_with_program(OsStr::new(&program), &option_file)
-                    .expect("spawn fake mysql");
+            let mut session = MySqlMetadataSession::spawn_with_metadata_program(
+                OsStr::new(&program),
+                &option_file,
+            )
+            .expect("spawn fake mysql");
 
             session.probe().await.expect("mode probe");
             session
