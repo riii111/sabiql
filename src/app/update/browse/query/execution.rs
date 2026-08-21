@@ -96,6 +96,14 @@ pub fn reduce_execution(
             }
 
             if *source == QuerySource::Preview
+                && matches!(error, DbOperationError::PreviewSizeExceeded(_))
+            {
+                state.query.mark_idle();
+                state.messages.set_error_at(error.user_message(), now);
+                return DispatchResult::handled();
+            }
+
+            if *source == QuerySource::Preview
                 && *generation != 0
                 && *generation == state.session.selection_generation()
                 && state.session.selected_table_key().is_some()
@@ -1368,6 +1376,35 @@ mod tests {
                     .is_some_and(|message| message.contains("Permission denied"))
             );
             assert!(state.messages.last_error.is_none());
+        }
+
+        #[test]
+        fn preview_size_failure_keeps_the_current_result_and_sets_an_error_message() {
+            let mut state = state_with_table("public", "users");
+            let current_result = preview_result(1);
+            state.query.set_current_result(Arc::clone(&current_result));
+            state.session.set_selection_generation(1);
+            let action = query_failed_action(
+                &mut state,
+                DbOperationError::PreviewSizeExceeded("field exceeded".to_string()),
+                1,
+                QuerySource::Preview,
+            );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert!(
+                state
+                    .query
+                    .current_result()
+                    .is_some_and(|result| Arc::ptr_eq(result, &current_result))
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some(
+                    "Preview exceeded its byte budget: field exceeded. Reduce the preview value size and retry."
+                )
+            );
         }
 
         #[test]

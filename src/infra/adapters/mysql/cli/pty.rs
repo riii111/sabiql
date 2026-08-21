@@ -14,7 +14,8 @@ use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
 };
 use super::xml::{
-    MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics, trace_mysql_frame,
+    MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget,
+    trace_mysql_frame,
 };
 
 pub(super) struct MySqlPty {
@@ -64,24 +65,31 @@ fn configure_mysql_pty(fd: RawFd) -> io::Result<()> {
 pub(super) async fn read_one_pty_resultset(
     pty: &mut MySqlPty,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<Vec<u8>, DbOperationError> {
     Ok(
-        read_one_pty_resultset_with_diagnostics(pty, client_packet_limit_bytes)
-            .await?
-            .0,
+        read_one_pty_resultset_with_diagnostics(
+            pty,
+            client_packet_limit_bytes,
+            preview_byte_budget,
+        )
+        .await?
+        .0,
     )
 }
 
 pub(super) async fn read_one_pty_resultset_with_diagnostics(
     pty: &mut MySqlPty,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
-        if let Some(frame) = take_mysql_pty_resultset_frame_with_diagnostics(
+        if let Some(frame) = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
             &mut pty.pending,
             &mut pty.frame_scanner,
             client_packet_limit_bytes,
+            preview_byte_budget,
         )? {
             trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
