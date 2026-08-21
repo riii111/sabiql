@@ -13,7 +13,9 @@ use crate::domain::{
     },
 };
 
-use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
+use super::super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
+};
 use super::super::policy::{
     MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
     mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
@@ -356,13 +358,19 @@ async fn run_mysql_adhoc_process(
     let result = finish_mysql_session(process).await?;
     if has_mysql_cli_error(&result.error_bytes) {
         return Err(query_failed_after_change(
-            classify_mysql_query_failure(&result.error_bytes),
+            classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                process.client_packet_limit_bytes,
+            ),
             refresh_scope,
         ));
     }
     if !result.status.success() && !result.forcibly_stopped {
         return Err(query_failed_after_change(
-            classify_mysql_query_failure(&result.error_bytes),
+            classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                process.client_packet_limit_bytes,
+            ),
             refresh_scope,
         ));
     }

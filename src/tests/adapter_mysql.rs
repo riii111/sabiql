@@ -3267,6 +3267,9 @@ mod csv_export {
     use sabiql_infra::adapters::mysql::export_mysql_csv_to_path_for_test;
     use tempfile::tempdir;
 
+    const MYSQL_CSV_TEST_DECODED_LIMIT_BYTES: usize = 16 * 1024 * 1024;
+    const MYSQL_CSV_TEST_CLIENT_PACKET_LIMIT_BYTES: usize = 32 * 1024 * 1024;
+
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn exports_with_a_read_only_session_and_rejects_writes() {
@@ -3361,6 +3364,119 @@ mod csv_export {
                     "message\n\"line 1\nERROR 1146 (42S02): this is a cell value\"\n";
                 if csv != expected {
                     return Err(format!("unexpected field-error CSV export: {csv:?}"));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn enforces_mysql_csv_decoded_field_and_row_limits_through_real_mysql_cli() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let output_directory = tempdir().map_err(|error| error.to_string())?;
+                let field_bytes = MYSQL_CSV_TEST_DECODED_LIMIT_BYTES / 2;
+                let row_within_limit = format!(
+                    "SELECT REPEAT('x', {field_bytes}) AS first, REPEAT('x', {}) AS second",
+                    field_bytes - 1
+                );
+                let within_path = output_directory.path().join("row-within-limit.csv");
+                let within_path = export_mysql_csv_to_path_for_test(
+                    db.dsn(),
+                    &row_within_limit,
+                    within_path,
+                )
+                .await
+                .map_err(|error| format!("within-limit CSV export failed: {error:?}"))?;
+                let expected_size = (MYSQL_CSV_TEST_DECODED_LIMIT_BYTES - 1
+                    + "first,second\n".len()
+                    + 2) as u64;
+                let actual_size = std::fs::metadata(&within_path)
+                    .map_err(|error| format!("failed to stat within-limit CSV: {error}"))?
+                    .len();
+                if actual_size != expected_size {
+                    return Err(format!(
+                        "unexpected within-limit CSV size: {actual_size}, expected {expected_size}"
+                    ));
+                }
+
+                let packet_over_limit = format!(
+                    "SELECT REPEAT('x', {field_bytes}), REPEAT('x', {field_bytes})",
+                    field_bytes = MYSQL_CSV_TEST_CLIENT_PACKET_LIMIT_BYTES / 2 + 1
+                );
+                let packet_path = output_directory.path().join("packet-over-limit.csv");
+                let packet_error = export_mysql_csv_to_path_for_test(
+                    db.dsn(),
+                    &packet_over_limit,
+                    packet_path.clone(),
+                )
+                .await
+                .unwrap_err();
+                if !matches!(
+                    packet_error,
+                    DbOperationError::QueryFailed(ref details)
+                        if details.contains(
+                            "MySQL protocol packet exceeds the 33554432-byte client limit"
+                        )
+                ) {
+                    return Err(format!(
+                        "packet-over-limit export returned an unexpected error: {packet_error:?}"
+                    ));
+                }
+                if packet_path.exists() {
+                    return Err("packet-over-limit export created an output file".to_string());
+                }
+
+                let field_over_limit = format!(
+                    "SELECT REPEAT('x', {}) AS payload",
+                    MYSQL_CSV_TEST_DECODED_LIMIT_BYTES + 1
+                );
+                let field_path = output_directory.path().join("field-over-limit.csv");
+                let field_error = export_mysql_csv_to_path_for_test(
+                    db.dsn(),
+                    &field_over_limit,
+                    field_path.clone(),
+                )
+                .await
+                .unwrap_err();
+                if !matches!(
+                    field_error,
+                    DbOperationError::QueryFailed(ref details)
+                        if details.contains("MySQL decoded CSV field exceeds 16 MiB (16777216 bytes)")
+                ) {
+                    return Err(format!(
+                        "field-over-limit export returned an unexpected error: {field_error:?}"
+                    ));
+                }
+                if field_path.exists() {
+                    return Err("field-over-limit export created an output file".to_string());
+                }
+
+                let row_over_limit = format!(
+                    "SELECT REPEAT('x', {field_bytes}) AS first, REPEAT('x', {field_bytes_plus_one}) AS second",
+                    field_bytes_plus_one = field_bytes + 1
+                );
+                let row_path = output_directory.path().join("row-over-limit.csv");
+                let row_error = export_mysql_csv_to_path_for_test(
+                    db.dsn(),
+                    &row_over_limit,
+                    row_path.clone(),
+                )
+                .await
+                .unwrap_err();
+                if !matches!(
+                    row_error,
+                    DbOperationError::QueryFailed(ref details)
+                        if details.contains("MySQL decoded CSV row exceeds 16 MiB (16777216 bytes)")
+                ) {
+                    return Err(format!(
+                        "row-over-limit export returned an unexpected error: {row_error:?}"
+                    ));
+                }
+                if row_path.exists() {
+                    return Err("row-over-limit export created an output file".to_string());
                 }
                 Ok(())
             })

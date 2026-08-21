@@ -14,8 +14,10 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
 use crate::domain::{MySqlDiagnostic, RefreshScope};
 
-use super::args::{mysql_adhoc_args, mysql_query_args};
-use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
+use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
+#[cfg(not(unix))]
+use super::error::classify_mysql_query_failure;
+use super::error::has_mysql_cli_error;
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{
@@ -46,6 +48,7 @@ const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
 pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
+    pub(super) client_packet_limit_bytes: Option<usize>,
     #[cfg(unix)]
     pub(super) pty: MySqlPty,
     #[cfg(not(unix))]
@@ -67,23 +70,38 @@ impl MySqlProcess {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_query_args(option_file))
+        Self::spawn_with_query_args(program, mysql_query_args(option_file))
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_adhoc_program(
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_adhoc_args(option_file))
+        Self::spawn_with_query_args(program, mysql_adhoc_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_query_args(
+        program: &OsStr,
+        args: Vec<String>,
+    ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args_and_packet_limit(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES))
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_args(
         program: &OsStr,
         args: Vec<String>,
     ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args_and_packet_limit(program, args, None)
+    }
+
+    fn spawn_with_args_and_packet_limit(
+        program: &OsStr,
+        args: Vec<String>,
+        client_packet_limit_bytes: Option<usize>,
+    ) -> Result<Self, DbOperationError> {
         #[cfg(unix)]
         {
-            Self::spawn_with_pty(program, args)
+            Self::spawn_with_pty(program, args, client_packet_limit_bytes)
         }
 
         #[cfg(not(unix))]
@@ -118,6 +136,7 @@ impl MySqlProcess {
             })?;
             Ok(Self {
                 child,
+                client_packet_limit_bytes,
                 stdin: Some(stdin),
                 stdout,
                 stderr,
@@ -129,7 +148,11 @@ impl MySqlProcess {
     }
 
     #[cfg(unix)]
-    fn spawn_with_pty(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
+    fn spawn_with_pty(
+        program: &OsStr,
+        args: Vec<String>,
+        client_packet_limit_bytes: Option<usize>,
+    ) -> Result<Self, DbOperationError> {
         let (master, slave) = create_mysql_pty().map_err(|error| {
             DbOperationError::ConnectionFailed(format!("Unable to create MySQL PTY: {error}"))
         })?;
@@ -164,6 +187,7 @@ impl MySqlProcess {
         let input = TokioFile::from_std(master);
         Ok(Self {
             child,
+            client_packet_limit_bytes,
             pty: MySqlPty {
                 input,
                 output,
@@ -413,7 +437,7 @@ pub(super) async fn read_one_mysql_resultset(
 ) -> Result<Vec<u8>, DbOperationError> {
     #[cfg(unix)]
     {
-        return read_one_pty_resultset(&mut process.pty).await;
+        return read_one_pty_resultset(&mut process.pty, process.client_packet_limit_bytes).await;
     }
     #[cfg(not(unix))]
     read_one_mysql_resultset_from_pipes(
@@ -423,6 +447,7 @@ pub(super) async fn read_one_mysql_resultset(
         &mut process.pending,
         &mut process.pending_stderr,
         &mut process.frame_scanner,
+        process.client_packet_limit_bytes,
     )
     .await
 }
@@ -432,7 +457,11 @@ pub(super) async fn read_one_mysql_resultset_with_diagnostics(
 ) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
     #[cfg(unix)]
     {
-        return read_one_pty_resultset_with_diagnostics(&mut process.pty).await;
+        return read_one_pty_resultset_with_diagnostics(
+            &mut process.pty,
+            process.client_packet_limit_bytes,
+        )
+        .await;
     }
     #[cfg(not(unix))]
     super::pipe::read_one_mysql_resultset_from_pipes_with_diagnostics(
@@ -442,6 +471,7 @@ pub(super) async fn read_one_mysql_resultset_with_diagnostics(
         &mut process.pending,
         &mut process.pending_stderr,
         &mut process.frame_scanner,
+        process.client_packet_limit_bytes,
     )
     .await
 }
@@ -1865,6 +1895,7 @@ mod windows_tests {
         let stderr = child.stderr.take().expect("piped stderr");
         let mut process = MySqlProcess {
             child,
+            client_packet_limit_bytes: None,
             stdin: Some(stdin),
             stdout,
             stderr,
@@ -1914,6 +1945,7 @@ mod windows_tests {
         let stderr = child.stderr.take().expect("piped stderr");
         let mut process = MySqlProcess {
             child,
+            client_packet_limit_bytes: None,
             stdin: Some(stdin),
             stdout,
             stderr,
@@ -1951,6 +1983,7 @@ mod windows_tests {
         let stderr = child.stderr.take().expect("piped stderr");
         let mut process = MySqlProcess {
             child,
+            client_packet_limit_bytes: None,
             stdin: Some(stdin),
             stdout,
             stderr,

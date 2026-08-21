@@ -10,7 +10,9 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::MySqlDiagnostic;
 
-use super::error::{classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error};
+use super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
+};
 use super::xml::{
     MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics, trace_mysql_frame,
 };
@@ -61,18 +63,25 @@ fn configure_mysql_pty(fd: RawFd) -> io::Result<()> {
 
 pub(super) async fn read_one_pty_resultset(
     pty: &mut MySqlPty,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<Vec<u8>, DbOperationError> {
-    Ok(read_one_pty_resultset_with_diagnostics(pty).await?.0)
+    Ok(
+        read_one_pty_resultset_with_diagnostics(pty, client_packet_limit_bytes)
+            .await?
+            .0,
+    )
 }
 
 pub(super) async fn read_one_pty_resultset_with_diagnostics(
     pty: &mut MySqlPty,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
         if let Some(frame) = take_mysql_pty_resultset_frame_with_diagnostics(
             &mut pty.pending,
             &mut pty.frame_scanner,
+            client_packet_limit_bytes,
         )? {
             trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
@@ -88,7 +97,10 @@ pub(super) async fn read_one_pty_resultset_with_diagnostics(
                 .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
             if has_mysql_cli_error(&tail) {
                 trace_mysql_error(&tail);
-                return Err(classify_mysql_query_failure(&tail));
+                return Err(classify_mysql_query_failure_with_packet_limit(
+                    &tail,
+                    client_packet_limit_bytes,
+                ));
             }
             return Err(DbOperationError::EmptyResponse(
                 "mysql query returned no resultset".to_string(),
@@ -169,6 +181,7 @@ where
 
 pub(super) struct MySqlExportPtySource<'a> {
     pub(super) pty: &'a mut MySqlPty,
+    pub(super) client_packet_limit_bytes: Option<usize>,
     pub(super) error_output: Vec<u8>,
     pub(super) error_buffer: Vec<u8>,
     pub(super) pending: Vec<u8>,
@@ -272,6 +285,7 @@ mod tests {
     use tokio::fs::File as TokioFile;
     use tokio::io::AsyncWriteExt;
 
+    use super::super::error::classify_mysql_query_failure;
     use super::*;
 
     fn source_with_output(output: &[u8]) -> (tempfile::NamedTempFile, MySqlPty) {
@@ -329,6 +343,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (_output_file, mut pty) = source_with_output(xml);
         let mut source = MySqlExportPtySource {
             pty: &mut pty,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
@@ -349,6 +364,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (_output_file, mut pty) = source_with_output(output);
         let mut source = MySqlExportPtySource {
             pty: &mut pty,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
@@ -384,6 +400,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         });
         let mut source = MySqlExportPtySource {
             pty: &mut pty,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
@@ -429,6 +446,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         });
         let mut source = MySqlExportPtySource {
             pty: &mut pty,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
@@ -455,6 +473,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
         let (_output_file, mut pty) = source_with_output(&[]);
         let mut source = MySqlExportPtySource {
             pty: &mut pty,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),

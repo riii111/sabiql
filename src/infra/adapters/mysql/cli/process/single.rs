@@ -4,7 +4,9 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::RefreshScope;
 
-use super::super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
+use super::super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
+};
 use super::super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, MySqlExecutionResult, validate_mysql_session_marker,
 };
@@ -65,10 +67,16 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
 
     let result = finish_mysql_session(process).await?;
     if has_mysql_cli_error(&result.error_bytes) {
-        return Err(classify_mysql_query_failure(&result.error_bytes));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            &result.error_bytes,
+            process.client_packet_limit_bytes,
+        ));
     }
     if !result.status.success() && !result.forcibly_stopped {
-        return Err(classify_mysql_query_failure(&result.error_bytes));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            &result.error_bytes,
+            process.client_packet_limit_bytes,
+        ));
     }
 
     Ok(MySqlExecutionResult {
@@ -104,10 +112,16 @@ pub(super) mod test_support {
         let stdout = read_one_mysql_resultset(process).await?;
         let result = finish_mysql_session(process).await?;
         if has_mysql_cli_error(&result.error_bytes) {
-            return Err(classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                process.client_packet_limit_bytes,
+            ));
         }
         if !result.status.success() && !result.forcibly_stopped {
-            return Err(classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                process.client_packet_limit_bytes,
+            ));
         }
         #[cfg(unix)]
         return parse_mysql_xml(&stdout);
