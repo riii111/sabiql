@@ -865,6 +865,8 @@ while IFS= read -r line; do
     *SLEEP*)
       while :; do :; done
       ;;
+    *"INTO @"*)
+      ;;
     *SELECT*)
       case "$line" in
         *WHERE\ FALSE*)
@@ -872,7 +874,10 @@ while IFS= read -r line; do
           ;;
         *)
           value=one
-          case "$line" in *SELECT\ 2*) value=two ;; esac
+          case "$line" in
+            *SELECT\ 2*) value=two ;;
+            *SELECT\ @picked*) value=picked ;;
+          esac
           printf '%s\n' '<resultset><row><field name="value">'"$value"'</field></row></resultset>'
           ;;
       esac
@@ -1539,6 +1544,39 @@ done
             assert!(log.contains("UPDATE items SET value = 1"));
             assert_eq!(log.matches("__sabiql_marker").count(), 1);
             assert!(!log.contains("ROW_COUNT()"));
+        }
+
+        #[tokio::test]
+        async fn skips_resultset_wait_for_select_into_user_variable() {
+            let (_directory, program, option_file) = fake_mysql_multi();
+            let statements =
+                split_mysql_statements("SELECT id INTO @picked FROM items; SELECT @picked")
+                    .unwrap()
+                    .into_iter()
+                    .map(|sql| classify_mysql_statement(&sql).unwrap())
+                    .collect::<Vec<_>>();
+
+            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                OsStr::new(&program),
+                &option_file,
+                &statements,
+                AccessMode::ReadWrite,
+                None,
+                Duration::from_secs(5),
+            )
+            .await
+            .expect("SELECT INTO user variable execution");
+
+            assert_eq!(
+                result.result_set,
+                Some(MySqlResultSet {
+                    columns: vec!["value".to_string()],
+                    values: vec![vec![QueryValue::Text("picked".to_string())]],
+                })
+            );
+            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            assert!(log.contains("SELECT id INTO @picked FROM items"), "{log}");
+            assert!(log.contains("SELECT @picked"), "{log}");
         }
 
         #[tokio::test]

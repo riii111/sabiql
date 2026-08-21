@@ -8,8 +8,9 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
     MySqlDiagnostic, RefreshScope,
     mysql_sql::{
-        MySqlStatement, MySqlStatementKind, mysql_statement_is_data_modifying,
-        mysql_statement_is_schema_modifying, mysql_statement_reads_session_diagnostics,
+        MySqlStatement, MySqlStatementKind, has_top_level_user_variable_into_clause,
+        mysql_statement_is_data_modifying, mysql_statement_is_schema_modifying,
+        mysql_statement_reads_session_diagnostics,
     },
 };
 
@@ -132,7 +133,7 @@ async fn run_mysql_statement(
     if let Err(error) = write_mysql_statement(process, statement.sql()).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
-    if !mysql_statement_returns_resultset(statement.kind()) {
+    if !mysql_statement_returns_resultset(statement) {
         return Ok(MySqlStatementExecution {
             result_set: None,
             refresh_scope: possible_refresh_scope,
@@ -160,9 +161,14 @@ async fn run_mysql_statement(
     })
 }
 
-fn mysql_statement_returns_resultset(kind: &MySqlStatementKind) -> bool {
+fn mysql_statement_returns_resultset(statement: &MySqlStatement) -> bool {
+    if matches!(statement.kind(), MySqlStatementKind::Select)
+        && has_top_level_user_variable_into_clause(statement.sql()).unwrap_or(false)
+    {
+        return false;
+    }
     matches!(
-        kind,
+        statement.kind(),
         MySqlStatementKind::Select
             | MySqlStatementKind::Table
             | MySqlStatementKind::Show

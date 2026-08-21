@@ -114,6 +114,10 @@ pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_top_level_into_clause(sql)
 }
 
+pub fn has_top_level_user_variable_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
+    side_effect::has_top_level_user_variable_into_clause(sql)
+}
+
 pub fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_mysql_read_only_side_effect(sql)
 }
