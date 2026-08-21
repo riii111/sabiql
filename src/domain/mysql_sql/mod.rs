@@ -240,10 +240,13 @@ pub fn validate_mysql_statements_with_lower_case_table_names(
         if statement_contains_unsupported_mysql_control(&statement.sql) {
             return Err("unsupported MySQL session or table-lock statement".to_string());
         }
+        let has_unsupported_into_clause = has_top_level_into_clause(&statement.sql).unwrap_or(true)
+            && !(matches!(statement.kind, MySqlStatementKind::Select)
+                && has_top_level_user_variable_into_clause(&statement.sql).unwrap_or(false));
         if matches!(
             statement.kind,
             MySqlStatementKind::Select | MySqlStatementKind::Table
-        ) && has_top_level_into_clause(&statement.sql).unwrap_or(true)
+        ) && has_unsupported_into_clause
         {
             return Err("MySQL SELECT INTO clauses are not supported".to_string());
         }
@@ -855,6 +858,7 @@ mod tests {
             "SELECT id INTO OUTFILE '/tmp/result' FROM items",
             "SELECT id INTO DUMPFILE '/tmp/result' FROM items",
             "TABLE items INTO OUTFILE '/tmp/result'",
+            "TABLE items INTO @picked",
             "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
         ] {
             let error = classify_mysql_multi_statement(sql, Some("app")).unwrap_err();

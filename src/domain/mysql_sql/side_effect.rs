@@ -2,10 +2,8 @@ use super::{MySqlLexError, lexer, lexer::TokenKind, target};
 
 pub(super) fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     let tokens = lexer::lex_mysql_statement(sql)?;
-    Ok(tokens.iter().enumerate().any(|(index, token)| {
-        token.depth == 0
-            && matches!(&token.kind, TokenKind::Word(word) if word == "INTO")
-            && !is_user_variable_into_clause(&tokens, index)
+    Ok(tokens.iter().any(|token| {
+        token.depth == 0 && matches!(&token.kind, TokenKind::Word(word) if word == "INTO")
     }))
 }
 
@@ -343,12 +341,12 @@ mod tests {
     }
 
     #[test]
-    fn ignores_top_level_user_variable_into_but_detects_file_output() {
+    fn detects_top_level_into_clauses_and_user_variable_shape() {
         for sql in [
             "SELECT id INTO @picked FROM items",
             "SELECT id INTO @picked, @other FROM items",
         ] {
-            assert!(!has_top_level_into_clause(sql).unwrap(), "{sql}");
+            assert!(has_top_level_into_clause(sql).unwrap(), "{sql}");
             assert!(
                 has_top_level_user_variable_into_clause(sql).unwrap(),
                 "{sql}"
