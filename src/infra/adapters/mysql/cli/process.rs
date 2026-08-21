@@ -42,6 +42,7 @@ pub(super) use metadata::mysql_metadata_columns;
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 #[cfg(unix)]
 const MYSQL_PTY_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
+const MYSQL_SESSION_SETTINGS: &str = "SET SESSION autocommit=1, completion_type=NO_CHAIN";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
 pub(in crate::adapters::mysql) struct MySqlProcess {
@@ -285,12 +286,11 @@ pub(super) async fn configure_mysql_session(
     process: &mut MySqlProcess,
     access_mode: AccessMode,
 ) -> Result<(), DbOperationError> {
-    if !access_mode.is_read_only() {
-        return Ok(());
-    }
-
     let marker = Uuid::new_v4().simple().to_string();
-    write_mysql_statement(process, MYSQL_READ_ONLY_STATEMENT).await?;
+    write_mysql_statement(process, MYSQL_SESSION_SETTINGS).await?;
+    if access_mode.is_read_only() {
+        write_mysql_statement(process, MYSQL_READ_ONLY_STATEMENT).await?;
+    }
     write_mysql_statement(
         process,
         &format!("SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"),
@@ -630,35 +630,40 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
         } else {
             ""
         };
+        let settings_timeout = if mode == "timeout" {
+            "while :; do :; done"
+        } else {
+            ""
+        };
         let script = format!(
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
-phase=probe
 eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   [ "$line" = "$eof" ] && exit 0
   [ "$line" = ";" ] && continue
-  if [ "$phase" = probe ]; then
-    marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)'.*/\\1/")
-    {probe_response}
-    phase=user
-  else
-    case "$line" in
-      "SET SESSION TRANSACTION READ ONLY")
-        {session_failure}
-        ;;
-      *__sabiql_session_marker*)
-        marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
-        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
-        ;;
-      *)
-        {user_response}
-        exit 0
-        ;;
-    esac
-  fi
+  case "$line" in
+    "SET SESSION autocommit=1, completion_type=NO_CHAIN")
+      {settings_timeout}
+      ;;
+    "SET SESSION TRANSACTION READ ONLY")
+      {session_failure}
+      ;;
+    *__sabiql_probe*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)'.*/\\1/")
+      {probe_response}
+      ;;
+    *__sabiql_session_marker*)
+      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      ;;
+    *)
+      {user_response}
+      exit 0
+      ;;
+  esac
 done
 "#,
         );
@@ -686,7 +691,7 @@ while IFS= read -r line; do
     *"$eof"*)
       exit 0
       ;;
-    ";"|"SET SESSION TRANSACTION READ ONLY"|"SET SESSION TRANSACTION READ WRITE")
+    ";"|"SET SESSION autocommit=1, completion_type=NO_CHAIN"|"SET SESSION TRANSACTION READ ONLY"|"SET SESSION TRANSACTION READ WRITE")
       ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
@@ -760,6 +765,8 @@ while IFS= read -r line; do
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
       printf '%s\t%s\n' '__sabiql_probe' '__sabiql_sql_mode'
       printf '%s\t%s\n' "$marker" 'STRICT_TRANS_TABLES'
+      ;;
+    *"SET SESSION autocommit=1, completion_type=NO_CHAIN"*)
       ;;
     *"SET SESSION TRANSACTION READ ONLY"*)
       {read_only_failure}
@@ -843,7 +850,7 @@ while IFS= read -r line; do
         printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
       fi
       ;;
-    "SET SESSION TRANSACTION READ ONLY")
+    "SET SESSION autocommit=1, completion_type=NO_CHAIN"|"SET SESSION TRANSACTION READ ONLY")
       ;;
     ";")
       ;;
@@ -963,8 +970,16 @@ done
             assert_eq!(result.columns, vec!["value"]);
             assert_eq!(result.values[0][0].as_str(), Some("ok"));
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            assert!(log.contains("__sabiql_probe"));
-            assert!(log.contains("SELECT 123"));
+            let positions = [
+                MYSQL_SESSION_SETTINGS,
+                MYSQL_SESSION_MARKER_COLUMN,
+                "__sabiql_probe",
+                "SELECT 123",
+            ]
+            .into_iter()
+            .map(|query| log.find(query).expect("query in transcript"))
+            .collect::<Vec<_>>();
+            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
             assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT));
         }
 
@@ -1079,7 +1094,12 @@ done
             let session_index = log
                 .find(MYSQL_READ_ONLY_STATEMENT)
                 .expect("read-only session statement");
+            let settings_index = log.find(MYSQL_SESSION_SETTINGS).expect("session settings");
+            let probe_index = log.find("__sabiql_probe").expect("mode probe");
             let user_index = log.find("SELECT 2").expect("user statement");
+            assert!(settings_index < session_index, "{log}");
+            assert!(session_index < probe_index, "{log}");
+            assert!(probe_index < user_index, "{log}");
             assert!(session_index < user_index, "{log}");
             assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
         }
@@ -1195,11 +1215,11 @@ done
             )
             .expect("spawn fake mysql");
 
-            session.probe().await.expect("mode probe");
             session
                 .prepare_read_only()
                 .await
                 .expect("read-only session setup");
+            session.probe().await.expect("mode probe");
             for query in [
                 "SELECT TABLES",
                 "SELECT COLUMNS",
@@ -1228,9 +1248,10 @@ done
             let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
             assert!(!argv.contains("--quick"), "{argv}");
             let positions = [
-                "__sabiql_probe",
+                MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,
                 MYSQL_SESSION_MARKER_COLUMN,
+                "__sabiql_probe",
                 "SELECT TABLES",
                 "SELECT COLUMNS",
                 "SELECT INDEXES",
@@ -1263,9 +1284,10 @@ done
             assert_eq!(columns, ["Database"]);
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
             let positions = [
-                "__sabiql_probe",
+                MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,
                 MYSQL_SESSION_MARKER_COLUMN,
+                "__sabiql_probe",
                 "SHOW DATABASES",
             ]
             .into_iter()

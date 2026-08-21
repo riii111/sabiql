@@ -2600,6 +2600,73 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn normalizes_server_transaction_defaults_before_adhoc_sql() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let defaults = db
+                .run_cli_script("SELECT @@GLOBAL.autocommit, @@GLOBAL.completion_type")
+                .await
+                .map_err(|error| format!("failed to read MySQL transaction defaults: {error}"))?;
+            let mut defaults = defaults.split_whitespace();
+            let original_autocommit = defaults
+                .next()
+                .ok_or_else(|| "MySQL did not return autocommit default".to_string())?;
+            let original_completion_type = defaults
+                .next()
+                .ok_or_else(|| "MySQL did not return completion type default".to_string())?;
+
+            db.run_cli_script("SET GLOBAL autocommit = 0; SET GLOBAL completion_type = 'CHAIN'")
+                .await
+                .map_err(|error| format!("failed to change MySQL transaction defaults: {error}"))?;
+
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = 'normalized defaults' WHERE id = 1; SELECT @@SESSION.autocommit = 1 AS autocommit_normalized, @@SESSION.completion_type = 'NO_CHAIN' AS completion_type_normalized, empty_text FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await;
+
+            let fixture_restore = db
+                .run_cli_script(&format!(
+                    "SET SESSION autocommit = 1; UPDATE {MYSQL_FIXTURE_TABLE} SET empty_text = '' WHERE id = 1"
+                ))
+                .await
+                .map_err(|error| format!("failed to restore fixture: {error:?}"));
+            let restore = db
+                .run_cli_script(&format!(
+                    "SET GLOBAL autocommit = {original_autocommit}; SET GLOBAL completion_type = '{original_completion_type}'"
+                ))
+                .await
+                .map_err(|error| format!("failed to restore MySQL transaction defaults: {error}"));
+            restore?;
+            fixture_restore?;
+            let result = result
+                .map_err(|error| format!("normalized-default execution failed: {error:?}"))?;
+
+            if result.columns != [
+                "autocommit_normalized",
+                "completion_type_normalized",
+                "empty_text",
+            ] || result.values()
+                != [[
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("normalized defaults".to_string()),
+                ]]
+            {
+                return Err(format!("unexpected normalized-default result: {result:?}"));
+            }
+
+            Ok(())
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn rejects_implicit_commit_transaction_and_matches_oracle_mysql_behavior() {
         with_mysql_test_db(|db| Box::pin(async move {
             let suffix = std::time::SystemTime::now()

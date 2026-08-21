@@ -108,9 +108,9 @@ async fn execute_preview_with_session(
     limit: usize,
     offset: usize,
 ) -> Result<PreviewExecution, DbOperationError> {
+    session.prepare_read_only().await?;
     let lower_case_table_names = session.probe().await?;
     validate_selected_schema_name(database, schema, lower_case_table_names)?;
-    session.prepare_read_only().await?;
 
     let column_result = session
         .execute_with_expected_columns(
@@ -594,8 +594,9 @@ done
         let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
         assert!(argv.contains("--quick"), "{argv}");
         let positions = [
-            "__sabiql_probe",
+            "SET SESSION autocommit=1, completion_type=NO_CHAIN",
             "SET SESSION TRANSACTION READ ONLY",
+            "__sabiql_probe",
             "INFORMATION_SCHEMA.COLUMNS",
             "LIMIT 2 OFFSET 1",
             "__sabiql_preview_completion",
