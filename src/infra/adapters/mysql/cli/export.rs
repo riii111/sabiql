@@ -30,10 +30,12 @@ use super::pty::MySqlExportPtySource;
 use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
-const MYSQL_CSV_MAX_FIELD_BYTES: usize = 16 * 1024 * 1024;
-const MYSQL_CSV_MAX_ROW_BYTES: usize = MYSQL_CSV_MAX_FIELD_BYTES;
-const MYSQL_CSV_FIELD_LIMIT_ERROR: &str = "MySQL CSV field exceeds the 16777216-byte limit";
-const MYSQL_CSV_ROW_LIMIT_ERROR: &str = "MySQL CSV row exceeds the 16777216-byte limit";
+const MYSQL_CSV_MAX_DECODED_FIELD_BYTES: usize = 16 * 1024 * 1024;
+const MYSQL_CSV_MAX_DECODED_ROW_BYTES: usize = MYSQL_CSV_MAX_DECODED_FIELD_BYTES;
+const MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR: &str =
+    "MySQL decoded CSV field exceeds 16 MiB (16777216 bytes)";
+const MYSQL_CSV_DECODED_ROW_LIMIT_ERROR: &str =
+    "MySQL decoded CSV row exceeds 16 MiB (16777216 bytes)";
 
 #[derive(Clone, Copy)]
 enum MySqlXmlFieldState {
@@ -83,7 +85,7 @@ impl<R> MySqlXmlFieldLimitReader<R> {
     }
 
     fn count_field_bytes(&mut self, bytes: usize) -> bool {
-        if self.field_bytes > MYSQL_CSV_MAX_FIELD_BYTES.saturating_sub(bytes) {
+        if self.field_bytes > MYSQL_CSV_MAX_DECODED_FIELD_BYTES.saturating_sub(bytes) {
             false
         } else {
             self.field_bytes += bytes;
@@ -283,7 +285,7 @@ where
         if self.limit_error_pending {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                MYSQL_CSV_FIELD_LIMIT_ERROR,
+                MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR,
             )));
         }
         if buf.remaining() == 0 {
@@ -311,7 +313,7 @@ where
                 } else {
                     Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::InvalidData,
-                        MYSQL_CSV_FIELD_LIMIT_ERROR,
+                        MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR,
                     )))
                 }
             }
@@ -324,16 +326,16 @@ fn append_csv_field_value(
     row_bytes: &mut usize,
     value: &str,
 ) -> Result<(), DbOperationError> {
-    if field.value.len().saturating_add(value.len()) > MYSQL_CSV_MAX_FIELD_BYTES {
+    if field.value.len().saturating_add(value.len()) > MYSQL_CSV_MAX_DECODED_FIELD_BYTES {
         return Err(DbOperationError::QueryFailed(
-            MYSQL_CSV_FIELD_LIMIT_ERROR.to_string(),
+            MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR.to_string(),
         ));
     }
 
     let next_row_bytes = row_bytes.saturating_add(value.len());
-    if next_row_bytes > MYSQL_CSV_MAX_ROW_BYTES {
+    if next_row_bytes > MYSQL_CSV_MAX_DECODED_ROW_BYTES {
         return Err(DbOperationError::QueryFailed(
-            MYSQL_CSV_ROW_LIMIT_ERROR.to_string(),
+            MYSQL_CSV_DECODED_ROW_LIMIT_ERROR.to_string(),
         ));
     }
 
@@ -723,7 +725,7 @@ line2]]></field>
 
     #[tokio::test]
     async fn rejects_mysql_csv_field_over_byte_limit() {
-        let value = "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES + 1);
+        let value = "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES + 1);
         let xml =
             format!("<resultset><row><field name=\"payload\">{value}</field></row></resultset>");
         let (mut input, output) = tokio::io::duplex(32);
@@ -742,13 +744,17 @@ line2]]></field>
         producer.await.unwrap();
 
         assert!(matches!(&error, DbOperationError::QueryFailed(_)));
-        assert!(error.masked_details().contains(MYSQL_CSV_FIELD_LIMIT_ERROR));
+        assert!(
+            error
+                .masked_details()
+                .contains(MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR)
+        );
     }
 
     #[tokio::test]
     async fn accepts_mysql_csv_row_just_below_byte_limit() {
-        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
-        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() - 1);
+        let first = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES - first.len() - 1);
         let xml = xml_resultset(&[xml_row(&[
             ("first", first.as_str()),
             ("second", second.as_str()),
@@ -767,8 +773,8 @@ line2]]></field>
 
     #[tokio::test]
     async fn rejects_mysql_csv_row_just_above_byte_limit() {
-        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
-        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() + 1);
+        let first = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES - first.len() + 1);
         let xml = xml_resultset(&[xml_row(&[
             ("first", first.as_str()),
             ("second", second.as_str()),
@@ -778,14 +784,18 @@ line2]]></field>
 
         let error = stream_xml_to_csv_file(&xml, path).await.unwrap_err();
 
-        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+        assert!(
+            error
+                .masked_details()
+                .contains(MYSQL_CSV_DECODED_ROW_LIMIT_ERROR)
+        );
     }
 
     #[tokio::test]
     async fn rejects_mysql_csv_row_when_multiple_fields_exceed_byte_limit() {
-        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 3);
-        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 3);
-        let third = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() - second.len() + 1);
+        let first = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES / 3);
+        let second = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES / 3);
+        let third = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES - first.len() - second.len() + 1);
         let xml = xml_resultset(&[xml_row(&[
             ("first", first.as_str()),
             ("second", second.as_str()),
@@ -796,13 +806,17 @@ line2]]></field>
 
         let error = stream_xml_to_csv_file(&xml, path).await.unwrap_err();
 
-        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+        assert!(
+            error
+                .masked_details()
+                .contains(MYSQL_CSV_DECODED_ROW_LIMIT_ERROR)
+        );
     }
 
     #[tokio::test]
     async fn does_not_publish_partial_csv_when_mysql_csv_row_exceeds_byte_limit() {
-        let first = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES / 2);
-        let second = "x".repeat(MYSQL_CSV_MAX_ROW_BYTES - first.len() + 1);
+        let first = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES / 2);
+        let second = "x".repeat(MYSQL_CSV_MAX_DECODED_ROW_BYTES - first.len() + 1);
         let xml = xml_resultset(&[
             xml_row(&[("status", "complete")]),
             xml_row(&[("first", first.as_str()), ("second", second.as_str())]),
@@ -817,14 +831,18 @@ line2]]></field>
         .await
         .unwrap_err();
 
-        assert!(error.masked_details().contains(MYSQL_CSV_ROW_LIMIT_ERROR));
+        assert!(
+            error
+                .masked_details()
+                .contains(MYSQL_CSV_DECODED_ROW_LIMIT_ERROR)
+        );
         assert_eq!(fs::read_to_string(&final_path).unwrap(), "previous\n");
         assert_eq!(directory.path().read_dir().unwrap().count(), 1);
     }
 
     #[tokio::test]
     async fn stops_reading_mysql_csv_field_at_byte_limit() {
-        let value = "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES + 1);
+        let value = "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES + 1);
         let xml =
             format!("<resultset><row><field name=\"payload\">{value}</field></row></resultset>");
         let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
@@ -834,7 +852,7 @@ line2]]></field>
             .await
             .unwrap_err();
 
-        assert_eq!(error.to_string(), MYSQL_CSV_FIELD_LIMIT_ERROR);
+        assert_eq!(error.to_string(), MYSQL_CSV_DECODED_FIELD_LIMIT_ERROR);
         assert!(output.len() < xml.len());
     }
 
@@ -843,7 +861,7 @@ line2]]></field>
         let null_field = r#"<field name="null" xsi:nil="true"/>"#;
         let xml = format!(
             "<resultset><row>{}</row></resultset>",
-            null_field.repeat(MYSQL_CSV_MAX_FIELD_BYTES / null_field.len() + 1)
+            null_field.repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES / null_field.len() + 1)
         );
         let mut source = MySqlXmlFieldLimitReader::new(std::io::Cursor::new(xml.as_bytes()));
         let mut output = Vec::new();
@@ -857,18 +875,18 @@ line2]]></field>
 
     #[tokio::test]
     async fn does_not_count_xml_syntax_against_mysql_csv_field_limit() {
-        let escaped_value = format!("{}&amp;", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 1));
+        let escaped_value = format!("{}&amp;", "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES - 1));
         let cases = [
             format!(
                 "<resultset><row><field name=\"payload\">{}</field></row></resultset>",
-                "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES)
+                "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES)
             ),
             format!(
                 "<resultset><row><field name=\"payload\">{escaped_value}</field></row></resultset>"
             ),
             format!(
                 "<resultset><row><field name=\"payload\"><![CDATA[{}]]></field></row></resultset>",
-                "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES)
+                "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES)
             ),
         ];
 
@@ -885,8 +903,8 @@ line2]]></field>
     #[tokio::test]
     async fn handles_cdata_values_ending_in_brackets_before_the_next_field() {
         let cases = [
-            format!("{}]", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 1)),
-            format!("{}]]", "x".repeat(MYSQL_CSV_MAX_FIELD_BYTES - 2)),
+            format!("{}]", "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES - 1)),
+            format!("{}]]", "x".repeat(MYSQL_CSV_MAX_DECODED_FIELD_BYTES - 2)),
         ];
 
         for value in cases {

@@ -1,5 +1,7 @@
 use std::path::Path;
 
+const MYSQL_CLIENT_MAX_PACKET_BYTES: usize = 32 * 1024 * 1024;
+
 pub(super) fn mysql_connection_args(option_file: &Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
@@ -32,7 +34,10 @@ fn mysql_result_args(option_file: &Path, quick: bool) -> Vec<String> {
         "--binary-mode".to_string(),
     ]);
     if quick {
-        args.push("--quick".to_string());
+        args.extend([
+            format!("--max-allowed-packet={MYSQL_CLIENT_MAX_PACKET_BYTES}"),
+            "--quick".to_string(),
+        ]);
     }
     args.extend([
         "--unbuffered".to_string(),
@@ -94,6 +99,7 @@ mod tests {
                 "--xml",
                 "--binary-as-hex",
                 "--binary-mode",
+                "--max-allowed-packet=33554432",
                 "--quick",
                 "--unbuffered",
                 "--default-character-set=utf8mb4",
@@ -154,6 +160,10 @@ mod tests {
             ]
         );
         assert!(!args.iter().any(|argument| argument == "--quick"));
+        assert!(
+            args.iter()
+                .all(|argument| !argument.starts_with("--max-allowed-packet="))
+        );
     }
 
     #[test]
