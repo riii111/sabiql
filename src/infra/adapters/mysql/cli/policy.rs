@@ -544,6 +544,17 @@ mod tests {
     }
 
     #[test]
+    fn read_write_allows_user_variable_assignment_but_read_only_does_not() {
+        let query = "SELECT id INTO @picked FROM users; SELECT @picked";
+
+        assert!(validate_mysql_multi_query(query, Some("app"), AccessMode::ReadWrite).is_ok());
+        assert!(matches!(
+            validate_mysql_multi_query(query, Some("app"), AccessMode::ReadOnly),
+            Err(DbOperationError::PermissionDenied(_))
+        ));
+    }
+
+    #[test]
     fn raw_sql_revalidation_honors_case_insensitive_database_modes() {
         for lower_case_table_names in [1, 2] {
             assert!(

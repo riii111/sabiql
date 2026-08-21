@@ -2,9 +2,26 @@ use super::{MySqlLexError, lexer, lexer::TokenKind, target};
 
 pub(super) fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     let tokens = lexer::lex_mysql_statement(sql)?;
-    Ok(tokens.iter().any(|token| {
-        token.depth == 0 && matches!(&token.kind, TokenKind::Word(word) if word == "INTO")
+    Ok(tokens.iter().enumerate().any(|(index, token)| {
+        token.depth == 0
+            && matches!(&token.kind, TokenKind::Word(word) if word == "INTO")
+            && !is_user_variable_into_clause(&tokens, index)
     }))
+}
+
+fn is_user_variable_into_clause(tokens: &[lexer::Token], index: usize) -> bool {
+    matches!(
+        tokens.get(index + 1).map(|token| &token.kind),
+        Some(TokenKind::Symbol('@'))
+    ) && tokens.get(index + 2).is_some_and(|token| {
+        matches!(
+            &token.kind,
+            TokenKind::Word(_)
+                | TokenKind::Identifier(_)
+                | TokenKind::Number
+                | TokenKind::StringLiteral
+        )
+    })
 }
 
 pub(super) fn has_mysql_read_only_side_effect(sql: &str) -> Result<bool, MySqlLexError> {
@@ -314,5 +331,32 @@ mod tests {
             );
         }
         assert!(!mysql_statement_reads_session_diagnostics("SELECT 'FOUND_ROWS()'").unwrap());
+    }
+
+    #[test]
+    fn ignores_top_level_user_variable_into_but_detects_file_output() {
+        for sql in [
+            "SELECT id INTO @picked FROM items",
+            "SELECT id INTO @picked, @other FROM items",
+        ] {
+            assert!(!has_top_level_into_clause(sql).unwrap(), "{sql}");
+        }
+        for sql in [
+            "SELECT id INTO OUTFILE '/tmp/result' FROM items",
+            "SELECT id INTO DUMPFILE '/tmp/result' FROM items",
+        ] {
+            assert!(has_top_level_into_clause(sql).unwrap(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn ignores_quoted_commented_and_nested_into_tokens() {
+        for sql in [
+            "SELECT 'INTO @picked' FROM items",
+            "SELECT /* INTO OUTFILE '/tmp/result' */ id FROM items",
+            "WITH rows AS (SELECT id INTO @picked FROM items) SELECT * FROM rows",
+        ] {
+            assert!(!has_top_level_into_clause(sql).unwrap(), "{sql}");
+        }
     }
 }

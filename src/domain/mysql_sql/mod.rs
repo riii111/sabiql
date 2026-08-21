@@ -850,7 +850,6 @@ mod tests {
         for sql in [
             "SELECT id INTO OUTFILE '/tmp/result' FROM items",
             "SELECT id INTO DUMPFILE '/tmp/result' FROM items",
-            "SELECT id INTO @value FROM items",
             "TABLE items INTO OUTFILE '/tmp/result'",
             "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/result' FROM rows",
         ] {
@@ -860,6 +859,13 @@ mod tests {
         assert!(
             classify_mysql_multi_statement(
                 "WITH rows AS (SELECT 'INTO OUTFILE') SELECT * FROM rows",
+                Some("app")
+            )
+            .is_ok()
+        );
+        assert!(
+            classify_mysql_multi_statement(
+                "SELECT id INTO @value FROM items; SELECT @value",
                 Some("app")
             )
             .is_ok()
