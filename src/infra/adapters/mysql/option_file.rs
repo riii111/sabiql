@@ -175,31 +175,165 @@ fn is_valid_pem_public_key(contents: &str) -> bool {
             .bytes()
             .filter(|byte| !byte.is_ascii_whitespace())
             .collect();
-        if encoded.is_empty() || !is_valid_base64(&encoded) {
+        let Some(decoded) = decode_base64(&encoded) else {
             return false;
-        }
-        contents[body_end + end.len()..]
+        };
+        if !contents[body_end + end.len()..]
             .chars()
             .all(char::is_whitespace)
+        {
+            return false;
+        }
+        match *label {
+            "PUBLIC KEY" => is_valid_subject_public_key_info(&decoded),
+            "RSA PUBLIC KEY" => is_valid_rsa_public_key(&decoded),
+            _ => false,
+        }
     })
 }
 
-fn is_valid_base64(encoded: &[u8]) -> bool {
-    if !encoded.len().is_multiple_of(4) {
+fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
+    if encoded.is_empty() || !encoded.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut decoded = Vec::with_capacity(encoded.len() / 4 * 3);
+    for (chunk_index, chunk) in encoded.chunks_exact(4).enumerate() {
+        let last_chunk = chunk_index + 1 == encoded.len() / 4;
+        let first = base64_value(chunk[0])?;
+        let second = base64_value(chunk[1])?;
+        let third = match chunk[2] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        let fourth = match chunk[3] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        if third.is_none() && fourth.is_some() {
+            return None;
+        }
+        if third.is_none() && second & 0x0f != 0 {
+            return None;
+        }
+        if fourth.is_none() && third.is_some_and(|value| value & 0x03 != 0) {
+            return None;
+        }
+        decoded.push((first << 2) | (second >> 4));
+        if let Some(third) = third {
+            decoded.push((second << 4) | (third >> 2));
+            if let Some(fourth) = fourth {
+                decoded.push((third << 6) | fourth);
+            }
+        }
+    }
+    Some(decoded)
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+fn is_valid_subject_public_key_info(der: &[u8]) -> bool {
+    let Some((subject_public_key_info, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
         return false;
     }
-    let padding = encoded.iter().position(|byte| *byte == b'=');
-    let content_end = padding.unwrap_or(encoded.len());
-    if encoded[..content_end]
-        .iter()
-        .any(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/')))
-    {
+    let Some((algorithm, remainder)) = der_element(subject_public_key_info, 0x30) else {
+        return false;
+    };
+    let Some((algorithm_oid, algorithm_remainder)) = der_element(algorithm, 0x06) else {
+        return false;
+    };
+    if algorithm_oid != [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01] {
         return false;
     }
-    padding.is_none_or(|padding_start| {
-        encoded[padding_start..].iter().all(|byte| *byte == b'=')
-            && encoded.len() - padding_start <= 2
-    })
+    let Some((parameters, parameters_remainder)) = der_element(algorithm_remainder, 0x05) else {
+        return false;
+    };
+    if !parameters.is_empty() || !parameters_remainder.is_empty() {
+        return false;
+    }
+    let Some((bit_string, remainder)) = der_element(remainder, 0x03) else {
+        return false;
+    };
+    bit_string.first() == Some(&0)
+        && is_valid_rsa_public_key(&bit_string[1..])
+        && remainder.is_empty()
+}
+
+fn is_valid_rsa_public_key(der: &[u8]) -> bool {
+    let Some((sequence, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
+        return false;
+    }
+    let Some((modulus, remainder)) = der_element(sequence, 0x02) else {
+        return false;
+    };
+    let Some((exponent, remainder)) = der_element(remainder, 0x02) else {
+        return false;
+    };
+    remainder.is_empty() && is_valid_positive_integer(modulus) && is_valid_exponent(exponent)
+}
+
+fn is_valid_positive_integer(value: &[u8]) -> bool {
+    if value.is_empty() || value[0] & 0x80 != 0 {
+        return false;
+    }
+    if value.first() == Some(&0) && (value.get(1).is_none() || value[1] & 0x80 == 0) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    !value.is_empty() && value.iter().any(|byte| *byte != 0)
+}
+
+fn is_valid_exponent(value: &[u8]) -> bool {
+    if !is_valid_positive_integer(value) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    value != [1]
+        && value.last().is_some_and(|byte| byte & 1 == 1)
+        && value.iter().any(|byte| *byte != 0)
+}
+
+fn der_element(input: &[u8], expected_tag: u8) -> Option<(&[u8], &[u8])> {
+    let (&tag, remainder) = input.split_first()?;
+    if tag != expected_tag {
+        return None;
+    }
+    let (&length_byte, remainder) = remainder.split_first()?;
+    let (length, remainder) = if length_byte & 0x80 == 0 {
+        (usize::from(length_byte), remainder)
+    } else {
+        let length_bytes = usize::from(length_byte & 0x7f);
+        if length_bytes == 0 || length_bytes > std::mem::size_of::<usize>() {
+            return None;
+        }
+        let (encoded_length, remainder) = remainder.split_at_checked(length_bytes)?;
+        if encoded_length.first() == Some(&0) {
+            return None;
+        }
+        let length = encoded_length.iter().try_fold(0usize, |length, byte| {
+            length.checked_mul(256)?.checked_add(usize::from(*byte))
+        })?;
+        if length < 128 {
+            return None;
+        }
+        (length, remainder)
+    };
+    let (value, remainder) = remainder.split_at_checked(length)?;
+    Some((value, remainder))
 }
 
 #[cfg(windows)]
@@ -374,6 +508,15 @@ mod tests {
 
     use super::*;
 
+    const VALID_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\n\
+        MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMFq4IBzAF/EE08SN5Bo3KKt/CRaKoGi\n\
+        CT442dzvVfjkV0ZyuztDm2mNd06SHguqWYDc7nDaY9qgEDrlNHnp2QkCAwEAAQ==\n\
+        -----END PUBLIC KEY-----\n";
+    const VALID_RSA_PUBLIC_KEY_PEM: &str = "-----BEGIN RSA PUBLIC KEY-----\n\
+        MEgCQQCkUPNQeEgyJX6XS2qlrU20cleKptQX/Llyrm6tzLzVI8JF3wcCiQ0R4KgX\n\
+        x/4oCDpO8lWDRl+SFkUlLz4xJ4zdAgMBAAE=\n\
+        -----END RSA PUBLIC KEY-----\n";
+
     fn target() -> MySqlDsn {
         MySqlDsn {
             host: "localhost".to_string(),
@@ -452,11 +595,7 @@ mod tests {
     fn option_file_serializes_server_public_key_path() {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
-        fs::write(
-            &key,
-            "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n\0",
-        )
-        .unwrap();
+        fs::write(&key, format!("{VALID_PUBLIC_KEY_PEM}\0")).unwrap();
         let target = MySqlDsn {
             server_public_key_path: Some(key.display().to_string()),
             ..target()
@@ -472,12 +611,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_server_public_key_before_creating_option_file() {
+    fn accepts_rsa_public_key_pem_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, VALID_RSA_PUBLIC_KEY_PEM).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        assert!(option_file.path.exists());
+    }
+
+    #[test]
+    fn rejects_base64_that_is_not_an_rsa_public_key_before_creating_option_file() {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("server-key.pem");
         fs::write(
             &key,
-            "-----BEGIN PUBLIC KEY-----\nnot-base64\n-----END PUBLIC KEY-----\n",
+            "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n",
         )
         .unwrap();
         let target = MySqlDsn {

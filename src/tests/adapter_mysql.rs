@@ -12,11 +12,12 @@ mod shared {
 mod connection {
 
     use crate::tests::harness::mysql::{
-        MYSQL_FIXTURE_TABLE, mysql_integration_config, mysql_tls_config, with_mysql_test_db,
+        MYSQL_FIXTURE_TABLE, mysql_cache_miss_config, mysql_integration_config, mysql_tls_config,
+        with_mysql_test_db,
     };
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use sabiql_app::ports::outbound::{
-        AccessMode, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
+        AccessMode, DbOperationError, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
     };
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
@@ -109,12 +110,32 @@ mod connection {
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_without_tls_with_trusted_server_public_key() {
-        let config = mysql_integration_config();
-        assert_eq!(config.ssl_mode, MySqlSslMode::Disabled);
-        assert!(config.server_public_key_path.is_some());
-        let profile = mysql_profile("mysql-caching-sha2-public-key", config);
         let adapter = MySqlAdapter::new();
-        let dsn = adapter.build_dsn(&profile);
+        let trusted_config = mysql_cache_miss_config();
+        assert_eq!(trusted_config.ssl_mode, MySqlSslMode::Disabled);
+        assert!(trusted_config.server_public_key_path.is_some());
+        let no_key_config = trusted_config.clone().with_server_public_key_path(None);
+        let no_key_dsn = adapter.build_dsn(&mysql_profile(
+            "mysql-caching-sha2-public-key-without-key",
+            no_key_config,
+        ));
+        let error = adapter
+            .probe(&no_key_dsn)
+            .await
+            .expect_err("a cache-miss auth without the trusted key must fail");
+        match error {
+            DbOperationError::ConnectionFailed(details)
+            | DbOperationError::QueryFailed(details) => {
+                assert!(
+                    details.contains("ERROR 2061"),
+                    "unexpected error: {details}"
+                );
+            }
+            error => panic!("unexpected error kind: {error:?}"),
+        }
+
+        let trusted_profile = mysql_profile("mysql-caching-sha2-public-key", trusted_config);
+        let dsn = adapter.build_dsn(&trusted_profile);
 
         adapter.probe(&dsn).await.unwrap();
         let result = adapter
