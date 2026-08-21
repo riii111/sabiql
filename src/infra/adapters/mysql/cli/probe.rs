@@ -14,6 +14,7 @@ use crate::app::ports::outbound::{
 };
 
 use super::args::mysql_connection_args;
+use super::sanitize_mysql_command_environment;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
@@ -53,10 +54,8 @@ async fn run_mysql_version_command(
     command
         .args(MYSQL_VERSION_ARGS)
         .stdin(Stdio::null())
-        .env_remove("MYSQL_PWD")
-        .env_remove("MYSQL_PASSWORD")
-        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
         .kill_on_drop(true);
+    sanitize_mysql_command_environment(&mut command);
 
     match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
         Ok(Ok(output)) => Ok(output),
@@ -192,13 +191,8 @@ where
     S: AsRef<OsStr>,
 {
     let mut command = Command::new("mysql");
-    command
-        .args(args)
-        .stdin(Stdio::null())
-        .env_remove("MYSQL_PWD")
-        .env_remove("MYSQL_PASSWORD")
-        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
-        .kill_on_drop(true);
+    command.args(args).stdin(Stdio::null()).kill_on_drop(true);
+    sanitize_mysql_command_environment(&mut command);
     if option_file.is_some() {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
     }

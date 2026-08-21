@@ -12,7 +12,7 @@ use tokio::time::timeout;
 
 use super::cli::{
     export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_adhoc_with_timeout_for_test,
-    validate_mysql_multi_query,
+    sanitize_mysql_command_environment, validate_mysql_multi_query,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
@@ -48,10 +48,8 @@ pub async fn run_mysql_cli_query_for_test(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .env_remove("MYSQL_PWD")
-        .env_remove("MYSQL_PASSWORD")
-        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
         .kill_on_drop(true);
+    sanitize_mysql_command_environment(&mut command);
     let output = match timeout(Duration::from_secs(11), command.output()).await {
         Ok(Ok(output)) => output,
         Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {

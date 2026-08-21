@@ -28,6 +28,7 @@ use super::pty::{
     MySqlPty, create_mysql_pty, read_one_pty_resultset, read_one_pty_resultset_with_diagnostics,
     read_pty_all, read_pty_until_idle,
 };
+use super::sanitize_mysql_command_environment;
 use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
 mod session;
@@ -113,10 +114,8 @@ impl MySqlProcess {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
-                .env_remove("MYSQL_PWD")
-                .env_remove("MYSQL_PASSWORD")
-                .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
                 .kill_on_drop(true);
+            sanitize_mysql_command_environment(&mut command);
             let mut child = command.spawn().map_err(|error| {
                 if error.kind() == io::ErrorKind::NotFound {
                     DbOperationError::CommandNotFound {
@@ -168,10 +167,8 @@ impl MySqlProcess {
                 DbOperationError::ConnectionFailed(error.to_string())
             })?))
             .stderr(Stdio::from(slave))
-            .env_remove("MYSQL_PWD")
-            .env_remove("MYSQL_PASSWORD")
-            .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
             .kill_on_drop(true);
+        sanitize_mysql_command_environment(&mut command);
         let child = command.spawn().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 DbOperationError::CommandNotFound {
@@ -510,7 +507,6 @@ mod statement_input_tests {
 #[cfg(test)]
 #[cfg(unix)]
 mod tests {
-    use std::ffi::OsString;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
@@ -533,29 +529,6 @@ mod tests {
     use crate::domain::{
         CommandTag, MySqlDiagnostic, MySqlDiagnosticLevel, QueryValue, RefreshScope,
     };
-
-    struct EnvironmentVariableGuard {
-        name: &'static str,
-        previous: Option<OsString>,
-    }
-
-    impl Drop for EnvironmentVariableGuard {
-        fn drop(&mut self) {
-            unsafe {
-                match self.previous.take() {
-                    Some(value) => std::env::set_var(self.name, value),
-                    None => std::env::remove_var(self.name),
-                }
-            }
-        }
-    }
-
-    fn set_ambient_cleartext_plugin() -> EnvironmentVariableGuard {
-        let name = "LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN";
-        let previous = std::env::var_os(name);
-        unsafe { std::env::set_var(name, "1") };
-        EnvironmentVariableGuard { name, previous }
-    }
 
     mod cleanup {
         use super::*;
@@ -695,7 +668,6 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>'"
             r#"#!/bin/sh
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 log="$option.log"
-printf 'cleartext_env=%s\n' "${{LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN-}}" >> "$log"
 eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
@@ -980,27 +952,6 @@ done
 
     mod single_statement {
         use super::*;
-
-        #[tokio::test]
-        async fn mysql_process_removes_ambient_cleartext_plugin_setting() {
-            let _environment = set_ambient_cleartext_plugin();
-            let (_directory, program, log_file) = fake_mysql("success");
-            let option_file = log_file.with_extension("cnf");
-            fs::write(&option_file, "[client]\n").unwrap();
-
-            run_mysql_single_statement_with_program(
-                OsStr::new(&program),
-                &option_file,
-                "SELECT 123",
-                AccessMode::ReadWrite,
-                Duration::from_secs(5),
-            )
-            .await
-            .unwrap();
-
-            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            assert!(log.contains("cleartext_env=\n"), "{log}");
-        }
 
         #[tokio::test]
         async fn diagnostics_use_adhoc_args_and_follow_resultset_to_marker() {

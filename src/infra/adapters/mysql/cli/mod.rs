@@ -11,6 +11,15 @@ mod process;
 mod pty;
 mod xml;
 
+use tokio::process::Command;
+
+pub(super) fn sanitize_mysql_command_environment(command: &mut Command) {
+    command
+        .env_remove("MYSQL_PWD")
+        .env_remove("MYSQL_PASSWORD")
+        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN");
+}
+
 pub(super) use export::export_mysql_csv_to_file;
 pub(super) use policy::{
     validate_mysql_export_query, validate_mysql_multi_query,
@@ -27,3 +36,40 @@ pub(super) use xml::MySqlResultSet;
 
 #[cfg(all(unix, feature = "test-support"))]
 pub(super) mod test_support;
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+
+    use super::*;
+
+    #[test]
+    fn mysql_command_environment_removes_ambient_credentials_and_cleartext_plugin() {
+        let mut command = Command::new("mysql");
+        command
+            .env("MYSQL_PWD", "password")
+            .env("MYSQL_PASSWORD", "password")
+            .env("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN", "1")
+            .env("SABIQL_TEST_ENVIRONMENT", "preserved");
+
+        sanitize_mysql_command_environment(&mut command);
+
+        for name in [
+            "MYSQL_PWD",
+            "MYSQL_PASSWORD",
+            "LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN",
+        ] {
+            assert!(
+                command
+                    .as_std()
+                    .get_envs()
+                    .any(|(key, value)| key == OsStr::new(name) && value.is_none())
+            );
+        }
+        assert!(command
+            .as_std()
+            .get_envs()
+            .any(|(key, value)| key == OsStr::new("SABIQL_TEST_ENVIRONMENT")
+                && value.is_some()));
+    }
+}
