@@ -571,11 +571,15 @@ fn focused_placeholder_spans(
 }
 
 fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
-    state
-        .field_value(ConnectionField::Port)
-        .trim()
-        .parse::<u16>()
-        .ok()?;
+    let uses_hidden_tcp_values = state.database_type() == DatabaseType::MySQL
+        && state.mysql_transport() != MySqlTransport::Tcp;
+    if !uses_hidden_tcp_values {
+        state
+            .field_value(ConnectionField::Port)
+            .trim()
+            .parse::<u16>()
+            .ok()?;
+    }
     let config = state.to_connection_config().ok()?;
     ConnectionProfile::with_id_and_config(ConnectionId::from_string("preview"), "preview", config)
         .ok()

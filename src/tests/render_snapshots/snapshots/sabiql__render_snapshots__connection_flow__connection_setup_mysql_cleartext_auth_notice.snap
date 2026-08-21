@@ -18,11 +18,11 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
-│                                       ││                                                                                                                          │
 │                                       ││          ╭ New Connection ────────────────────────────────────────────╮                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Type:       [ MySQL                    ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Transport:  [ TCP                      ▼ ]                │                                                  │
 │                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       ││          │  Port:       [ 3306                       ]                │                                                  │
 │                                       ││          │  Database:   [                            ]                │                                                  │

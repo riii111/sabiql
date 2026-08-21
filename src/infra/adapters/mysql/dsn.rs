@@ -52,16 +52,18 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
         .expect("MySQL username is valid URL data");
     url.set_password(Some(&config.password))
         .expect("MySQL password is valid URL data");
-    let host = normalize_mysql_host(&config.host);
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host
-    };
-    url.set_host(Some(&host))
-        .expect("validated MySQL host is valid URL data");
-    url.set_port(Some(config.port))
-        .expect("MySQL port is valid URL data");
+    if config.transport == MySqlTransport::Tcp {
+        let host = normalize_mysql_host(&config.host);
+        let host = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else {
+            host
+        };
+        url.set_host(Some(&host))
+            .expect("validated MySQL host is valid URL data");
+        url.set_port(Some(config.port))
+            .expect("MySQL port is valid URL data");
+    }
     if let Some(database) = config.database.as_deref() {
         url.path_segments_mut()
             .expect("MySQL URL supports path segments")
@@ -461,8 +463,8 @@ mod tests {
     #[test]
     fn builds_and_parses_unix_socket_transport() {
         let config = MySqlConnectionConfig::new(
-            "ignored-host",
-            3306,
+            "db example",
+            0,
             Some("app".to_string()),
             "user",
             "password",
@@ -477,6 +479,8 @@ mod tests {
         let parsed = parse_and_validate_mysql_dsn(&dsn).unwrap();
 
         assert_eq!(parsed.transport, MySqlTransport::UnixSocket);
+        assert_eq!(parsed.host, "localhost");
+        assert_eq!(parsed.port, 3306);
         assert_eq!(
             parsed.transport_path.as_deref(),
             Some("/run/mysqld/mysqld.sock")

@@ -23,13 +23,14 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │                                                            │                                                  │
 │                                       ││          │  Type:       [ MySQL                    ▼ ]                │                                                  │
 │                                       ││          │  Name:       [                            ]                │                                                  │
+│                                       ││          │  Transport:  [ TCP                      ▼ ]                │                                                  │
 │                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       ││          │  Port:       [ 3306                       ]                │                                                  │
 │                                       ││          │  Database:   [ app                        ]                │                                                  │
-│                                       ││          │  User:       [ mysql_user                 ]                │                                                  │
-│                                       │└──────────│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┘
-│                                       │┌ [3] Resul│  SSL Mode:   [ PREFERRED                ▼ ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Cleartext:  [ disabled                 ▼ ]                │                                                  │
+│                                       │└──────────│  User:       [ mysql_user                 ]                │──────────────────────────────────────────────────┘
+│                                       │┌ [3] Resul│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┐
+│                                       ││(select a │  SSL Mode:   [ PREFERRED                ▼ ]                │                                                  │
+│                                       ││          │  Cleartext:  [ disabled                 ▼ ]                │                                                  │
 │                                       ││          │  Server Key: [                            ]                │                                                  │
 │                                       ││          │  Cert Path:  [                            ]                │                                                  │
 │                                       ││          │  Key Path:   [                            ]                │                                                  │
@@ -38,7 +39,6 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
