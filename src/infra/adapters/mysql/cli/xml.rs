@@ -22,6 +22,9 @@ const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
 
 type MySqlResultsetFrameWithDiagnostics = (Vec<u8>, Vec<MySqlDiagnostic>);
 
+pub(super) const MYSQL_PREVIEW_MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+const MYSQL_PREVIEW_MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
+
 #[derive(Debug, Default)]
 pub(super) struct MySqlResultsetFrameScanner {
     resultset_start: Option<usize>,
@@ -112,6 +115,24 @@ impl MySqlResultsetFrameScanner {
     }
 }
 
+fn ensure_mysql_resultset_frame_within_limit(
+    scanner: &MySqlResultsetFrameScanner,
+    buffer: &[u8],
+    bounds: Option<(usize, usize)>,
+) -> Result<(), DbOperationError> {
+    let Some(start) = scanner.resultset_start else {
+        return Ok(());
+    };
+    let end = bounds.map_or(buffer.len(), |(_, end)| end);
+    let frame_bytes = end.saturating_sub(start);
+    if frame_bytes > MYSQL_PREVIEW_MAX_FRAME_BYTES {
+        return Err(DbOperationError::QueryFailed(format!(
+            "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(any(unix, test))]
 pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics(
     buffer: &mut Vec<u8>,
@@ -119,6 +140,7 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics(
     client_packet_limit_bytes: Option<usize>,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     let bounds = scanner.frame_bounds(buffer);
+    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds)?;
     let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
     if has_mysql_cli_error(&buffer[..resultset_start]) {
         trace_mysql_error(&buffer[..resultset_start]);
@@ -145,6 +167,7 @@ pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics(
         ));
     }
     let bounds = scanner.frame_bounds(buffer);
+    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds)?;
     Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
 }
 
@@ -201,6 +224,11 @@ pub(super) fn decode_mysql_xml_reference(
 }
 
 pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationError> {
+    if xml.len() > MYSQL_PREVIEW_MAX_FRAME_BYTES {
+        return Err(DbOperationError::QueryFailed(format!(
+            "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
+        )));
+    }
     let mut reader = Reader::from_reader(xml);
     reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
@@ -258,7 +286,7 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
                 if let Some(field) = current_field.as_mut() {
-                    field.value.push_str(&text);
+                    field.append_value(&text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -268,7 +296,7 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
             Event::GeneralRef(reference) => {
                 let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
-                    field.value.push_str(&text);
+                    field.append_value(&text)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -277,13 +305,10 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
             }
             Event::CData(data) => {
                 if let Some(field) = current_field.as_mut() {
-                    field
-                        .value
-                        .push_str(std::str::from_utf8(data.as_ref()).map_err(|error| {
-                            DbOperationError::QueryFailed(format!(
-                                "invalid MySQL XML text: {error}"
-                            ))
-                        })?);
+                    let text = std::str::from_utf8(data.as_ref()).map_err(|error| {
+                        DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
+                    })?;
+                    field.append_value(text)?;
                 } else {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected CDATA in MySQL XML result".to_string(),
@@ -363,6 +388,19 @@ pub(super) struct MySqlField {
 }
 
 impl MySqlField {
+    fn append_value(&mut self, value: &str) -> Result<(), DbOperationError> {
+        if self.is_null {
+            return Ok(());
+        }
+        if self.value.len().saturating_add(value.len()) > MYSQL_PREVIEW_MAX_FIELD_BYTES {
+            return Err(DbOperationError::QueryFailed(format!(
+                "MySQL preview field exceeded the {MYSQL_PREVIEW_MAX_FIELD_BYTES}-byte limit"
+            )));
+        }
+        self.value.push_str(value);
+        Ok(())
+    }
+
     fn finish(self) -> (String, QueryValue) {
         let value = if self.is_null {
             QueryValue::Null
@@ -496,6 +534,41 @@ mod tests {
         assert!(result.columns.is_empty());
         assert!(result.values.is_empty());
     }
+
+    #[test]
+    fn rejects_a_resultset_frame_before_it_can_grow_without_a_closing_tag() {
+        let mut buffer = MYSQL_RESULTSET_START.to_vec();
+        buffer.extend(std::iter::repeat_n(
+            b'x',
+            MYSQL_PREVIEW_MAX_FRAME_BYTES + 1 - MYSQL_RESULTSET_START.len(),
+        ));
+        let mut scanner = MySqlResultsetFrameScanner::default();
+
+        let result =
+            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None);
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("XML frame") && details.contains("byte limit")
+        ));
+    }
+
+    #[test]
+    fn rejects_an_oversized_field_without_truncating_it() {
+        let value = "x".repeat(MYSQL_PREVIEW_MAX_FIELD_BYTES + 1);
+        let xml =
+            format!("<resultset><row><field name=\"value\">{value}</field></row></resultset>");
+
+        let result = parse_mysql_xml(xml.as_bytes());
+
+        assert!(matches!(
+            result,
+            Err(DbOperationError::QueryFailed(details))
+                if details.contains("field") && details.contains("byte limit")
+        ));
+    }
+
     #[test]
     fn frames_one_xml_resultset_and_preserves_following_output() {
         let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
