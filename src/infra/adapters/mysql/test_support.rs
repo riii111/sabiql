@@ -50,6 +50,7 @@ pub async fn run_mysql_cli_query_for_test(
         .stderr(Stdio::piped())
         .env_remove("MYSQL_PWD")
         .env_remove("MYSQL_PASSWORD")
+        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
         .kill_on_drop(true);
     let output = match timeout(Duration::from_secs(11), command.output()).await {
         Ok(Ok(output)) => output,

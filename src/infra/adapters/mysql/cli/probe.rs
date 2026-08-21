@@ -55,6 +55,7 @@ async fn run_mysql_version_command(
         .stdin(Stdio::null())
         .env_remove("MYSQL_PWD")
         .env_remove("MYSQL_PASSWORD")
+        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
         .kill_on_drop(true);
 
     match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
@@ -196,6 +197,7 @@ where
         .stdin(Stdio::null())
         .env_remove("MYSQL_PWD")
         .env_remove("MYSQL_PASSWORD")
+        .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
         .kill_on_drop(true);
     if option_file.is_some() {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());

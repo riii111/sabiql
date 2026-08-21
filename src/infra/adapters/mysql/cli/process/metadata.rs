@@ -156,6 +156,7 @@ impl MySqlMetadataProcess {
             .stderr(Stdio::piped())
             .env_remove("MYSQL_PWD")
             .env_remove("MYSQL_PASSWORD")
+            .env_remove("LIBMYSQL_ENABLE_CLEARTEXT_PLUGIN")
             .kill_on_drop(true);
         let mut child = command.spawn().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {

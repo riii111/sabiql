@@ -86,6 +86,25 @@ fn connection_setup_mysql_form() {
 }
 
 #[test]
+fn connection_setup_mysql_cleartext_auth_notice() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+
+    state.modal.set_mode(InputMode::ConnectionSetup);
+    state
+        .connection_setup
+        .set_database_type(DatabaseType::MySQL);
+    focus_connection_field(&mut state, ConnectionField::CleartextAuth);
+    state.connection_setup.toggle_focused_dropdown();
+    state.connection_setup.dropdown_next();
+    state.connection_setup.confirm_dropdown();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    insta::assert_snapshot!(output);
+}
+
+#[test]
 fn connection_setup_mysql_preview_does_not_mask_empty_password() {
     let mut state = create_test_state();
     let mut terminal = create_test_terminal();

@@ -53,7 +53,7 @@ impl ConnectionSetup {
         let preview = preview_text(form_state, services);
         let preview_width = modal_width.saturating_sub(MODAL_HORIZONTAL_CHROME) as usize;
         let notice_height = if form_state.cleartext_auth_plugin_enabled() {
-            2
+            3
         } else {
             1
         };
@@ -150,6 +150,7 @@ impl ConnectionSetup {
             vec![
                 Line::from("Note: password is sent via mysql_clear_password"),
                 Line::from("TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY"),
+                Line::from("Note: Connection info is stored locally in plain text"),
             ]
         } else {
             vec![Line::from(
