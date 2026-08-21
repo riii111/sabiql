@@ -184,8 +184,8 @@ async fn fetch_table_detail_with_session(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    let lower_case_table_names = session.probe().await?;
     session.prepare_read_only().await?;
+    let lower_case_table_names = session.probe().await?;
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
         .await?;
@@ -710,9 +710,10 @@ done
             );
             let labels = if mode == "view" {
                 [
-                    "__sabiql_probe",
+                    "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
+                    "__sabiql_probe",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",
                     "INFORMATION_SCHEMA.STATISTICS",
@@ -722,9 +723,10 @@ done
                 ]
             } else {
                 [
-                    "__sabiql_probe",
+                    "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
+                    "__sabiql_probe",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",
                     "INFORMATION_SCHEMA.STATISTICS",

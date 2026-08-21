@@ -300,15 +300,10 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
     process: &mut MySqlMetadataProcess,
     query: &str,
 ) -> Result<Vec<String>, DbOperationError> {
-    let probe_marker = Uuid::new_v4().simple().to_string();
-    let probe_query = format!(
-        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
-    );
-    process.write_statement(&probe_query).await?;
-    let probe_output = process.read_until_marker(&probe_marker).await?;
-    validate_metadata_mode_probe(&probe_output, &probe_marker)?;
-
     let session_marker = Uuid::new_v4().simple().to_string();
+    process
+        .write_statement(super::MYSQL_SESSION_SETTINGS)
+        .await?;
     process
         .write_statement(super::MYSQL_READ_ONLY_STATEMENT)
         .await?;
@@ -319,6 +314,14 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .await?;
     let session_output = process.read_until_marker(&session_marker).await?;
     validate_metadata_session_marker(&session_output, &session_marker)?;
+
+    let probe_marker = Uuid::new_v4().simple().to_string();
+    let probe_query = format!(
+        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
+    );
+    process.write_statement(&probe_query).await?;
+    let probe_output = process.read_until_marker(&probe_marker).await?;
+    validate_metadata_mode_probe(&probe_output, &probe_marker)?;
 
     process.write_statement(query).await?;
     let mut stdin = process

@@ -368,6 +368,8 @@ pub(super) async fn run_mysql_export_process(
     query: &str,
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
+    configure_mysql_session(process, AccessMode::ReadOnly).await?;
+
     let marker = Uuid::new_v4().simple().to_string();
     let probe_query =
         format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
@@ -375,7 +377,6 @@ pub(super) async fn run_mysql_export_process(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &marker)?;
-    configure_mysql_session(process, AccessMode::ReadOnly).await?;
 
     write_mysql_statement(process, query).await?;
     let mut csv_writer = CsvFileWriter::create(path).await?;

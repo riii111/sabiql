@@ -39,6 +39,8 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
     query: &str,
     access_mode: AccessMode,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
+    configure_mysql_session(process, access_mode).await?;
+
     let probe_marker = Uuid::new_v4().simple().to_string();
     let probe_query = format!(
         "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
@@ -47,7 +49,6 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &probe_marker)?;
-    configure_mysql_session(process, access_mode).await?;
 
     write_mysql_statement(process, query).await?;
     let (stdout, mut diagnostics) = read_one_mysql_resultset_with_diagnostics(process).await?;
@@ -97,6 +98,8 @@ pub(super) mod test_support {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<MySqlResultSet, DbOperationError> {
+        configure_mysql_session(process, access_mode).await?;
+
         let marker = Uuid::new_v4().simple().to_string();
         let probe_query =
             format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
@@ -104,7 +107,6 @@ pub(super) mod test_support {
         let probe_xml = read_one_mysql_resultset(process).await?;
         let probe = parse_mysql_xml(&probe_xml)?;
         validate_mode_probe(&probe, &marker)?;
-        configure_mysql_session(process, access_mode).await?;
 
         write_mysql_statement(process, query).await?;
 

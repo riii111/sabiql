@@ -238,6 +238,8 @@ async fn run_mysql_adhoc_process(
     access_mode: AccessMode,
     expected_columns: Option<&[&str]>,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
+    configure_mysql_session(process, access_mode).await?;
+
     let probe_marker = Uuid::new_v4().simple().to_string();
     let probe_query = format!(
         "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
@@ -246,7 +248,6 @@ async fn run_mysql_adhoc_process(
     let probe_xml = read_one_mysql_resultset(process).await?;
     let probe = super::parse_mysql_xml(&probe_xml)?;
     validate_mode_probe(&probe, &probe_marker)?;
-    configure_mysql_session(process, access_mode).await?;
 
     let mut last_result_set = None;
     let mut last_result_statement = None;
