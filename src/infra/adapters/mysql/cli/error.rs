@@ -2,6 +2,7 @@ use std::io::{self, Write};
 
 use crate::app::ports::outbound::DbOperationError;
 
+use super::args::MYSQL_CLIENT_MAX_PACKET_BYTES;
 use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind, validate_sql_mode};
 use super::xml::MySqlResultSet;
 
@@ -69,7 +70,11 @@ pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {
     let details = clean_mysql_stderr(stderr, "mysql query failed");
     let lower = details.to_ascii_lowercase();
     let error_code = mysql_server_error_code(&lower);
-    if (error_code.is_none() || error_code == Some(2026))
+    if matches!(error_code, Some(1153 | 2020)) {
+        DbOperationError::QueryFailed(format!(
+            "MySQL protocol packet exceeds the {MYSQL_CLIENT_MAX_PACKET_BYTES}-byte client limit"
+        ))
+    } else if (error_code.is_none() || error_code == Some(2026))
         && let Some(kind) = mysql_tls_failure_kind(&lower)
     {
         DbOperationError::ConnectionFailedWithKind { kind, details }
@@ -228,6 +233,27 @@ mod tests {
                 b"ERROR 1452 (23000): Cannot add or update a child row: a foreign key constraint fails"
             ),
             DbOperationError::ForeignKeyViolation(_)
+        ));
+        let packet_error = classify_mysql_query_failure(
+            b"ERROR 1153 (08S01): Got a packet bigger than 'max_allowed_packet' bytes",
+        );
+        assert!(matches!(
+            packet_error,
+            DbOperationError::QueryFailed(details)
+                if details == "MySQL protocol packet exceeds the 33554432-byte client limit"
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 2020 (HY000): Got packet bigger than 'max_allowed_packet' bytes"
+            ),
+            DbOperationError::QueryFailed(details)
+                if details == "MySQL protocol packet exceeds the 33554432-byte client limit"
+        ));
+        assert!(matches!(
+            classify_mysql_query_failure(
+                b"ERROR 2013 (HY000): Lost connection to MySQL server during query"
+            ),
+            DbOperationError::ConnectionLost(_)
         ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));

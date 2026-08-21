@@ -1,6 +1,6 @@
 use std::path::Path;
 
-const MYSQL_CLIENT_MAX_PACKET_BYTES: usize = 32 * 1024 * 1024;
+pub(super) const MYSQL_CLIENT_MAX_PACKET_BYTES: usize = 32 * 1024 * 1024;
 
 pub(super) fn mysql_connection_args(option_file: &Path) -> Vec<String> {
     vec![
