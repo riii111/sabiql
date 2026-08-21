@@ -277,7 +277,9 @@ impl Footer {
             InputMode::ConnectionSetup => {
                 let mut hints = if matches!(
                     state.connection_setup.focused_field(),
-                    ConnectionField::DatabaseType | ConnectionField::SslMode
+                    ConnectionField::DatabaseType
+                        | ConnectionField::Transport
+                        | ConnectionField::SslMode
                 ) {
                     vec![
                         connection_setup::ENTER_DROPDOWN.as_hint(),

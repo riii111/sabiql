@@ -81,6 +81,7 @@ pub fn reduce_connection_setup(
                     }
                 }
                 ConnectionField::DatabaseType
+                | ConnectionField::Transport
                 | ConnectionField::SslMode
                 | ConnectionField::CleartextAuth => {}
                 _ => {
@@ -351,6 +352,7 @@ fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
             }
         }
         ConnectionField::DatabaseType
+        | ConnectionField::Transport
         | ConnectionField::SslMode
         | ConnectionField::CleartextAuth => {}
         field => {

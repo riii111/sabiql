@@ -8,8 +8,8 @@ mod sqlite_path;
 mod ssl_mode;
 
 pub use config::{
-    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
-    SqliteConnectionConfig, SqliteConnectionConfigError,
+    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
+    PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 pub use database_type::DatabaseType;
 pub use id::ConnectionId;

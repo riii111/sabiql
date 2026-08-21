@@ -6,7 +6,6 @@ pub(super) fn mysql_connection_args(option_file: &Path) -> Vec<String> {
     vec![
         format!("--defaults-file={}", option_file.display()),
         "--no-login-paths".to_string(),
-        "--protocol=TCP".to_string(),
         "--connect-timeout=10".to_string(),
         "--skip-reconnect".to_string(),
     ]
@@ -77,7 +76,6 @@ mod tests {
             vec![
                 "--defaults-file=/tmp/sabiql-mysql.cnf",
                 "--no-login-paths",
-                "--protocol=TCP",
                 "--connect-timeout=10",
                 "--skip-reconnect",
             ]
@@ -93,7 +91,6 @@ mod tests {
             vec![
                 "--defaults-file=/tmp/sabiql-mysql.cnf",
                 "--no-login-paths",
-                "--protocol=TCP",
                 "--connect-timeout=10",
                 "--skip-reconnect",
                 "--xml",
@@ -120,7 +117,6 @@ mod tests {
             vec![
                 "--defaults-file=/tmp/sabiql-mysql.cnf",
                 "--no-login-paths",
-                "--protocol=TCP",
                 "--connect-timeout=10",
                 "--skip-reconnect",
                 "--batch",
@@ -146,7 +142,6 @@ mod tests {
             vec![
                 "--defaults-file=/tmp/sabiql-mysql.cnf",
                 "--no-login-paths",
-                "--protocol=TCP",
                 "--connect-timeout=10",
                 "--skip-reconnect",
                 "--xml",

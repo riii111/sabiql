@@ -21,6 +21,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
             && matches!(
                 state.connection_setup.focused_field(),
                 ConnectionField::DatabaseType
+                    | ConnectionField::Transport
                     | ConnectionField::SslMode
                     | ConnectionField::CleartextAuth
             ))
@@ -49,6 +50,7 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
             if matches!(
                 state.connection_setup.focused_field(),
                 ConnectionField::DatabaseType
+                    | ConnectionField::Transport
                     | ConnectionField::SslMode
                     | ConnectionField::CleartextAuth
             ) =>

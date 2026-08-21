@@ -6,6 +6,87 @@ use super::ssl_mode::SslMode;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+pub enum MySqlTransport {
+    #[default]
+    Tcp,
+    #[serde(rename = "UNIX_SOCKET")]
+    UnixSocket,
+    #[serde(rename = "NAMED_PIPE")]
+    NamedPipe,
+}
+
+impl MySqlTransport {
+    pub const fn all_variants() -> &'static [Self] {
+        #[cfg(unix)]
+        {
+            &[Self::Tcp, Self::UnixSocket]
+        }
+        #[cfg(windows)]
+        {
+            &[Self::Tcp, Self::NamedPipe]
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            &[Self::Tcp]
+        }
+    }
+
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Tcp => "TCP",
+            Self::UnixSocket => "UNIX_SOCKET",
+            Self::NamedPipe => "NAMED_PIPE",
+        }
+    }
+
+    pub const fn protocol(self) -> &'static str {
+        match self {
+            Self::Tcp => "TCP",
+            Self::UnixSocket => "SOCKET",
+            Self::NamedPipe => "PIPE",
+        }
+    }
+
+    pub const fn requires_path(self) -> bool {
+        !matches!(self, Self::Tcp)
+    }
+
+    pub const fn is_supported_on_current_platform(self) -> bool {
+        match self {
+            Self::Tcp => true,
+            #[cfg(unix)]
+            Self::UnixSocket => true,
+            #[cfg(not(unix))]
+            Self::UnixSocket => false,
+            #[cfg(windows)]
+            Self::NamedPipe => true,
+            #[cfg(not(windows))]
+            Self::NamedPipe => false,
+        }
+    }
+}
+
+impl std::fmt::Display for MySqlTransport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for MySqlTransport {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "TCP" => Ok(Self::Tcp),
+            "UNIX_SOCKET" => Ok(Self::UnixSocket),
+            "NAMED_PIPE" => Ok(Self::NamedPipe),
+            _ => Err(format!("Unknown MySQL transport: {s}")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum MySqlSslMode {
     Disabled,
     #[default]
@@ -100,6 +181,8 @@ impl PostgresConnectionConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MySqlConnectionConfig {
+    #[serde(default)]
+    pub transport: MySqlTransport,
     pub host: String,
     pub port: u16,
     pub database: Option<String>,
@@ -116,6 +199,8 @@ pub struct MySqlConnectionConfig {
     pub server_public_key_path: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub enable_cleartext_plugin: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport_path: Option<String>,
 }
 
 impl MySqlConnectionConfig {
@@ -128,6 +213,7 @@ impl MySqlConnectionConfig {
         ssl_mode: MySqlSslMode,
     ) -> Self {
         Self {
+            transport: MySqlTransport::Tcp,
             host: host.into(),
             port,
             database,
@@ -139,6 +225,7 @@ impl MySqlConnectionConfig {
             ssl_key: None,
             server_public_key_path: None,
             enable_cleartext_plugin: false,
+            transport_path: None,
         }
     }
 
@@ -167,6 +254,13 @@ impl MySqlConnectionConfig {
         self
     }
 
+    #[must_use]
+    pub fn with_transport(mut self, transport: MySqlTransport, path: Option<String>) -> Self {
+        self.transport = transport;
+        self.transport_path = transport.requires_path().then_some(path).flatten();
+        self
+    }
+
     pub fn is_valid_host(host: &str) -> bool {
         let trimmed_host = host.trim();
         if trimmed_host.is_empty() || trimmed_host != host {
@@ -186,7 +280,15 @@ impl MySqlConnectionConfig {
     }
 
     pub fn is_valid(&self) -> bool {
-        Self::is_valid_host(&self.host)
+        self.transport.is_supported_on_current_platform()
+            && match self.transport {
+                MySqlTransport::Tcp => Self::is_valid_host(&self.host) && self.port > 0,
+                MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+                    self.transport_path.as_deref().is_some_and(|path| {
+                        !path.trim().is_empty() && !path.chars().any(char::is_control)
+                    })
+                }
+            }
     }
 }
 
@@ -357,6 +459,47 @@ mod tests {
     #[test]
     fn mysql_tls_modes_reject_unknown_names() {
         assert!("unknown".parse::<MySqlSslMode>().is_err());
+    }
+
+    #[test]
+    fn mysql_transports_round_trip_through_canonical_names() {
+        let expected = [
+            (MySqlTransport::Tcp, "TCP"),
+            (MySqlTransport::UnixSocket, "UNIX_SOCKET"),
+            (MySqlTransport::NamedPipe, "NAMED_PIPE"),
+        ];
+
+        for (transport, name) in expected {
+            assert_eq!(transport.as_str(), name);
+            assert_eq!(name.parse::<MySqlTransport>().unwrap(), transport);
+            assert_eq!(
+                serde_json::to_string(&transport).unwrap(),
+                format!("\"{name}\"")
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_socket_config_uses_path_instead_of_tcp_values() {
+        let config = MySqlConnectionConfig::new(
+            "ignored-host",
+            3306,
+            None,
+            "user",
+            "password",
+            MySqlSslMode::Disabled,
+        )
+        .with_transport(
+            MySqlTransport::UnixSocket,
+            Some("/run/mysqld/mysqld.sock".to_string()),
+        );
+
+        assert!(config.is_valid());
+        assert_eq!(
+            config.transport_path.as_deref(),
+            Some("/run/mysqld/mysqld.sock")
+        );
     }
 
     #[test]

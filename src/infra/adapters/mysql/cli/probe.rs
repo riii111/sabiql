@@ -368,7 +368,6 @@ mod probe_tests {
             vec![
                 "--defaults-file=/tmp/sabiql-mysql.cnf".to_string(),
                 "--no-login-paths".to_string(),
-                "--protocol=TCP".to_string(),
                 "--connect-timeout=10".to_string(),
                 "--skip-reconnect".to_string(),
                 "--batch".to_string(),

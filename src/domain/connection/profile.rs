@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use super::config::{
-    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
-    SqliteConnectionConfig, SqliteConnectionConfigError,
+    ConnectionConfig, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
+    PostgresConnectionConfig, SqliteConnectionConfig, SqliteConnectionConfigError,
 };
 use super::database_type::DatabaseType;
 use super::id::ConnectionId;
@@ -32,6 +32,14 @@ pub enum ConnectionProfileError {
     InvalidMySqlHost,
     #[error("MySQL connection port must be > 0")]
     InvalidMySqlPort,
+    #[error("MySQL connection transport is not supported on this platform")]
+    UnsupportedMySqlTransport,
+    #[error("MySQL connection transport path is required")]
+    MissingMySqlTransportPath,
+    #[error("MySQL connection transport path is invalid")]
+    InvalidMySqlTransportPath,
+    #[error("MySQL named pipe transport does not support the selected TLS mode")]
+    MySqlNamedPipeRequiresNonTls,
     #[error(
         "MySQL cleartext authentication requires REQUIRED, VERIFY_CA, or VERIFY_IDENTITY TLS mode"
     )]
@@ -147,11 +155,34 @@ impl ConnectionProfile {
         config: ConnectionConfig,
     ) -> Result<Self, ConnectionProfileError> {
         if let ConnectionConfig::MySQL(mysql) = &config {
-            if mysql.port == 0 {
-                return Err(ConnectionProfileError::InvalidMySqlPort);
+            if !mysql.transport.is_supported_on_current_platform() {
+                return Err(ConnectionProfileError::UnsupportedMySqlTransport);
             }
-            if !mysql.is_valid() {
-                return Err(ConnectionProfileError::InvalidMySqlHost);
+            match mysql.transport {
+                MySqlTransport::Tcp => {
+                    if mysql.port == 0 {
+                        return Err(ConnectionProfileError::InvalidMySqlPort);
+                    }
+                    if !MySqlConnectionConfig::is_valid_host(&mysql.host) {
+                        return Err(ConnectionProfileError::InvalidMySqlHost);
+                    }
+                }
+                MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+                    let Some(path) = mysql.transport_path.as_deref() else {
+                        return Err(ConnectionProfileError::MissingMySqlTransportPath);
+                    };
+                    if path.trim().is_empty() || path.chars().any(char::is_control) {
+                        return Err(ConnectionProfileError::InvalidMySqlTransportPath);
+                    }
+                    if mysql.transport == MySqlTransport::NamedPipe
+                        && !matches!(
+                            mysql.ssl_mode,
+                            MySqlSslMode::Disabled | MySqlSslMode::Preferred
+                        )
+                    {
+                        return Err(ConnectionProfileError::MySqlNamedPipeRequiresNonTls);
+                    }
+                }
             }
             if mysql.enable_cleartext_plugin && !mysql.ssl_mode.allows_cleartext_auth() {
                 return Err(ConnectionProfileError::MySqlCleartextAuthRequiresTls);
@@ -259,6 +290,48 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(ConnectionProfileError::InvalidMySqlPort)
+            ));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn unix_socket_profile_requires_a_valid_path() {
+            let config = MySqlConnectionConfig::new(
+                "ignored-host",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Disabled,
+            )
+            .with_transport(MySqlTransport::UnixSocket, None);
+            let result = ConnectionProfile::with_id_and_config(
+                ConnectionId::new(),
+                "MySQL",
+                ConnectionConfig::MySQL(config),
+            );
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::MissingMySqlTransportPath)
+            ));
+
+            let config = MySqlConnectionConfig::new(
+                "ignored-host",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Disabled,
+            )
+            .with_transport(MySqlTransport::UnixSocket, Some("\n".to_string()));
+            let result = ConnectionProfile::with_id_and_config(
+                ConnectionId::new(),
+                "MySQL",
+                ConnectionConfig::MySQL(config),
+            );
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::InvalidMySqlTransportPath)
             ));
         }
 

@@ -6,7 +6,7 @@ sabiql supports Oracle MySQL server 8.4 LTS through the Oracle `mysql` CLI from 
 
 ## Connection requirements
 
-MySQL connections use TCP. Unix sockets and Windows named pipes are not supported. When connecting to a remote server, install the local `mysql` CLI; a local MySQL server is not required.
+MySQL connections can use TCP, a Unix socket file on Unix-like systems, or a Windows named pipe. Select the transport explicitly and provide its socket or pipe path when required. Shared-memory transport and automatic transport fallback are not supported. When connecting to a remote server, install the local `mysql` CLI; a local MySQL server is not required.
 
 Passphrase-protected TLS client keys are not supported. An unencrypted PEM private key can be used, but it weakens at-rest protection; store it with restrictive file permissions.
 

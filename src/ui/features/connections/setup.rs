@@ -10,7 +10,7 @@ use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
 use crate::domain::connection::{
-    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, SslMode,
+    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, MySqlTransport, SslMode,
 };
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
@@ -113,6 +113,15 @@ impl ConnectionSetup {
                     None,
                     theme,
                 ),
+                ConnectionField::Transport => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    &form_state.mysql_transport().to_string(),
+                    form_state.focused_field() == ConnectionField::Transport,
+                    form_state.validation_error(ConnectionField::Transport),
+                    theme,
+                ),
                 ConnectionField::SslMode => Self::render_dropdown_field(
                     frame,
                     chunks[idx],
@@ -165,7 +174,7 @@ impl ConnectionSetup {
         if form_state.database_type_dropdown().is_open()
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
-                visible_fields,
+                &visible_fields,
                 ConnectionField::DatabaseType,
             )
         {
@@ -178,10 +187,26 @@ impl ConnectionSetup {
                 form_state.database_type_dropdown().selected_index(),
                 theme,
             );
+        } else if form_state.transport_dropdown().is_open()
+            && let Some(field_area) = Self::open_dropdown_field_area(
+                chunks.as_ref(),
+                visible_fields.as_slice(),
+                ConnectionField::Transport,
+            )
+        {
+            Self::render_dropdown_list(
+                frame,
+                field_area,
+                MySqlTransport::all_variants()
+                    .iter()
+                    .map(|transport| transport.as_str()),
+                form_state.transport_dropdown().selected_index(),
+                theme,
+            );
         } else if form_state.ssl_dropdown().is_open()
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
-                visible_fields,
+                &visible_fields,
                 if form_state.focused_field() == ConnectionField::CleartextAuth {
                     ConnectionField::CleartextAuth
                 } else {
@@ -245,6 +270,7 @@ impl ConnectionSetup {
         if matches!(
             form_state.focused_field(),
             ConnectionField::DatabaseType
+                | ConnectionField::Transport
                 | ConnectionField::SslMode
                 | ConnectionField::CleartextAuth
         ) {
