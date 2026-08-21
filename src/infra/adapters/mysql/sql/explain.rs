@@ -22,6 +22,8 @@ mod tests {
             "SELECT * FROM users",
             "TABLE users",
             "INSERT INTO users VALUES (1)",
+            "REPLACE INTO users VALUES (1)",
+            "REPLACE users VALUES (1)",
             "UPDATE users SET name = 'Ada' WHERE id = 1",
             "DELETE FROM users WHERE id = 1",
             "SELECT * FROM users FOR UPDATE",
@@ -39,8 +41,8 @@ mod tests {
         for query in [
             "CREATE TABLE users(id INT)",
             "DROP TABLE users",
-            "REPLACE INTO users VALUES (1)",
-            "REPLACE users VALUES (1)",
+            "REPLACE",
+            "REPLACE INTO",
             "\\C /tmp/other.sock",
             "SELECT 1; SELECT 2",
         ] {

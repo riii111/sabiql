@@ -248,6 +248,35 @@ mod tests {
         }
 
         #[test]
+        fn mysql_replace_emits_tree_explain_without_running_the_statement() {
+            let mut state = sql_modal_state();
+            state
+                .sql_modal
+                .editor
+                .set_content("REPLACE INTO users (id, active) VALUES (1, TRUE)".to_string());
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://test");
+
+            let effects = dispatch_explain(
+                &mut state,
+                &Action::ExplainRequest,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+
+            assert!(matches!(
+                &effects[0],
+                Effect::ExecuteExplain {
+                    query,
+                    database_type: DatabaseType::MySQL,
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                    ..
+                } if query == "EXPLAIN FORMAT=TREE REPLACE INTO users (id, active) VALUES (1, TRUE)"
+            ));
+        }
+
+        #[test]
         fn mysql_explain_emits_tree_explain_for_locking_reads() {
             let mut state = sql_modal_state();
             state
@@ -296,7 +325,9 @@ mod tests {
             assert!(effects.is_empty());
             assert_eq!(
                 state.explain.error.as_deref(),
-                Some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements",)
+                Some(
+                    "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+                )
             );
         }
 
