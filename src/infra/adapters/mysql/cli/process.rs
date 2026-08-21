@@ -15,6 +15,8 @@ use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
 use crate::domain::{MySqlDiagnostic, RefreshScope};
 
 use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
+#[cfg(not(unix))]
+use super::error::classify_mysql_query_failure;
 use super::error::has_mysql_cli_error;
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};

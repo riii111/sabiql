@@ -6,10 +6,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
 
-use super::error::{
-    classify_mysql_query_failure, classify_mysql_query_failure_with_packet_limit,
-    has_mysql_cli_error,
-};
+use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 use super::xml::{
     MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check_with_diagnostics,
     trace_mysql_frame,
@@ -296,6 +293,7 @@ mod tests {
     use tokio::io::AsyncWriteExt;
     use tokio::process::{Child, Command};
 
+    use super::super::error::classify_mysql_query_failure;
     use super::*;
 
     struct PendingReader {
