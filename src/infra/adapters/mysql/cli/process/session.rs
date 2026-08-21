@@ -7,7 +7,7 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
 use super::super::error::classify_mysql_query_failure_with_packet_limit;
 use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
-use super::super::xml::{MySqlResultSet, parse_mysql_xml};
+use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
 use super::{
     MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
     finish_mysql_session_after_preview_frame, read_one_mysql_resultset, write_mysql_statement,
@@ -24,7 +24,7 @@ impl MySqlMetadataSession {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
-        MySqlProcess::spawn_with_query_args(program, mysql_query_args(option_file))
+        MySqlProcess::spawn_with_preview_program(program, mysql_query_args(option_file))
             .map(|process| Self { process })
     }
 
@@ -70,7 +70,11 @@ impl MySqlMetadataSession {
     ) -> Result<MySqlResultSet, DbOperationError> {
         write_mysql_statement(&mut self.process, query).await?;
         let xml = read_one_mysql_resultset(&mut self.process).await?;
-        let mut result = parse_mysql_xml(&xml)?;
+        let mut result = if self.process.preview_byte_budget {
+            parse_mysql_preview_xml(&xml)?
+        } else {
+            parse_mysql_xml(&xml)?
+        };
         if result.columns.is_empty() && result.values.is_empty() {
             result.columns = expected_columns
                 .iter()

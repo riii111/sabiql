@@ -8,7 +8,8 @@ use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 use super::xml::{
-    MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check_with_diagnostics,
+    MySqlResultsetFrameScanner,
+    take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget,
     trace_mysql_frame,
 };
 
@@ -157,6 +158,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     pending_stderr: &mut Vec<u8>,
     frame_scanner: &mut MySqlResultsetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<Vec<u8>, DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -170,6 +172,7 @@ where
         pending_stderr,
         frame_scanner,
         client_packet_limit_bytes,
+        preview_byte_budget,
     )
     .await?
     .0)
@@ -183,6 +186,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes_with_diagnostics<R, E>(
     pending_stderr: &mut Vec<u8>,
     frame_scanner: &mut MySqlResultsetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<(Vec<u8>, Vec<crate::domain::MySqlDiagnostic>), DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -206,12 +210,15 @@ where
                 () = tokio::task::yield_now() => {}
             }
         }
-        if let Some(frame) = take_mysql_resultset_frame_after_error_check_with_diagnostics(
-            pending,
-            pending_stderr,
-            frame_scanner,
-            client_packet_limit_bytes,
-        )? {
+        if let Some(frame) =
+            take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
+                pending,
+                pending_stderr,
+                frame_scanner,
+                client_packet_limit_bytes,
+                preview_byte_budget,
+            )?
+        {
             trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
         }
@@ -386,6 +393,7 @@ mod tests {
             &mut Vec::new(),
             &mut frame_scanner,
             None,
+            false,
         )
         .await;
 
@@ -420,6 +428,7 @@ mod tests {
             &mut pending_stderr,
             &mut frame_scanner,
             None,
+            false,
         )
         .await;
 

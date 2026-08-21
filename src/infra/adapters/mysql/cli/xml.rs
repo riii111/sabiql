@@ -119,14 +119,18 @@ fn ensure_mysql_resultset_frame_within_limit(
     scanner: &MySqlResultsetFrameScanner,
     buffer: &[u8],
     bounds: Option<(usize, usize)>,
+    preview_byte_budget: bool,
 ) -> Result<(), DbOperationError> {
+    if !preview_byte_budget {
+        return Ok(());
+    }
     let Some(start) = scanner.resultset_start else {
         return Ok(());
     };
     let end = bounds.map_or(buffer.len(), |(_, end)| end);
     let frame_bytes = end.saturating_sub(start);
     if frame_bytes > MYSQL_PREVIEW_MAX_FRAME_BYTES {
-        return Err(DbOperationError::QueryFailed(format!(
+        return Err(DbOperationError::PreviewSizeExceeded(format!(
             "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
         )));
     }
@@ -134,13 +138,13 @@ fn ensure_mysql_resultset_frame_within_limit(
 }
 
 #[cfg(any(unix, test))]
-pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics(
+pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
     buffer: &mut Vec<u8>,
     scanner: &mut MySqlResultsetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     let bounds = scanner.frame_bounds(buffer);
-    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds)?;
     let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
     if has_mysql_cli_error(&buffer[..resultset_start]) {
         trace_mysql_error(&buffer[..resultset_start]);
@@ -149,15 +153,17 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics(
             client_packet_limit_bytes,
         ));
     }
+    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds, preview_byte_budget)?;
     Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
 }
 
 #[cfg(any(not(unix), test))]
-pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics(
+pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
     scanner: &mut MySqlResultsetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
+    preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     if has_mysql_cli_error(error_output) {
         trace_mysql_error(error_output);
@@ -167,7 +173,7 @@ pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics(
         ));
     }
     let bounds = scanner.frame_bounds(buffer);
-    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds)?;
+    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds, preview_byte_budget)?;
     Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
 }
 
@@ -224,8 +230,19 @@ pub(super) fn decode_mysql_xml_reference(
 }
 
 pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationError> {
-    if xml.len() > MYSQL_PREVIEW_MAX_FRAME_BYTES {
-        return Err(DbOperationError::QueryFailed(format!(
+    parse_mysql_xml_with_preview_budget(xml, false)
+}
+
+pub(super) fn parse_mysql_preview_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationError> {
+    parse_mysql_xml_with_preview_budget(xml, true)
+}
+
+fn parse_mysql_xml_with_preview_budget(
+    xml: &[u8],
+    preview_byte_budget: bool,
+) -> Result<MySqlResultSet, DbOperationError> {
+    if preview_byte_budget && xml.len() > MYSQL_PREVIEW_MAX_FRAME_BYTES {
+        return Err(DbOperationError::PreviewSizeExceeded(format!(
             "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
         )));
     }
@@ -286,7 +303,7 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
                     DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                 })?;
                 if let Some(field) = current_field.as_mut() {
-                    field.append_value(&text)?;
+                    field.append_value(&text, preview_byte_budget)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -296,7 +313,7 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
             Event::GeneralRef(reference) => {
                 let text = decode_mysql_xml_reference(&reference)?;
                 if let Some(field) = current_field.as_mut() {
-                    field.append_value(&text)?;
+                    field.append_value(&text, preview_byte_budget)?;
                 } else if !text.chars().all(char::is_whitespace) {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected text in MySQL XML result".to_string(),
@@ -308,7 +325,7 @@ pub(super) fn parse_mysql_xml(xml: &[u8]) -> Result<MySqlResultSet, DbOperationE
                     let text = std::str::from_utf8(data.as_ref()).map_err(|error| {
                         DbOperationError::QueryFailed(format!("invalid MySQL XML text: {error}"))
                     })?;
-                    field.append_value(text)?;
+                    field.append_value(text, preview_byte_budget)?;
                 } else {
                     return Err(DbOperationError::QueryFailed(
                         "unexpected CDATA in MySQL XML result".to_string(),
@@ -388,12 +405,18 @@ pub(super) struct MySqlField {
 }
 
 impl MySqlField {
-    fn append_value(&mut self, value: &str) -> Result<(), DbOperationError> {
+    fn append_value(
+        &mut self,
+        value: &str,
+        preview_byte_budget: bool,
+    ) -> Result<(), DbOperationError> {
         if self.is_null {
             return Ok(());
         }
-        if self.value.len().saturating_add(value.len()) > MYSQL_PREVIEW_MAX_FIELD_BYTES {
-            return Err(DbOperationError::QueryFailed(format!(
+        if preview_byte_budget
+            && self.value.len().saturating_add(value.len()) > MYSQL_PREVIEW_MAX_FIELD_BYTES
+        {
+            return Err(DbOperationError::PreviewSizeExceeded(format!(
                 "MySQL preview field exceeded the {MYSQL_PREVIEW_MAX_FIELD_BYTES}-byte limit"
             )));
         }
@@ -466,7 +489,7 @@ mod tests {
 </row>
 </resultset>"#;
 
-        let result = parse_mysql_xml(xml.as_bytes()).unwrap();
+        let result = parse_mysql_preview_xml(xml.as_bytes()).unwrap();
 
         assert_eq!(
             result.columns,
@@ -501,7 +524,7 @@ mod tests {
 <field name="binary">0x00FF10</field>
 </row></resultset>"#;
 
-        let result = parse_mysql_xml(xml).unwrap();
+        let result = parse_mysql_preview_xml(xml).unwrap();
         assert!(
             result.values[0]
                 .iter()
@@ -536,7 +559,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_resultset_frame_before_it_can_grow_without_a_closing_tag() {
+    fn applies_frame_limit_only_to_preview_reader() {
         let mut buffer = MYSQL_RESULTSET_START.to_vec();
         buffer.extend(std::iter::repeat_n(
             b'x',
@@ -544,12 +567,27 @@ mod tests {
         ));
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let result =
-            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None);
+        assert!(
+            take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
+                &mut buffer,
+                &mut scanner,
+                None,
+                false,
+            )
+            .unwrap()
+            .is_none()
+        );
+
+        let result = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
+            &mut buffer,
+            &mut scanner,
+            None,
+            true,
+        );
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::PreviewSizeExceeded(details))
                 if details.contains("XML frame") && details.contains("byte limit")
         ));
     }
@@ -560,11 +598,14 @@ mod tests {
         let xml =
             format!("<resultset><row><field name=\"value\">{value}</field></row></resultset>");
 
-        let result = parse_mysql_xml(xml.as_bytes());
+        let unrestricted = parse_mysql_xml(xml.as_bytes()).unwrap();
+        assert_eq!(unrestricted.values, vec![vec![QueryValue::Text(value)]]);
+
+        let result = parse_mysql_preview_xml(xml.as_bytes());
 
         assert!(matches!(
             result,
-            Err(DbOperationError::QueryFailed(details))
+            Err(DbOperationError::PreviewSizeExceeded(details))
                 if details.contains("field") && details.contains("byte limit")
         ));
     }
@@ -607,9 +648,14 @@ mod tests {
         let mut scanner = MySqlResultsetFrameScanner::default();
 
         let (frame, diagnostics) =
-            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
-                .unwrap()
-                .unwrap();
+            take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
+                &mut buffer,
+                &mut scanner,
+                None,
+                false,
+            )
+            .unwrap()
+            .unwrap();
 
         assert_eq!(frame, b"<resultset></resultset>");
         assert_eq!(
@@ -635,14 +681,16 @@ mod tests {
         let mut buffer = b"Warning (Code 1265): truncated\n<resultset></resultset>".to_vec();
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let (frame, diagnostics) = take_mysql_resultset_frame_after_error_check_with_diagnostics(
-            &mut buffer,
-            &[],
-            &mut scanner,
-            None,
-        )
-        .unwrap()
-        .unwrap();
+        let (frame, diagnostics) =
+            take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
+                &mut buffer,
+                &[],
+                &mut scanner,
+                None,
+                false,
+            )
+            .unwrap()
+            .unwrap();
 
         assert_eq!(frame, b"<resultset></resultset>");
         assert_eq!(
@@ -738,10 +786,14 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             .to_vec();
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let frame =
-            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
-                .unwrap()
-                .map(|(frame, _)| frame);
+        let frame = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
+            &mut buffer,
+            &mut scanner,
+            None,
+            false,
+        )
+        .unwrap()
+        .map(|(frame, _)| frame);
 
         assert!(frame.is_some());
         assert!(buffer.is_empty());
@@ -753,9 +805,13 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let result =
-            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
-                .map(|result| result.map(|(frame, _)| frame));
+        let result = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
+            &mut buffer,
+            &mut scanner,
+            None,
+            false,
+        )
+        .map(|result| result.map(|(frame, _)| frame));
 
         assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         assert_eq!(
@@ -771,11 +827,12 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
         let mut scanner = MySqlResultsetFrameScanner::default();
 
         assert!(matches!(
-            take_mysql_resultset_frame_after_error_check_with_diagnostics(
+            take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
                 &mut buffer,
                 error,
                 &mut scanner,
                 None,
+                false,
             )
             .map(|result| result.map(|(frame, _)| frame)),
             Err(DbOperationError::ObjectMissing(_))

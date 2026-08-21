@@ -51,6 +51,7 @@ const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
     pub(super) client_packet_limit_bytes: Option<usize>,
+    pub(super) preview_byte_budget: bool,
     #[cfg(unix)]
     pub(super) pty: MySqlPty,
     #[cfg(not(unix))]
@@ -86,24 +87,37 @@ impl MySqlProcess {
         program: &OsStr,
         args: Vec<String>,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args_and_packet_limit(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES))
+        Self::spawn_with_args_and_limits(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES), false)
+    }
+
+    pub(in crate::adapters::mysql) fn spawn_with_preview_program(
+        program: &OsStr,
+        args: Vec<String>,
+    ) -> Result<Self, DbOperationError> {
+        Self::spawn_with_args_and_limits(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES), true)
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_args(
         program: &OsStr,
         args: Vec<String>,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args_and_packet_limit(program, args, None)
+        Self::spawn_with_args_and_limits(program, args, None, false)
     }
 
-    fn spawn_with_args_and_packet_limit(
+    fn spawn_with_args_and_limits(
         program: &OsStr,
         args: Vec<String>,
         client_packet_limit_bytes: Option<usize>,
+        preview_byte_budget: bool,
     ) -> Result<Self, DbOperationError> {
         #[cfg(unix)]
         {
-            Self::spawn_with_pty(program, args, client_packet_limit_bytes)
+            Self::spawn_with_pty(
+                program,
+                args,
+                client_packet_limit_bytes,
+                preview_byte_budget,
+            )
         }
 
         #[cfg(not(unix))]
@@ -138,6 +152,7 @@ impl MySqlProcess {
             Ok(Self {
                 child,
                 client_packet_limit_bytes,
+                preview_byte_budget,
                 stdin: Some(stdin),
                 stdout,
                 stderr,
@@ -153,6 +168,7 @@ impl MySqlProcess {
         program: &OsStr,
         args: Vec<String>,
         client_packet_limit_bytes: Option<usize>,
+        preview_byte_budget: bool,
     ) -> Result<Self, DbOperationError> {
         let (master, slave) = create_mysql_pty().map_err(|error| {
             DbOperationError::ConnectionFailed(format!("Unable to create MySQL PTY: {error}"))
@@ -188,6 +204,7 @@ impl MySqlProcess {
         Ok(Self {
             child,
             client_packet_limit_bytes,
+            preview_byte_budget,
             pty: MySqlPty {
                 input,
                 output,
@@ -436,7 +453,12 @@ pub(super) async fn read_one_mysql_resultset(
 ) -> Result<Vec<u8>, DbOperationError> {
     #[cfg(unix)]
     {
-        return read_one_pty_resultset(&mut process.pty, process.client_packet_limit_bytes).await;
+        return read_one_pty_resultset(
+            &mut process.pty,
+            process.client_packet_limit_bytes,
+            process.preview_byte_budget,
+        )
+        .await;
     }
     #[cfg(not(unix))]
     read_one_mysql_resultset_from_pipes(
@@ -447,6 +469,7 @@ pub(super) async fn read_one_mysql_resultset(
         &mut process.pending_stderr,
         &mut process.frame_scanner,
         process.client_packet_limit_bytes,
+        process.preview_byte_budget,
     )
     .await
 }
@@ -459,6 +482,7 @@ pub(super) async fn read_one_mysql_resultset_with_diagnostics(
         return read_one_pty_resultset_with_diagnostics(
             &mut process.pty,
             process.client_packet_limit_bytes,
+            process.preview_byte_budget,
         )
         .await;
     }
@@ -471,6 +495,7 @@ pub(super) async fn read_one_mysql_resultset_with_diagnostics(
         &mut process.pending_stderr,
         &mut process.frame_scanner,
         process.client_packet_limit_bytes,
+        process.preview_byte_budget,
     )
     .await
 }
@@ -1955,6 +1980,7 @@ mod windows_tests {
         let mut process = MySqlProcess {
             child,
             client_packet_limit_bytes: None,
+            preview_byte_budget: false,
             stdin: Some(stdin),
             stdout,
             stderr,
@@ -2005,6 +2031,7 @@ mod windows_tests {
         let mut process = MySqlProcess {
             child,
             client_packet_limit_bytes: None,
+            preview_byte_budget: false,
             stdin: Some(stdin),
             stdout,
             stderr,
@@ -2043,6 +2070,7 @@ mod windows_tests {
         let mut process = MySqlProcess {
             child,
             client_packet_limit_bytes: None,
+            preview_byte_budget: false,
             stdin: Some(stdin),
             stdout,
             stderr,

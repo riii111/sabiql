@@ -69,6 +69,8 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("Preview exceeded its byte budget")]
+    PreviewSizeExceeded(String),
     #[error("Query failed after a change")]
     QueryFailedAfterChange {
         #[source]
@@ -119,6 +121,7 @@ impl DbOperationError {
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
             Self::QueryFailed(_) => "Query failed",
+            Self::PreviewSizeExceeded(_) => "Preview exceeded its byte budget",
             Self::QueryFailedAfterChange { source, .. } => source.summary(),
             Self::UnsupportedOperation(_) => "Unsupported operation",
             Self::UnsupportedOperationWithKind { kind, .. } => match kind {
@@ -164,6 +167,7 @@ impl DbOperationError {
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::PreviewSizeExceeded(_) => "Reduce the preview value size and retry",
             Self::QueryFailedAfterChange { source, .. } => source.hint(),
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
             Self::UnsupportedOperationWithKind { kind, .. } => match kind {
@@ -257,6 +261,7 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
+            | Self::PreviewSizeExceeded(details)
             | Self::UnsupportedOperation(details)
             | Self::UnsupportedOperationWithKind { details, .. }
             | Self::ConnectionFailedWithKind { details, .. }
