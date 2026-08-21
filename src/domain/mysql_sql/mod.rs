@@ -397,17 +397,22 @@ pub fn mysql_explain_rejection_message(sql: &str) -> Option<&'static str> {
     }
 
     let Ok(statement) = classify_mysql_statement(&statements[0]) else {
-        return Some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements");
+        return Some(
+            "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+        );
     };
     (!matches!(
         statement.kind,
         MySqlStatementKind::Select
             | MySqlStatementKind::Table
             | MySqlStatementKind::Insert
+            | MySqlStatementKind::Replace
             | MySqlStatementKind::Update { .. }
             | MySqlStatementKind::Delete { .. }
     ))
-    .then_some("MySQL EXPLAIN supports SELECT, TABLE, INSERT, UPDATE, or DELETE statements")
+    .then_some(
+        "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements",
+    )
 }
 
 pub fn mysql_tree_explain_query_kind(sql: &str) -> Option<bool> {
@@ -1226,6 +1231,39 @@ mod tests {
             mysql_tree_explain_query_kind("EXPLAIN ANALYZE FORMAT=TREE DELETE FROM items"),
             None
         );
+    }
+
+    #[test]
+    fn allows_replace_for_tree_explain_but_not_explain_analyze() {
+        for query in [
+            "REPLACE INTO items (id, value) VALUES (1, 'new')",
+            "REPLACE items (id, value) VALUES (1, 'new')",
+        ] {
+            assert_eq!(mysql_explain_rejection_message(query), None, "{query}");
+            assert_eq!(
+                mysql_tree_explain_query_kind(&format!("EXPLAIN FORMAT=TREE {query}")),
+                Some(false),
+                "{query}"
+            );
+            assert_eq!(
+                mysql_tree_explain_query_kind(&format!("EXPLAIN ANALYZE FORMAT=TREE {query}")),
+                None,
+                "{query}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_replace_without_a_classifiable_target_for_explain() {
+        for query in ["REPLACE", "REPLACE INTO"] {
+            assert_eq!(
+                mysql_explain_rejection_message(query),
+                Some(
+                    "MySQL EXPLAIN supports SELECT, TABLE, INSERT, REPLACE, UPDATE, or DELETE statements"
+                ),
+                "{query}"
+            );
+        }
     }
 
     #[test]
