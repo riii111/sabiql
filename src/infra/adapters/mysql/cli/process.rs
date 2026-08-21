@@ -28,6 +28,7 @@ use super::pty::{
     MySqlPty, create_mysql_pty, read_one_pty_resultset, read_one_pty_resultset_with_diagnostics,
     read_pty_all, read_pty_until_idle,
 };
+use super::sanitize_mysql_command_environment;
 use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
 mod session;
@@ -113,9 +114,8 @@ impl MySqlProcess {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
-                .env_remove("MYSQL_PWD")
-                .env_remove("MYSQL_PASSWORD")
                 .kill_on_drop(true);
+            sanitize_mysql_command_environment(&mut command);
             let mut child = command.spawn().map_err(|error| {
                 if error.kind() == io::ErrorKind::NotFound {
                     DbOperationError::CommandNotFound {
@@ -167,9 +167,8 @@ impl MySqlProcess {
                 DbOperationError::ConnectionFailed(error.to_string())
             })?))
             .stderr(Stdio::from(slave))
-            .env_remove("MYSQL_PWD")
-            .env_remove("MYSQL_PASSWORD")
             .kill_on_drop(true);
+        sanitize_mysql_command_environment(&mut command);
         let child = command.spawn().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 DbOperationError::CommandNotFound {

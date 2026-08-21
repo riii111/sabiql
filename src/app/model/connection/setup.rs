@@ -21,6 +21,7 @@ pub enum ConnectionField {
     User,
     Password,
     SslMode,
+    CleartextAuth,
     SslCa,
     SslCert,
     SslKey,
@@ -54,6 +55,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::CleartextAuth,
                     Self::ServerPublicKeyPath,
                 ],
                 MySqlSslMode::Preferred | MySqlSslMode::Required => &[
@@ -65,6 +67,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::CleartextAuth,
                     Self::ServerPublicKeyPath,
                     Self::SslCert,
                     Self::SslKey,
@@ -78,6 +81,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::CleartextAuth,
                     Self::ServerPublicKeyPath,
                     Self::SslCa,
                     Self::SslCert,
@@ -104,7 +108,7 @@ impl ConnectionField {
             | Self::ServerPublicKeyPath => Some(4096),
             Self::Host | Self::Database | Self::User | Self::Password => Some(255),
             Self::Port => Some(5),
-            Self::DatabaseType | Self::SslMode => None,
+            Self::DatabaseType | Self::SslMode | Self::CleartextAuth => None,
         }
     }
 
@@ -136,6 +140,7 @@ impl ConnectionField {
             Self::User => "User:",
             Self::Password => "Password:",
             Self::SslMode => "SSL Mode:",
+            Self::CleartextAuth => "Cleartext:",
             Self::SslCa => "CA Path:",
             Self::SslCert => "Cert Path:",
             Self::SslKey => "Key Path:",
@@ -192,6 +197,7 @@ pub struct ConnectionSetupState {
     pub(crate) server_public_key_path: TextInputState,
     pub(crate) ssl_mode: SslMode,
     pub(crate) mysql_ssl_mode: MySqlSslMode,
+    pub(crate) enable_cleartext_plugin: bool,
 
     pub(crate) focused_field: ConnectionField,
     pub(crate) database_type_dropdown: DatabaseTypeDropdown,
@@ -220,6 +226,7 @@ impl Default for ConnectionSetupState {
             server_public_key_path: TextInputState::default(),
             ssl_mode: SslMode::Prefer,
             mysql_ssl_mode: MySqlSslMode::Preferred,
+            enable_cleartext_plugin: false,
             focused_field: ConnectionField::DatabaseType,
             database_type_dropdown: DatabaseTypeDropdown::default(),
             ssl_dropdown: SslModeDropdown::default(),
@@ -241,6 +248,10 @@ impl ConnectionSetupState {
 
     pub fn mysql_ssl_mode(&self) -> MySqlSslMode {
         self.mysql_ssl_mode
+    }
+
+    pub fn cleartext_auth_plugin_enabled(&self) -> bool {
+        self.enable_cleartext_plugin
     }
 
     pub fn focused_field(&self) -> ConnectionField {
@@ -291,7 +302,9 @@ impl ConnectionSetupState {
 
     pub fn input(&self, field: ConnectionField) -> Option<&TextInputState> {
         match field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
+            ConnectionField::DatabaseType
+            | ConnectionField::SslMode
+            | ConnectionField::CleartextAuth => None,
             ConnectionField::Name => Some(&self.name),
             ConnectionField::SqlitePath => Some(&self.sqlite_path),
             ConnectionField::Host => Some(&self.host),
@@ -312,7 +325,9 @@ impl ConnectionSetupState {
 
     pub fn input_mut(&mut self, field: ConnectionField) -> Option<&mut TextInputState> {
         match field {
-            ConnectionField::DatabaseType | ConnectionField::SslMode => None,
+            ConnectionField::DatabaseType
+            | ConnectionField::SslMode
+            | ConnectionField::CleartextAuth => None,
             ConnectionField::Name => Some(&mut self.name),
             ConnectionField::SqlitePath => Some(&mut self.sqlite_path),
             ConnectionField::Host => Some(&mut self.host),
@@ -411,22 +426,24 @@ impl ConnectionSetupState {
                         .unwrap_or(0);
                 }
             }
-            ConnectionField::SslMode => {
+            ConnectionField::SslMode | ConnectionField::CleartextAuth => {
                 self.ssl_dropdown.is_open = !self.ssl_dropdown.is_open;
                 self.database_type_dropdown.is_open = false;
                 if self.ssl_dropdown.is_open {
-                    self.ssl_dropdown.selected_index = if self.database_type == DatabaseType::MySQL
-                    {
-                        MySqlSslMode::all_variants()
-                            .iter()
-                            .position(|v| *v == self.mysql_ssl_mode)
-                            .unwrap_or(1)
-                    } else {
-                        SslMode::all_variants()
-                            .iter()
-                            .position(|v| *v == self.ssl_mode)
-                            .unwrap_or(2)
-                    };
+                    self.ssl_dropdown.selected_index =
+                        if self.focused_field == ConnectionField::CleartextAuth {
+                            usize::from(self.enable_cleartext_plugin)
+                        } else if self.database_type == DatabaseType::MySQL {
+                            MySqlSslMode::all_variants()
+                                .iter()
+                                .position(|v| *v == self.mysql_ssl_mode)
+                                .unwrap_or(1)
+                        } else {
+                            SslMode::all_variants()
+                                .iter()
+                                .position(|v| *v == self.ssl_mode)
+                                .unwrap_or(2)
+                        };
                 }
             }
             _ => {}
@@ -440,7 +457,9 @@ impl ConnectionSetupState {
                 self.database_type_dropdown.selected_index += 1;
             }
         } else if self.ssl_dropdown.is_open {
-            let max = if self.database_type == DatabaseType::MySQL {
+            let max = if self.focused_field == ConnectionField::CleartextAuth {
+                1
+            } else if self.database_type == DatabaseType::MySQL {
                 MySqlSslMode::all_variants().len() - 1
             } else {
                 SslMode::all_variants().len() - 1
@@ -469,7 +488,9 @@ impl ConnectionSetupState {
             }
         } else if self.ssl_dropdown.is_open {
             if self.database_type == DatabaseType::MySQL {
-                if let Some(mode) =
+                if self.focused_field == ConnectionField::CleartextAuth {
+                    self.enable_cleartext_plugin = self.ssl_dropdown.selected_index == 1;
+                } else if let Some(mode) =
                     MySqlSslMode::all_variants().get(self.ssl_dropdown.selected_index)
                 {
                     self.set_mysql_ssl_mode(*mode);
@@ -573,7 +594,8 @@ impl ConnectionSetupState {
                         .then(|| optional_path(&self.ssl_key))
                         .flatten(),
                 )
-                .with_server_public_key_path(optional_path(&self.server_public_key_path)),
+                .with_server_public_key_path(optional_path(&self.server_public_key_path))
+                .with_cleartext_auth_plugin(self.enable_cleartext_plugin),
             ),
         })
     }
@@ -638,6 +660,7 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
                 state.password =
                     TextInputState::new(&config.password, config.password.chars().count());
                 state.mysql_ssl_mode = config.ssl_mode;
+                state.enable_cleartext_plugin = config.enable_cleartext_plugin;
                 if config.ssl_mode.uses_ca()
                     && let Some(path) = config.ssl_ca.as_deref()
                 {
@@ -680,6 +703,7 @@ mod tests {
         #[case(ConnectionField::User, false)]
         #[case(ConnectionField::Password, false)]
         #[case(ConnectionField::SslMode, false)]
+        #[case(ConnectionField::CleartextAuth, false)]
         #[case(ConnectionField::SslCa, false)]
         #[case(ConnectionField::SslCert, false)]
         #[case(ConnectionField::SslKey, false)]
@@ -724,6 +748,7 @@ mod tests {
                     ConnectionField::User,
                     ConnectionField::Password,
                     ConnectionField::SslMode,
+                    ConnectionField::CleartextAuth,
                     ConnectionField::ServerPublicKeyPath,
                     ConnectionField::SslCert,
                     ConnectionField::SslKey,
@@ -742,6 +767,7 @@ mod tests {
             assert_eq!(ConnectionField::Password.max_chars(), Some(255));
             assert_eq!(ConnectionField::DatabaseType.max_chars(), None);
             assert_eq!(ConnectionField::SslMode.max_chars(), None);
+            assert_eq!(ConnectionField::CleartextAuth.max_chars(), None);
             assert_eq!(ConnectionField::ServerPublicKeyPath.max_chars(), Some(4096));
         }
 
@@ -788,6 +814,22 @@ mod tests {
 
             state.mysql_ssl_mode = MySqlSslMode::Disabled;
             assert!(!state.visible_fields().contains(&ConnectionField::SslCert));
+        }
+
+        #[test]
+        fn cleartext_auth_dropdown_updates_config() {
+            let mut state = ConnectionSetupState::default();
+            state.set_database_type(DatabaseType::MySQL);
+            state.focused_field = ConnectionField::CleartextAuth;
+            state.toggle_focused_dropdown();
+            state.dropdown_next();
+            state.confirm_dropdown();
+
+            assert!(state.cleartext_auth_plugin_enabled());
+            let ConnectionConfig::MySQL(config) = state.to_connection_config().unwrap() else {
+                panic!("expected MySQL config");
+            };
+            assert!(config.enable_cleartext_plugin);
         }
     }
 

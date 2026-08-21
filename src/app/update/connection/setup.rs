@@ -80,7 +80,9 @@ pub fn reduce_connection_setup(
                         port.update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
                     }
                 }
-                ConnectionField::DatabaseType | ConnectionField::SslMode => {}
+                ConnectionField::DatabaseType
+                | ConnectionField::SslMode
+                | ConnectionField::CleartextAuth => {}
                 _ => {
                     let field = setup.focused_field();
                     if let Some(input) = setup.focused_input_mut()
@@ -348,7 +350,9 @@ fn insert_form_text(setup: &mut ConnectionSetupState, text: &str) {
                     .update_viewport(CONNECTION_INPUT_VISIBLE_WIDTH);
             }
         }
-        ConnectionField::DatabaseType | ConnectionField::SslMode => {}
+        ConnectionField::DatabaseType
+        | ConnectionField::SslMode
+        | ConnectionField::CleartextAuth => {}
         field => {
             if let Some(input) = setup.focused_input_mut() {
                 let remaining = remaining_input_capacity(field, input.char_count());

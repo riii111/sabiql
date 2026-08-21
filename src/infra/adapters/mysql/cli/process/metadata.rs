@@ -19,6 +19,7 @@ use super::super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
 };
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
+use super::super::sanitize_mysql_command_environment;
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, read_one_mysql_resultset_with_diagnostics,
     write_mysql_statement,
@@ -154,9 +155,8 @@ impl MySqlMetadataProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .env_remove("MYSQL_PWD")
-            .env_remove("MYSQL_PASSWORD")
             .kill_on_drop(true);
+        sanitize_mysql_command_environment(&mut command);
         let mut child = command.spawn().map_err(|error| {
             if error.kind() == io::ErrorKind::NotFound {
                 DbOperationError::CommandNotFound {

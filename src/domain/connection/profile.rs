@@ -32,6 +32,10 @@ pub enum ConnectionProfileError {
     InvalidMySqlHost,
     #[error("MySQL connection port must be > 0")]
     InvalidMySqlPort,
+    #[error(
+        "MySQL cleartext authentication requires REQUIRED, VERIFY_CA, or VERIFY_IDENTITY TLS mode"
+    )]
+    MySqlCleartextAuthRequiresTls,
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
 }
@@ -149,6 +153,9 @@ impl ConnectionProfile {
             if !mysql.is_valid() {
                 return Err(ConnectionProfileError::InvalidMySqlHost);
             }
+            if mysql.enable_cleartext_plugin && !mysql.ssl_mode.allows_cleartext_auth() {
+                return Err(ConnectionProfileError::MySqlCleartextAuthRequiresTls);
+            }
         }
         Ok(Self {
             id,
@@ -252,6 +259,30 @@ mod tests {
             assert!(matches!(
                 result,
                 Err(ConnectionProfileError::InvalidMySqlPort)
+            ));
+        }
+
+        #[test]
+        fn cleartext_auth_requires_tls() {
+            let config = MySqlConnectionConfig::new(
+                "localhost",
+                3306,
+                None,
+                "user",
+                "password",
+                MySqlSslMode::Preferred,
+            )
+            .with_cleartext_auth_plugin(true);
+
+            let result = ConnectionProfile::with_id_and_config(
+                ConnectionId::new(),
+                "MySQL",
+                ConnectionConfig::MySQL(config),
+            );
+
+            assert!(matches!(
+                result,
+                Err(ConnectionProfileError::MySqlCleartextAuthRequiresTls)
             ));
         }
     }

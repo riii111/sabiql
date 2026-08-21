@@ -1,6 +1,6 @@
 ---
 source: src/tests/render_snapshots/connection_flow.rs
-assertion_line: 112
+assertion_line: 104
 expression: output
 ---
 test_project ▸ - ▸ -                                                                                                                     no dsn | localhost:5432/test
@@ -25,17 +25,17 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │  Name:       [                            ]                │                                                  │
 │                                       ││          │  Host:       [ localhost                  ]                │                                                  │
 │                                       ││          │  Port:       [ 3306                       ]                │                                                  │
-│                                       ││          │  Database:   [ app                        ]                │                                                  │
-│                                       ││          │  User:       [ mysql_user                 ]                │                                                  │
+│                                       ││          │  Database:   [                            ]                │                                                  │
+│                                       ││          │  User:       [                            ]                │                                                  │
 │                                       │└──────────│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  SSL Mode:   [ PREFERRED                ▼ ]                │──────────────────────────────────────────────────┐
-│                                       ││(select a │  Cleartext:  [ disabled                 ▼ ]                │                                                  │
+│                                       ││(select a │  Cleartext:  [ enabled                  ▼ ]                │                                                  │
 │                                       ││          │  Server Key: [                            ]                │                                                  │
 │                                       ││          │  Cert Path:  [                            ]                │                                                  │
 │                                       ││          │  Key Path:   [                            ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
-│                                       ││          │  → mysql://mysql_user:@localhost:3306/app?ssl-mode=PREFER  │                                                  │
-│                                       ││          │    RED                                                     │                                                  │
+│                                       ││          │  Note: password is sent via mysql_clear_password           │                                                  │
+│                                       ││          │  TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY     │                                                  │
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
@@ -52,4 +52,4 @@ test_project ▸ - ▸ -                                                        
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 └───────────────────────────────────────┘└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-Enter:Toggle  ^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
+^S:Connect  Tab/⇧Tab:Field  Esc:Cancel
