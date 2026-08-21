@@ -14,6 +14,8 @@ mysql_port="${SABIQL_MYSQL_TEST_PORT:-}"
 readonly mysql_database="${SABIQL_MYSQL_TEST_DATABASE:-sabiql_test}"
 readonly mysql_user="${SABIQL_MYSQL_TEST_USER:-sabiql_test_runner}"
 readonly mysql_password="${SABIQL_MYSQL_TEST_PASSWORD:-p a#ss;=\"word}"
+readonly cache_miss_user="${SABIQL_MYSQL_TEST_CACHE_MISS_USER:-sabiql_cache_miss_runner}"
+readonly cache_miss_password="${SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD:-sabiql-cache-miss}"
 readonly mysql_client_label_key='com.sabiql.mysql.integration'
 
 run_dir=''
@@ -214,6 +216,36 @@ create_tls_material() {
         "$tls_dir/client.csr" "$tls_dir/ca.srl"
 }
 
+create_server_public_key_material() {
+    local server_public_key_path
+    server_public_key_path="$(run_compose exec -T mysql mysql \
+        --protocol=socket \
+        --user=root \
+        --password=root \
+        --batch \
+        --raw \
+        --skip-column-names \
+        --execute="SELECT IF(@@GLOBAL.caching_sha2_password_public_key_path = '', CONCAT(@@GLOBAL.datadir, 'public_key.pem'), IF(LEFT(@@GLOBAL.caching_sha2_password_public_key_path, 1) = '/', @@GLOBAL.caching_sha2_password_public_key_path, CONCAT(@@GLOBAL.datadir, @@GLOBAL.caching_sha2_password_public_key_path)))" \
+        | tr -d '\r')"
+    if [[ -z "$server_public_key_path" ]]; then
+        printf 'MySQL server public key path is empty\n' >&2
+        return 1
+    fi
+    run_compose cp "mysql:$server_public_key_path" "$tls_dir/server-public-key.pem"
+    chmod 644 "$tls_dir/server-public-key.pem"
+}
+
+reset_cache_miss_account() {
+    run_compose exec -T mysql mysql \
+        --protocol=socket \
+        --user=root \
+        --password=root \
+        --batch \
+        --raw \
+        --skip-column-names \
+        --execute="CREATE USER IF NOT EXISTS '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; ALTER USER '$cache_miss_user'@'%' IDENTIFIED WITH caching_sha2_password BY '$cache_miss_password'; GRANT SELECT ON \`$mysql_database\`.* TO '$cache_miss_user'@'%';"
+}
+
 install_cli_wrapper() {
     mysql_bin_dir="$(mktemp -d "$temp_dir/mysql-bin.XXXXXX")"
     ln -s "$script_dir/mysql-docker-cli.sh" "$mysql_bin_dir/mysql"
@@ -258,10 +290,13 @@ run_tests() {
     export SABIQL_MYSQL_TEST_DATABASE="$mysql_database"
     export SABIQL_MYSQL_TEST_USER="$mysql_user"
     export SABIQL_MYSQL_TEST_PASSWORD="$mysql_password"
+    export SABIQL_MYSQL_TEST_CACHE_MISS_USER="$cache_miss_user"
+    export SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD="$cache_miss_password"
     export SABIQL_MYSQL_TEST_TLS_DIR="$tls_dir"
     export SABIQL_MYSQL_TEST_SSL_CA="$tls_dir/ca.pem"
     export SABIQL_MYSQL_TEST_SSL_CERT="$tls_dir/client-cert.pem"
     export SABIQL_MYSQL_TEST_SSL_KEY="$tls_dir/client-key.pem"
+    export SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY="$tls_dir/server-public-key.pem"
     export SABIQL_MYSQL_TRANSCRIPT=1
     cargo nextest run -p sabiql --run-ignored ignored-only \
         -E 'test(tests::adapter_mysql)' \
@@ -276,9 +311,11 @@ case "${1:-test}" in
         create_tls_material
         run_compose up --detach --wait mysql
         discover_mysql_port
+        create_server_public_key_material
         install_cli_wrapper
         create_option_file
         assert_versions
+        reset_cache_miss_account
         run_tests
         ;;
     *)

@@ -540,6 +540,12 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 state.set_validation_error(other_field, "Both client paths are required");
             }
         }
+        ConnectionField::ServerPublicKeyPath if state.database_type() == DatabaseType::MySQL => {
+            let path = text_input_content(state, field);
+            if path.chars().any(char::is_control) {
+                state.set_validation_error(field, "Invalid path");
+            }
+        }
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
@@ -553,7 +559,8 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
         | ConnectionField::SslMode
         | ConnectionField::SslCa
         | ConnectionField::SslCert
-        | ConnectionField::SslKey => {}
+        | ConnectionField::SslKey
+        | ConnectionField::ServerPublicKeyPath => {}
     }
 }
 

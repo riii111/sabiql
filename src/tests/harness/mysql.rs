@@ -99,6 +99,16 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
             .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
         MySqlSslMode::Disabled,
     )
+    .with_server_public_key_path(std::env::var("SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY").ok())
+}
+
+pub fn mysql_cache_miss_config() -> MySqlConnectionConfig {
+    let mut config = mysql_integration_config();
+    config.username = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_USER")
+        .unwrap_or_else(|_| "sabiql_cache_miss_runner".to_string());
+    config.password = std::env::var("SABIQL_MYSQL_TEST_CACHE_MISS_PASSWORD")
+        .unwrap_or_else(|_| "sabiql-cache-miss".to_string());
+    config
 }
 
 pub fn mysql_tls_config() -> MySqlConnectionConfig {

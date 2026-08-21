@@ -20,6 +20,7 @@ impl MySqlOptionFile {
     pub(super) fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
         validate_mysql_values(target)?;
         validate_mysql_tls_files(target)?;
+        validate_mysql_server_public_key(target)?;
         let mut path = std::env::temp_dir();
         path.push(format!("sabiql-mysql-{}.cnf", Uuid::new_v4()));
         if !path.is_absolute() {
@@ -120,6 +121,219 @@ fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
         }
     }
     Ok(())
+}
+
+fn validate_mysql_server_public_key(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    let Some(path) = target.server_public_key_path.as_deref() else {
+        return Ok(());
+    };
+    let metadata = fs::metadata(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key path cannot be accessed: {error}"
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key path is not a regular file".to_string(),
+        ));
+    }
+    let contents = fs::read(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key cannot be read: {error}"
+        ))
+    })?;
+    let contents = String::from_utf8(contents).map_err(|_| {
+        DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        )
+    })?;
+    let contents = contents.trim_end_matches('\0');
+    if !is_valid_pem_public_key(contents) {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_valid_pem_public_key(contents: &str) -> bool {
+    ["PUBLIC KEY", "RSA PUBLIC KEY"].iter().any(|label| {
+        let begin = format!("-----BEGIN {label}-----");
+        let end = format!("-----END {label}-----");
+        let Some(begin_offset) = contents.find(&begin) else {
+            return false;
+        };
+        if !contents[..begin_offset].chars().all(char::is_whitespace) {
+            return false;
+        }
+        let body_start = begin_offset + begin.len();
+        let Some(end_offset) = contents[body_start..].find(&end) else {
+            return false;
+        };
+        let body_end = body_start + end_offset;
+        let encoded: Vec<u8> = contents[body_start..body_end]
+            .bytes()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .collect();
+        let Some(decoded) = decode_base64(&encoded) else {
+            return false;
+        };
+        if !contents[body_end + end.len()..]
+            .chars()
+            .all(char::is_whitespace)
+        {
+            return false;
+        }
+        match *label {
+            "PUBLIC KEY" => is_valid_subject_public_key_info(&decoded),
+            "RSA PUBLIC KEY" => is_valid_rsa_public_key(&decoded),
+            _ => false,
+        }
+    })
+}
+
+fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
+    if encoded.is_empty() || !encoded.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut decoded = Vec::with_capacity(encoded.len() / 4 * 3);
+    for (chunk_index, chunk) in encoded.chunks_exact(4).enumerate() {
+        let last_chunk = chunk_index + 1 == encoded.len() / 4;
+        let first = base64_value(chunk[0])?;
+        let second = base64_value(chunk[1])?;
+        let third = match chunk[2] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        let fourth = match chunk[3] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        if third.is_none() && fourth.is_some() {
+            return None;
+        }
+        if third.is_none() && second & 0x0f != 0 {
+            return None;
+        }
+        if fourth.is_none() && third.is_some_and(|value| value & 0x03 != 0) {
+            return None;
+        }
+        decoded.push((first << 2) | (second >> 4));
+        if let Some(third) = third {
+            decoded.push((second << 4) | (third >> 2));
+            if let Some(fourth) = fourth {
+                decoded.push((third << 6) | fourth);
+            }
+        }
+    }
+    Some(decoded)
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+fn is_valid_subject_public_key_info(der: &[u8]) -> bool {
+    let Some((subject_public_key_info, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
+        return false;
+    }
+    let Some((algorithm, remainder)) = der_element(subject_public_key_info, 0x30) else {
+        return false;
+    };
+    let Some((algorithm_oid, algorithm_remainder)) = der_element(algorithm, 0x06) else {
+        return false;
+    };
+    if algorithm_oid != [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01] {
+        return false;
+    }
+    let Some((parameters, parameters_remainder)) = der_element(algorithm_remainder, 0x05) else {
+        return false;
+    };
+    if !parameters.is_empty() || !parameters_remainder.is_empty() {
+        return false;
+    }
+    let Some((bit_string, remainder)) = der_element(remainder, 0x03) else {
+        return false;
+    };
+    bit_string.first() == Some(&0)
+        && is_valid_rsa_public_key(&bit_string[1..])
+        && remainder.is_empty()
+}
+
+fn is_valid_rsa_public_key(der: &[u8]) -> bool {
+    let Some((sequence, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
+        return false;
+    }
+    let Some((modulus, remainder)) = der_element(sequence, 0x02) else {
+        return false;
+    };
+    let Some((exponent, remainder)) = der_element(remainder, 0x02) else {
+        return false;
+    };
+    remainder.is_empty() && is_valid_positive_integer(modulus) && is_valid_exponent(exponent)
+}
+
+fn is_valid_positive_integer(value: &[u8]) -> bool {
+    if value.is_empty() || value[0] & 0x80 != 0 {
+        return false;
+    }
+    if value.first() == Some(&0) && (value.get(1).is_none() || value[1] & 0x80 == 0) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    !value.is_empty() && value.iter().any(|byte| *byte != 0)
+}
+
+fn is_valid_exponent(value: &[u8]) -> bool {
+    if !is_valid_positive_integer(value) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    value != [1]
+        && value.last().is_some_and(|byte| byte & 1 == 1)
+        && value.iter().any(|byte| *byte != 0)
+}
+
+fn der_element(input: &[u8], expected_tag: u8) -> Option<(&[u8], &[u8])> {
+    let (&tag, remainder) = input.split_first()?;
+    if tag != expected_tag {
+        return None;
+    }
+    let (&length_byte, remainder) = remainder.split_first()?;
+    let (length, remainder) = if length_byte & 0x80 == 0 {
+        (usize::from(length_byte), remainder)
+    } else {
+        let length_bytes = usize::from(length_byte & 0x7f);
+        if length_bytes == 0 || length_bytes > std::mem::size_of::<usize>() {
+            return None;
+        }
+        let (encoded_length, remainder) = remainder.split_at_checked(length_bytes)?;
+        if encoded_length.first() == Some(&0) {
+            return None;
+        }
+        let length = encoded_length.iter().try_fold(0usize, |length, byte| {
+            length.checked_mul(256)?.checked_add(usize::from(*byte))
+        })?;
+        if length < 128 {
+            return None;
+        }
+        (length, remainder)
+    };
+    let (value, remainder) = remainder.split_at_checked(length)?;
+    Some((value, remainder))
 }
 
 #[cfg(windows)]
@@ -260,6 +474,9 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
     if let Some(path) = target.ssl_key.as_deref() {
         push_option(&mut contents, "ssl-key", path);
     }
+    if let Some(path) = target.server_public_key_path.as_deref() {
+        push_option(&mut contents, "server-public-key-path", path);
+    }
     contents
 }
 
@@ -291,6 +508,15 @@ mod tests {
 
     use super::*;
 
+    const VALID_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\n\
+        MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMFq4IBzAF/EE08SN5Bo3KKt/CRaKoGi\n\
+        CT442dzvVfjkV0ZyuztDm2mNd06SHguqWYDc7nDaY9qgEDrlNHnp2QkCAwEAAQ==\n\
+        -----END PUBLIC KEY-----\n";
+    const VALID_RSA_PUBLIC_KEY_PEM: &str = "-----BEGIN RSA PUBLIC KEY-----\n\
+        MEgCQQCkUPNQeEgyJX6XS2qlrU20cleKptQX/Llyrm6tzLzVI8JF3wcCiQ0R4KgX\n\
+        x/4oCDpO8lWDRl+SFkUlLz4xJ4zdAgMBAAE=\n\
+        -----END RSA PUBLIC KEY-----\n";
+
     fn target() -> MySqlDsn {
         MySqlDsn {
             host: "localhost".to_string(),
@@ -302,6 +528,7 @@ mod tests {
             ssl_ca: None,
             ssl_cert: None,
             ssl_key: None,
+            server_public_key_path: None,
         }
     }
 
@@ -362,6 +589,74 @@ mod tests {
         assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
         assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
         assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn option_file_serializes_server_public_key_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, format!("{VALID_PUBLIC_KEY_PEM}\0")).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains(&format!(
+            "server-public-key-path = {}\n",
+            quote_option_value(&key.display().to_string())
+        )));
+    }
+
+    #[test]
+    fn accepts_rsa_public_key_pem_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, VALID_RSA_PUBLIC_KEY_PEM).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        assert!(option_file.path.exists());
+    }
+
+    #[test]
+    fn rejects_base64_that_is_not_an_rsa_public_key_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(
+            &key,
+            "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n",
+        )
+        .unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "MySQL server public key is not a valid PEM public key"
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_server_public_key_before_connecting() {
+        let target = MySqlDsn {
+            server_public_key_path: Some("/missing/server-key.pem".to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details.starts_with("MySQL server public key path cannot be accessed:")
+        ));
     }
 
     #[test]

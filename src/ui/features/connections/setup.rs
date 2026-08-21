@@ -686,6 +686,10 @@ mod tests {
             .input_mut(ConnectionField::SslKey)
             .unwrap()
             .set_content("/etc/mysql/client-key.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::ServerPublicKeyPath)
+            .unwrap()
+            .set_content("/etc/mysql/server-public.pem".to_string());
 
         let profile = preview_profile(&form_state).unwrap();
 
@@ -696,6 +700,10 @@ mod tests {
         assert_eq!(config.ssl_ca.as_deref(), Some("/etc/mysql/ca.pem"));
         assert_eq!(config.ssl_cert.as_deref(), Some("/etc/mysql/client.pem"));
         assert_eq!(config.ssl_key.as_deref(), Some("/etc/mysql/client-key.pem"));
+        assert_eq!(
+            config.server_public_key_path.as_deref(),
+            Some("/etc/mysql/server-public.pem")
+        );
     }
 
     #[test]

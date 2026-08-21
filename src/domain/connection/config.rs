@@ -108,6 +108,8 @@ pub struct MySqlConnectionConfig {
     pub ssl_cert: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssl_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_public_key_path: Option<String>,
 }
 
 impl MySqlConnectionConfig {
@@ -129,6 +131,7 @@ impl MySqlConnectionConfig {
             ssl_ca: None,
             ssl_cert: None,
             ssl_key: None,
+            server_public_key_path: None,
         }
     }
 
@@ -142,6 +145,12 @@ impl MySqlConnectionConfig {
         self.ssl_ca = self.ssl_mode.uses_ca().then_some(ssl_ca).flatten();
         self.ssl_cert = ssl_cert;
         self.ssl_key = ssl_key;
+        self
+    }
+
+    #[must_use]
+    pub fn with_server_public_key_path(mut self, path: Option<String>) -> Self {
+        self.server_public_key_path = path;
         self
     }
 
