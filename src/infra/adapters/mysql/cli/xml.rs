@@ -7,7 +7,7 @@ use crate::domain::{MySqlDiagnostic, QueryValue};
 
 use super::diagnostics::parse_mysql_cli_diagnostics;
 use super::error::{
-    classify_mysql_query_failure, has_mysql_cli_error, trace_mysql_error,
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
     write_mysql_transcript_line,
 };
 
@@ -116,12 +116,16 @@ impl MySqlResultsetFrameScanner {
 pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics(
     buffer: &mut Vec<u8>,
     scanner: &mut MySqlResultsetFrameScanner,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     let bounds = scanner.frame_bounds(buffer);
     let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
     if has_mysql_cli_error(&buffer[..resultset_start]) {
         trace_mysql_error(&buffer[..resultset_start]);
-        return Err(classify_mysql_query_failure(&buffer[..resultset_start]));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            &buffer[..resultset_start],
+            client_packet_limit_bytes,
+        ));
     }
     Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
 }
@@ -131,10 +135,14 @@ pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
     scanner: &mut MySqlResultsetFrameScanner,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     if has_mysql_cli_error(error_output) {
         trace_mysql_error(error_output);
-        return Err(classify_mysql_query_failure(error_output));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            error_output,
+            client_packet_limit_bytes,
+        ));
     }
     let bounds = scanner.frame_bounds(buffer);
     Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
@@ -526,7 +534,7 @@ mod tests {
         let mut scanner = MySqlResultsetFrameScanner::default();
 
         let (frame, diagnostics) =
-            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner)
+            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
                 .unwrap()
                 .unwrap();
 
@@ -558,6 +566,7 @@ mod tests {
             &mut buffer,
             &[],
             &mut scanner,
+            None,
         )
         .unwrap()
         .unwrap();
@@ -656,9 +665,10 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             .to_vec();
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let frame = take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner)
-            .unwrap()
-            .map(|(frame, _)| frame);
+        let frame =
+            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
+                .unwrap()
+                .map(|(frame, _)| frame);
 
         assert!(frame.is_some());
         assert!(buffer.is_empty());
@@ -670,8 +680,9 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
         let mut scanner = MySqlResultsetFrameScanner::default();
 
-        let result = take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner)
-            .map(|result| result.map(|(frame, _)| frame));
+        let result =
+            take_mysql_pty_resultset_frame_with_diagnostics(&mut buffer, &mut scanner, None)
+                .map(|result| result.map(|(frame, _)| frame));
 
         assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
         assert_eq!(
@@ -691,6 +702,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
                 &mut buffer,
                 error,
                 &mut scanner,
+                None,
             )
             .map(|result| result.map(|(frame, _)| frame)),
             Err(DbOperationError::ObjectMissing(_))

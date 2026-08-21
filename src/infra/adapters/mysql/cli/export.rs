@@ -16,7 +16,9 @@ use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{RefreshScope, mysql_sql::classify_mysql_statement};
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
-use super::error::{classify_mysql_query_failure, has_mysql_cli_error, validate_mode_probe};
+use super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
+};
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
@@ -398,7 +400,12 @@ pub(super) async fn run_mysql_export_process(
     }
 
     let result = finish_mysql_session(process).await?;
-    validate_mysql_export_exit(result.status, result.forcibly_stopped, &result.error_bytes)?;
+    validate_mysql_export_exit(
+        result.status,
+        result.forcibly_stopped,
+        &result.error_bytes,
+        process.client_packet_limit_bytes,
+    )?;
 
     csv_writer.finish().await
 }
@@ -407,12 +414,19 @@ fn validate_mysql_export_exit(
     status: std::process::ExitStatus,
     forcibly_stopped: bool,
     error_bytes: &[u8],
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<(), DbOperationError> {
     if has_mysql_cli_error(error_bytes) {
-        return Err(classify_mysql_query_failure(error_bytes));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            error_bytes,
+            client_packet_limit_bytes,
+        ));
     }
     if !status.success() && !forcibly_stopped {
-        return Err(classify_mysql_query_failure(error_bytes));
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            error_bytes,
+            client_packet_limit_bytes,
+        ));
     }
     Ok(())
 }
@@ -425,6 +439,7 @@ pub(super) async fn stream_mysql_resultset_to_csv(
     {
         let source = MySqlExportPtySource {
             pty: &mut process.pty,
+            client_packet_limit_bytes: process.client_packet_limit_bytes,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
@@ -441,7 +456,10 @@ pub(super) async fn stream_mysql_resultset_to_csv(
         source.pty.pending.extend(unread);
         source.pty.pending.extend(source.pending);
         if has_mysql_cli_error(&source.error_output) {
-            return Err(classify_mysql_query_failure(&source.error_output));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &source.error_output,
+                source.client_packet_limit_bytes,
+            ));
         }
         result
     }
@@ -452,6 +470,7 @@ pub(super) async fn stream_mysql_resultset_to_csv(
             stdout: &mut process.stdout,
             stderr: &mut process.stderr,
             pending: &mut process.pending,
+            client_packet_limit_bytes: process.client_packet_limit_bytes,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
@@ -474,7 +493,10 @@ pub(super) async fn stream_mysql_resultset_to_csv(
                 .extend_from_slice(&source.error_buffer);
         }
         if has_mysql_cli_error(&source.error_output) {
-            return Err(classify_mysql_query_failure(&source.error_output));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &source.error_output,
+                source.client_packet_limit_bytes,
+            ));
         }
         result
     }
@@ -927,6 +949,7 @@ line2]]></field>
             std::process::ExitStatus::from_raw(9),
             true,
             b"ERROR 1054 (42S02): Unknown column missing_column",
+            None,
         );
 
         assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));

@@ -5,6 +5,7 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
+use super::super::error::classify_mysql_query_failure_with_packet_limit;
 use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
 use super::super::xml::{MySqlResultSet, parse_mysql_xml};
 use super::{
@@ -23,7 +24,8 @@ impl MySqlMetadataSession {
         program: &OsStr,
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_query_args(option_file))
+        MySqlProcess::spawn_with_query_args(program, mysql_query_args(option_file))
+            .map(|process| Self { process })
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_metadata_program(
@@ -81,10 +83,16 @@ impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
         let result = finish_mysql_session(&mut self.process).await?;
         if super::has_mysql_cli_error(&result.error_bytes) {
-            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                self.process.client_packet_limit_bytes,
+            ));
         }
         if !result.status.success() && !result.forcibly_stopped {
-            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                self.process.client_packet_limit_bytes,
+            ));
         }
         Ok(())
     }
@@ -109,10 +117,16 @@ impl MySqlMetadataSession {
         }
         let result = finish_mysql_session_after_preview_frame(&mut self.process).await?;
         if super::has_mysql_cli_error(&result.error_bytes) {
-            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                self.process.client_packet_limit_bytes,
+            ));
         }
         if !result.status.success() && !result.forcibly_stopped {
-            return Err(super::classify_mysql_query_failure(&result.error_bytes));
+            return Err(classify_mysql_query_failure_with_packet_limit(
+                &result.error_bytes,
+                self.process.client_packet_limit_bytes,
+            ));
         }
         Ok(())
     }

@@ -6,7 +6,10 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
 
-use super::error::{classify_mysql_query_failure, has_mysql_cli_error};
+use super::error::{
+    classify_mysql_query_failure, classify_mysql_query_failure_with_packet_limit,
+    has_mysql_cli_error,
+};
 use super::xml::{
     MySqlResultsetFrameScanner, take_mysql_resultset_frame_after_error_check_with_diagnostics,
     trace_mysql_frame,
@@ -16,6 +19,7 @@ pub(super) struct MySqlExportPipeSource<'a, O, E> {
     pub(super) stdout: &'a mut O,
     pub(super) stderr: &'a mut E,
     pub(super) pending: &'a mut Vec<u8>,
+    pub(super) client_packet_limit_bytes: Option<usize>,
     pub(super) error_output: Vec<u8>,
     pub(super) error_buffer: Vec<u8>,
     pub(super) stderr_buffer: [u8; 4096],
@@ -155,6 +159,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
     frame_scanner: &mut MySqlResultsetFrameScanner,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<Vec<u8>, DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -167,6 +172,7 @@ where
         pending,
         pending_stderr,
         frame_scanner,
+        client_packet_limit_bytes,
     )
     .await?
     .0)
@@ -179,6 +185,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes_with_diagnostics<R, E>(
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
     frame_scanner: &mut MySqlResultsetFrameScanner,
+    client_packet_limit_bytes: Option<usize>,
 ) -> Result<(Vec<u8>, Vec<crate::domain::MySqlDiagnostic>), DbOperationError>
 where
     R: AsyncRead + Unpin,
@@ -206,6 +213,7 @@ where
             pending,
             pending_stderr,
             frame_scanner,
+            client_packet_limit_bytes,
         )? {
             trace_mysql_frame("receive resultset", frame.0.len());
             return Ok(frame);
@@ -217,7 +225,10 @@ where
                 .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
             if count == 0 {
                 finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
-                return Err(mysql_pipe_empty_response_or_error(pending_stderr));
+                return Err(mysql_pipe_empty_response_or_error(
+                    pending_stderr,
+                    client_packet_limit_bytes,
+                ));
             }
             pending.extend_from_slice(&chunk[..count]);
         } else {
@@ -226,7 +237,10 @@ where
                     let count = result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
                     if count == 0 {
                         finish_mysql_pipe_after_stdout_eof(stderr, child, pending_stderr).await?;
-                        return Err(mysql_pipe_empty_response_or_error(pending_stderr));
+                        return Err(mysql_pipe_empty_response_or_error(
+                            pending_stderr,
+                            client_packet_limit_bytes,
+                        ));
                     }
                     pending.extend_from_slice(&chunk[..count]);
                 }
@@ -258,9 +272,12 @@ where
     Ok(())
 }
 
-fn mysql_pipe_empty_response_or_error(pending_stderr: &[u8]) -> DbOperationError {
+fn mysql_pipe_empty_response_or_error(
+    pending_stderr: &[u8],
+    client_packet_limit_bytes: Option<usize>,
+) -> DbOperationError {
     if has_mysql_cli_error(pending_stderr) {
-        classify_mysql_query_failure(pending_stderr)
+        classify_mysql_query_failure_with_packet_limit(pending_stderr, client_packet_limit_bytes)
     } else {
         DbOperationError::EmptyResponse("mysql mode probe returned no resultset".to_string())
     }
@@ -317,6 +334,7 @@ mod tests {
             stdout: &mut stdout,
             stderr: &mut stderr,
             pending: &mut pending,
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
@@ -369,6 +387,7 @@ mod tests {
             &mut Vec::new(),
             &mut Vec::new(),
             &mut frame_scanner,
+            None,
         )
         .await;
 
@@ -402,6 +421,7 @@ mod tests {
             &mut pending,
             &mut pending_stderr,
             &mut frame_scanner,
+            None,
         )
         .await;
 
@@ -432,6 +452,7 @@ mod tests {
             stdout: &mut stdout_reader,
             stderr: &mut stderr_reader,
             pending: &mut Vec::new(),
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
@@ -483,6 +504,7 @@ mod tests {
             stdout: &mut stdout_reader,
             stderr: &mut stderr_reader,
             pending: &mut Vec::new(),
+            client_packet_limit_bytes: None,
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             stderr_buffer: [0; 4096],
