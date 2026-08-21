@@ -2384,6 +2384,32 @@ mod query_execution {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn executes_select_into_user_variable_and_reads_it_later_in_the_submission() {
+        with_mysql_test_db(|db| Box::pin(async move {
+            let result = db
+                .adapter()
+                .execute_adhoc(
+                    db.dsn(),
+                    &format!(
+                        "SELECT id INTO @picked FROM {MYSQL_FIXTURE_TABLE} WHERE id = 1; SELECT @picked"
+                    ),
+                    AccessMode::ReadWrite,
+                )
+                .await
+                .map_err(|error| format!("SELECT INTO user variable failed: {error:?}"))?;
+            if result.columns != ["@picked"]
+                || result.values() != [[QueryValue::Text("1".to_string())]]
+                || result.command_tag.is_some()
+            {
+                return Err(format!("unexpected SELECT INTO result: {result:?}"));
+            }
+            Ok::<(), String>(())
+        }))
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn preserves_session_row_count_and_omits_multi_statement_affected_rows() {
         with_mysql_test_db(|db| Box::pin(async move {
             let result = async {
