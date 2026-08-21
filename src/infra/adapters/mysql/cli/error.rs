@@ -129,6 +129,7 @@ fn classify_mysql_server_error(
             DbOperationError::Timeout(details.to_string())
         }
         2003 => DbOperationError::ConnectionFailed(details.to_string()),
+        3024 => error(DbOperationError::Timeout),
         _ => return None,
     })
 }
@@ -231,6 +232,16 @@ mod tests {
         ));
         let masked = classify_mysql_query_failure(b"ERROR password=secret");
         assert!(!masked.masked_details().contains("secret"));
+    }
+
+    #[test]
+    fn preserves_mysql_query_timeout_code_and_message_in_timeout_details() {
+        let details = "ERROR 3024 (HY000): Query execution was interrupted, maximum statement execution time exceeded";
+
+        assert!(matches!(
+            classify_mysql_query_failure(details.as_bytes()),
+            DbOperationError::Timeout(actual_details) if actual_details == details
+        ));
     }
 
     #[test]
