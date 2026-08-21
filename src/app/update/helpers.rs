@@ -546,6 +546,13 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
                 state.set_validation_error(field, "Invalid path");
             }
         }
+        ConnectionField::CleartextAuth if state.database_type() == DatabaseType::MySQL => {
+            if state.cleartext_auth_plugin_enabled()
+                && !state.mysql_ssl_mode().allows_cleartext_auth()
+            {
+                state.set_validation_error(field, "Requires TLS");
+            }
+        }
         ConnectionField::Name => {
             let name = text_input_content(state, field).trim().to_string();
             if name.is_empty() {
@@ -560,7 +567,8 @@ pub fn validate_field(state: &mut ConnectionSetupState, field: ConnectionField) 
         | ConnectionField::SslCa
         | ConnectionField::SslCert
         | ConnectionField::SslKey
-        | ConnectionField::ServerPublicKeyPath => {}
+        | ConnectionField::ServerPublicKeyPath
+        | ConnectionField::CleartextAuth => {}
     }
 }
 
@@ -858,6 +866,25 @@ mod tests {
             state.validation_error(ConnectionField::SslCa),
             Some("Required for this TLS mode")
         );
+    }
+
+    #[test]
+    fn mysql_cleartext_auth_requires_tls() {
+        let mut state = ConnectionSetupState::default();
+        state.set_database_type(DatabaseType::MySQL);
+        state.enable_cleartext_plugin = true;
+
+        validate_all(&mut state);
+
+        assert_eq!(
+            state.validation_error(ConnectionField::CleartextAuth),
+            Some("Requires TLS")
+        );
+
+        state.mysql_ssl_mode = MySqlSslMode::Required;
+        validate_all(&mut state);
+
+        assert_eq!(state.validation_error(ConnectionField::CleartextAuth), None);
     }
 
     #[test]

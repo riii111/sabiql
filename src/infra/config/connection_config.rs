@@ -60,6 +60,8 @@ pub struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_server_public_key_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_enable_cleartext_plugin: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -104,6 +106,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_enable_cleartext_plugin: None,
             path: None,
         };
         match &profile.config {
@@ -133,6 +136,8 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry
                     .mysql_server_public_key_path
                     .clone_from(&config.server_public_key_path);
+                entry.mysql_enable_cleartext_plugin =
+                    config.enable_cleartext_plugin.then_some(true);
             }
         }
         entry
@@ -187,7 +192,10 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                             entry.mysql_ssl_cert.clone(),
                             entry.mysql_ssl_key.clone(),
                         )
-                        .with_server_public_key_path(entry.mysql_server_public_key_path.clone()),
+                        .with_server_public_key_path(entry.mysql_server_public_key_path.clone())
+                        .with_cleartext_auth_plugin(
+                            entry.mysql_enable_cleartext_plugin.unwrap_or(false),
+                        ),
                     ),
                 )
             }
@@ -269,6 +277,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_enable_cleartext_plugin: None,
             path: None,
         }
     }
@@ -289,6 +298,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_enable_cleartext_plugin: None,
             path: path.map(str::to_string),
         }
     }
@@ -309,6 +319,7 @@ mod tests {
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
+            mysql_enable_cleartext_plugin: None,
             path: None,
         }
     }
@@ -418,6 +429,18 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_mode, Some(MySqlSslMode::Required));
         assert_eq!(serialized.port, Some(3306));
         assert_eq!(serialized.password.as_deref(), Some("p@ss#word"));
+    }
+
+    #[test]
+    fn mysql_entry_round_trips_cleartext_auth_plugin() {
+        let mut entry = mysql_entry(Some("app"));
+        entry.mysql_enable_cleartext_plugin = Some(true);
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        assert!(profile.mysql_config().unwrap().enable_cleartext_plugin);
+
+        let serialized = ConnectionConfigEntry::from(&profile);
+        assert_eq!(serialized.mysql_enable_cleartext_plugin, Some(true));
     }
 
     #[test]

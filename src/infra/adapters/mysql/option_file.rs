@@ -463,6 +463,9 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
         push_option(&mut contents, "database", database);
     }
     push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
+    if target.enable_cleartext_plugin {
+        push_option(&mut contents, "enable-cleartext-plugin", "true");
+    }
     if target.ssl_mode.uses_ca()
         && let Some(path) = target.ssl_ca.as_deref()
     {
@@ -529,6 +532,7 @@ mod tests {
             ssl_cert: None,
             ssl_key: None,
             server_public_key_path: None,
+            enable_cleartext_plugin: false,
         }
     }
 
@@ -608,6 +612,21 @@ mod tests {
             "server-public-key-path = {}\n",
             quote_option_value(&key.display().to_string())
         )));
+    }
+
+    #[test]
+    fn option_file_serializes_cleartext_auth_plugin() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::Required,
+            enable_cleartext_plugin: true,
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains("ssl-mode = \"REQUIRED\"\n"));
+        assert!(contents.contains("enable-cleartext-plugin = \"true\"\n"));
     }
 
     #[test]

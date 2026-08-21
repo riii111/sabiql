@@ -20,7 +20,9 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         && !(combo.key == Key::Enter
             && matches!(
                 state.connection_setup.focused_field(),
-                ConnectionField::DatabaseType | ConnectionField::SslMode
+                ConnectionField::DatabaseType
+                    | ConnectionField::SslMode
+                    | ConnectionField::CleartextAuth
             ))
     {
         return Action::ConnectionSetupSave;
@@ -46,7 +48,9 @@ pub fn handle_connection_setup_keys(combo: KeyCombo, state: &AppState) -> Action
         Key::Enter
             if matches!(
                 state.connection_setup.focused_field(),
-                ConnectionField::DatabaseType | ConnectionField::SslMode
+                ConnectionField::DatabaseType
+                    | ConnectionField::SslMode
+                    | ConnectionField::CleartextAuth
             ) =>
         {
             Action::ConnectionSetupToggleDropdown

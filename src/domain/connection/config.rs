@@ -41,6 +41,10 @@ impl MySqlSslMode {
     pub const fn uses_ca(self) -> bool {
         matches!(self, Self::VerifyCa | Self::VerifyIdentity)
     }
+
+    pub const fn allows_cleartext_auth(self) -> bool {
+        matches!(self, Self::Required | Self::VerifyCa | Self::VerifyIdentity)
+    }
 }
 
 impl std::fmt::Display for MySqlSslMode {
@@ -110,6 +114,8 @@ pub struct MySqlConnectionConfig {
     pub ssl_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_public_key_path: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub enable_cleartext_plugin: bool,
 }
 
 impl MySqlConnectionConfig {
@@ -132,6 +138,7 @@ impl MySqlConnectionConfig {
             ssl_cert: None,
             ssl_key: None,
             server_public_key_path: None,
+            enable_cleartext_plugin: false,
         }
     }
 
@@ -151,6 +158,12 @@ impl MySqlConnectionConfig {
     #[must_use]
     pub fn with_server_public_key_path(mut self, path: Option<String>) -> Self {
         self.server_public_key_path = path;
+        self
+    }
+
+    #[must_use]
+    pub fn with_cleartext_auth_plugin(mut self, enabled: bool) -> Self {
+        self.enable_cleartext_plugin = enabled;
         self
     }
 
@@ -175,6 +188,14 @@ impl MySqlConnectionConfig {
     pub fn is_valid(&self) -> bool {
         Self::is_valid_host(&self.host)
     }
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde skip_serializing_if requires a reference predicate"
+)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -336,6 +357,15 @@ mod tests {
     #[test]
     fn mysql_tls_modes_reject_unknown_names() {
         assert!("unknown".parse::<MySqlSslMode>().is_err());
+    }
+
+    #[test]
+    fn cleartext_auth_requires_a_tls_mode() {
+        assert!(!MySqlSslMode::Disabled.allows_cleartext_auth());
+        assert!(!MySqlSslMode::Preferred.allows_cleartext_auth());
+        assert!(MySqlSslMode::Required.allows_cleartext_auth());
+        assert!(MySqlSslMode::VerifyCa.allows_cleartext_auth());
+        assert!(MySqlSslMode::VerifyIdentity.allows_cleartext_auth());
     }
 
     mod sqlite_deserialize {
