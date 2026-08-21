@@ -33,13 +33,12 @@ pub async fn run_mysql_cli_query_for_test(
     let args = [
         format!("--defaults-file={}", option_file.path.display()),
         "--no-login-paths".to_string(),
-        "--protocol=TCP".to_string(),
         "--connect-timeout=10".to_string(),
+        "--skip-reconnect".to_string(),
         "--batch".to_string(),
         "--raw".to_string(),
         "--skip-column-names".to_string(),
         "--binary-mode".to_string(),
-        "--skip-reconnect".to_string(),
         format!("--execute={query}"),
     ];
     let mut command = Command::new("mysql");

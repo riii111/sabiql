@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::connection::{
     ConnectionConfig, ConnectionId, ConnectionName, ConnectionProfile, ConnectionProfileError,
-    DatabaseType, MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig,
+    DatabaseType, MySqlConnectionConfig, MySqlSslMode, MySqlTransport, PostgresConnectionConfig,
     SqliteConnectionConfig, SslMode,
 };
 
@@ -62,6 +62,10 @@ pub struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_enable_cleartext_plugin: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_transport: Option<MySqlTransport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_transport_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -107,6 +111,8 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
             mysql_enable_cleartext_plugin: None,
+            mysql_transport: None,
+            mysql_transport_path: None,
             path: None,
         };
         match &profile.config {
@@ -122,8 +128,12 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 entry.path = Some(config.path().to_string());
             }
             ConnectionConfig::MySQL(config) => {
-                entry.host = Some(config.host.clone());
-                entry.port = Some(config.port);
+                entry.mysql_transport = Some(config.transport)
+                    .filter(|transport| !matches!(transport, MySqlTransport::Tcp));
+                if config.transport == MySqlTransport::Tcp {
+                    entry.host = Some(config.host.clone());
+                    entry.port = Some(config.port);
+                }
                 entry.database.clone_from(&config.database);
                 entry.username = Some(config.username.clone());
                 entry.password = Some(config.password.clone());
@@ -138,6 +148,9 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                     .clone_from(&config.server_public_key_path);
                 entry.mysql_enable_cleartext_plugin =
                     config.enable_cleartext_plugin.then_some(true);
+                entry
+                    .mysql_transport_path
+                    .clone_from(&config.transport_path);
             }
         }
         entry
@@ -174,13 +187,19 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                 )?)?),
             ),
             DatabaseType::MySQL => {
+                let transport = entry.mysql_transport.unwrap_or_default();
                 let database = entry.database.clone().filter(|value| !value.is_empty());
                 Self::with_id_and_config(
                     id,
                     name.as_str().to_string(),
                     ConnectionConfig::MySQL(
                         MySqlConnectionConfig::new(
-                            required_mysql_host(entry.host.as_ref())?,
+                            match transport {
+                                MySqlTransport::Tcp => required_mysql_host(entry.host.as_ref())?,
+                                MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+                                    entry.host.clone().unwrap_or_default()
+                                }
+                            },
                             entry.port.unwrap_or(3306),
                             database,
                             required_mysql_field(entry.username.as_ref(), "username")?,
@@ -193,6 +212,7 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                             entry.mysql_ssl_key.clone(),
                         )
                         .with_server_public_key_path(entry.mysql_server_public_key_path.clone())
+                        .with_transport(transport, entry.mysql_transport_path.clone())
                         .with_cleartext_auth_plugin(
                             entry.mysql_enable_cleartext_plugin.unwrap_or(false),
                         ),
@@ -246,6 +266,8 @@ fn required_mysql_host(value: Option<&String>) -> Result<String, ConnectionProfi
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapters::mysql::MySqlAdapter;
+    use crate::app::ports::outbound::DsnBuilder;
 
     #[test]
     fn supported_versions_are_accepted() {
@@ -278,6 +300,8 @@ mod tests {
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
             mysql_enable_cleartext_plugin: None,
+            mysql_transport: None,
+            mysql_transport_path: None,
             path: None,
         }
     }
@@ -299,6 +323,8 @@ mod tests {
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
             mysql_enable_cleartext_plugin: None,
+            mysql_transport: None,
+            mysql_transport_path: None,
             path: path.map(str::to_string),
         }
     }
@@ -320,6 +346,8 @@ mod tests {
             mysql_ssl_key: None,
             mysql_server_public_key_path: None,
             mysql_enable_cleartext_plugin: None,
+            mysql_transport: None,
+            mysql_transport_path: None,
             path: None,
         }
     }
@@ -429,6 +457,33 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_mode, Some(MySqlSslMode::Required));
         assert_eq!(serialized.port, Some(3306));
         assert_eq!(serialized.password.as_deref(), Some("p@ss#word"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mysql_socket_entry_round_trips_transport_path_without_tcp_fields() {
+        let mut entry = mysql_entry(Some("app"));
+        entry.mysql_transport = Some(MySqlTransport::UnixSocket);
+        entry.mysql_transport_path = Some("/run/mysqld/mysqld.sock".to_string());
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        let config = profile.mysql_config().unwrap();
+        assert_eq!(config.transport, MySqlTransport::UnixSocket);
+        assert_eq!(
+            config.transport_path.as_deref(),
+            Some("/run/mysqld/mysqld.sock")
+        );
+
+        let serialized = ConnectionConfigEntry::from(&profile);
+        assert_eq!(serialized.host, None);
+        assert_eq!(serialized.port, None);
+        assert_eq!(serialized.mysql_transport, entry.mysql_transport);
+        assert_eq!(serialized.mysql_transport_path, entry.mysql_transport_path);
+
+        let round_tripped = ConnectionProfile::try_from(&serialized).unwrap();
+        let dsn = MySqlAdapter::new().build_dsn(&round_tripped);
+        assert!(dsn.contains("transport=UNIX_SOCKET"));
+        assert!(dsn.contains("transport-path=%2Frun%2Fmysqld%2Fmysqld.sock"));
     }
 
     #[test]

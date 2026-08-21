@@ -9,8 +9,11 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::DbOperationError;
+use crate::domain::connection::MySqlTransport;
 
-use super::dsn::{MySqlDsn, validate_mysql_tls_config, validate_mysql_values};
+use super::dsn::{
+    MySqlDsn, validate_mysql_tls_config, validate_mysql_transport, validate_mysql_values,
+};
 
 pub(super) struct MySqlOptionFile {
     pub(super) path: PathBuf,
@@ -19,6 +22,7 @@ pub(super) struct MySqlOptionFile {
 impl MySqlOptionFile {
     pub(super) fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
         validate_mysql_values(target)?;
+        validate_mysql_transport(target)?;
         validate_mysql_tls_files(target)?;
         validate_mysql_server_public_key(target)?;
         let mut path = std::env::temp_dir();
@@ -455,8 +459,19 @@ impl Drop for MySqlOptionFile {
 
 fn serialize_option_file(target: &MySqlDsn) -> String {
     let mut contents = String::from("[client]\n");
-    push_option(&mut contents, "host", &target.host);
-    push_option(&mut contents, "port", &target.port.to_string());
+    match target.transport {
+        MySqlTransport::Tcp => {
+            push_option(&mut contents, "host", &target.host);
+            push_option(&mut contents, "port", &target.port.to_string());
+            push_option(&mut contents, "protocol", target.transport.protocol());
+        }
+        MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+            push_option(&mut contents, "protocol", target.transport.protocol());
+            if let Some(path) = target.transport_path.as_deref() {
+                push_option(&mut contents, "socket", path);
+            }
+        }
+    }
     push_option(&mut contents, "user", &target.username);
     push_option(&mut contents, "password", &target.password);
     if let Some(database) = target.database.as_deref() {
@@ -522,6 +537,8 @@ mod tests {
 
     fn target() -> MySqlDsn {
         MySqlDsn {
+            transport: MySqlTransport::Tcp,
+            transport_path: None,
             host: "localhost".to_string(),
             port: 3306,
             database: None,
@@ -629,6 +646,31 @@ mod tests {
         assert!(contents.contains("enable-cleartext-plugin = \"true\"\n"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn option_file_serializes_unix_socket_without_tcp_fields() {
+        let target = MySqlDsn {
+            transport: MySqlTransport::UnixSocket,
+            transport_path: Some("/run/mysqld/mysqld.sock".to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert_eq!(
+            contents,
+            "[client]\n\
+protocol = \"SOCKET\"\n\
+socket = \"/run/mysqld/mysqld.sock\"\n\
+user = \"user\"\n\
+password = \"secret\"\n\
+ssl-mode = \"DISABLED\"\n"
+        );
+        assert!(!contents.contains("host ="));
+        assert!(!contents.contains("port ="));
+    }
+
     #[test]
     fn accepts_rsa_public_key_pem_before_creating_option_file() {
         let directory = tempfile::tempdir().unwrap();
@@ -694,6 +736,7 @@ mod tests {
             "[client]\n\
 host = \"localhost\"\n\
 port = \"3306\"\n\
+protocol = \"TCP\"\n\
 user = \"user\"\n\
 password = \"secret\"\n\
 ssl-mode = \"REQUIRED\"\n"

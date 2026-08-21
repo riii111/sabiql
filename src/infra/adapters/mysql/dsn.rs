@@ -3,11 +3,15 @@ use std::fmt;
 use url::Url;
 
 use crate::app::ports::outbound::{DbOperationError, DsnBuilder};
-use crate::domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
+use crate::domain::connection::{
+    ConnectionProfile, MySqlConnectionConfig, MySqlSslMode, MySqlTransport,
+};
 
 use super::adapter::MySqlAdapter;
 
 pub(super) struct MySqlDsn {
+    pub(super) transport: MySqlTransport,
+    pub(super) transport_path: Option<String>,
     pub(super) host: String,
     pub(super) port: u16,
     pub(super) database: Option<String>,
@@ -25,6 +29,8 @@ impl fmt::Debug for MySqlDsn {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MySqlDsn")
+            .field("transport", &self.transport)
+            .field("transport_path", &self.transport_path)
             .field("host", &self.host)
             .field("port", &self.port)
             .field("database", &self.database)
@@ -46,16 +52,18 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
         .expect("MySQL username is valid URL data");
     url.set_password(Some(&config.password))
         .expect("MySQL password is valid URL data");
-    let host = normalize_mysql_host(&config.host);
-    let host = if host.contains(':') && !host.starts_with('[') {
-        format!("[{host}]")
-    } else {
-        host
-    };
-    url.set_host(Some(&host))
-        .expect("validated MySQL host is valid URL data");
-    url.set_port(Some(config.port))
-        .expect("MySQL port is valid URL data");
+    if config.transport == MySqlTransport::Tcp {
+        let host = normalize_mysql_host(&config.host);
+        let host = if host.contains(':') && !host.starts_with('[') {
+            format!("[{host}]")
+        } else {
+            host
+        };
+        url.set_host(Some(&host))
+            .expect("validated MySQL host is valid URL data");
+        url.set_port(Some(config.port))
+            .expect("MySQL port is valid URL data");
+    }
     if let Some(database) = config.database.as_deref() {
         url.path_segments_mut()
             .expect("MySQL URL supports path segments")
@@ -81,6 +89,13 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     if config.enable_cleartext_plugin {
         url.query_pairs_mut()
             .append_pair("enable-cleartext-plugin", "true");
+    }
+    if config.transport != MySqlTransport::Tcp {
+        url.query_pairs_mut()
+            .append_pair("transport", config.transport.as_str());
+        if let Some(path) = config.transport_path.as_deref() {
+            url.query_pairs_mut().append_pair("transport-path", path);
+        }
     }
     url.to_string()
 }
@@ -146,8 +161,21 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         })
         .transpose()?
         .unwrap_or(false);
+    let transport = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "transport").then(|| value.parse()))
+        .transpose()
+        .map_err(|error: String| {
+            DbOperationError::ConnectionFailed(format!("Invalid MySQL transport: {error}"))
+        })?
+        .unwrap_or_default();
+    let transport_path = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "transport-path").then(|| value.into_owned()));
 
     Ok(MySqlDsn {
+        transport,
+        transport_path,
         host,
         port: url.port().unwrap_or(3306),
         database,
@@ -165,6 +193,7 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
 pub(super) fn parse_and_validate_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     let target = parse_mysql_dsn(dsn)?;
     validate_mysql_values(&target)?;
+    validate_mysql_transport(&target)?;
     validate_mysql_tls_config(&target)?;
     Ok(target)
 }
@@ -179,6 +208,7 @@ pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperation
         target.ssl_cert.as_deref(),
         target.ssl_key.as_deref(),
         target.server_public_key_path.as_deref(),
+        target.transport_path.as_deref(),
     ];
     if values
         .into_iter()
@@ -188,6 +218,46 @@ pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperation
         return Err(DbOperationError::ConnectionFailed(
             "MySQL connection settings contain a control character".to_string(),
         ));
+    }
+    Ok(())
+}
+
+pub(super) fn validate_mysql_transport(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    if !target.transport.is_supported_on_current_platform() {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL transport is not supported on this platform".to_string(),
+        ));
+    }
+    match target.transport {
+        MySqlTransport::Tcp => {
+            if target.transport_path.is_some() {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL transport path is only valid for socket or named-pipe transport"
+                        .to_string(),
+                ));
+            }
+        }
+        MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+            if target
+                .transport_path
+                .as_deref()
+                .is_none_or(|path| path.trim().is_empty())
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL transport path is required".to_string(),
+                ));
+            }
+            if target.transport == MySqlTransport::NamedPipe
+                && !matches!(
+                    target.ssl_mode,
+                    MySqlSslMode::Disabled | MySqlSslMode::Preferred
+                )
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL named pipe transport does not support the selected TLS mode".to_string(),
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -389,6 +459,48 @@ mod tests {
         assert!(parsed.enable_cleartext_plugin);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn builds_and_parses_unix_socket_transport() {
+        let config = MySqlConnectionConfig::new(
+            "db example",
+            0,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Disabled,
+        )
+        .with_transport(
+            MySqlTransport::UnixSocket,
+            Some("/run/mysqld/mysqld.sock".to_string()),
+        );
+
+        let dsn = build_mysql_dsn(&config);
+        let parsed = parse_and_validate_mysql_dsn(&dsn).unwrap();
+
+        assert_eq!(parsed.transport, MySqlTransport::UnixSocket);
+        assert_eq!(parsed.host, "localhost");
+        assert_eq!(parsed.port, 3306);
+        assert_eq!(
+            parsed.transport_path.as_deref(),
+            Some("/run/mysqld/mysqld.sock")
+        );
+    }
+
+    #[test]
+    fn rejects_transport_path_for_tcp_dsn() {
+        let error = parse_and_validate_mysql_dsn(
+            "mysql://user:password@localhost:3306/app?transport=TCP&transport-path=%2Ftmp%2Fmysql.sock",
+        )
+        .unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "MySQL transport path is only valid for socket or named-pipe transport"
+        ));
+    }
+
     #[test]
     fn rejects_cleartext_auth_plugin_without_required_tls() {
         let error = parse_and_validate_mysql_dsn(
@@ -456,6 +568,8 @@ mod tests {
             "server public key",
         ] {
             let mut target = MySqlDsn {
+                transport: MySqlTransport::Tcp,
+                transport_path: None,
                 host: "localhost".to_string(),
                 port: 3306,
                 database: None,

@@ -45,7 +45,7 @@ pub use write_result::{WriteDiagnostic, WriteDiagnosticLevel, WriteExecutionResu
 
 pub use connection::{
     ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
-    MySqlConnectionConfig, MySqlSslMode, PostgresConnectionConfig, SqliteConnectionConfig,
-    SqliteConnectionConfigError, SqlitePathError, SslMode, classify_sqlite_metadata_error,
-    classify_sqlite_read_error, sqlite_path_from_dsn,
+    MySqlConnectionConfig, MySqlSslMode, MySqlTransport, PostgresConnectionConfig,
+    SqliteConnectionConfig, SqliteConnectionConfigError, SqlitePathError, SslMode,
+    classify_sqlite_metadata_error, classify_sqlite_read_error, sqlite_path_from_dsn,
 };
