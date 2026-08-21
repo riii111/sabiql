@@ -24,6 +24,7 @@ pub enum ConnectionField {
     SslCa,
     SslCert,
     SslKey,
+    ServerPublicKeyPath,
 }
 
 impl ConnectionField {
@@ -53,6 +54,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::ServerPublicKeyPath,
                 ],
                 MySqlSslMode::Preferred | MySqlSslMode::Required => &[
                     Self::DatabaseType,
@@ -63,6 +65,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::ServerPublicKeyPath,
                     Self::SslCert,
                     Self::SslKey,
                 ],
@@ -75,6 +78,7 @@ impl ConnectionField {
                     Self::User,
                     Self::Password,
                     Self::SslMode,
+                    Self::ServerPublicKeyPath,
                     Self::SslCa,
                     Self::SslCert,
                     Self::SslKey,
@@ -93,7 +97,11 @@ impl ConnectionField {
     pub fn max_chars(self) -> Option<usize> {
         match self {
             Self::Name => Some(50),
-            Self::SqlitePath | Self::SslCa | Self::SslCert | Self::SslKey => Some(4096),
+            Self::SqlitePath
+            | Self::SslCa
+            | Self::SslCert
+            | Self::SslKey
+            | Self::ServerPublicKeyPath => Some(4096),
             Self::Host | Self::Database | Self::User | Self::Password => Some(255),
             Self::Port => Some(5),
             Self::DatabaseType | Self::SslMode => None,
@@ -131,6 +139,7 @@ impl ConnectionField {
             Self::SslCa => "CA Path:",
             Self::SslCert => "Cert Path:",
             Self::SslKey => "Key Path:",
+            Self::ServerPublicKeyPath => "Server Key:",
         }
     }
 }
@@ -180,6 +189,7 @@ pub struct ConnectionSetupState {
     pub(crate) ssl_ca: TextInputState,
     pub(crate) ssl_cert: TextInputState,
     pub(crate) ssl_key: TextInputState,
+    pub(crate) server_public_key_path: TextInputState,
     pub(crate) ssl_mode: SslMode,
     pub(crate) mysql_ssl_mode: MySqlSslMode,
 
@@ -207,6 +217,7 @@ impl Default for ConnectionSetupState {
             ssl_ca: TextInputState::default(),
             ssl_cert: TextInputState::default(),
             ssl_key: TextInputState::default(),
+            server_public_key_path: TextInputState::default(),
             ssl_mode: SslMode::Prefer,
             mysql_ssl_mode: MySqlSslMode::Preferred,
             focused_field: ConnectionField::DatabaseType,
@@ -291,6 +302,7 @@ impl ConnectionSetupState {
             ConnectionField::SslCa => Some(&self.ssl_ca),
             ConnectionField::SslCert => Some(&self.ssl_cert),
             ConnectionField::SslKey => Some(&self.ssl_key),
+            ConnectionField::ServerPublicKeyPath => Some(&self.server_public_key_path),
         }
     }
 
@@ -311,6 +323,7 @@ impl ConnectionSetupState {
             ConnectionField::SslCa => Some(&mut self.ssl_ca),
             ConnectionField::SslCert => Some(&mut self.ssl_cert),
             ConnectionField::SslKey => Some(&mut self.ssl_key),
+            ConnectionField::ServerPublicKeyPath => Some(&mut self.server_public_key_path),
         }
     }
 
@@ -559,7 +572,8 @@ impl ConnectionSetupState {
                     (!matches!(self.mysql_ssl_mode, MySqlSslMode::Disabled))
                         .then(|| optional_path(&self.ssl_key))
                         .flatten(),
-                ),
+                )
+                .with_server_public_key_path(optional_path(&self.server_public_key_path)),
             ),
         })
     }
@@ -635,6 +649,9 @@ impl From<&ConnectionProfile> for ConnectionSetupState {
                 if let Some(path) = config.ssl_key.as_deref() {
                     state.ssl_key = TextInputState::new(path, path.chars().count());
                 }
+                if let Some(path) = config.server_public_key_path.as_deref() {
+                    state.server_public_key_path = TextInputState::new(path, path.chars().count());
+                }
             }
         }
         state
@@ -666,6 +683,7 @@ mod tests {
         #[case(ConnectionField::SslCa, false)]
         #[case(ConnectionField::SslCert, false)]
         #[case(ConnectionField::SslKey, false)]
+        #[case(ConnectionField::ServerPublicKeyPath, false)]
         fn is_required_returns_correct_value(
             #[case] field: ConnectionField,
             #[case] expected: bool,
@@ -706,6 +724,7 @@ mod tests {
                     ConnectionField::User,
                     ConnectionField::Password,
                     ConnectionField::SslMode,
+                    ConnectionField::ServerPublicKeyPath,
                     ConnectionField::SslCert,
                     ConnectionField::SslKey,
                 ]
@@ -723,6 +742,7 @@ mod tests {
             assert_eq!(ConnectionField::Password.max_chars(), Some(255));
             assert_eq!(ConnectionField::DatabaseType.max_chars(), None);
             assert_eq!(ConnectionField::SslMode.max_chars(), None);
+            assert_eq!(ConnectionField::ServerPublicKeyPath.max_chars(), Some(4096));
         }
 
         #[rstest]
@@ -757,6 +777,11 @@ mod tests {
             state.set_database_type(DatabaseType::MySQL);
             assert!(!state.visible_fields().contains(&ConnectionField::SslCa));
             assert!(state.visible_fields().contains(&ConnectionField::SslCert));
+            assert!(
+                state
+                    .visible_fields()
+                    .contains(&ConnectionField::ServerPublicKeyPath)
+            );
 
             state.mysql_ssl_mode = MySqlSslMode::VerifyIdentity;
             assert!(state.visible_fields().contains(&ConnectionField::SslCa));

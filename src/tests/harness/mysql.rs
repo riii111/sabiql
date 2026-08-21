@@ -99,6 +99,7 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
             .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
         MySqlSslMode::Disabled,
     )
+    .with_server_public_key_path(std::env::var("SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY").ok())
 }
 
 pub fn mysql_tls_config() -> MySqlConnectionConfig {

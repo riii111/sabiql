@@ -17,6 +17,7 @@ pub(super) struct MySqlDsn {
     pub(super) ssl_ca: Option<String>,
     pub(super) ssl_cert: Option<String>,
     pub(super) ssl_key: Option<String>,
+    pub(super) server_public_key_path: Option<String>,
 }
 
 impl fmt::Debug for MySqlDsn {
@@ -32,6 +33,7 @@ impl fmt::Debug for MySqlDsn {
             .field("ssl_ca", &self.ssl_ca)
             .field("ssl_cert", &self.ssl_cert)
             .field("ssl_key", &self.ssl_key)
+            .field("server_public_key_path", &self.server_public_key_path)
             .finish()
     }
 }
@@ -69,6 +71,10 @@ pub(super) fn build_mysql_dsn(config: &MySqlConnectionConfig) -> String {
     }
     if let Some(path) = config.ssl_key.as_deref() {
         url.query_pairs_mut().append_pair("ssl-key", path);
+    }
+    if let Some(path) = config.server_public_key_path.as_deref() {
+        url.query_pairs_mut()
+            .append_pair("server-public-key-path", path);
     }
     url.to_string()
 }
@@ -119,6 +125,9 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
     let ssl_key = url
         .query_pairs()
         .find_map(|(key, value)| (key == "ssl-key").then(|| value.into_owned()));
+    let server_public_key_path = url
+        .query_pairs()
+        .find_map(|(key, value)| (key == "server-public-key-path").then(|| value.into_owned()));
 
     Ok(MySqlDsn {
         host,
@@ -130,6 +139,7 @@ pub(super) fn parse_mysql_dsn(dsn: &str) -> Result<MySqlDsn, DbOperationError> {
         ssl_ca,
         ssl_cert,
         ssl_key,
+        server_public_key_path,
     })
 }
 
@@ -149,6 +159,7 @@ pub(super) fn validate_mysql_values(target: &MySqlDsn) -> Result<(), DbOperation
         target.ssl_ca.as_deref(),
         target.ssl_cert.as_deref(),
         target.ssl_key.as_deref(),
+        target.server_public_key_path.as_deref(),
     ];
     if values
         .into_iter()
@@ -313,6 +324,28 @@ mod tests {
     }
 
     #[test]
+    fn builds_and_parses_mysql_dsn_with_server_public_key_path() {
+        let config = MySqlConnectionConfig::new(
+            "db.example",
+            3306,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Disabled,
+        )
+        .with_server_public_key_path(Some(r"C:\keys\server-public.pem".to_string()));
+
+        let dsn = build_mysql_dsn(&config);
+        assert!(dsn.contains("server-public-key-path="));
+        let parsed = parse_mysql_dsn(&dsn).unwrap();
+
+        assert_eq!(
+            parsed.server_public_key_path.as_deref(),
+            Some(r"C:\keys\server-public.pem")
+        );
+    }
+
+    #[test]
     fn ignores_ca_when_building_or_parsing_non_verification_dsn() {
         let config = MySqlConnectionConfig::new(
             "db.example",
@@ -358,7 +391,12 @@ mod tests {
 
     #[test]
     fn rejects_control_characters_in_tls_paths() {
-        for field in ["CA", "client certificate", "client key"] {
+        for field in [
+            "CA",
+            "client certificate",
+            "client key",
+            "server public key",
+        ] {
             let mut target = MySqlDsn {
                 host: "localhost".to_string(),
                 port: 3306,
@@ -369,11 +407,15 @@ mod tests {
                 ssl_ca: None,
                 ssl_cert: None,
                 ssl_key: None,
+                server_public_key_path: None,
             };
             match field {
                 "CA" => target.ssl_ca = Some("ca\n.pem".to_string()),
                 "client certificate" => target.ssl_cert = Some("client\r.pem".to_string()),
                 "client key" => target.ssl_key = Some("client\0-key.pem".to_string()),
+                "server public key" => {
+                    target.server_public_key_path = Some("server\n-key.pem".to_string());
+                }
                 _ => unreachable!(),
             }
 

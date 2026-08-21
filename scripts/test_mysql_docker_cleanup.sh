@@ -57,7 +57,7 @@ case "${1:-}" in
                 --file)
                     shift 2
                     ;;
-                up|port|down|rm)
+                up|port|down|rm|exec|cp)
                     command="$1"
                     break
                     ;;
@@ -74,6 +74,13 @@ case "${1:-}" in
         if [[ "$command" == port ]]; then
             port="$(printf '%s' "$project" | cksum | awk '{ print 30000 + ($1 % 20000) }')"
             printf '127.0.0.1:%s\n' "$port"
+        fi
+        if [[ "$command" == exec ]]; then
+            printf '%s\n' '/var/lib/mysql/public_key.pem'
+        fi
+        if [[ "$command" == cp ]]; then
+            printf '%s\n' '-----BEGIN PUBLIC KEY-----' 'AQID' \
+                '-----END PUBLIC KEY-----' >"${!#}"
         fi
         exit 0
         ;;

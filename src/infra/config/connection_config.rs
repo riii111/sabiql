@@ -58,6 +58,8 @@ pub struct ConnectionConfigEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mysql_ssl_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mysql_server_public_key_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
 }
 
@@ -101,6 +103,7 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
             mysql_ssl_ca: None,
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
+            mysql_server_public_key_path: None,
             path: None,
         };
         match &profile.config {
@@ -127,6 +130,9 @@ impl From<&ConnectionProfile> for ConnectionConfigEntry {
                 }
                 entry.mysql_ssl_cert.clone_from(&config.ssl_cert);
                 entry.mysql_ssl_key.clone_from(&config.ssl_key);
+                entry
+                    .mysql_server_public_key_path
+                    .clone_from(&config.server_public_key_path);
             }
         }
         entry
@@ -180,7 +186,8 @@ impl TryFrom<&ConnectionConfigEntry> for ConnectionProfile {
                             entry.mysql_ssl_ca.clone(),
                             entry.mysql_ssl_cert.clone(),
                             entry.mysql_ssl_key.clone(),
-                        ),
+                        )
+                        .with_server_public_key_path(entry.mysql_server_public_key_path.clone()),
                     ),
                 )
             }
@@ -261,6 +268,7 @@ mod tests {
             mysql_ssl_ca: None,
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
+            mysql_server_public_key_path: None,
             path: None,
         }
     }
@@ -280,6 +288,7 @@ mod tests {
             mysql_ssl_ca: None,
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
+            mysql_server_public_key_path: None,
             path: path.map(str::to_string),
         }
     }
@@ -299,6 +308,7 @@ mod tests {
             mysql_ssl_ca: None,
             mysql_ssl_cert: None,
             mysql_ssl_key: None,
+            mysql_server_public_key_path: None,
             path: None,
         }
     }
@@ -429,6 +439,28 @@ mod tests {
         assert_eq!(serialized.mysql_ssl_ca, entry.mysql_ssl_ca);
         assert_eq!(serialized.mysql_ssl_cert, entry.mysql_ssl_cert);
         assert_eq!(serialized.mysql_ssl_key, entry.mysql_ssl_key);
+    }
+
+    #[test]
+    fn mysql_entry_round_trips_server_public_key_path() {
+        let mut entry = mysql_entry(Some("app"));
+        entry.mysql_server_public_key_path = Some(r"C:\keys\server-public.pem".to_string());
+
+        let profile = ConnectionProfile::try_from(&entry).unwrap();
+        assert_eq!(
+            profile
+                .mysql_config()
+                .unwrap()
+                .server_public_key_path
+                .as_deref(),
+            Some(r"C:\keys\server-public.pem")
+        );
+
+        let serialized = ConnectionConfigEntry::from(&profile);
+        assert_eq!(
+            serialized.mysql_server_public_key_path,
+            entry.mysql_server_public_key_path
+        );
     }
 
     #[test]

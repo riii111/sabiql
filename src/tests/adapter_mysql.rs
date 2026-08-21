@@ -108,6 +108,28 @@ mod connection {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
+    async fn connects_to_oracle_mysql_84_without_tls_with_trusted_server_public_key() {
+        let config = mysql_integration_config();
+        assert_eq!(config.ssl_mode, MySqlSslMode::Disabled);
+        assert!(config.server_public_key_path.is_some());
+        let profile = mysql_profile("mysql-caching-sha2-public-key", config);
+        let adapter = MySqlAdapter::new();
+        let dsn = adapter.build_dsn(&profile);
+
+        adapter.probe(&dsn).await.unwrap();
+        let result = adapter
+            .execute_adhoc(
+                &dsn,
+                &format!("SELECT id FROM {MYSQL_FIXTURE_TABLE}"),
+                AccessMode::ReadWrite,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.values(), [[QueryValue::Text("1".to_string())]]);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and mysql CLI"]
     async fn connects_to_oracle_mysql_84_fixture_with_ca_and_client_certificate() {
         let config = mysql_tls_test_config();
         let profile = mysql_profile("mysql-tls-integration", config);

@@ -29,6 +29,7 @@ test_project ▸ - ▸ -                                                        
 │                                       │└──────────│  User:       [ mysql_user                 ]                │──────────────────────────────────────────────────┘
 │                                       │┌ [3] Resul│  Password:   [ empty = no password        ]                │──────────────────────────────────────────────────┐
 │                                       ││(select a │  SSL Mode:   [ PREFERRED                ▼ ]                │                                                  │
+│                                       ││          │  Server Key: [                            ]                │                                                  │
 │                                       ││          │  Cert Path:  [                            ]                │                                                  │
 │                                       ││          │  Key Path:   [                            ]                │                                                  │
 │                                       ││          │                                                            │                                                  │
@@ -36,7 +37,6 @@ test_project ▸ - ▸ -                                                        
 │                                       ││          │  Note: Connection info is stored locally in plain text     │                                                  │
 │                                       ││          │                                                            │                                                  │
 │                                       ││          ╰ Tab/⇧Tab: Field │ Enter: Toggle │ ^S: Connect │ Esc: Cancel╯                                                  │
-│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

@@ -20,6 +20,7 @@ impl MySqlOptionFile {
     pub(super) fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
         validate_mysql_values(target)?;
         validate_mysql_tls_files(target)?;
+        validate_mysql_server_public_key(target)?;
         let mut path = std::env::temp_dir();
         path.push(format!("sabiql-mysql-{}.cnf", Uuid::new_v4()));
         if !path.is_absolute() {
@@ -120,6 +121,85 @@ fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
         }
     }
     Ok(())
+}
+
+fn validate_mysql_server_public_key(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    let Some(path) = target.server_public_key_path.as_deref() else {
+        return Ok(());
+    };
+    let metadata = fs::metadata(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key path cannot be accessed: {error}"
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key path is not a regular file".to_string(),
+        ));
+    }
+    let contents = fs::read(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key cannot be read: {error}"
+        ))
+    })?;
+    let contents = String::from_utf8(contents).map_err(|_| {
+        DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        )
+    })?;
+    let contents = contents.trim_end_matches('\0');
+    if !is_valid_pem_public_key(contents) {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_valid_pem_public_key(contents: &str) -> bool {
+    ["PUBLIC KEY", "RSA PUBLIC KEY"].iter().any(|label| {
+        let begin = format!("-----BEGIN {label}-----");
+        let end = format!("-----END {label}-----");
+        let Some(begin_offset) = contents.find(&begin) else {
+            return false;
+        };
+        if !contents[..begin_offset].chars().all(char::is_whitespace) {
+            return false;
+        }
+        let body_start = begin_offset + begin.len();
+        let Some(end_offset) = contents[body_start..].find(&end) else {
+            return false;
+        };
+        let body_end = body_start + end_offset;
+        let encoded: Vec<u8> = contents[body_start..body_end]
+            .bytes()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .collect();
+        if encoded.is_empty() || !is_valid_base64(&encoded) {
+            return false;
+        }
+        contents[body_end + end.len()..]
+            .chars()
+            .all(char::is_whitespace)
+    })
+}
+
+fn is_valid_base64(encoded: &[u8]) -> bool {
+    if !encoded.len().is_multiple_of(4) {
+        return false;
+    }
+    let padding = encoded.iter().position(|byte| *byte == b'=');
+    let content_end = padding.unwrap_or(encoded.len());
+    if encoded[..content_end]
+        .iter()
+        .any(|byte| !(byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/')))
+    {
+        return false;
+    }
+    padding.is_none_or(|padding_start| {
+        encoded[padding_start..].iter().all(|byte| *byte == b'=')
+            && encoded.len() - padding_start <= 2
+    })
 }
 
 #[cfg(windows)]
@@ -260,6 +340,9 @@ fn serialize_option_file(target: &MySqlDsn) -> String {
     if let Some(path) = target.ssl_key.as_deref() {
         push_option(&mut contents, "ssl-key", path);
     }
+    if let Some(path) = target.server_public_key_path.as_deref() {
+        push_option(&mut contents, "server-public-key-path", path);
+    }
     contents
 }
 
@@ -302,6 +385,7 @@ mod tests {
             ssl_ca: None,
             ssl_cert: None,
             ssl_key: None,
+            server_public_key_path: None,
         }
     }
 
@@ -362,6 +446,64 @@ mod tests {
         assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
         assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
         assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn option_file_serializes_server_public_key_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(
+            &key,
+            "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n\0",
+        )
+        .unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains(&format!(
+            "server-public-key-path = {}\n",
+            quote_option_value(&key.display().to_string())
+        )));
+    }
+
+    #[test]
+    fn rejects_invalid_server_public_key_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(
+            &key,
+            "-----BEGIN PUBLIC KEY-----\nnot-base64\n-----END PUBLIC KEY-----\n",
+        )
+        .unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "MySQL server public key is not a valid PEM public key"
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_server_public_key_before_connecting() {
+        let target = MySqlDsn {
+            server_public_key_path: Some("/missing/server-key.pem".to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details.starts_with("MySQL server public key path cannot be accessed:")
+        ));
     }
 
     #[test]
