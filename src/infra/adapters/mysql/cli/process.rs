@@ -50,6 +50,17 @@ const MYSQL_PTY_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MYSQL_SESSION_SETTINGS: &str = "SET SESSION autocommit=1, completion_type=NO_CHAIN";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
+fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
+    if error.kind() == io::ErrorKind::NotFound {
+        DbOperationError::CommandNotFound {
+            command: DatabaseCli::MySql,
+            details: error.to_string(),
+        }
+    } else {
+        DbOperationError::ConnectionFailed(error.to_string())
+    }
+}
+
 pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
     pub(super) client_packet_limit_bytes: Option<usize>,
@@ -145,16 +156,7 @@ impl MySqlProcess {
                 .stderr(Stdio::piped())
                 .kill_on_drop(true);
             sanitize_mysql_command_environment(&mut command);
-            let mut child = command.spawn().map_err(|error| {
-                if error.kind() == io::ErrorKind::NotFound {
-                    DbOperationError::CommandNotFound {
-                        command: DatabaseCli::MySql,
-                        details: error.to_string(),
-                    }
-                } else {
-                    DbOperationError::ConnectionFailed(error.to_string())
-                }
-            })?;
+            let mut child = command.spawn().map_err(map_mysql_cli_spawn_error)?;
             let stdin = child.stdin.take().ok_or_else(|| {
                 DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
             })?;
@@ -200,16 +202,7 @@ impl MySqlProcess {
             .stderr(Stdio::from(slave))
             .kill_on_drop(true);
         sanitize_mysql_command_environment(&mut command);
-        let child = command.spawn().map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                DbOperationError::CommandNotFound {
-                    command: DatabaseCli::MySql,
-                    details: error.to_string(),
-                }
-            } else {
-                DbOperationError::ConnectionFailed(error.to_string())
-            }
-        })?;
+        let child = command.spawn().map_err(map_mysql_cli_spawn_error)?;
         let output = TokioFile::from_std(
             master
                 .try_clone()
@@ -227,6 +220,41 @@ impl MySqlProcess {
                 frame_scanner: MySqlResultsetFrameScanner::default(),
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod spawn_error_tests {
+    use super::*;
+
+    #[test]
+    fn maps_missing_mysql_cli_to_command_not_found() {
+        let error = map_mysql_cli_spawn_error(io::Error::new(
+            io::ErrorKind::NotFound,
+            "mysql executable was not found",
+        ));
+
+        assert!(matches!(
+            error,
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details,
+            } if details == "mysql executable was not found"
+        ));
+    }
+
+    #[test]
+    fn maps_other_mysql_cli_spawn_errors_to_connection_failed() {
+        let error = map_mysql_cli_spawn_error(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "mysql executable permission denied",
+        ));
+
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "mysql executable permission denied"
+        ));
     }
 }
 
