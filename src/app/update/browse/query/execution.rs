@@ -190,26 +190,13 @@ pub fn reduce_execution(
                     state.modal.push_mode(InputMode::Help);
                     vec![]
                 }
-                Action::OpenModal(ModalKind::SqlModal) => {
-                    vec![Effect::DispatchActions(vec![Action::OpenModal(
-                        ModalKind::SqlModal,
-                    )])]
-                }
-                Action::OpenModal(ModalKind::ErTablePicker) => {
-                    // Defer to modal reducer so metadata readiness checks stay in one place.
-                    vec![Effect::DispatchActions(vec![Action::OpenModal(
-                        ModalKind::ErTablePicker,
-                    )])]
-                }
-                Action::OpenModal(ModalKind::Settings) => {
-                    vec![Effect::DispatchActions(vec![Action::OpenModal(
-                        ModalKind::Settings,
-                    )])]
-                }
-                Action::OpenModal(ModalKind::CommandPalette) => {
-                    vec![Effect::DispatchActions(vec![Action::OpenModal(
-                        ModalKind::CommandPalette,
-                    )])]
+                Action::OpenModal(
+                    modal @ (ModalKind::SqlModal
+                    | ModalKind::ErTablePicker
+                    | ModalKind::Settings
+                    | ModalKind::CommandPalette),
+                ) => {
+                    vec![Effect::DispatchActions(vec![Action::OpenModal(modal)])]
                 }
                 Action::SubmitCellEditWrite => {
                     write::reduce_write(state, &Action::SubmitCellEditWrite, now, services)
