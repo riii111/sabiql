@@ -82,7 +82,7 @@ pub(super) fn reduce_analyze(
             state.explain.confirm_scroll_offset = 0;
 
             match risk.confirmation {
-                ConfirmationType::TableNameInput { target } => {
+                ConfirmationType::TableNameInput { target, .. } => {
                     state
                         .sql_modal
                         .begin_confirming_analyze_high(content, target);

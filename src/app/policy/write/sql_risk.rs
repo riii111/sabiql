@@ -46,6 +46,7 @@ pub enum ConfirmationType {
     },
     TableNameInput {
         target: String,
+        label: &'static str,
     },
 }
 
@@ -73,6 +74,7 @@ fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
             risk_level: RiskLevel::High,
             confirmation: ConfirmationType::TableNameInput {
                 target: target.to_string(),
+                label: mysql_statement_label(statement.kind()),
             },
             read_only_allowed: false,
         },
@@ -182,10 +184,10 @@ pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
         .map(|decision| decision.risk_level)
         .max()
         .unwrap_or(RiskLevel::Low);
-    let table_confirmations: Vec<String> = decisions
+    let table_confirmations: Vec<ConfirmationType> = decisions
         .iter()
         .filter_map(|decision| match &decision.confirmation {
-            ConfirmationType::TableNameInput { target } => Some(target.clone()),
+            ConfirmationType::TableNameInput { .. } => Some(decision.confirmation.clone()),
             _ => None,
         })
         .collect();
@@ -195,7 +197,7 @@ pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
         };
     }
     let confirmation = if let Some(target) = table_confirmations.into_iter().next() {
-        ConfirmationType::TableNameInput { target }
+        target
     } else {
         ConfirmationType::Immediate
     };
@@ -467,7 +469,10 @@ pub fn evaluate_sql_risk_for_database(
                 match extract_target_name(sql, kind) {
                     Some(name) => SqlRiskDecision {
                         risk_level: RiskLevel::High,
-                        confirmation: ConfirmationType::TableNameInput { target: name },
+                        confirmation: ConfirmationType::TableNameInput {
+                            target: name,
+                            label: write_guardrails::evaluate_sql_risk(kind).label,
+                        },
                         read_only_allowed: false,
                     },
                     None => high_acknowledge(kind),
@@ -481,7 +486,10 @@ pub fn evaluate_sql_risk_for_database(
         | StatementKind::Truncate => match extract_target_name(sql, kind) {
             Some(name) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
-                confirmation: ConfirmationType::TableNameInput { target: name },
+                confirmation: ConfirmationType::TableNameInput {
+                    target: name,
+                    label: write_guardrails::evaluate_sql_risk(kind).label,
+                },
                 read_only_allowed: false,
             },
             None => high_acknowledge(kind),
@@ -735,74 +743,11 @@ fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
     Some(match extract_target_name(sql, &kind) {
         Some(target) => SqlRiskDecision {
             risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::TableNameInput { target },
+            confirmation: ConfirmationType::TableNameInput { target, label },
             read_only_allowed: false,
         },
         None => high_acknowledge_label(label),
     })
-}
-
-pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
-    let effective = statement_after_leading_ctes(sql);
-    let tokens = top_level_token_lowers(effective);
-    match tokens.first().map(String::as_str)? {
-        "pragma" => Some("PRAGMA"),
-        "attach" => Some("ATTACH"),
-        "detach" => Some("DETACH"),
-        "vacuum" => Some("VACUUM"),
-        "reindex" => Some("REINDEX"),
-        "analyze" => Some("ANALYZE"),
-        "replace" => Some("REPLACE"),
-        "insert" if sqlite_replace_target_in_statement(effective).is_some() => Some("REPLACE"),
-        "drop" => sqlite_drop_label(effective),
-        _ => None,
-    }
-}
-
-pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
-    if database_type == DatabaseType::MySQL {
-        return classify_mysql_statement(sql)
-            .map_or("SQL", |statement| mysql_statement_label(statement.kind()));
-    }
-    let sqlite_label = (database_type == DatabaseType::SQLite)
-        .then(|| sqlite_specific_label(sql))
-        .flatten();
-    let kind = classify(sql);
-    let decision = write_guardrails::evaluate_sql_risk(&kind);
-    sqlite_label.unwrap_or(decision.label)
-}
-
-pub fn adhoc_label_for_table_name_confirmation(
-    database_type: DatabaseType,
-    sql: &str,
-) -> Option<&'static str> {
-    if database_type == DatabaseType::MySQL {
-        return split_mysql_statements(sql)
-            .ok()?
-            .into_iter()
-            .find_map(|statement| {
-                let statement = classify_mysql_statement(&statement).ok()?;
-                matches!(
-                    mysql_statement_risk(&statement).confirmation,
-                    ConfirmationType::TableNameInput { .. }
-                )
-                .then(|| mysql_statement_label(statement.kind()))
-            });
-    }
-    let Ok(statements) = split_statements_for_database(database_type, sql) else {
-        return None;
-    };
-    for stmt in statements {
-        let kind = classify(&stmt);
-        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt)?;
-        if matches!(
-            decision.confirmation,
-            ConfirmationType::TableNameInput { .. }
-        ) {
-            return Some(adhoc_label_for_statement(database_type, &stmt));
-        }
-    }
-    None
 }
 
 fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
@@ -935,14 +880,20 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
             |target| {
                 Some(SqlRiskDecision {
                     risk_level: RiskLevel::High,
-                    confirmation: ConfirmationType::TableNameInput { target },
+                    confirmation: ConfirmationType::TableNameInput {
+                        target,
+                        label: "REPLACE",
+                    },
                     read_only_allowed: false,
                 })
             },
         ),
         "insert" => sqlite_replace_target_in_statement(effective).map(|target| SqlRiskDecision {
             risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::TableNameInput { target },
+            confirmation: ConfirmationType::TableNameInput {
+                target,
+                label: "REPLACE",
+            },
             read_only_allowed: false,
         }),
         "drop" => sqlite_drop_risk(effective),
@@ -1377,22 +1328,11 @@ mod tests {
                 assert!(!result.read_only_allowed);
                 assert!(matches!(
                     result.confirmation,
-                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ConfirmationType::TableNameInput {
+                        ref target,
+                        label: "REPLACE",
+                    } if target == expected_target
                 ));
-            }
-
-            #[test]
-            fn sqlite_specific_label_detects_commented_insert_or_replace() {
-                let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
-
-                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
-            }
-
-            #[test]
-            fn sqlite_specific_label_detects_with_insert_or_replace() {
-                let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
-
-                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
             }
         }
 
@@ -1400,35 +1340,23 @@ mod tests {
             use super::*;
 
             #[rstest]
-            #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
-            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
-            #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
-            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
-            #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
-            #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
-            fn sqlite_specific_label_detects_dangerous_drops(
-                #[case] sql: &str,
-                #[case] expected: &str,
-            ) {
-                assert_eq!(sqlite_specific_label(sql), Some(expected));
-            }
-
-            #[rstest]
-            #[case::drop_index("DROP INDEX my_index", "my_index")]
-            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
-            #[case::drop_view("DROP VIEW my_view", "my_view")]
-            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
-            #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
+            #[case::drop_index("DROP INDEX my_index", "my_index", "DROP INDEX")]
+            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index", "DROP INDEX")]
+            #[case::drop_view("DROP VIEW my_view", "my_view", "DROP VIEW")]
+            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view", "DROP VIEW")]
+            #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger", "DROP TRIGGER")]
             #[case::drop_trigger_if_exists(
                 "DROP TRIGGER IF EXISTS main.my_trigger",
-                "main.my_trigger"
+                "main.my_trigger",
+                "DROP TRIGGER"
             )]
-            #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
-            #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
-            #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
+            #[case::drop_index_quoted("DROP INDEX `my index`", "my index", "DROP INDEX")]
+            #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view", "DROP VIEW")]
+            #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger", "DROP TRIGGER")]
             fn sqlite_dangerous_drop_requires_table_name_input(
                 #[case] sql: &str,
                 #[case] expected_target: &str,
+                #[case] expected_label: &str,
             ) {
                 let result =
                     evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
@@ -1438,7 +1366,10 @@ mod tests {
                 assert!(!result.read_only_allowed);
                 assert!(matches!(
                     result.confirmation,
-                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ConfirmationType::TableNameInput {
+                        ref target,
+                        label,
+                    } if target == expected_target && label == expected_label
                 ));
             }
 
@@ -1540,7 +1471,10 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == "a"
+                            ConfirmationType::TableNameInput {
+                                ref target,
+                                label: "DROP",
+                            } if target == "a"
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1770,7 +1704,7 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                            ConfirmationType::TableNameInput { ref target, .. } if target == expected_target
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1793,7 +1727,7 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                            ConfirmationType::TableNameInput { ref target, .. } if target == expected_target
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1975,7 +1909,7 @@ mod tests {
                 use super::*;
 
                 #[test]
-                fn sqlite_multiple_high_drops_use_first_target() {
+                fn sqlite_multiple_high_drops_use_first_confirmation() {
                     let result = evaluate_multi_statement_for_database(
                         DatabaseType::SQLite,
                         "DROP INDEX my_index; DROP VIEW my_view",
@@ -1990,20 +1924,14 @@ mod tests {
                             assert!(!risk.read_only_allowed);
                             assert!(matches!(
                                 risk.confirmation,
-                                ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                                ConfirmationType::TableNameInput {
+                                    ref target,
+                                    label: "DROP INDEX",
+                                } if target == "my_index"
                             ));
                         }
                         _ => panic!("expected Allow"),
                     }
-                }
-
-                #[test]
-                fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
-                    let sql = "DROP INDEX my_index; DROP VIEW my_view";
-                    assert_eq!(
-                        adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
-                        Some("DROP INDEX")
-                    );
                 }
 
                 #[test]
@@ -2018,7 +1946,7 @@ mod tests {
                             assert!(!risk.read_only_allowed);
                             assert!(matches!(
                                 risk.confirmation,
-                                ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                                ConfirmationType::TableNameInput { ref target, .. } if target == "my_index"
                             ));
                         }
                         _ => panic!("expected Allow"),
@@ -2110,7 +2038,8 @@ mod mysql_tests {
                 assert_eq!(
                     risk.confirmation,
                     ConfirmationType::TableNameInput {
-                        target: "items".to_string()
+                        target: "items".to_string(),
+                        label: "UPDATE (no WHERE)",
                     }
                 );
                 assert!(!risk.read_only_allowed);
@@ -2128,7 +2057,7 @@ mod mysql_tests {
         };
         assert!(matches!(
             risk.confirmation,
-            ConfirmationType::TableNameInput { ref target } if target == "CustomerOrders"
+            ConfirmationType::TableNameInput { ref target, .. } if target == "CustomerOrders"
         ));
     }
 
@@ -2210,7 +2139,8 @@ mod mysql_tests {
         assert_eq!(
             risk.confirmation,
             ConfirmationType::TableNameInput {
-                target: target.to_string()
+                target: target.to_string(),
+                label: "ALTER TABLE",
             }
         );
     }
@@ -2223,7 +2153,7 @@ mod mysql_tests {
         assert!(!risk.read_only_allowed);
         assert!(matches!(
             risk.confirmation,
-            ConfirmationType::TableNameInput { ref target } if target == "items"
+            ConfirmationType::TableNameInput { ref target, .. } if target == "items"
         ));
     }
 

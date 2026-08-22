@@ -5,7 +5,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::text_input::TextInputLike;
 use crate::policy::write::sql_risk::{
     ConfirmationType, MultiStatementDecision, SqlRiskDecision,
-    adhoc_label_for_table_name_confirmation, evaluate_multi_statement_for_database_with_context,
+    evaluate_multi_statement_for_database_with_context,
     evaluate_mysql_multi_statement_with_lower_case_table_names,
 };
 use crate::policy::write::write_guardrails::AdhocRiskDecision;
@@ -40,7 +40,7 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                         DispatchResult::handled()
                     }
                     MultiStatementDecision::Allow { risk, .. } => {
-                        handle_allowed_query(state, database_type, query, now, risk)
+                        handle_allowed_query(state, query, now, risk)
                     }
                 };
             }
@@ -55,7 +55,7 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
                     DispatchResult::handled()
                 }
                 MultiStatementDecision::Allow { risk, .. } => {
-                    handle_allowed_query(state, database_type, query, now, risk)
+                    handle_allowed_query(state, query, now, risk)
                 }
             }
         }
@@ -65,7 +65,6 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
 
 fn handle_allowed_query(
     state: &mut AppState,
-    database_type: DatabaseType,
     query: String,
     now: Instant,
     risk: SqlRiskDecision,
@@ -83,9 +82,7 @@ fn handle_allowed_query(
             state.sql_modal.begin_confirming_risk(reason, label);
             DispatchResult::handled()
         }
-        ConfirmationType::TableNameInput { target } => {
-            let label = adhoc_label_for_table_name_confirmation(database_type, &query)
-                .expect("TableNameInput confirmation must have a matching statement");
+        ConfirmationType::TableNameInput { target, label } => {
             let decision = AdhocRiskDecision {
                 risk_level: risk.risk_level,
                 label,
