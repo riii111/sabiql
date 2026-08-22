@@ -388,20 +388,6 @@ pub(super) fn query_failed_after_change(
     }
 }
 
-pub(super) fn query_failed_after_mysql_statement(
-    error: DbOperationError,
-    possible_refresh_scope: RefreshScope,
-) -> DbOperationError {
-    let refresh_scope = match &error {
-        DbOperationError::QueryFailedAfterChange {
-            refresh_scope: existing_scope,
-            ..
-        } => *existing_scope,
-        _ => possible_refresh_scope,
-    };
-    query_failed_after_change(error, refresh_scope)
-}
-
 pub(super) fn is_mysql_row_count_marker(result: &MySqlResultSet, marker: &str) -> bool {
     result.columns == ["__sabiql_marker", "affected_rows"]
         && result.values.len() == 1

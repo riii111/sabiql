@@ -23,7 +23,7 @@ use super::error::{
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_mysql_statement, validate_mysql_session_marker,
+    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_change, validate_mysql_session_marker,
 };
 #[cfg(unix)]
 use super::pty::{
@@ -433,14 +433,11 @@ where
         Ok(Ok(value)) => Ok(value),
         Ok(Err(error)) => {
             cleanup_mysql_process(process).await;
-            Err(query_failed_after_mysql_statement(
-                error,
-                possible_refresh_scope,
-            ))
+            Err(query_failed_after_change(error, possible_refresh_scope))
         }
         Err(_) => {
             cleanup_mysql_process(process).await;
-            Err(query_failed_after_mysql_statement(
+            Err(query_failed_after_change(
                 DbOperationError::Timeout("mysql query exceeded the execution timeout".to_string()),
                 possible_refresh_scope,
             ))
