@@ -18,7 +18,7 @@ use super::super::{
 };
 use super::catalog::{
     MySqlColumnMetadata, column_from_metadata, parse_preview_columns_for_table, primary_key_names,
-    validate_selected_schema_name,
+    selected_database, validate_selected_schema_name,
 };
 
 #[derive(Debug, Clone)]
@@ -69,11 +69,7 @@ async fn execute_preview_with_program(
     timeout: Duration,
 ) -> Result<PreviewExecution, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
-    let database = target.database.as_deref().ok_or_else(|| {
-        DbOperationError::UnsupportedOperation(
-            "MySQL metadata requires a selected database".to_string(),
-        )
-    })?;
+    let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
     let result = tokio::time::timeout(

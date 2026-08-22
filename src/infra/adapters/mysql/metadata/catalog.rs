@@ -10,7 +10,7 @@ use crate::domain::{
 
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::parse_and_validate_mysql_dsn,
+    dsn::MySqlDsn,
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
@@ -83,18 +83,16 @@ impl MySqlTableMetadata {
 
 #[derive(Debug, Clone)]
 pub(super) struct MySqlMetadataSnapshot {
-    pub(super) database: String,
     pub(super) tables: Vec<MySqlTableMetadata>,
-    pub(super) table_summaries: Vec<TableSummary>,
 }
 
 pub(super) async fn fetch_metadata_snapshot(
-    dsn: &str,
+    target: &MySqlDsn,
+    database: &str,
 ) -> Result<MySqlMetadataSnapshot, DbOperationError> {
-    let database = selected_database(dsn)?;
     let (lower_case_table_names, result) =
-        execute_metadata_query(dsn, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
-    metadata_snapshot_from_result(&database, None, &result, lower_case_table_names)
+        execute_metadata_query(target, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
+    metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
 }
 
 pub(super) fn find_table(
@@ -162,12 +160,12 @@ pub(super) fn parse_preview_columns_for_table(
 }
 
 pub(super) async fn execute_metadata_query(
-    dsn: &str,
+    target: &MySqlDsn,
     query: &str,
     expected_columns: &[&str],
 ) -> Result<(u8, MySqlResultSet), DbOperationError> {
     let (lower_case_table_names, results) =
-        execute_metadata_queries_in_session(dsn, &[(query, expected_columns)]).await?;
+        execute_metadata_queries_in_session(target, &[(query, expected_columns)]).await?;
     let result = results.into_iter().next().ok_or_else(|| {
         DbOperationError::MetadataParseFailed(
             "MySQL metadata query returned no result set".to_string(),
@@ -177,11 +175,11 @@ pub(super) async fn execute_metadata_query(
 }
 
 pub(super) async fn execute_metadata_queries_in_session(
-    dsn: &str,
+    target: &MySqlDsn,
     queries: &[(&str, &[&str])],
 ) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
     execute_metadata_queries_in_session_with_program(
-        dsn,
+        target,
         queries,
         OsStr::new("mysql"),
         MYSQL_QUERY_TIMEOUT,
@@ -190,13 +188,12 @@ pub(super) async fn execute_metadata_queries_in_session(
 }
 
 pub(super) async fn execute_metadata_queries_in_session_with_program(
-    dsn: &str,
+    target: &MySqlDsn,
     queries: &[(&str, &[&str])],
     program: &OsStr,
     timeout: Duration,
 ) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
-    let option_file = MySqlOptionFile::create(&target)?;
+    let option_file = MySqlOptionFile::create(target)?;
     let mut session =
         MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;
     let result = tokio::time::timeout(timeout, async {
@@ -219,8 +216,8 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
     result
 }
 
-pub(super) fn selected_database(dsn: &str) -> Result<String, DbOperationError> {
-    parse_and_validate_mysql_dsn(dsn)?.database.ok_or_else(|| {
+pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {
+    target.database.as_deref().ok_or_else(|| {
         DbOperationError::UnsupportedOperation(
             "MySQL metadata requires a selected database".to_string(),
         )
@@ -270,12 +267,7 @@ pub(super) fn metadata_snapshot_from_result(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
     }
-    let table_summaries = tables.iter().cloned().map(table_summary).collect();
-    Ok(MySqlMetadataSnapshot {
-        database: database.to_string(),
-        tables,
-        table_summaries,
-    })
+    Ok(MySqlMetadataSnapshot { tables })
 }
 
 fn parse_table_metadata(
@@ -579,7 +571,7 @@ fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperat
     })
 }
 
-fn table_summary(table: MySqlTableMetadata) -> TableSummary {
+pub(super) fn table_summary(table: MySqlTableMetadata) -> TableSummary {
     TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
         TableKindInfo {
             kind: table.kind,
@@ -771,8 +763,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(snapshot.table_summaries[0].name, "users");
-        assert_eq!(snapshot.table_summaries[0].schema, "app");
+        let summary = table_summary(snapshot.tables[0].clone());
+        assert_eq!(summary.name, "users");
+        assert_eq!(summary.schema, "app");
         assert_eq!(snapshot.tables[0].engine.as_deref(), Some("InnoDB"));
         assert_eq!(snapshot.tables[0].row_format.as_deref(), Some("Dynamic"));
         assert_eq!(
@@ -809,7 +802,7 @@ mod tests {
             .unwrap();
 
             assert_eq!(snapshot.tables[0].schema, "APP");
-            assert_eq!(snapshot.table_summaries[0].schema, "APP");
+            assert_eq!(table_summary(snapshot.tables[0].clone()).schema, "APP");
 
             let unicode_snapshot = metadata_snapshot_from_result(
                 "äpp",
@@ -820,7 +813,10 @@ mod tests {
             .unwrap();
 
             assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
-            assert_eq!(unicode_snapshot.table_summaries[0].schema, "ÄPP");
+            assert_eq!(
+                table_summary(unicode_snapshot.tables[0].clone()).schema,
+                "ÄPP"
+            );
         }
     }
 
