@@ -42,7 +42,7 @@ pub struct FailedPrefetchEntry {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdhocSuccessSnapshot {
     pub command_tag: Option<CommandTag>,
     pub row_count: usize,
@@ -76,16 +76,14 @@ pub enum SqlModalStatus {
         reason: AcknowledgeReason,
     },
     Running,
-    Success,
-    Error,
+    Success(AdhocSuccessSnapshot),
+    Error(String),
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlModalContext {
     pub(crate) editor: MultiLineInputState,
     pub(crate) status: SqlModalStatus,
-    pub(crate) last_adhoc_success: Option<AdhocSuccessSnapshot>,
-    pub(crate) last_adhoc_error: Option<String>,
     pub(crate) completion: CompletionState,
     pub(crate) completion_debounce: Option<Instant>,
     prefetch_queue: VecDeque<String>,
@@ -242,15 +240,11 @@ impl SqlModalContext {
     }
 
     pub fn finish_adhoc_error(&mut self, error: String) {
-        self.status = SqlModalStatus::Error;
-        self.last_adhoc_error = Some(error);
-        self.last_adhoc_success = None;
+        self.status = SqlModalStatus::Error(error);
     }
 
     pub fn finish_adhoc_success(&mut self, snapshot: AdhocSuccessSnapshot) {
-        self.status = SqlModalStatus::Success;
-        self.last_adhoc_success = Some(snapshot);
-        self.last_adhoc_error = None;
+        self.status = SqlModalStatus::Success(snapshot);
     }
 
     pub fn begin_confirming_high(&mut self, decision: AdhocRiskDecision, target_name: String) {
@@ -300,11 +294,17 @@ impl SqlModalContext {
     }
 
     pub fn last_adhoc_error(&self) -> Option<&str> {
-        self.last_adhoc_error.as_deref()
+        match &self.status {
+            SqlModalStatus::Error(error) => Some(error),
+            _ => None,
+        }
     }
 
     pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
-        self.last_adhoc_success.as_ref()
+        match &self.status {
+            SqlModalStatus::Success(snapshot) => Some(snapshot),
+            _ => None,
+        }
     }
 
     pub fn active_tab(&self) -> SqlModalTab {
@@ -762,22 +762,37 @@ mod tests {
         use super::*;
 
         #[test]
-        fn finish_statuses_clear_opposite_snapshot() {
+        fn finish_statuses_store_payload_and_reset() {
             let mut ctx = SqlModalContext::default();
 
-            ctx.finish_adhoc_success(AdhocSuccessSnapshot {
+            let snapshot = AdhocSuccessSnapshot {
                 command_tag: None,
                 row_count: 1,
                 execution_time_ms: 10,
                 mysql_diagnostics: Vec::new(),
-            });
+            };
+            ctx.finish_adhoc_success(snapshot.clone());
+            assert!(matches!(
+                &ctx.status,
+                SqlModalStatus::Success(payload) if payload == &snapshot
+            ));
             assert!(ctx.last_adhoc_success().is_some());
             assert!(ctx.last_adhoc_error().is_none());
 
             ctx.finish_adhoc_error("syntax error".to_string());
 
+            assert!(matches!(
+                &ctx.status,
+                SqlModalStatus::Error(error) if error == "syntax error"
+            ));
             assert!(ctx.last_adhoc_success().is_none());
             assert_eq!(ctx.last_adhoc_error(), Some("syntax error"));
+
+            ctx.enter_normal();
+
+            assert_eq!(ctx.status, SqlModalStatus::Normal);
+            assert!(ctx.last_adhoc_success().is_none());
+            assert!(ctx.last_adhoc_error().is_none());
         }
     }
 

@@ -258,8 +258,8 @@ impl Footer {
                 } else if matches!(
                     state.sql_modal.status(),
                     SqlModalStatus::Normal
-                        | SqlModalStatus::Success
-                        | SqlModalStatus::Error
+                        | SqlModalStatus::Success(_)
+                        | SqlModalStatus::Error(_)
                         | SqlModalStatus::ConfirmingAnalyzeHigh { .. }
                         | SqlModalStatus::ConfirmingAnalyzeRisk { .. }
                 ) {

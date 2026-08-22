@@ -412,7 +412,7 @@ mod tests {
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("No active connection")
@@ -521,7 +521,7 @@ mod tests {
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error));
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("No active connection")
@@ -732,7 +732,7 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("Read-only mode: write operations are disabled")
@@ -764,7 +764,7 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert!(state.sql_modal.last_adhoc_success().is_none());
             assert!(state.sql_modal.last_adhoc_error().is_some());
         }
@@ -820,7 +820,7 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Error);
+            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
             assert_eq!(
                 state.sql_modal.last_adhoc_error(),
                 Some("Read-only mode: write operations are disabled")

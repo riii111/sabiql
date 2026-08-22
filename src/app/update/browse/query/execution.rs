@@ -1876,7 +1876,10 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ExecutePreview { .. }))
             );
-            assert_eq!(*state.sql_modal.status(), SqlModalStatus::Success);
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Success(_)
+            ));
         }
 
         #[test]

@@ -51,7 +51,7 @@ pub(super) fn render_editor(
 
     let is_normal = matches!(
         state.sql_modal.status(),
-        SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+        SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_)
     );
 
     let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
