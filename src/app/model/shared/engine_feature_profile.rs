@@ -27,7 +27,7 @@ impl InspectorInfoField {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionFeature {
+enum ConnectionFeature {
     ErDiagram,
     JsonDocumentDetail,
     JsonDocumentEdit,
@@ -35,20 +35,24 @@ pub enum ConnectionFeature {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComparisonSupport {
+enum ComparisonSupport {
+    #[allow(
+        dead_code,
+        reason = "Retain comparison state for profiles without plan comparison"
+    )]
     Unsupported,
     Supported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplainProfile {
+enum ExplainProfile {
     Unsupported,
     QueryPlanOnly,
     QueryPlanAndAnalyze { comparison: ComparisonSupport },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InspectorProfile {
+struct InspectorProfile {
     tabs: &'static [InspectorTab],
     info_fields: &'static [InspectorInfoField],
 }
@@ -226,18 +230,6 @@ impl EngineFeatureProfile {
         }
     }
 
-    pub fn inspector(&self) -> InspectorProfile {
-        self.inspector
-    }
-
-    pub fn explain(&self) -> ExplainProfile {
-        self.explain
-    }
-
-    pub fn connection_features(&self) -> &'static [ConnectionFeature] {
-        self.connection_features
-    }
-
     pub fn supports_explain(&self) -> bool {
         !matches!(self.explain, ExplainProfile::Unsupported)
     }
@@ -373,7 +365,7 @@ mod tests {
             assert!(!profile.supported_inspector_info_fields().is_empty());
             assert!(has_unique_items(profile.supported_inspector_tabs()));
             assert!(has_unique_items(profile.supported_inspector_info_fields()));
-            assert!(has_unique_items(profile.connection_features()));
+            assert!(has_unique_items(profile.connection_features));
 
             if profile.supports_plan_comparison() {
                 assert!(profile.supports_explain());
@@ -558,7 +550,7 @@ mod tests {
         let profile = EngineFeatureProfile::postgres_like();
 
         assert!(matches!(
-            profile.explain(),
+            profile.explain,
             ExplainProfile::QueryPlanAndAnalyze {
                 comparison: ComparisonSupport::Supported,
             }
