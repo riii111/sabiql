@@ -333,20 +333,11 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
 }
 
 fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
-    let fields = output
-        .split(|byte| *byte == b'\n')
-        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
-        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
-        .find(|fields| {
-            fields
-                .first()
-                .is_some_and(|field| *field == marker.as_bytes())
-        })
-        .ok_or_else(|| {
-            DbOperationError::QueryFailed(
-                "MySQL metadata fallback returned an invalid mode probe".to_string(),
-            )
-        })?;
+    let fields = parse_metadata_marker_fields(output, marker).ok_or_else(|| {
+        DbOperationError::QueryFailed(
+            "MySQL metadata fallback returned an invalid mode probe".to_string(),
+        )
+    })?;
     let sql_mode = fields.get(1).ok_or_else(|| {
         DbOperationError::QueryFailed(
             "MySQL metadata fallback returned an incomplete mode probe".to_string(),
@@ -358,22 +349,25 @@ fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOpe
 }
 
 fn validate_metadata_session_marker(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
-    let valid = output
-        .split(|byte| *byte == b'\n')
-        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
-        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
-        .any(|fields| {
-            fields
-                .first()
-                .is_some_and(|field| *field == marker.as_bytes())
-        });
-    if valid {
+    if parse_metadata_marker_fields(output, marker).is_some() {
         Ok(())
     } else {
         Err(DbOperationError::QueryFailed(
             "MySQL metadata fallback returned an invalid read-only session marker".to_string(),
         ))
     }
+}
+
+fn parse_metadata_marker_fields<'a>(output: &'a [u8], marker: &str) -> Option<Vec<&'a [u8]>> {
+    output
+        .split(|byte| *byte == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .map(|line| line.split(|byte| *byte == b'\t').collect::<Vec<_>>())
+        .find(|fields| {
+            fields
+                .first()
+                .is_some_and(|field| *field == marker.as_bytes())
+        })
 }
 
 fn parse_mysql_metadata_header(
@@ -418,4 +412,48 @@ fn parse_mysql_metadata_header(
         ));
     }
     Ok(columns)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_crlf_marker_rows_and_ignores_substrings() {
+        let fields = parse_metadata_marker_fields(
+            b"\nmarker-prefix\twrong\r\nmarker\tSTRICT_TRANS_TABLES\r\n",
+            "marker",
+        )
+        .expect("marker row");
+
+        assert_eq!(
+            fields,
+            vec![b"marker".as_slice(), b"STRICT_TRANS_TABLES".as_slice()]
+        );
+    }
+
+    #[test]
+    fn preserves_marker_and_header_validation_boundaries() {
+        assert!(validate_metadata_session_marker(b"\r\nmarker\r\n", "marker").is_ok());
+        assert!(matches!(
+            validate_metadata_session_marker(b"marker-prefix\n", "marker"),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL metadata fallback returned an invalid read-only session marker"
+        ));
+        assert!(matches!(
+            validate_metadata_mode_probe(b"marker\n", "marker"),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL metadata fallback returned an incomplete mode probe"
+        ));
+        assert!(validate_metadata_mode_probe(b"marker\t\xff\n", "marker").is_err());
+        assert!(
+            validate_metadata_mode_probe(b"marker\tSTRICT_TRANS_TABLES,ANSI_QUOTES\n", "marker",)
+                .is_err()
+        );
+        assert_eq!(
+            parse_mysql_metadata_header(b"SHOW DATABASES;\r\nDatabase\r\n", "SHOW DATABASES")
+                .unwrap(),
+            vec!["Database".to_string()]
+        );
+    }
 }
