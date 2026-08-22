@@ -109,9 +109,8 @@ async fn fetch_table_columns_and_fks_with_program(
             timeout,
         )
         .await?;
-    let snapshot =
-        metadata_snapshot_from_result(database, Some(schema), &results[0], lower_case_table_names)?;
-    let table_metadata = find_table(schema, table, &snapshot.tables, lower_case_table_names)?;
+    let table_metadata =
+        table_metadata_from_result(database, schema, table, &results[0], lower_case_table_names)?;
     let mut columns = parse_columns_for_table(&results[1], schema, table)?;
     mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[2])?);
     let foreign_keys = foreign_keys_from_metadata(
@@ -159,13 +158,13 @@ async fn fetch_table_detail_with_session(
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
         .await?;
-    let snapshot = metadata_snapshot_from_result(
+    let table_metadata = table_metadata_from_result(
         database,
-        Some(schema),
+        schema,
+        table,
         &tables_result,
         lower_case_table_names,
     )?;
-    let table_metadata = find_table(schema, table, &snapshot.tables, lower_case_table_names)?;
 
     let mut columns = parse_columns_for_table(
         &session
@@ -213,29 +212,22 @@ async fn fetch_table_detail_with_session(
     )?;
     session.finish().await?;
 
-    let primary_key = primary_key_names(&columns);
-    let storage_attributes = table_metadata.storage_attributes();
-    Ok(Table {
-        schema: table_metadata.schema,
-        name: table_metadata.name,
-        owner: None,
-        columns: columns.iter().map(column_from_metadata).collect(),
-        primary_key: (!primary_key.is_empty()).then_some(primary_key),
-        foreign_keys,
-        indexes,
-        rls: None,
-        triggers,
-        row_count_estimate: table_metadata.row_count_estimate,
-        comment: table_metadata.comment,
-        source_ddl: Some(source_ddl),
-        storage_attributes,
-        kind_info: TableKindInfo {
-            kind: table_metadata.kind,
-            is_strict: false,
-            without_rowid: false,
-            virtual_module: None,
-        },
-    })
+    let mut detail = table_from_columns_and_foreign_keys(table_metadata, columns, foreign_keys);
+    detail.indexes = indexes;
+    detail.triggers = triggers;
+    detail.source_ddl = Some(source_ddl);
+    Ok(detail)
+}
+
+fn table_metadata_from_result(
+    database: &str,
+    schema: &str,
+    table: &str,
+    result: &MySqlResultSet,
+    lower_case_table_names: u8,
+) -> Result<MySqlTableMetadata, DbOperationError> {
+    metadata_snapshot_from_result(database, Some(schema), result, lower_case_table_names)
+        .and_then(|snapshot| find_table(schema, table, &snapshot.tables, lower_case_table_names))
 }
 
 fn table_from_columns_and_foreign_keys(
