@@ -467,11 +467,18 @@ pub mod test_support {
         pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
             &mut self.completion
         }
+    }
 
-        #[doc(hidden)]
-        pub fn clear_content(&mut self) {
-            self.editor.clear();
-            self.reset_completion();
+    #[cfg(test)]
+    mod unit_tests {
+        use super::super::SqlModalContext;
+
+        impl SqlModalContext {
+            #[doc(hidden)]
+            pub(crate) fn clear_content(&mut self) {
+                self.editor.clear();
+                self.reset_completion();
+            }
         }
     }
 }
