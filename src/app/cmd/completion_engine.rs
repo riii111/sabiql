@@ -950,11 +950,7 @@ impl CompletionEngine {
             })
             .collect();
 
-        // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
-            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-            other => other,
-        });
+        sort_candidates(&mut candidates);
 
         candidates
             .into_iter()
@@ -1081,11 +1077,7 @@ impl CompletionEngine {
                 }),
         );
 
-        // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
-            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-            other => other,
-        });
+        sort_candidates(&mut candidates);
 
         candidates
             .into_iter()
@@ -1191,11 +1183,7 @@ impl CompletionEngine {
             })
             .collect();
 
-        // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
-            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-            other => other,
-        });
+        sort_candidates(&mut candidates);
 
         candidates
             .into_iter()
@@ -1243,11 +1231,7 @@ impl CompletionEngine {
             })
             .collect();
 
-        // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
-            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-            other => other,
-        });
+        sort_candidates(&mut candidates);
 
         candidates
             .into_iter()
@@ -1394,11 +1378,7 @@ impl CompletionEngine {
             }
         }
 
-        // Sort by score (descending), then alphabetically
-        candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
-            std::cmp::Ordering::Equal => a.text.cmp(&b.text),
-            other => other,
-        });
+        sort_candidates(&mut candidates);
 
         candidates
             .into_iter()
@@ -1489,6 +1469,13 @@ fn quote_mysql_identifiers(candidates: &mut [CompletionCandidate], database_type
             candidate.text = format!("`{}`", candidate.text.replace('`', "``"));
         }
     }
+}
+
+fn sort_candidates(candidates: &mut [CompletionCandidate]) {
+    candidates.sort_by(|a, b| match b.score.cmp(&a.score) {
+        std::cmp::Ordering::Equal => a.text.cmp(&b.text),
+        other => other,
+    });
 }
 
 #[cfg(test)]
