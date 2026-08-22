@@ -134,44 +134,12 @@ impl ConnectionField {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct SslModeDropdown {
+pub struct DropdownState {
     is_open: bool,
     selected_index: usize,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct DatabaseTypeDropdown {
-    is_open: bool,
-    selected_index: usize,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct TransportDropdown {
-    is_open: bool,
-    selected_index: usize,
-}
-
-impl SslModeDropdown {
-    pub fn is_open(&self) -> bool {
-        self.is_open
-    }
-
-    pub fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-}
-
-impl DatabaseTypeDropdown {
-    pub fn is_open(&self) -> bool {
-        self.is_open
-    }
-
-    pub fn selected_index(&self) -> usize {
-        self.selected_index
-    }
-}
-
-impl TransportDropdown {
+impl DropdownState {
     pub fn is_open(&self) -> bool {
         self.is_open
     }
@@ -202,9 +170,9 @@ pub struct ConnectionSetupState {
     pub(crate) enable_cleartext_plugin: bool,
 
     pub(crate) focused_field: ConnectionField,
-    pub(crate) database_type_dropdown: DatabaseTypeDropdown,
-    pub(crate) transport_dropdown: TransportDropdown,
-    pub(crate) ssl_dropdown: SslModeDropdown,
+    pub(crate) database_type_dropdown: DropdownState,
+    pub(crate) transport_dropdown: DropdownState,
+    pub(crate) ssl_dropdown: DropdownState,
     pub(crate) validation_errors: HashMap<ConnectionField, String>,
 
     is_first_run: bool,
@@ -233,9 +201,9 @@ impl Default for ConnectionSetupState {
             mysql_transport: MySqlTransport::Tcp,
             enable_cleartext_plugin: false,
             focused_field: ConnectionField::DatabaseType,
-            database_type_dropdown: DatabaseTypeDropdown::default(),
-            transport_dropdown: TransportDropdown::default(),
-            ssl_dropdown: SslModeDropdown::default(),
+            database_type_dropdown: DropdownState::default(),
+            transport_dropdown: DropdownState::default(),
+            ssl_dropdown: DropdownState::default(),
             validation_errors: HashMap::new(),
             is_first_run: true,
             editing_id: None,
@@ -276,15 +244,15 @@ impl ConnectionSetupState {
         self.editing_id.as_ref()
     }
 
-    pub fn database_type_dropdown(&self) -> &DatabaseTypeDropdown {
+    pub fn database_type_dropdown(&self) -> &DropdownState {
         &self.database_type_dropdown
     }
 
-    pub fn transport_dropdown(&self) -> &TransportDropdown {
+    pub fn transport_dropdown(&self) -> &DropdownState {
         &self.transport_dropdown
     }
 
-    pub fn ssl_dropdown(&self) -> &SslModeDropdown {
+    pub fn ssl_dropdown(&self) -> &DropdownState {
         &self.ssl_dropdown
     }
 
