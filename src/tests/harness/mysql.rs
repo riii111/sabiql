@@ -232,6 +232,11 @@ mod tests {
         let tls = mysql_tls_config();
 
         assert_common_fields_equal(&integration, &tls);
+        assert_eq!(integration.host, "mysql.example");
+        assert_eq!(integration.port, 13306);
+        assert_eq!(integration.database.as_deref(), Some("fixture_db"));
+        assert_eq!(integration.username, "fixture_user");
+        assert_eq!(integration.password, "fixture password");
         assert_eq!(integration.ssl_mode, MySqlSslMode::Disabled);
         assert_eq!(
             integration.server_public_key_path.as_deref(),
