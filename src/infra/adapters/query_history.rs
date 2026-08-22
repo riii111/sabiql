@@ -57,13 +57,6 @@ impl FileQueryHistoryStore {
         Self { base_dir: None }
     }
 
-    #[cfg(test)]
-    fn with_base_dir(base_dir: PathBuf) -> Self {
-        Self {
-            base_dir: Some(base_dir),
-        }
-    }
-
     fn resolve_history_dir(&self, project_name: &str) -> Result<PathBuf, QueryHistoryError> {
         if let Some(base) = &self.base_dir {
             Ok(base.join("history"))
@@ -129,6 +122,14 @@ mod tests {
     use crate::domain::connection::ConnectionId;
     use crate::domain::query_history::QueryResultStatus;
     use tempfile::TempDir;
+
+    impl FileQueryHistoryStore {
+        fn with_base_dir(base_dir: PathBuf) -> Self {
+            Self {
+                base_dir: Some(base_dir),
+            }
+        }
+    }
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
         QueryHistoryEntry::new(

@@ -39,7 +39,7 @@ mod adhoc;
 pub(in crate::adapters::mysql) use adhoc::run_mysql_adhoc;
 mod single;
 #[cfg(feature = "test-support")]
-pub(super) mod test_support;
+pub(in crate::adapters::mysql) mod test_support;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
 mod metadata;
 pub(super) use metadata::mysql_metadata_columns;

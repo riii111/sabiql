@@ -513,13 +513,19 @@ impl PostgresAdapter {
             })
     }
 
-    #[cfg(test)]
-    pub(in crate::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
-        Self::parse_affected_rows_with_source(stdout).ok()
-    }
-
     fn classify_psql_error(stderr: &str) -> DbOperationError {
         classify_query_error(stderr)
+    }
+}
+
+#[cfg(test)]
+mod test_support {
+    use super::PostgresAdapter;
+
+    impl PostgresAdapter {
+        pub(in crate::adapters::postgres) fn parse_affected_rows(stdout: &str) -> Option<usize> {
+            Self::parse_affected_rows_with_source(stdout).ok()
+        }
     }
 }
 

@@ -163,21 +163,26 @@ pub fn global_action_for_with_policy(
         .map(|binding| binding.action.clone())
 }
 
-// Action has payload variants without PartialEq, so tests compare by
-// discriminant — except modal actions, where several bindings differ only by
-// ModalKind and the kind must participate in equality.
-#[cfg(any(test, feature = "test-support"))]
-pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
-    match (actual, expected) {
-        (Action::OpenModal(a), Action::OpenModal(b))
-        | (Action::CloseModal(a), Action::CloseModal(b))
-        | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
-        _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
+#[cfg(test)]
+pub mod test_support {
+    use super::Action;
+
+    // Action has payload variants without PartialEq, so tests compare by
+    // discriminant — except modal actions, where several bindings differ only by
+    // ModalKind and the kind must participate in equality.
+    pub fn same_payload_free_action(actual: &Action, expected: &Action) -> bool {
+        match (actual, expected) {
+            (Action::OpenModal(a), Action::OpenModal(b))
+            | (Action::CloseModal(a), Action::CloseModal(b))
+            | (Action::ToggleModal(a), Action::ToggleModal(b)) => a == b,
+            _ => std::mem::discriminant(actual) == std::mem::discriminant(expected),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::same_payload_free_action;
     use super::*;
 
     mod catalog_semantics {

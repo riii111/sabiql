@@ -2064,7 +2064,7 @@ mod query_execution {
         AccessMode, DbOperationError, QueryExecutor, UnsupportedOperationKind,
     };
     use sabiql_domain::{QueryValue, RefreshScope};
-    use sabiql_infra::adapters::mysql::{
+    use sabiql_infra::adapters::mysql::test_support::{
         execute_mysql_adhoc_with_read_only_session_for_test,
         execute_mysql_adhoc_with_timeout_for_test,
     };
@@ -3400,7 +3400,7 @@ mod csv_export {
     use super::shared::MYSQL_EMPTY_TABLE;
     use crate::tests::harness::mysql::{MYSQL_FIXTURE_TABLE, with_mysql_test_db};
     use sabiql_app::ports::outbound::DbOperationError;
-    use sabiql_infra::adapters::mysql::export_mysql_csv_to_path_for_test;
+    use sabiql_infra::adapters::mysql::test_support::export_mysql_csv_to_path_for_test;
     use tempfile::tempdir;
 
     const MYSQL_CSV_TEST_DECODED_LIMIT_BYTES: usize = 16 * 1024 * 1024;

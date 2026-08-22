@@ -17,9 +17,10 @@ use sabiql_app::model::shared::ui_state::{HELP_MODAL_HEIGHT_PERCENT, HELP_MODAL_
 use sabiql_app::update::action::{Action, CursorMove, InputTarget, ModalKind};
 use sabiql_app::update::browse::result::dispatch_result;
 use sabiql_domain::{Column, ConnectionId, QueryResult};
+use sabiql_ui::theme::test_support::TEST_CONTRAST_THEME;
 use sabiql_ui::theme::{
     ComponentTokens, DEFAULT_THEME, EditorTokens, LIGHT_THEME, ModalTokens, SemanticTokens,
-    SurfaceTokens, TEST_CONTRAST_THEME, ThemePalette,
+    SurfaceTokens, ThemePalette,
 };
 
 fn has_cell(buffer: &Buffer, predicate: impl Fn(&Cell) -> bool) -> bool {

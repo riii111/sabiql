@@ -55,20 +55,6 @@ impl MainLayout {
         )
     }
 
-    // `render_with_theme` exists only as a test seam for injected palettes.
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn render_with_theme(
-        frame: &mut Frame,
-        state: &AppState,
-        time_ms: Option<u128>,
-        services: &AppServices,
-        now: Instant,
-        theme: &ThemePalette,
-    ) -> RenderOutput {
-        Self::render_impl(frame, state, time_ms, services, now, theme)
-    }
-
     fn render_impl(
         frame: &mut Frame,
         state: &AppState,
@@ -245,6 +231,25 @@ impl MainLayout {
                     pane_height: result_area.height,
                 },
             }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use super::{AppServices, AppState, Frame, Instant, MainLayout, RenderOutput, ThemePalette};
+
+    impl MainLayout {
+        #[doc(hidden)]
+        pub fn render_with_theme(
+            frame: &mut Frame,
+            state: &AppState,
+            time_ms: Option<u128>,
+            services: &AppServices,
+            now: Instant,
+            theme: &ThemePalette,
+        ) -> RenderOutput {
+            Self::render_impl(frame, state, time_ms, services, now, theme)
         }
     }
 }

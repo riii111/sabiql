@@ -223,13 +223,6 @@ impl CompletionEngine {
         }
     }
 
-    #[cfg(test)]
-    fn new_with_capacity(capacity: usize) -> Self {
-        let mut engine = Self::new();
-        engine.table_detail_cache = BoundedLruCache::new(capacity);
-        engine
-    }
-
     pub(crate) fn cache_table_detail(&mut self, qualified_name: String, table: Table) {
         self.table_detail_cache.insert(qualified_name, table);
     }
@@ -254,28 +247,6 @@ impl CompletionEngine {
 
     pub(crate) fn table_details_iter(&self) -> impl Iterator<Item = (&String, &Table)> {
         self.table_detail_cache.iter()
-    }
-
-    #[cfg(test)]
-    fn get_candidates_for_database(
-        &self,
-        content: &str,
-        cursor_pos: usize,
-        metadata: Option<&DatabaseMetadata>,
-        table_detail: Option<&Table>,
-        recent_columns: &[String],
-        scope: CompletionDatabaseScope<'_>,
-    ) -> Vec<CompletionCandidate> {
-        let prep = self.prepare_for_database(content, cursor_pos, scope.database_type);
-        self.get_candidates_prepared_for_database(
-            content,
-            cursor_pos,
-            &prep,
-            metadata,
-            table_detail,
-            recent_columns,
-            scope,
-        )
     }
 
     pub(crate) fn prepare_for_database(
@@ -544,26 +515,6 @@ impl CompletionEngine {
         quote_mysql_identifiers(&mut candidates, scope.database_type);
 
         candidates
-    }
-
-    #[cfg(test)]
-    fn analyze_with_context(
-        &self,
-        content: &str,
-        cursor_pos: usize,
-        sql_context: &SqlContext,
-        tokens: &[Token],
-    ) -> (String, CompletionContext) {
-        let before_cursor: String = content.chars().take(cursor_pos).collect();
-        let current_token = self.extract_current_token(&before_cursor);
-        self.analyze_with_precomputed(
-            &before_cursor,
-            &current_token,
-            sql_context,
-            sql_context,
-            tokens,
-            cursor_pos,
-        )
     }
 
     fn analyze_with_precomputed(
@@ -921,11 +872,6 @@ impl CompletionEngine {
         written
     }
 
-    #[cfg(test)]
-    fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
-        self.keyword_candidates_for_database(prefix, DatabaseType::PostgreSQL)
-    }
-
     fn keyword_candidates_for_database(
         &self,
         prefix: &str,
@@ -1006,22 +952,6 @@ impl CompletionEngine {
                 score: 200, // Higher than column scores (max ~170)
             })
             .collect()
-    }
-
-    #[cfg(test)]
-    fn table_candidates(
-        &self,
-        metadata: Option<&DatabaseMetadata>,
-        prefix: &str,
-    ) -> Vec<CompletionCandidate> {
-        self.table_candidates_for_database(
-            metadata,
-            prefix,
-            CompletionDatabaseScope {
-                database_type: DatabaseType::PostgreSQL,
-                active_database: None,
-            },
-        )
     }
 
     fn table_candidates_for_database(
@@ -1191,16 +1121,6 @@ impl CompletionEngine {
             .collect()
     }
 
-    #[cfg(test)]
-    fn schema_qualified_candidates(
-        &self,
-        metadata: Option<&DatabaseMetadata>,
-        schema: &str,
-        prefix: &str,
-    ) -> Vec<CompletionCandidate> {
-        self.schema_qualified_candidates_for_database(metadata, schema, prefix)
-    }
-
     fn schema_qualified_candidates_for_database(
         &self,
         metadata: Option<&DatabaseMetadata>,
@@ -1312,24 +1232,6 @@ impl CompletionEngine {
             },
             _ => None,
         }
-    }
-
-    #[cfg(test)]
-    fn cte_or_table_candidates(
-        &self,
-        sql_context: &SqlContext,
-        metadata: Option<&DatabaseMetadata>,
-        prefix: &str,
-    ) -> Vec<CompletionCandidate> {
-        self.cte_or_table_candidates_for_database(
-            sql_context,
-            metadata,
-            prefix,
-            CompletionDatabaseScope {
-                database_type: DatabaseType::PostgreSQL,
-                active_database: None,
-            },
-        )
     }
 
     fn cte_or_table_candidates_for_database(
@@ -1487,6 +1389,97 @@ mod tests {
     use super::*;
 
     impl CompletionEngine {
+        fn new_with_capacity(capacity: usize) -> Self {
+            let mut engine = Self::new();
+            engine.table_detail_cache = BoundedLruCache::new(capacity);
+            engine
+        }
+
+        fn get_candidates_for_database(
+            &self,
+            content: &str,
+            cursor_pos: usize,
+            metadata: Option<&DatabaseMetadata>,
+            table_detail: Option<&Table>,
+            recent_columns: &[String],
+            scope: CompletionDatabaseScope<'_>,
+        ) -> Vec<CompletionCandidate> {
+            let prep = self.prepare_for_database(content, cursor_pos, scope.database_type);
+            self.get_candidates_prepared_for_database(
+                content,
+                cursor_pos,
+                &prep,
+                metadata,
+                table_detail,
+                recent_columns,
+                scope,
+            )
+        }
+
+        fn analyze_with_context(
+            &self,
+            content: &str,
+            cursor_pos: usize,
+            sql_context: &SqlContext,
+            tokens: &[Token],
+        ) -> (String, CompletionContext) {
+            let before_cursor: String = content.chars().take(cursor_pos).collect();
+            let current_token = self.extract_current_token(&before_cursor);
+            self.analyze_with_precomputed(
+                &before_cursor,
+                &current_token,
+                sql_context,
+                sql_context,
+                tokens,
+                cursor_pos,
+            )
+        }
+
+        fn keyword_candidates(&self, prefix: &str) -> Vec<CompletionCandidate> {
+            self.keyword_candidates_for_database(prefix, DatabaseType::PostgreSQL)
+        }
+
+        fn table_candidates(
+            &self,
+            metadata: Option<&DatabaseMetadata>,
+            prefix: &str,
+        ) -> Vec<CompletionCandidate> {
+            self.table_candidates_for_database(
+                metadata,
+                prefix,
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::PostgreSQL,
+                    active_database: None,
+                },
+            )
+        }
+
+        fn schema_qualified_candidates(
+            &self,
+            metadata: Option<&DatabaseMetadata>,
+            schema: &str,
+            prefix: &str,
+        ) -> Vec<CompletionCandidate> {
+            self.schema_qualified_candidates_for_database(metadata, schema, prefix)
+        }
+
+        fn cte_or_table_candidates(
+            &self,
+            sql_context: &SqlContext,
+            metadata: Option<&DatabaseMetadata>,
+            prefix: &str,
+        ) -> Vec<CompletionCandidate> {
+            self.cte_or_table_candidates_for_database(
+                sql_context,
+                metadata,
+                prefix,
+                CompletionDatabaseScope {
+                    database_type: DatabaseType::PostgreSQL,
+                    active_database: None,
+                },
+            )
+        }
+
         fn analyze(&self, content: &str, cursor_pos: usize) -> (String, CompletionContext) {
             let lexer = SqlLexer::default();
             let tokens = lexer.tokenize(content, cursor_pos);
