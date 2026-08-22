@@ -81,25 +81,31 @@ where
     }
 }
 
-pub fn mysql_integration_config() -> MySqlConnectionConfig {
+fn mysql_config(
+    ssl_mode: MySqlSslMode,
+    env: impl Fn(&str) -> Option<String>,
+) -> MySqlConnectionConfig {
     MySqlConnectionConfig::new(
-        std::env::var("SABIQL_MYSQL_TEST_HOST")
-            .unwrap_or_else(|_| "host.docker.internal".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PORT")
-            .ok()
+        env("SABIQL_MYSQL_TEST_HOST").unwrap_or_else(|| "host.docker.internal".to_string()),
+        env("SABIQL_MYSQL_TEST_PORT")
             .and_then(|port| port.parse().ok())
             .unwrap_or(3306),
-        Some(
-            std::env::var("SABIQL_MYSQL_TEST_DATABASE")
-                .unwrap_or_else(|_| "sabiql_test".to_string()),
-        ),
-        std::env::var("SABIQL_MYSQL_TEST_USER")
-            .unwrap_or_else(|_| "sabiql_test_runner".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
-            .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
-        MySqlSslMode::Disabled,
+        Some(env("SABIQL_MYSQL_TEST_DATABASE").unwrap_or_else(|| "sabiql_test".to_string())),
+        env("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|| "sabiql_test_runner".to_string()),
+        env("SABIQL_MYSQL_TEST_PASSWORD").unwrap_or_else(|| "p a#ss;=\"word".to_string()),
+        ssl_mode,
     )
-    .with_server_public_key_path(std::env::var("SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY").ok())
+}
+
+fn mysql_integration_config_with_env(
+    env: impl Fn(&str) -> Option<String>,
+) -> MySqlConnectionConfig {
+    mysql_config(MySqlSslMode::Disabled, &env)
+        .with_server_public_key_path(env("SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY"))
+}
+
+pub fn mysql_integration_config() -> MySqlConnectionConfig {
+    mysql_integration_config_with_env(|name| std::env::var(name).ok())
 }
 
 pub fn mysql_cache_miss_config() -> MySqlConnectionConfig {
@@ -111,27 +117,86 @@ pub fn mysql_cache_miss_config() -> MySqlConnectionConfig {
     config
 }
 
+fn mysql_tls_config_with_env(env: impl Fn(&str) -> Option<String>) -> MySqlConnectionConfig {
+    mysql_config(MySqlSslMode::VerifyCa, &env).with_tls_paths(
+        Some(env("SABIQL_MYSQL_TEST_SSL_CA").expect("TLS CA path")),
+        Some(env("SABIQL_MYSQL_TEST_SSL_CERT").expect("TLS client certificate path")),
+        Some(env("SABIQL_MYSQL_TEST_SSL_KEY").expect("TLS client key path")),
+    )
+}
+
 pub fn mysql_tls_config() -> MySqlConnectionConfig {
-    MySqlConnectionConfig::new(
-        std::env::var("SABIQL_MYSQL_TEST_HOST")
-            .unwrap_or_else(|_| "host.docker.internal".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PORT")
-            .ok()
-            .and_then(|port| port.parse().ok())
-            .unwrap_or(3306),
-        Some(
-            std::env::var("SABIQL_MYSQL_TEST_DATABASE")
-                .unwrap_or_else(|_| "sabiql_test".to_string()),
-        ),
-        std::env::var("SABIQL_MYSQL_TEST_USER")
-            .unwrap_or_else(|_| "sabiql_test_runner".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
-            .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
-        MySqlSslMode::VerifyCa,
-    )
-    .with_tls_paths(
-        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_CA").expect("TLS CA path")),
-        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_CERT").expect("TLS client certificate path")),
-        Some(std::env::var("SABIQL_MYSQL_TEST_SSL_KEY").expect("TLS client key path")),
-    )
+    mysql_tls_config_with_env(|name| std::env::var(name).ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn env_lookup<'a>(
+        values: &'a HashMap<&'a str, &'a str>,
+    ) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| values.get(name).map(|value| (*value).to_string())
+    }
+
+    fn assert_common_fields_equal(left: &MySqlConnectionConfig, right: &MySqlConnectionConfig) {
+        assert_eq!(left.host, right.host);
+        assert_eq!(left.port, right.port);
+        assert_eq!(left.database, right.database);
+        assert_eq!(left.username, right.username);
+        assert_eq!(left.password, right.password);
+    }
+
+    #[test]
+    fn mysql_config_uses_the_same_defaults_for_both_ssl_modes() {
+        let values = HashMap::from([
+            ("SABIQL_MYSQL_TEST_SSL_CA", "/tmp/ca.pem"),
+            ("SABIQL_MYSQL_TEST_SSL_CERT", "/tmp/client-cert.pem"),
+            ("SABIQL_MYSQL_TEST_SSL_KEY", "/tmp/client-key.pem"),
+        ]);
+        let integration = mysql_integration_config_with_env(env_lookup(&values));
+        let tls = mysql_tls_config_with_env(env_lookup(&values));
+
+        assert_common_fields_equal(&integration, &tls);
+        assert_eq!(integration.host, "host.docker.internal");
+        assert_eq!(integration.port, 3306);
+        assert_eq!(integration.database.as_deref(), Some("sabiql_test"));
+        assert_eq!(integration.username, "sabiql_test_runner");
+        assert_eq!(integration.password, "p a#ss;=\"word");
+        assert_eq!(integration.ssl_mode, MySqlSslMode::Disabled);
+        assert_eq!(tls.ssl_mode, MySqlSslMode::VerifyCa);
+    }
+
+    #[test]
+    fn wrappers_share_env_values_and_keep_tls_specific_settings() {
+        let values = HashMap::from([
+            ("SABIQL_MYSQL_TEST_HOST", "mysql.example.test"),
+            ("SABIQL_MYSQL_TEST_PORT", "13306"),
+            ("SABIQL_MYSQL_TEST_DATABASE", "fixture_database"),
+            ("SABIQL_MYSQL_TEST_USER", "fixture_user"),
+            ("SABIQL_MYSQL_TEST_PASSWORD", "fixture_password"),
+            (
+                "SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY",
+                "/tmp/server-public-key.pem",
+            ),
+            ("SABIQL_MYSQL_TEST_SSL_CA", "/tmp/ca.pem"),
+            ("SABIQL_MYSQL_TEST_SSL_CERT", "/tmp/client-cert.pem"),
+            ("SABIQL_MYSQL_TEST_SSL_KEY", "/tmp/client-key.pem"),
+        ]);
+        let env = env_lookup(&values);
+        let integration = mysql_integration_config_with_env(&env);
+        let tls = mysql_tls_config_with_env(&env);
+
+        assert_common_fields_equal(&integration, &tls);
+        assert_eq!(integration.ssl_mode, MySqlSslMode::Disabled);
+        assert_eq!(
+            integration.server_public_key_path.as_deref(),
+            Some("/tmp/server-public-key.pem")
+        );
+        assert_eq!(tls.ssl_mode, MySqlSslMode::VerifyCa);
+        assert_eq!(tls.ssl_ca.as_deref(), Some("/tmp/ca.pem"));
+        assert_eq!(tls.ssl_cert.as_deref(), Some("/tmp/client-cert.pem"));
+        assert_eq!(tls.ssl_key.as_deref(), Some("/tmp/client-key.pem"));
+    }
 }
