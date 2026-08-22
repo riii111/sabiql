@@ -14,8 +14,7 @@ use super::super::sql::{
     COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, INDEX_RESULT_COLUMNS,
     TABLE_DETAIL_METADATA_RESULT_COLUMNS, TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS,
     UNIQUE_COLUMN_RESULT_COLUMNS, columns_query, foreign_keys_query, show_create_query,
-    show_create_result_columns, table_detail_metadata_query, table_query, triggers_query,
-    unique_columns_query,
+    show_create_result_columns, table_detail_metadata_query, table_query, unique_columns_query,
 };
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
@@ -179,11 +178,7 @@ async fn fetch_table_detail_with_session(
         database,
         lower_case_table_names,
     )?;
-    let triggers = parse_trigger_metadata(
-        &session
-            .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
-            .await?,
-    )?;
+    let triggers = parse_trigger_metadata(&metadata.triggers)?;
     let source_ddl = parse_source_ddl(
         &session
             .execute_with_expected_columns(
@@ -208,14 +203,15 @@ struct MySqlTableDetailMetadata {
     columns: MySqlResultSet,
     statistics: MySqlResultSet,
     foreign_keys: MySqlResultSet,
+    triggers: MySqlResultSet,
 }
 
 fn parse_table_detail_metadata(
     result: &MySqlResultSet,
 ) -> Result<MySqlTableDetailMetadata, DbOperationError> {
     if result.columns != TABLE_DETAIL_METADATA_RESULT_COLUMNS
-        || result.values.len() != 1
-        || result.values[0].len() != 1
+        || result.values.is_empty()
+        || result.values.iter().any(|row| row.len() != 1)
     {
         return Err(metadata_shape_error("table detail metadata result"));
     }
@@ -226,8 +222,13 @@ fn parse_table_detail_metadata(
     let payload = payload
         .as_object()
         .ok_or_else(|| metadata_shape_error("table detail metadata JSON root"))?;
+    if payload.get("kind") != Some(&Value::String("metadata".to_string())) {
+        return Err(metadata_shape_error(
+            "table detail metadata JSON metadata row",
+        ));
+    }
     let expected_sections = ["tables", "columns", "statistics", "foreign_keys"];
-    if payload.len() != expected_sections.len()
+    if payload.len() != expected_sections.len() + 1
         || expected_sections
             .iter()
             .any(|section| !payload.contains_key(*section))
@@ -240,7 +241,46 @@ fn parse_table_detail_metadata(
         columns: json_section_to_result(payload, "columns", COLUMN_METADATA_RESULT_COLUMNS)?,
         statistics: json_section_to_result(payload, "statistics", INDEX_RESULT_COLUMNS)?,
         foreign_keys: json_section_to_result(payload, "foreign_keys", FOREIGN_KEY_RESULT_COLUMNS)?,
+        triggers: result.values[1..]
+            .iter()
+            .map(|row| json_trigger_to_result(row.first()))
+            .collect::<Result<Vec<_>, _>>()
+            .map(|values| MySqlResultSet {
+                columns: TRIGGER_RESULT_COLUMNS
+                    .iter()
+                    .map(|column| (*column).to_string())
+                    .collect(),
+                values,
+            })?,
     })
+}
+
+fn json_trigger_to_result(value: Option<&QueryValue>) -> Result<Vec<QueryValue>, DbOperationError> {
+    let payload = value
+        .and_then(QueryValue::as_str)
+        .ok_or_else(|| metadata_shape_error("table detail metadata JSON trigger row"))?;
+    let payload = serde_json::from_str::<Value>(payload).map_err(|error| {
+        DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL trigger metadata JSON: {error}"
+        ))
+    })?;
+    let payload = payload
+        .as_object()
+        .ok_or_else(|| metadata_shape_error("table detail metadata JSON trigger row"))?;
+    if payload.get("kind") != Some(&Value::String("trigger".to_string()))
+        || payload.len() != TRIGGER_RESULT_COLUMNS.len() + 1
+        || TRIGGER_RESULT_COLUMNS
+            .iter()
+            .any(|column| !payload.contains_key(*column))
+    {
+        return Err(metadata_shape_error(
+            "table detail metadata JSON trigger row",
+        ));
+    }
+    TRIGGER_RESULT_COLUMNS
+        .iter()
+        .map(|column| json_value_to_query_value(payload.get(*column).unwrap(), column))
+        .collect()
 }
 
 fn json_section_to_result(
@@ -607,18 +647,28 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
       ;;
     *JSON_OBJECT*)
+      trigger_payload=''
       if [ "$mode" = "empty" ]; then
-        payload='{"tables":[],"columns":[],"statistics":[],"foreign_keys":[]}'
+        payload='{"kind":"metadata","tables":[],"columns":[],"statistics":[],"foreign_keys":[]}'
       elif [ "$mode" = "timeout" ]; then
         while :; do sleep 1; done
       elif [ "$mode" = "malformed" ]; then
-        payload='{"tables":[],"columns":[{"WRONG":"x"}],"statistics":[],"foreign_keys":[]}'
+        payload='{"kind":"metadata","tables":[],"columns":[{"WRONG":"x"}],"statistics":[],"foreign_keys":[]}'
       elif [ "$mode" = "view" ]; then
-        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items_view","TABLE_TYPE":"VIEW","TABLE_ROWS":null,"TABLE_COMMENT":"view comment","ENGINE":null,"ROW_FORMAT":null,"TABLE_COLLATION":null,"CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[]}'
+        payload='{"kind":"metadata","tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items_view","TABLE_TYPE":"VIEW","TABLE_ROWS":null,"TABLE_COMMENT":"view comment","ENGINE":null,"ROW_FORMAT":null,"TABLE_COLLATION":null,"CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[]}'
       else
-        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"table comment","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":"partitioned"}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[{"INDEX_NAME":"PRIMARY","NON_UNIQUE":0,"INDEX_TYPE":"BTREE","SEQ_IN_INDEX":1,"COLUMN_NAME":null,"SUB_PART":null,"EXPRESSION":"expr","COLLATION":null,"IS_VISIBLE":"YES","IS_PRIMARY":"YES"}],"foreign_keys":[{"CONSTRAINT_NAME":"fk_items_self","TABLE_SCHEMA":"app","TABLE_NAME":"items","COLUMN_NAME":"id","REFERENCED_TABLE_SCHEMA":"app","REFERENCED_TABLE_NAME":"items","REFERENCED_COLUMN_NAME":"id","ORDINAL_POSITION":1,"UPDATE_RULE":"CASCADE","DELETE_RULE":"CASCADE"}]}'
+        payload='{"kind":"metadata","tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"table comment","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":"partitioned"}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[{"INDEX_NAME":"PRIMARY","NON_UNIQUE":0,"INDEX_TYPE":"BTREE","SEQ_IN_INDEX":1,"COLUMN_NAME":null,"SUB_PART":null,"EXPRESSION":"expr","COLLATION":null,"IS_VISIBLE":"YES","IS_PRIMARY":"YES"}],"foreign_keys":[{"CONSTRAINT_NAME":"fk_items_self","TABLE_SCHEMA":"app","TABLE_NAME":"items","COLUMN_NAME":"id","REFERENCED_TABLE_SCHEMA":"app","REFERENCED_TABLE_NAME":"items","REFERENCED_COLUMN_NAME":"id","ORDINAL_POSITION":1,"UPDATE_RULE":"CASCADE","DELETE_RULE":"CASCADE"}]}'
+        trigger_payload='{"kind":"trigger","TRIGGER_NAME":"items_audit","ACTION_ORDER":1,"ACTION_TIMING":"BEFORE","EVENT_MANIPULATION":"INSERT","ACTION_STATEMENT":"SET NEW.id = NEW.id","DEFINER":"app@localhost","SQL_MODE":"STRICT_TRANS_TABLES","CHARACTER_SET_CLIENT":"utf8mb4","COLLATION_CONNECTION":"utf8mb4_0900_ai_ci","DATABASE_COLLATION":"utf8mb4_0900_ai_ci","CREATED":"2026-08-21 10:20:30.00"}'
       fi
-      printf '%s\n' '<resultset><row><field name="METADATA_JSON">'"$payload"'</field></row></resultset>'
+      printf '%s' '<resultset><row><field name="METADATA_JSON">'
+      printf '%s' "$payload"
+      printf '%s' '</field></row>'
+      if [ -n "$trigger_payload" ]; then
+        printf '%s' '<row><field name="METADATA_JSON">'
+        printf '%s' "$trigger_payload"
+        printf '%s' '</field></row>'
+      fi
+      printf '%s\n' '</resultset>'
       ;;
     *TABLES*)
       if [ "$mode" = "empty" ]; then
@@ -646,13 +696,6 @@ while IFS= read -r line; do
       ;;
     *FOREIGN*)
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
-      ;;
-    *TRIGGERS*)
-      if [ "$mode" = "view" ]; then
-        printf '%s\n' '<resultset></resultset>'
-      else
-        printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_ORDER">1</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field><field name="SQL_MODE">STRICT_TRANS_TABLES</field><field name="CHARACTER_SET_CLIENT">utf8mb4</field><field name="COLLATION_CONNECTION">utf8mb4_0900_ai_ci</field><field name="DATABASE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATED">2026-08-21 10:20:30.00</field></row></resultset>'
-      fi
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
@@ -757,6 +800,20 @@ done
                     .count(),
                 1
             );
+            assert_eq!(
+                transcript_text
+                    .lines()
+                    .filter(|line| line.starts_with("query=") && line.contains("JSON_OBJECT"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                transcript_text
+                    .lines()
+                    .filter(|line| line.starts_with("query=") && line.contains("SHOW CREATE"))
+                    .count(),
+                1
+            );
             let labels = if mode == "view" {
                 [
                     "SET SESSION autocommit=1, completion_type=NO_CHAIN",
@@ -765,7 +822,6 @@ done
                     "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "JSON_OBJECT",
-                    "TRIGGERS",
                     "SHOW CREATE VIEW",
                 ]
             } else {
@@ -776,7 +832,6 @@ done
                     "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "JSON_OBJECT",
-                    "TRIGGERS",
                     "SHOW CREATE TABLE",
                 ]
             };
@@ -986,6 +1041,7 @@ mod tests {
 
     fn valid_metadata_payload() -> serde_json::Value {
         json!({
+            "kind": "metadata",
             "tables": [{
                 "TABLE_SCHEMA": "app",
                 "TABLE_NAME": "items",
@@ -1039,8 +1095,25 @@ mod tests {
 
     #[test]
     fn parses_json_metadata_payload_into_existing_result_shapes() {
-        let metadata =
-            parse_table_detail_metadata(&metadata_json_result(valid_metadata_payload())).unwrap();
+        let mut result = metadata_json_result(valid_metadata_payload());
+        result.values.push(vec![QueryValue::Text(
+            json!({
+                "kind": "trigger",
+                "TRIGGER_NAME": "items_audit",
+                "ACTION_ORDER": 1,
+                "ACTION_TIMING": "BEFORE",
+                "EVENT_MANIPULATION": "INSERT",
+                "ACTION_STATEMENT": "SET NEW.id = NEW.id",
+                "DEFINER": "app@localhost",
+                "SQL_MODE": "STRICT_TRANS_TABLES",
+                "CHARACTER_SET_CLIENT": "utf8mb4",
+                "COLLATION_CONNECTION": "utf8mb4_0900_ai_ci",
+                "DATABASE_COLLATION": "utf8mb4_0900_ai_ci",
+                "CREATED": "2026-08-21 10:20:30.00"
+            })
+            .to_string(),
+        )]);
+        let metadata = parse_table_detail_metadata(&result).unwrap();
 
         assert_eq!(
             metadata.tables.values[0][3],
@@ -1057,6 +1130,10 @@ mod tests {
         assert_eq!(
             metadata.foreign_keys.values[0][8],
             QueryValue::Text("CASCADE".to_string())
+        );
+        assert_eq!(
+            metadata.triggers.values[0][2],
+            QueryValue::Text("BEFORE".to_string())
         );
     }
 
@@ -1085,6 +1162,22 @@ mod tests {
             error,
             DbOperationError::MetadataParseFailed(message)
                 if message.contains("JSON value type: COLUMN_NAME")
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_json_trigger_rows() {
+        let mut result = metadata_json_result(valid_metadata_payload());
+        result.values.push(vec![QueryValue::Text(
+            json!({"kind": "trigger", "TRIGGER_NAME": "items_audit"}).to_string(),
+        )]);
+
+        let error = parse_table_detail_metadata(&result).unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message.contains("metadata JSON trigger row")
         ));
     }
 

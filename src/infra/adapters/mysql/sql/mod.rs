@@ -14,5 +14,5 @@ pub(super) use metadata::{
     TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
     build_metadata_select_query, build_preview_query, columns_query, foreign_keys_query,
     preview_columns_query, preview_identity_alias, show_create_query, show_create_result_columns,
-    table_detail_metadata_query, table_query, triggers_query, unique_columns_query,
+    table_detail_metadata_query, table_query, unique_columns_query,
 };
