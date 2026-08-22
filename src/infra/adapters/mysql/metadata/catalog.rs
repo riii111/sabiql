@@ -146,12 +146,10 @@ pub(super) fn parse_preview_columns_for_table(
                 &row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
                 "preview COLUMNS row",
             )?;
-            column.character_set_name = optional_text(
+            column.character_set_name = optional_nonempty_string(
                 &row[COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
                 "CHARACTER_SET_NAME",
-            )?
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
+            )?;
             Ok(column)
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -323,21 +321,11 @@ fn parse_table_metadata(
                     })
                 })
                 .transpose()?;
-            let comment = optional_text(&row[4], "TABLE_COMMENT")?
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
-            let engine = optional_text(&row[5], "ENGINE")?
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
-            let row_format = optional_text(&row[6], "ROW_FORMAT")?
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
-            let table_collation = optional_text(&row[7], "TABLE_COLLATION")?
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
-            let create_options = optional_text(&row[8], "CREATE_OPTIONS")?
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
+            let comment = optional_nonempty_string(&row[4], "TABLE_COMMENT")?;
+            let engine = optional_nonempty_string(&row[5], "ENGINE")?;
+            let row_format = optional_nonempty_string(&row[6], "ROW_FORMAT")?;
+            let table_collation = optional_nonempty_string(&row[7], "TABLE_COLLATION")?;
+            let create_options = optional_nonempty_string(&row[8], "CREATE_OPTIONS")?;
             Ok(MySqlTableMetadata {
                 schema,
                 name,
@@ -386,9 +374,7 @@ pub(super) fn parse_column_metadata_row(
         generation_kind: None,
         nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
         default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
-        comment: optional_text(&row[5], "COLUMN_COMMENT")?
-            .filter(|value| !value.is_empty())
-            .map(str::to_string),
+        comment: optional_nonempty_string(&row[5], "COLUMN_COMMENT")?,
         ordinal_position: parse_positive_i32(&row[6], "ORDINAL_POSITION")?,
         primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
             .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
@@ -412,15 +398,9 @@ fn parse_column_metadata_row_with_details(
     }
     let mut column =
         parse_column_metadata_row(&row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()], field)?;
-    column.character_set_name = optional_text(&row[8], "CHARACTER_SET_NAME")?
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    column.collation_name = optional_text(&row[9], "COLLATION_NAME")?
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
-    column.generation_expression = optional_text(&row[10], "GENERATION_EXPRESSION")?
-        .filter(|value| !value.is_empty())
-        .map(str::to_string);
+    column.character_set_name = optional_nonempty_string(&row[8], "CHARACTER_SET_NAME")?;
+    column.collation_name = optional_nonempty_string(&row[9], "COLLATION_NAME")?;
+    column.generation_expression = optional_nonempty_string(&row[10], "GENERATION_EXPRESSION")?;
     column.generation_kind = generation_kind(required_text(&row[4], "EXTRA")?);
     Ok(column)
 }
@@ -655,6 +635,15 @@ pub(super) fn optional_text<'a>(
     }
 }
 
+fn optional_nonempty_string(
+    value: &QueryValue,
+    field: &str,
+) -> Result<Option<String>, DbOperationError> {
+    Ok(optional_text(value, field)?
+        .filter(|value| !value.is_empty())
+        .map(str::to_string))
+}
+
 pub(super) fn parse_positive_i32(value: &QueryValue, field: &str) -> Result<i32, DbOperationError> {
     parse_positive_i32_text(required_text(value, field)?, field)
 }
@@ -705,6 +694,53 @@ mod tests {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),
             values,
         }
+    }
+
+    #[test]
+    fn optional_nonempty_string_preserves_catalog_value_boundaries() {
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Null, "FIELD").unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Text(String::new()), "FIELD").unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Text("value".to_string()), "FIELD").unwrap(),
+            Some("value".to_string())
+        );
+
+        let error = optional_nonempty_string(&QueryValue::Blob(vec![0xff]), "FIELD").unwrap_err();
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message == "MySQL metadata field is binary: FIELD"
+        ));
+    }
+
+    #[test]
+    fn column_parser_preserves_empty_default_but_drops_empty_comment() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text("column".to_string()),
+                QueryValue::Text("varchar(32)".to_string()),
+                QueryValue::Text("YES".to_string()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        ))
+        .unwrap();
+
+        assert_eq!(parsed[0].default.as_deref(), Some(""));
+        assert_eq!(parsed[0].comment, None);
     }
 
     fn tables_result(schema: &str) -> MySqlResultSet {
