@@ -171,14 +171,10 @@ fn preview_metadata_from_columns(
         .iter()
         .map(column_from_metadata)
         .collect::<Vec<_>>();
-    let visible_metadata = column_metadata
+    let visible_columns = columns
         .iter()
-        .zip(&columns)
-        .filter(|(_, column)| !column.is_hidden())
-        .collect::<Vec<_>>();
-    let visible_columns = visible_metadata
-        .iter()
-        .map(|(_, column)| (*column).clone())
+        .filter(|column| !column.is_hidden())
+        .cloned()
         .collect::<Vec<_>>();
     if visible_columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
