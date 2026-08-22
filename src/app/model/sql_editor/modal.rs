@@ -468,19 +468,6 @@ pub mod test_support {
             &mut self.completion
         }
     }
-
-    #[cfg(test)]
-    mod unit_tests {
-        use super::super::SqlModalContext;
-
-        impl SqlModalContext {
-            #[doc(hidden)]
-            pub(crate) fn clear_content(&mut self) {
-                self.editor.clear();
-                self.reset_completion();
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -493,6 +480,14 @@ mod tests {
             text: text.to_string(),
             kind: CompletionKind::Keyword,
             score: 1,
+        }
+    }
+
+    impl SqlModalContext {
+        #[doc(hidden)]
+        pub(crate) fn clear_content(&mut self) {
+            self.editor.clear();
+            self.reset_completion();
         }
     }
 
