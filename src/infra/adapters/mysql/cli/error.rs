@@ -1,9 +1,20 @@
 use std::io::{self, Write};
 
-use crate::app::ports::outbound::DbOperationError;
+use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
 
 use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind, validate_sql_mode};
 use super::xml::MySqlResultSet;
+
+pub(super) fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
+    if error.kind() == io::ErrorKind::NotFound {
+        DbOperationError::CommandNotFound {
+            command: DatabaseCli::MySql,
+            details: error.to_string(),
+        }
+    } else {
+        DbOperationError::ConnectionFailed(error.to_string())
+    }
+}
 
 pub(super) fn has_mysql_cli_error(output: &[u8]) -> bool {
     output
@@ -157,7 +168,7 @@ fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
     digits[..end].parse().ok()
 }
 
-fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
+pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
     let text = String::from_utf8_lossy(stderr).trim().to_string();
     if text.is_empty() {
         fallback.to_string()

@@ -13,6 +13,7 @@ use crate::domain::{MySqlDiagnostic, QueryValue};
 use super::super::args::mysql_metadata_args;
 use super::super::error::{
     classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
+    map_mysql_cli_spawn_error,
 };
 use super::super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
@@ -125,10 +126,8 @@ pub(super) async fn mysql_metadata_columns_external_with_program(
 
     let mut args = mysql_metadata_args(option_file);
     args.push(format!("--execute={query}"));
-    let option_file = option_file.to_path_buf();
     let output = run_mysql_command_with_timeout(
         args,
-        Some(&option_file),
         MYSQL_QUERY_TIMEOUT,
         "mysql query exceeded the execution timeout",
     )
@@ -156,7 +155,7 @@ impl MySqlMetadataProcess {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         sanitize_mysql_command_environment(&mut command);
-        let mut child = command.spawn().map_err(super::map_mysql_cli_spawn_error)?;
+        let mut child = command.spawn().map_err(map_mysql_cli_spawn_error)?;
         let stdin = child.stdin.take().ok_or_else(|| {
             DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
         })?;
