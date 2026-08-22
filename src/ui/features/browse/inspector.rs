@@ -30,34 +30,16 @@ use crate::theme::ThemePalette;
 
 pub struct Inspector;
 
-#[derive(Debug, Clone, Copy, Default)]
-struct ColumnDisplayOptions(u8);
-
-impl ColumnDisplayOptions {
-    const READ_ONLY: u8 = 1 << 0;
-    const CHARACTER_SET: u8 = 1 << 1;
-    const COLLATION: u8 = 1 << 2;
-    const GENERATION: u8 = 1 << 3;
-
-    const fn with(self, flag: u8, enabled: bool) -> Self {
-        if enabled { Self(self.0 | flag) } else { self }
-    }
-
-    const fn show_read_only(self) -> bool {
-        self.0 & Self::READ_ONLY != 0
-    }
-
-    const fn show_character_set(self) -> bool {
-        self.0 & Self::CHARACTER_SET != 0
-    }
-
-    const fn show_collation(self) -> bool {
-        self.0 & Self::COLLATION != 0
-    }
-
-    const fn show_generation(self) -> bool {
-        self.0 & Self::GENERATION != 0
-    }
+#[derive(Debug, Clone, Copy)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Inspector column display options are independent UI columns"
+)]
+struct ColumnDisplayOptions {
+    read_only: bool,
+    character_set: bool,
+    collation: bool,
+    generation: bool,
 }
 
 impl Inspector {
@@ -196,11 +178,12 @@ impl Inspector {
                 show_collation,
                 show_generation,
             }) => {
-                let options = ColumnDisplayOptions::default()
-                    .with(ColumnDisplayOptions::READ_ONLY, *show_read_only)
-                    .with(ColumnDisplayOptions::CHARACTER_SET, *show_character_set)
-                    .with(ColumnDisplayOptions::COLLATION, *show_collation)
-                    .with(ColumnDisplayOptions::GENERATION, *show_generation);
+                let options = ColumnDisplayOptions {
+                    read_only: *show_read_only,
+                    character_set: *show_character_set,
+                    collation: *show_collation,
+                    generation: *show_generation,
+                };
                 Self::render_columns(
                     frame,
                     inner,
@@ -350,17 +333,17 @@ impl Inspector {
     ) -> ViewportPlan {
         let available_width = area.width.saturating_sub(2);
         let mut headers = vec!["Name", "Type", "Null", "PK"];
-        if options.show_read_only() {
+        if options.read_only {
             headers.push("Read-only");
         }
         headers.extend(["Default", "Comment"]);
-        if options.show_character_set() {
+        if options.character_set {
             headers.push("Charset");
         }
-        if options.show_collation() {
+        if options.collation {
             headers.push("Collation");
         }
-        if options.show_generation() {
+        if options.generation {
             headers.push("Generation");
         }
 
@@ -446,8 +429,8 @@ impl Inspector {
                         let text = cells.get(col_idx).map_or("", String::as_str);
                         let display = truncate_to_width(text, col_width as usize);
 
-                        let read_only_col_idx = options.show_read_only().then_some(4);
-                        let comment_col_idx = if options.show_read_only() { 6 } else { 5 };
+                        let read_only_col_idx = options.read_only.then_some(4);
+                        let comment_col_idx = if options.read_only { 6 } else { 5 };
                         let cell_style = if col_idx == 3 && !text.is_empty() {
                             Style::default().fg(theme.semantic.text.accent)
                         } else if read_only_col_idx == Some(col_idx) && !text.is_empty() {
@@ -854,18 +837,18 @@ fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> 
         checkmark(row.nullable),
         checkmark(row.primary_key),
     ];
-    if options.show_read_only() {
+    if options.read_only {
         cells.push(row.read_only_reason.clone().unwrap_or_default());
     }
     cells.push(row.default.clone().unwrap_or_default());
     cells.push(row.comment.clone().unwrap_or_default());
-    if options.show_character_set() {
+    if options.character_set {
         cells.push(row.character_set_name.clone().unwrap_or_default());
     }
-    if options.show_collation() {
+    if options.collation {
         cells.push(row.collation_name.clone().unwrap_or_default());
     }
-    if options.show_generation() {
+    if options.generation {
         cells.push(generation_display(row));
     }
     cells
@@ -1106,6 +1089,54 @@ mod tests {
                     .map(String::from)
                     .collect::<Vec<_>>()
             );
+        }
+    }
+
+    #[test]
+    fn column_row_cells_include_optional_columns_for_all_display_options() {
+        let row = InspectorColumnRow {
+            name: "id".to_string(),
+            data_type: "integer".to_string(),
+            nullable: false,
+            primary_key: true,
+            read_only_reason: Some("read-only".to_string()),
+            default: Some("default".to_string()),
+            comment: Some("comment".to_string()),
+            character_set_name: Some("charset".to_string()),
+            collation_name: Some("collation".to_string()),
+            generation_expression: Some("generation".to_string()),
+            generation_kind: None,
+        };
+
+        for read_only in [false, true] {
+            for character_set in [false, true] {
+                for collation in [false, true] {
+                    for generation in [false, true] {
+                        let options = ColumnDisplayOptions {
+                            read_only,
+                            character_set,
+                            collation,
+                            generation,
+                        };
+                        let mut expected = vec!["id", "integer", "", "✓"];
+                        if options.read_only {
+                            expected.push("read-only");
+                        }
+                        expected.extend(["default", "comment"]);
+                        if options.character_set {
+                            expected.push("charset");
+                        }
+                        if options.collation {
+                            expected.push("collation");
+                        }
+                        if options.generation {
+                            expected.push("generation");
+                        }
+
+                        assert_eq!(column_row_cells(&row, options), expected);
+                    }
+                }
+            }
         }
     }
 
