@@ -568,6 +568,7 @@ mod tests {
         use crate::domain::connection::{ConnectionId, DatabaseType};
         use crate::domain::{QueryResult, Table, WriteExecutionResult};
         use crate::model::connection::cache::ConnectionCache;
+        use crate::model::connection::state::ConnectionState;
         use crate::ports::outbound::{AccessMode, DbOperationError};
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
@@ -639,6 +640,30 @@ mod tests {
                 _file_name: &str,
             ) -> Result<PathBuf, DbOperationError> {
                 unreachable!("test only starts a preview")
+            }
+        }
+
+        struct ProbeThatObservesQueryDrop {
+            query_dropped: Arc<AtomicBool>,
+            started: Mutex<Option<oneshot::Sender<bool>>>,
+        }
+
+        #[async_trait::async_trait]
+        impl MySqlConnectionProbe for ProbeThatObservesQueryDrop {
+            async fn probe(
+                &self,
+                _dsn: &str,
+            ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+                self.started
+                    .lock()
+                    .expect("probe started signal lock poisoned")
+                    .take()
+                    .expect("probe should start once")
+                    .send(self.query_dropped.load(Ordering::SeqCst))
+                    .ok();
+                Ok(MySqlConnectionProbeResult {
+                    lower_case_table_names: 0,
+                })
             }
         }
 
@@ -777,6 +802,105 @@ mod tests {
             .await
             .expect("context termination should drop the pending query task");
             assert!(!state.query.is_current_run(run_id));
+        }
+
+        #[tokio::test]
+        async fn try_connect_cancels_pending_query_before_mysql_probe() {
+            let (query_started_tx, query_started_rx) = oneshot::channel();
+            let query_dropped = Arc::new(AtomicBool::new(false));
+            let executor = PendingQueryExecutor {
+                started: Mutex::new(Some(query_started_tx)),
+                dropped: Arc::clone(&query_dropped),
+            };
+            let (probe_started_tx, probe_started_rx) = oneshot::channel();
+            let probe = ProbeThatObservesQueryDrop {
+                query_dropped: Arc::clone(&query_dropped),
+                started: Mutex::new(Some(probe_started_tx)),
+            };
+            let (action_tx, _action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner_with_dsn_and_probe(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+                Arc::new(probe),
+            );
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql-test");
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app",
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+            let run_id = state.query.begin_running(Instant::now());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .run(
+                    vec![Effect::ExecutePreview {
+                        dsn: "mysql://user@localhost:3306/app".to_string(),
+                        schema: "app".to_string(),
+                        table: "users".to_string(),
+                        generation: 1,
+                        run_id,
+                        limit: 100,
+                        offset: 0,
+                        target_page: 0,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            query_started_rx.await.expect("pending query should start");
+
+            let effects = reduce(
+                &mut state,
+                Action::TryConnect,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(matches!(
+                effects.as_slice(),
+                [
+                    Effect::CancelActiveTasks,
+                    Effect::ProbeMySqlConnection { .. }
+                ]
+            ));
+
+            runner
+                .run(
+                    effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                probe_started_rx
+                    .await
+                    .expect("probe should start after cancellation")
+            );
+            timeout(Duration::from_secs(1), async {
+                while !query_dropped.load(Ordering::SeqCst) {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("cancelled query task should be dropped");
         }
 
         #[tokio::test]

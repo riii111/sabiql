@@ -228,7 +228,10 @@ pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<
                 clear_query_confirmation(state);
                 state.query.reset_for_context_change();
                 state.session.mark_connecting();
-                return vec![Effect::ProbeMySqlConnection { target, run_id }];
+                return termination_effects(
+                    &state.query,
+                    vec![Effect::ProbeMySqlConnection { target, run_id }],
+                );
             }
             let run_id = state.session.begin_connecting(&dsn);
             vec![Effect::FetchMetadata { dsn, run_id }]
@@ -1563,6 +1566,36 @@ mod tests {
                 state.session.connection_state(),
                 ConnectionState::Connecting
             );
+        }
+
+        #[test]
+        fn mysql_try_connect_cancels_active_query_before_probe() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql-test");
+            let dsn = "mysql://user@localhost:3306/app";
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql",
+                DatabaseType::MySQL,
+                dsn,
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::NotConnected);
+            let query_run_id = state.query.begin_running(std::time::Instant::now());
+
+            let effects = reduce(&mut state, &Action::TryConnect).unwrap();
+
+            assert!(!state.query.is_running());
+            assert!(!state.query.is_current_run(query_run_id));
+            assert_eq!(effects.len(), 2);
+            assert!(matches!(effects[0], Effect::CancelActiveTasks));
+            let Effect::ProbeMySqlConnection { target, .. } = &effects[1] else {
+                panic!("expected MySQL probe after task cancellation, got {effects:?}");
+            };
+            assert_eq!(target.id, id);
+            assert_eq!(target.dsn, dsn);
         }
 
         #[test]
