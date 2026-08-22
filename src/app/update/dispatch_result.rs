@@ -60,15 +60,20 @@ impl DispatchResult {
             Self::Pass => false,
         }
     }
+}
 
-    #[cfg(test)]
-    pub fn unwrap(self) -> Vec<Effect> {
-        self.into_effects().unwrap()
-    }
+#[cfg(test)]
+mod test_support {
+    use super::{DispatchResult, Effect};
 
-    #[cfg(test)]
-    pub fn expect(self, msg: &str) -> Vec<Effect> {
-        self.into_effects().expect(msg)
+    impl DispatchResult {
+        pub fn unwrap(self) -> Vec<Effect> {
+            self.into_effects().unwrap()
+        }
+
+        pub fn expect(self, msg: &str) -> Vec<Effect> {
+            self.into_effects().expect(msg)
+        }
     }
 }
 

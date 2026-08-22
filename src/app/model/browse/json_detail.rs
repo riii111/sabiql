@@ -23,11 +23,6 @@ pub struct JsonDetailState {
 }
 
 impl JsonDetailState {
-    #[cfg(test)]
-    pub fn set_mode(&mut self, mode: JsonDetailMode) {
-        self.mode = mode;
-    }
-
     pub fn open_pretty(
         row: usize,
         col: usize,
@@ -155,6 +150,17 @@ impl JsonDetailState {
                 Ok(_) => None,
                 Err(e) => Some(format!("Invalid JSON: {e}")),
             };
+    }
+}
+
+#[cfg(test)]
+mod test_support {
+    use super::{JsonDetailMode, JsonDetailState};
+
+    impl JsonDetailState {
+        pub(crate) fn set_mode(&mut self, mode: JsonDetailMode) {
+            self.mode = mode;
+        }
     }
 }
 

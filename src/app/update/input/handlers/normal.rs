@@ -156,7 +156,8 @@ mod tests {
         CursorPosition, ScrollAmount, ScrollDirection, ScrollTarget, ScrollToCursorTarget,
         SelectMotion,
     };
-    use crate::update::input::keybindings::{Key, KeyCombo, same_payload_free_action};
+    use crate::update::input::keybindings::test_support::same_payload_free_action;
+    use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
 
     fn combo(k: Key) -> KeyCombo {

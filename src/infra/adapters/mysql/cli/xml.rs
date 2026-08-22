@@ -77,17 +77,6 @@ impl MySqlResultsetFrameScanner {
         self.resultset_end.map(|end| (start, end))
     }
 
-    #[cfg(test)]
-    fn take(&mut self, buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
-        let bounds = self.frame_bounds(buffer)?;
-        Some(self.take_bounds(buffer, bounds))
-    }
-
-    #[cfg(test)]
-    fn take_bounds(&mut self, buffer: &mut Vec<u8>, (start, end): (usize, usize)) -> Vec<u8> {
-        self.take_bounds_with_diagnostics(buffer, (start, end)).0
-    }
-
     fn take_bounds_with_diagnostics(
         &mut self,
         buffer: &mut Vec<u8>,
@@ -474,6 +463,17 @@ pub(super) fn parse_mysql_field(
 mod tests {
     use super::*;
     use crate::domain::MySqlDiagnosticLevel;
+
+    impl MySqlResultsetFrameScanner {
+        fn take(&mut self, buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
+            let bounds = self.frame_bounds(buffer)?;
+            Some(self.take_bounds(buffer, bounds))
+        }
+
+        fn take_bounds(&mut self, buffer: &mut Vec<u8>, (start, end): (usize, usize)) -> Vec<u8> {
+            self.take_bounds_with_diagnostics(buffer, (start, end)).0
+        }
+    }
 
     #[test]
     fn parses_mysql_xml_without_collapsing_value_boundaries() {

@@ -1,8 +1,9 @@
 use sabiql_app::ports::outbound::{DbOperationError, DsnBuilder};
 use sabiql_domain::connection::{ConnectionProfile, MySqlConnectionConfig, MySqlSslMode};
+use sabiql_infra::adapters::mysql::MySqlAdapter;
+use sabiql_infra::adapters::mysql::test_support::run_mysql_cli_query_for_test;
 #[cfg(unix)]
-use sabiql_infra::adapters::mysql::run_mysql_cli_script_for_test;
-use sabiql_infra::adapters::mysql::{MySqlAdapter, run_mysql_cli_query_for_test};
+use sabiql_infra::adapters::mysql::test_support::run_mysql_cli_script_for_test;
 
 pub const MYSQL_FIXTURE_TABLE: &str = "mysql_cli_fixture";
 

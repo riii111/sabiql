@@ -88,11 +88,6 @@ impl PostgresAdapter {
             .and_then(Self::parse_command_tag_str)
     }
 
-    #[cfg(test)]
-    pub(in crate::adapters::postgres) fn extract_command_tag(stdout: &str) -> Option<CommandTag> {
-        Self::parse_command_tag(stdout).ok()
-    }
-
     fn is_known_tcl_tag(s: &str) -> bool {
         matches!(
             s.split_whitespace().next().unwrap_or(""),
@@ -271,6 +266,19 @@ impl ResolvedTags {
         }
 
         self.all.last().cloned()
+    }
+}
+
+#[cfg(test)]
+mod test_support {
+    use super::{CommandTag, PostgresAdapter};
+
+    impl PostgresAdapter {
+        pub(in crate::adapters::postgres) fn extract_command_tag(
+            stdout: &str,
+        ) -> Option<CommandTag> {
+            Self::parse_command_tag(stdout).ok()
+        }
     }
 }
 

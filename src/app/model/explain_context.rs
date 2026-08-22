@@ -86,18 +86,6 @@ impl ExplainContext {
         self.left.is_some() && self.right.is_some()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn left(&self) -> Option<&CompareSlot> {
-        self.left.as_ref()
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn right(&self) -> Option<&CompareSlot> {
-        self.right.as_ref()
-    }
-
     pub fn history(&self) -> &VecDeque<CompareSlot> {
         &self.history
     }
@@ -231,6 +219,23 @@ impl ExplainContext {
             .compare_viewport_height
             .map_or_else(|| Self::modal_inner_height(terminal_height), |h| h as usize);
         self.compare_line_count().saturating_sub(viewport)
+    }
+}
+
+#[cfg(test)]
+pub mod test_support {
+    use super::{CompareSlot, ExplainContext};
+
+    impl ExplainContext {
+        #[doc(hidden)]
+        pub fn left(&self) -> Option<&CompareSlot> {
+            self.left.as_ref()
+        }
+
+        #[doc(hidden)]
+        pub fn right(&self) -> Option<&CompareSlot> {
+            self.right.as_ref()
+        }
     }
 }
 

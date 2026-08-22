@@ -10,9 +10,10 @@ use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use super::cli::process::test_support::run_mysql_adhoc_with_timeout_for_test;
 use super::cli::{
-    export_mysql_csv_to_file, run_mysql_adhoc, run_mysql_adhoc_with_timeout_for_test,
-    sanitize_mysql_command_environment, validate_mysql_multi_query,
+    export_mysql_csv_to_file, run_mysql_adhoc, sanitize_mysql_command_environment,
+    validate_mysql_multi_query,
 };
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
