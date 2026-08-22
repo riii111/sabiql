@@ -2954,7 +2954,6 @@ mod tests {
                     schema: None,
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -2976,7 +2975,6 @@ mod tests {
                     schema: None,
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -2998,7 +2996,6 @@ mod tests {
                     schema: None,
                     table: "users".to_string(),
                     alias: None,
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -3020,7 +3017,6 @@ mod tests {
                     schema: None,
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -3050,7 +3046,6 @@ mod tests {
                 tables: vec![],
                 ctes: vec![CteDefinition {
                     name: "active_users".to_string(),
-                    position: 5,
                 }],
                 target_table: None,
             };
@@ -3068,7 +3063,6 @@ mod tests {
                 tables: vec![],
                 ctes: vec![CteDefinition {
                     name: "active_users".to_string(),
-                    position: 5,
                 }],
                 target_table: None,
             };
@@ -3097,11 +3091,9 @@ mod tests {
                 ctes: vec![
                     CteDefinition {
                         name: "active_users".to_string(),
-                        position: 5,
                     },
                     CteDefinition {
                         name: "banned_users".to_string(),
-                        position: 50,
                     },
                 ],
                 target_table: None,
@@ -3142,7 +3134,6 @@ mod tests {
                     schema: Some("public".to_string()),
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -3178,7 +3169,6 @@ mod tests {
                     schema: None,
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,
@@ -3216,7 +3206,6 @@ mod tests {
                     schema: Some("public".to_string()),
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 0,
                 }],
                 ctes: vec![],
                 target_table: None,

@@ -27,13 +27,11 @@ pub struct TableReference {
     pub schema: Option<String>,
     pub table: String,
     pub alias: Option<String>,
-    pub position: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CteDefinition {
     pub name: String,
-    pub position: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1008,7 +1006,6 @@ impl SqlLexer {
             return None;
         }
 
-        let position = tokens[*i].start;
         let mut schema = None;
         let mut table;
         let mut alias = None;
@@ -1121,7 +1118,6 @@ impl SqlLexer {
             schema,
             table,
             alias,
-            position,
         })
     }
 
@@ -1190,17 +1186,13 @@ impl SqlLexer {
                     }
 
                     // Get CTE name
-                    let position = tokens[i].start;
                     if let TokenKind::Identifier(name)
                     | TokenKind::BacktickIdentifier(name)
                     | TokenKind::Keyword(name) = &tokens[i].kind
                     {
                         // Don't treat SELECT as a CTE name
                         if name != "SELECT" {
-                            ctes.push(CteDefinition {
-                                name: name.clone(),
-                                position,
-                            });
+                            ctes.push(CteDefinition { name: name.clone() });
                         }
                         i += 1;
 
@@ -1854,7 +1846,6 @@ mod tests {
                     schema: Some("app".to_string()),
                     table: "users".to_string(),
                     alias: Some("u".to_string()),
-                    position: 14,
                 }]
             );
         }
