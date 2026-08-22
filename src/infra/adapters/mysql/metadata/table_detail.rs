@@ -302,12 +302,11 @@ fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOpe
             let event = required_text(&row[3], "EVENT_MANIPULATION")?
                 .parse::<TriggerEvent>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            let action_order = parse_positive_i32(&row[1], "ACTION_ORDER")?;
             Ok(Trigger {
                 name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
                 timing,
                 events: vec![event],
-                action_order: Some(action_order),
+                action_order: Some(parse_positive_i32(&row[1], "ACTION_ORDER")?),
                 definition: required_text(&row[4], "ACTION_STATEMENT")?.to_string(),
                 security_context: optional_text(&row[5], "DEFINER")?.map(str::to_string),
                 creation_context: Some(TriggerCreationContext {
