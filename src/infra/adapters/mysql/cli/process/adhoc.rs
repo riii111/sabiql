@@ -17,7 +17,7 @@ use crate::domain::{
 use super::super::policy::{
     MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
     mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
-    query_failed_after_change, query_failed_after_mysql_statement,
+    query_failed_after_change,
 };
 use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns_with_diagnostics;
@@ -142,10 +142,7 @@ async fn run_mysql_statement(
     let (xml, diagnostics) = match read_one_mysql_resultset_with_diagnostics(process).await {
         Ok(result) => result,
         Err(error) => {
-            return Err(query_failed_after_mysql_statement(
-                error,
-                possible_refresh_scope,
-            ));
+            return Err(query_failed_after_change(error, possible_refresh_scope));
         }
     };
     let result = match super::parse_mysql_xml(&xml) {
@@ -302,7 +299,7 @@ async fn run_mysql_adhoc_process(
         match read_one_mysql_resultset_with_diagnostics(process).await {
             Ok(result) => result,
             Err(error) => {
-                return Err(query_failed_after_mysql_statement(error, refresh_scope));
+                return Err(query_failed_after_change(error, refresh_scope));
             }
         };
     diagnostics.extend(marker_diagnostics);
