@@ -43,18 +43,6 @@ pub(super) struct MySqlColumnMetadata {
     generated: bool,
 }
 
-impl MySqlColumnMetadata {
-    pub(super) fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub(super) fn has_binary_character_set(&self) -> bool {
-        self.character_set_name
-            .as_deref()
-            .is_some_and(|name| name.eq_ignore_ascii_case("binary"))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(super) struct MySqlForeignKeyMetadata {
     pub(super) name: String,
@@ -1046,7 +1034,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_metadata_preserves_binary_character_set() {
+    fn preview_metadata_preserves_character_set() {
         let parsed = parse_preview_columns_for_table(
             &result(
                 PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
@@ -1080,8 +1068,10 @@ mod tests {
         )
         .expect("preview metadata parses");
 
-        assert!(parsed[0].has_binary_character_set());
-        assert!(!parsed[1].has_binary_character_set());
+        let columns = parsed.iter().map(column_from_metadata).collect::<Vec<_>>();
+
+        assert_eq!(columns[0].character_set_name.as_deref(), Some("binary"));
+        assert_eq!(columns[1].character_set_name.as_deref(), Some("utf8mb4"));
     }
 
     #[test]

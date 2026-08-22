@@ -113,8 +113,6 @@ impl QueryExecutor for MySqlAdapter {
             &execution.result_set,
             &preview.visible_columns,
             &preview.identity_columns,
-            &preview.binary_charset_columns,
-            &preview.binary_charset_identity_columns,
         )?;
         let elapsed = start.elapsed().as_millis() as u64;
 

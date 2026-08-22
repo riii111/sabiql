@@ -26,8 +26,6 @@ pub(in crate::adapters::mysql) struct PreviewMetadata {
     pub(in crate::adapters::mysql) visible_columns: Vec<Column>,
     pub(in crate::adapters::mysql) order_columns: Vec<String>,
     pub(in crate::adapters::mysql) identity_columns: Vec<Column>,
-    pub(in crate::adapters::mysql) binary_charset_columns: Vec<bool>,
-    pub(in crate::adapters::mysql) binary_charset_identity_columns: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,18 +171,10 @@ fn preview_metadata_from_columns(
         .iter()
         .map(column_from_metadata)
         .collect::<Vec<_>>();
-    let visible_metadata = column_metadata
+    let visible_columns = columns
         .iter()
-        .zip(&columns)
-        .filter(|(_, column)| !column.is_hidden())
-        .collect::<Vec<_>>();
-    let visible_columns = visible_metadata
-        .iter()
-        .map(|(_, column)| (*column).clone())
-        .collect::<Vec<_>>();
-    let binary_charset_columns = visible_metadata
-        .iter()
-        .map(|(metadata, _)| metadata.has_binary_character_set())
+        .filter(|column| !column.is_hidden())
+        .cloned()
         .collect::<Vec<_>>();
     if visible_columns.is_empty() {
         return Err(DbOperationError::MetadataParseFailed(format!(
@@ -206,22 +196,11 @@ fn preview_metadata_from_columns(
     } else {
         Vec::new()
     };
-    let binary_charset_identity_columns = identity_columns
-        .iter()
-        .map(|column| {
-            column_metadata
-                .iter()
-                .find(|metadata| metadata.name() == column.name)
-                .is_some_and(MySqlColumnMetadata::has_binary_character_set)
-        })
-        .collect();
     let order_columns = primary_key_names;
     Ok(PreviewMetadata {
         visible_columns,
         order_columns,
         identity_columns,
-        binary_charset_columns,
-        binary_charset_identity_columns,
     })
 }
 
@@ -229,8 +208,6 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
     result: &MySqlResultSet,
     columns: &[Column],
     identity_columns: &[Column],
-    binary_charset_columns: &[bool],
-    binary_charset_identity_columns: &[bool],
 ) -> Result<ConvertedPreviewValues, DbOperationError> {
     let expected_columns = preview_result_columns(columns, identity_columns);
     if result.values.is_empty() {
@@ -260,16 +237,11 @@ pub(in crate::adapters::mysql) fn convert_preview_values_with_binary_charset(
             }
             row.iter()
                 .zip(columns.iter().chain(identity_columns))
-                .enumerate()
-                .map(|(index, (value, column))| {
-                    let has_binary_charset = if index < columns.len() {
-                        binary_charset_columns.get(index).copied().unwrap_or(false)
-                    } else {
-                        binary_charset_identity_columns
-                            .get(index - columns.len())
-                            .copied()
-                            .unwrap_or(false)
-                    };
+                .map(|(value, column)| {
+                    let has_binary_charset = column
+                        .character_set_name
+                        .as_deref()
+                        .is_some_and(|name| name.eq_ignore_ascii_case("binary"));
                     Ok(convert_preview_value(
                         value,
                         &column.data_type,
@@ -445,7 +417,7 @@ mod tests {
         columns: &[Column],
         identity_columns: &[Column],
     ) -> Result<ConvertedPreviewValues, DbOperationError> {
-        convert_preview_values_with_binary_charset(result, columns, identity_columns, &[], &[])
+        convert_preview_values_with_binary_charset(result, columns, identity_columns)
     }
 
     #[cfg(unix)]
@@ -533,6 +505,12 @@ done
             generation_expression: None,
             generation_kind: None,
         }
+    }
+
+    fn binary_charset_column(name: &str, data_type: &str) -> Column {
+        let mut column = column(name, data_type);
+        column.character_set_name = Some("binary".to_string());
+        column
     }
 
     #[cfg(unix)]
@@ -685,19 +663,12 @@ done
             ]],
         );
         let columns = vec![
-            column("char_value", "char(3)"),
-            column("varchar_value", "varchar(3)"),
+            binary_charset_column("char_value", "char(3)"),
+            binary_charset_column("varchar_value", "varchar(3)"),
             column("text_value", "varchar(3)"),
         ];
 
-        let values = convert_preview_values_with_binary_charset(
-            &result,
-            &columns,
-            &[],
-            &[true, true, false],
-            &[],
-        )
-        .expect("conversion succeeds");
+        let values = convert_preview_values(&result, &columns, &[]).expect("conversion succeeds");
 
         assert_eq!(values.visible[0][0], QueryValue::Blob(vec![0, 255, 161]));
         assert_eq!(values.visible[0][1], QueryValue::Blob(vec![16, 254]));
