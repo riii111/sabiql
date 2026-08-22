@@ -14,24 +14,22 @@ use super::cli::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
-use super::dsn::parse_and_validate_mysql_dsn;
+use super::dsn::{MySqlDsn, parse_and_validate_mysql_dsn};
 use super::metadata;
 use super::option_file::MySqlOptionFile;
 
-async fn execute_adhoc_with_statements(
-    dsn: &str,
+async fn execute_adhoc_with_target(
+    target: &MySqlDsn,
     query: &str,
     access_mode: AccessMode,
 ) -> Result<QueryResult, DbOperationError> {
-    let target = parse_and_validate_mysql_dsn(dsn)?;
-
     if mysql_tree_explain_query_kind(query).is_some() {
         #[expect(
             clippy::disallowed_methods,
             reason = "infra measures mysql execution time at the I/O boundary"
         )]
         let start = Instant::now();
-        let option_file = MySqlOptionFile::create(&target)?;
+        let option_file = MySqlOptionFile::create(target)?;
         let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
         drop(option_file);
         let execution = result?;
@@ -48,7 +46,7 @@ async fn execute_adhoc_with_statements(
         .with_mysql_diagnostics(execution.diagnostics));
     }
 
-    let option_file = MySqlOptionFile::create(&target)?;
+    let option_file = MySqlOptionFile::create(target)?;
     let lower_case_table_names = probe_mysql_server(&option_file.path)
         .await?
         .lower_case_table_names;
@@ -146,7 +144,8 @@ impl QueryExecutor for MySqlAdapter {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        execute_adhoc_with_statements(dsn, query, access_mode).await
+        let target = parse_and_validate_mysql_dsn(dsn)?;
+        execute_adhoc_with_target(&target, query, access_mode).await
     }
 
     async fn execute_write(
@@ -197,7 +196,7 @@ impl QueryExecutor for MySqlAdapter {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         validate_mysql_export_query(query, target.database.as_deref())?;
 
-        let result = self.execute_adhoc(dsn, query, AccessMode::ReadOnly).await?;
+        let result = execute_adhoc_with_target(&target, query, AccessMode::ReadOnly).await?;
         parse_mysql_count_result(&result)
     }
 
