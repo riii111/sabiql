@@ -474,7 +474,6 @@ pub enum Action {
         run_id: u64,
         effective_user: Option<String>,
     },
-    LoadTableDetail(TableTarget),
     TableDetailLoaded {
         dsn: String,
         run_id: u64,
