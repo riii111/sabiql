@@ -100,14 +100,7 @@ pub(super) fn reduce_analyze(
                         finish_explain_unsupported_analyze(state);
                         return DispatchResult::handled();
                     };
-                    return start_analyze_execution(
-                        state,
-                        now,
-                        dsn,
-                        database_type,
-                        explain_query,
-                        content,
-                    );
+                    return start_analyze_execution(state, now, dsn, explain_query, content);
                 }
             }
 
@@ -145,14 +138,7 @@ pub(super) fn reduce_analyze(
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 };
-                return start_analyze_execution(
-                    state,
-                    now,
-                    dsn,
-                    database_type,
-                    explain_query,
-                    query,
-                );
+                return start_analyze_execution(state, now, dsn, explain_query, query);
             }
             DispatchResult::handled()
         }
@@ -175,10 +161,10 @@ fn start_analyze_execution(
     state: &mut AppState,
     now: Instant,
     dsn: String,
-    database_type: DatabaseType,
     query: String,
     source_query: String,
 ) -> DispatchResult {
+    let database_type = state.session.active_database_type_or_default();
     let run_id = begin_explain_running(state, now);
     let database_generation = state.session.database_generation();
     DispatchResult::handled_with(vec![Effect::ExecuteExplain {
@@ -189,10 +175,8 @@ fn start_analyze_execution(
         query,
         source_query,
         is_analyze: true,
-        access_mode: if database_type == DatabaseType::MySQL {
-            AccessMode::ReadOnly
-        } else {
-            AccessMode::from_read_only(state.session.is_read_only())
-        },
+        access_mode: AccessMode::from_read_only(
+            database_type == DatabaseType::MySQL || state.session.is_read_only(),
+        ),
     }])
 }
