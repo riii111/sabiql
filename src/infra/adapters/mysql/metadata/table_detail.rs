@@ -53,17 +53,6 @@ impl MySqlIndexVisibility {
     }
 }
 
-#[derive(Debug, Clone)]
-struct MySqlTriggerMetadata {
-    name: String,
-    action_order: i32,
-    timing: TriggerTiming,
-    event: TriggerEvent,
-    definition: String,
-    security_context: Option<String>,
-    creation_context: TriggerCreationContext,
-}
-
 pub(super) async fn fetch_table_detail_in_session(
     dsn: &str,
     schema: &str,
@@ -227,11 +216,11 @@ async fn fetch_table_detail_with_session(
         database,
         lower_case_table_names,
     )?;
-    let triggers = triggers_from_metadata(parse_trigger_metadata(
+    let triggers = parse_trigger_metadata(
         &session
             .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
             .await?,
-    )?);
+    )?;
     let source_ddl = parse_source_ddl(
         &session
             .execute_with_expected_columns(
@@ -298,9 +287,7 @@ fn table_from_columns_and_foreign_keys(
     }
 }
 
-fn parse_trigger_metadata(
-    result: &MySqlResultSet,
-) -> Result<Vec<MySqlTriggerMetadata>, DbOperationError> {
+fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOperationError> {
     expect_columns(result, TRIGGER_RESULT_COLUMNS)?;
     result
         .values
@@ -315,14 +302,15 @@ fn parse_trigger_metadata(
             let event = required_text(&row[3], "EVENT_MANIPULATION")?
                 .parse::<TriggerEvent>()
                 .map_err(|error| DbOperationError::MetadataParseFailed(error.to_string()))?;
-            Ok(MySqlTriggerMetadata {
+            let action_order = parse_positive_i32(&row[1], "ACTION_ORDER")?;
+            Ok(Trigger {
                 name: required_text(&row[0], "TRIGGER_NAME")?.to_string(),
-                action_order: parse_positive_i32(&row[1], "ACTION_ORDER")?,
                 timing,
-                event,
+                events: vec![event],
+                action_order: Some(action_order),
                 definition: required_text(&row[4], "ACTION_STATEMENT")?.to_string(),
                 security_context: optional_text(&row[5], "DEFINER")?.map(str::to_string),
-                creation_context: TriggerCreationContext {
+                creation_context: Some(TriggerCreationContext {
                     sql_mode: optional_text(&row[6], "SQL_MODE")?.map(str::to_string),
                     character_set_client: optional_text(&row[7], "CHARACTER_SET_CLIENT")?
                         .map(str::to_string),
@@ -331,22 +319,8 @@ fn parse_trigger_metadata(
                     database_collation: optional_text(&row[9], "DATABASE_COLLATION")?
                         .map(str::to_string),
                     created: optional_text(&row[10], "CREATED")?.map(str::to_string),
-                },
+                }),
             })
-        })
-        .collect()
-}
-
-fn triggers_from_metadata(raw: Vec<MySqlTriggerMetadata>) -> Vec<Trigger> {
-    raw.into_iter()
-        .map(|metadata| Trigger {
-            name: metadata.name,
-            timing: metadata.timing,
-            events: vec![metadata.event],
-            action_order: Some(metadata.action_order),
-            definition: metadata.definition,
-            security_context: metadata.security_context,
-            creation_context: Some(metadata.creation_context),
         })
         .collect()
 }
@@ -978,7 +952,7 @@ mod tests {
             ],
         );
 
-        let triggers = triggers_from_metadata(parse_trigger_metadata(&result).unwrap());
+        let triggers = parse_trigger_metadata(&result).unwrap();
 
         assert_eq!(triggers.len(), 2);
         assert_eq!(triggers[0].name, "z_add");
