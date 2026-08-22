@@ -14,9 +14,7 @@ use crate::domain::{
     },
 };
 
-use super::super::error::{
-    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
-};
+use super::super::error::validate_mode_probe;
 use super::super::policy::{
     MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
     mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
@@ -27,7 +25,7 @@ use super::metadata::mysql_metadata_columns_with_diagnostics;
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
     read_one_mysql_resultset, read_one_mysql_resultset_with_diagnostics,
-    run_mysql_process_with_timeout, write_mysql_statement,
+    run_mysql_process_with_timeout, validate_mysql_session_exit, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
@@ -363,24 +361,8 @@ async fn run_mysql_adhoc_process(
     };
 
     let result = finish_mysql_session(process).await?;
-    if has_mysql_cli_error(&result.error_bytes) {
-        return Err(query_failed_after_change(
-            classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                process.client_packet_limit_bytes,
-            ),
-            refresh_scope,
-        ));
-    }
-    if !result.status.success() && !result.forcibly_stopped {
-        return Err(query_failed_after_change(
-            classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                process.client_packet_limit_bytes,
-            ),
-            refresh_scope,
-        ));
-    }
+    validate_mysql_session_exit(&result, process.client_packet_limit_bytes)
+        .map_err(|error| query_failed_after_change(error, refresh_scope))?;
 
     Ok(MySqlExecutionResult {
         result_set: last_result_set,

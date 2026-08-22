@@ -4,9 +4,7 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::RefreshScope;
 
-use super::super::error::{
-    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
-};
+use super::super::error::validate_mode_probe;
 use super::super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, MySqlExecutionResult, validate_mysql_session_marker,
 };
@@ -14,7 +12,7 @@ use super::super::xml::parse_mysql_xml;
 use super::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
     read_one_mysql_resultset, read_one_mysql_resultset_with_diagnostics,
-    run_mysql_process_with_timeout, write_mysql_statement,
+    run_mysql_process_with_timeout, validate_mysql_session_exit, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn run_mysql_single_statement(
@@ -67,18 +65,7 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
     validate_mysql_session_marker(&marker_result, &session_marker)?;
 
     let result = finish_mysql_session(process).await?;
-    if has_mysql_cli_error(&result.error_bytes) {
-        return Err(classify_mysql_query_failure_with_packet_limit(
-            &result.error_bytes,
-            process.client_packet_limit_bytes,
-        ));
-    }
-    if !result.status.success() && !result.forcibly_stopped {
-        return Err(classify_mysql_query_failure_with_packet_limit(
-            &result.error_bytes,
-            process.client_packet_limit_bytes,
-        ));
-    }
+    validate_mysql_session_exit(&result, process.client_packet_limit_bytes)?;
 
     Ok(MySqlExecutionResult {
         result_set: Some(result_set),
@@ -113,18 +100,7 @@ pub(super) mod test_support {
         #[cfg(unix)]
         let stdout = read_one_mysql_resultset(process).await?;
         let result = finish_mysql_session(process).await?;
-        if has_mysql_cli_error(&result.error_bytes) {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                process.client_packet_limit_bytes,
-            ));
-        }
-        if !result.status.success() && !result.forcibly_stopped {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                process.client_packet_limit_bytes,
-            ));
-        }
+        validate_mysql_session_exit(&result, process.client_packet_limit_bytes)?;
         #[cfg(unix)]
         return parse_mysql_xml(&stdout);
         #[cfg(not(unix))]

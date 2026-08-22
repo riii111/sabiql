@@ -17,7 +17,7 @@ use crate::domain::{MySqlDiagnostic, RefreshScope};
 use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
 #[cfg(not(unix))]
 use super::error::classify_mysql_query_failure;
-use super::error::has_mysql_cli_error;
+use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{
@@ -241,6 +241,25 @@ pub(super) struct MySqlSessionResult {
     pub(super) error_bytes: Vec<u8>,
 }
 
+pub(super) fn validate_mysql_session_exit(
+    result: &MySqlSessionResult,
+    client_packet_limit_bytes: Option<usize>,
+) -> Result<(), DbOperationError> {
+    if has_mysql_cli_error(&result.error_bytes) {
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            &result.error_bytes,
+            client_packet_limit_bytes,
+        ));
+    }
+    if !result.status.success() && !result.forcibly_stopped {
+        return Err(classify_mysql_query_failure_with_packet_limit(
+            &result.error_bytes,
+            client_packet_limit_bytes,
+        ));
+    }
+    Ok(())
+}
+
 async fn shutdown_mysql_input(process: &mut MySqlProcess) -> Result<(), DbOperationError> {
     #[cfg(unix)]
     {
@@ -445,6 +464,54 @@ mod timeout_tests {
     #[test]
     fn keeps_production_query_timeout_at_31_seconds() {
         assert_eq!(MYSQL_QUERY_TIMEOUT, Duration::from_secs(31));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod session_exit_tests {
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::ExitStatus;
+
+    use crate::app::ports::outbound::DbOperationError;
+
+    use super::{MySqlSessionResult, validate_mysql_session_exit};
+
+    fn session(status: i32, forcibly_stopped: bool, error_bytes: &[u8]) -> MySqlSessionResult {
+        MySqlSessionResult {
+            status: ExitStatus::from_raw(status),
+            forcibly_stopped,
+            error_bytes: error_bytes.to_vec(),
+        }
+    }
+
+    #[test]
+    fn preserves_mysql_session_exit_rules() {
+        assert!(validate_mysql_session_exit(&session(0, false, b""), None).is_ok());
+        assert!(matches!(
+            validate_mysql_session_exit(
+                &session(
+                    0,
+                    true,
+                    b"ERROR 1054 (42S22): Unknown column missing_column"
+                ),
+                None,
+            ),
+            Err(DbOperationError::ObjectMissing(_))
+        ));
+        assert!(validate_mysql_session_exit(&session(1, false, b""), None).is_err());
+        assert!(validate_mysql_session_exit(&session(9, true, b""), None).is_ok());
+        assert!(matches!(
+            validate_mysql_session_exit(
+                &session(
+                    1,
+                    false,
+                    b"ERROR 2020 (HY000): Got packet bigger than 'max_allowed_packet' bytes",
+                ),
+                Some(33_554_432),
+            ),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL protocol packet exceeds the 33554432-byte client limit"
+        ));
     }
 }
 
