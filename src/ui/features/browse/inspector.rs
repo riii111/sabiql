@@ -1022,46 +1022,90 @@ mod tests {
             name: "idx_users_email".to_string(),
             columns: "email".to_string(),
             index_type: Some("B-tree".to_string()),
-            unique: true,
+            unique: false,
             partial: true,
-            detail: Some("CREATE INDEX ...".to_string()),
+            detail: Some("CREATE INDEX idx_users_email ON users(email)".to_string()),
         };
 
         let cases = [
-            ((false, false, false), vec!["Name", "Columns", "Unique"]),
+            (
+                (false, false, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
             (
                 (true, false, false),
                 vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
             ),
-            ((false, true, false), vec!["Name", "Columns", "Unique"]),
+            (
+                (false, true, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
             (
                 (true, true, false),
                 vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
             ),
             (
                 (false, false, true),
                 vec!["Name", "Columns", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
             ),
             (
                 (true, false, true),
                 vec!["Name", "Columns", "Type", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
             ),
             (
                 (false, true, true),
                 vec!["Name", "Columns", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
             ),
             (
                 (true, true, true),
                 vec!["Name", "Columns", "Type", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
             ),
         ];
 
-        for ((show_type, show_partial, has_details), expected_headers) in cases {
+        for ((show_type, show_partial, has_details), expected_headers, expected_cells) in cases {
             let headers = index_headers(show_type, show_partial, has_details);
             let cells = index_row_cells(&row, show_type, show_partial, has_details);
 
             assert_eq!(headers, expected_headers);
-            assert_eq!(headers.len(), cells.len());
+            assert_eq!(
+                cells,
+                expected_cells
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            );
         }
     }
 
