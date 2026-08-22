@@ -636,17 +636,14 @@ mod tests {
         }
 
         #[test]
-        fn option_file_is_removed_when_mysql_process_start_fails() {
+        fn metadata_session_owns_option_file_when_mysql_process_start_fails() {
             let target = parse_mysql_dsn("mysql://user:secret@localhost:3306").unwrap();
-            let (result, path) = {
-                let option_file = MySqlOptionFile::create(&target).unwrap();
-                let path = option_file.path.clone();
-                let result = MySqlProcess::spawn_with_program(
-                    OsStr::new("__sabiql_missing_mysql_binary__"),
-                    &path,
-                );
-                (result, path)
-            };
+            let option_file = MySqlOptionFile::create(&target).unwrap();
+            let path = option_file.path.clone();
+            let result = MySqlMetadataSession::spawn_with_metadata_program(
+                OsStr::new("__sabiql_missing_mysql_binary__"),
+                option_file,
+            );
 
             assert!(result.is_err());
             assert!(!path.exists());
@@ -1313,16 +1310,22 @@ done
     }
 
     mod metadata_session {
+        use crate::adapters::mysql::option_file::MySqlOptionFile;
+
         use super::*;
 
         #[tokio::test]
         async fn reuses_one_process_for_ordered_resultsets() {
-            let (_directory, program, option_file) = fake_mysql_multi();
+            let (_directory, program, option_file_path) = fake_mysql_multi();
+            let option_file = MySqlOptionFile {
+                path: option_file_path.clone(),
+            };
             let mut session = MySqlMetadataSession::spawn_with_metadata_program(
                 OsStr::new(&program),
-                &option_file,
+                option_file,
             )
             .expect("spawn fake mysql");
+            assert!(option_file_path.exists());
 
             session
                 .prepare_read_only()
@@ -1346,8 +1349,10 @@ done
             assert_eq!(empty_result.columns, ["known_column"]);
             assert!(empty_result.values.is_empty());
             session.finish().await.expect("finish fake mysql");
+            drop(session);
+            assert!(!option_file_path.exists());
 
-            let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
+            let log = fs::read_to_string(format!("{}.log", option_file_path.display())).unwrap();
             assert_eq!(
                 log.lines()
                     .filter(|line| line.starts_with("process="))

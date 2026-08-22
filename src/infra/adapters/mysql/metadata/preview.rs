@@ -71,15 +71,13 @@ async fn execute_preview_with_program(
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session = MySqlMetadataSession::spawn_with_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_program(program, option_file)?;
     let result = tokio::time::timeout(
         timeout,
         execute_preview_with_session(&mut session, database, schema, table, limit, offset),
     )
     .await;
-    let result = session.resolve_timed_result(result).await;
-    drop(option_file);
-    result
+    session.resolve_timed_result(result).await
 }
 
 async fn execute_preview_with_session(
@@ -423,6 +421,7 @@ log='{log}'
 printf 'argv=%s\n' "$*" >> "$log"
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 printf 'process=%s option=%s\n' "$$" "$option" >> "$log"
+if [ -e "$option" ]; then printf 'option-exists=yes\n' >> "$log"; else printf 'option-exists=no\n' >> "$log"; fi
 eof=$(printf '\004')
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
@@ -467,6 +466,22 @@ done
         permissions.set_mode(0o755);
         fs::set_permissions(&program, permissions).expect("fake MySQL permissions");
         (directory, program, log_path)
+    }
+
+    fn assert_option_file_removed(log_path: &std::path::Path) {
+        let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
+        assert!(log.contains("option-exists=yes"), "{log}");
+        let option = log
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("process=")
+                    .and_then(|line| line.split_once(" option=").map(|(_, path)| path))
+            })
+            .expect("option file path");
+        assert!(
+            !std::path::Path::new(option).exists(),
+            "option file remains"
+        );
     }
 
     fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
@@ -546,7 +561,7 @@ done
             "SELECT `payload` FROM `sabiql_test`.`items` ORDER BY `id` LIMIT 2 OFFSET 1"
         );
 
-        let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
+        let log = fs::read_to_string(&log_path).expect("fake MySQL transcript");
         assert_eq!(
             log.lines()
                 .filter(|line| line.starts_with("process="))
@@ -570,6 +585,7 @@ done
         .collect::<Vec<_>>();
         assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
         assert!(!log.contains("INFORMATION_SCHEMA.STATISTICS"), "{log}");
+        assert_option_file_removed(&log_path);
     }
 
     #[cfg(unix)]
@@ -591,15 +607,16 @@ done
             result,
             Err(DbOperationError::MetadataParseFailed(_))
         ));
-        let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
+        let log = fs::read_to_string(&log_path).expect("fake MySQL transcript");
         assert!(log.contains("INFORMATION_SCHEMA.COLUMNS"));
         assert!(!log.contains("LIMIT 2 OFFSET 1"), "{log}");
+        assert_option_file_removed(&log_path);
     }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn delayed_error_between_preview_and_completion_frames_is_classified() {
-        let (_directory, program, _log_path) = fake_preview_mysql(false, true);
+        let (_directory, program, log_path) = fake_preview_mysql(false, true);
         let result = execute_preview_with_program(
             "mysql://preview:secret@localhost:3306/sabiql_test",
             "sabiql_test",
@@ -616,6 +633,7 @@ done
             Err(DbOperationError::ObjectMissing(details))
                 if details.contains("delayed preview error")
         ));
+        assert_option_file_removed(&log_path);
     }
 
     #[test]

@@ -194,8 +194,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
     timeout: Duration,
 ) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
     let option_file = MySqlOptionFile::create(target)?;
-    let mut session =
-        MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
     let result = tokio::time::timeout(timeout, async {
         session.prepare_read_only().await?;
         let lower_case_table_names = session.probe().await?;
@@ -211,9 +210,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
         Ok((lower_case_table_names, results))
     })
     .await;
-    let result = session.resolve_timed_result(result).await;
-    drop(option_file);
-    result
+    session.resolve_timed_result(result).await
 }
 
 pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {
