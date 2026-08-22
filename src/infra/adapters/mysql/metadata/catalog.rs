@@ -118,12 +118,13 @@ pub(super) fn parse_columns_for_table(
     schema: &str,
     table: &str,
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
-    let columns = parse_column_metadata(result)?;
+    let mut columns = parse_column_metadata(result)?;
     if columns.is_empty() {
         return Err(DbOperationError::ObjectMissing(format!(
             "MySQL table not found: {schema}.{table}"
         )));
     }
+    columns.sort_by_key(|column| column.ordinal_position);
     Ok(columns)
 }
 
