@@ -77,7 +77,7 @@ fn parse_signature_column_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 10 {
+            if row.len() != SIGNATURE_COLUMNS_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("signature COLUMNS row"));
             }
             Ok(MySqlSignatureColumnMetadata {
@@ -342,7 +342,7 @@ fn parse_signature_unique_column_metadata(
     expect_columns(result, SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS)?;
     let mut unique_columns_by_table = HashMap::new();
     for row in &result.values {
-        if row.len() != 2 {
+        if row.len() != SIGNATURE_UNIQUE_COLUMNS_RESULT_COLUMNS.len() {
             return Err(metadata_shape_error("signature UNIQUE row"));
         }
         unique_columns_by_table

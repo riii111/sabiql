@@ -266,7 +266,7 @@ fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOpe
         .values
         .iter()
         .map(|row| {
-            if row.len() != 11 {
+            if row.len() != TRIGGER_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("TRIGGERS row"));
             }
             let timing = required_text(&row[2], "ACTION_TIMING")?
@@ -331,7 +331,7 @@ fn parse_index_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 10 {
+            if row.len() != INDEX_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("STATISTICS row"));
             }
             let column_name = optional_text(&row[4], "COLUMN_NAME")?;

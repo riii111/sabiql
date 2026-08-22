@@ -414,7 +414,7 @@ pub(super) fn parse_foreign_key_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 10 {
+            if row.len() != FOREIGN_KEY_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("foreign key row"));
             }
             Ok(MySqlForeignKeyMetadata {
@@ -518,7 +518,7 @@ pub(super) fn parse_unique_column_metadata(
         .values
         .iter()
         .map(|row| {
-            if row.len() != 1 {
+            if row.len() != UNIQUE_COLUMN_RESULT_COLUMNS.len() {
                 return Err(metadata_shape_error("single-column UNIQUE row"));
             }
             Ok(required_text(&row[0], "COLUMN_NAME")?.to_string())
