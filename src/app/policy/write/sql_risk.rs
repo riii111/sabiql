@@ -196,8 +196,8 @@ pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
             reason: "MySQL statements require separate destructive confirmations".to_string(),
         };
     }
-    let confirmation = if let Some(target) = table_confirmations.into_iter().next() {
-        target
+    let confirmation = if let Some(confirmation) = table_confirmations.into_iter().next() {
+        confirmation
     } else {
         ConfirmationType::Immediate
     };
