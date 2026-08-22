@@ -367,27 +367,6 @@ impl CompletionEngine {
         recent_columns: &[String],
         scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
-        self.get_candidates_inner(
-            content,
-            cursor_pos,
-            prep,
-            metadata,
-            table_detail,
-            recent_columns,
-            scope,
-        )
-    }
-
-    fn get_candidates_inner(
-        &self,
-        content: &str,
-        cursor_pos: usize,
-        prep: &PreparedCompletion,
-        metadata: Option<&DatabaseMetadata>,
-        table_detail: Option<&Table>,
-        recent_columns: &[String],
-        scope: CompletionDatabaseScope<'_>,
-    ) -> Vec<CompletionCandidate> {
         if prep.in_string_or_comment {
             return vec![];
         }
