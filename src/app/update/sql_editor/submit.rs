@@ -15,15 +15,12 @@ use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::start_adhoc_if_connected;
 
-enum SubmitDecision {
-    Block { reason: String },
-    Allow { risk: SqlRiskDecision },
-}
-
-fn into_submit_decision<Statement>(decision: MultiStatementDecision<Statement>) -> SubmitDecision {
+fn into_submit_result<Statement>(
+    decision: MultiStatementDecision<Statement>,
+) -> Result<SqlRiskDecision, String> {
     match decision {
-        MultiStatementDecision::Block { reason } => SubmitDecision::Block { reason },
-        MultiStatementDecision::Allow { risk, .. } => SubmitDecision::Allow { risk },
+        MultiStatementDecision::Block { reason } => Err(reason),
+        MultiStatementDecision::Allow { risk, .. } => Ok(risk),
     }
 }
 
@@ -42,13 +39,13 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
             let database_type = state.session.active_database_type_or_default();
 
             let decision = if database_type == DatabaseType::MySQL {
-                into_submit_decision(evaluate_mysql_multi_statement_with_lower_case_table_names(
+                into_submit_result(evaluate_mysql_multi_statement_with_lower_case_table_names(
                     &query,
                     state.session.active_database(),
                     state.session.mysql_lower_case_table_names(),
                 ))
             } else {
-                into_submit_decision(evaluate_multi_statement_for_database_with_context(
+                into_submit_result(evaluate_multi_statement_for_database_with_context(
                     database_type,
                     state.session.active_database(),
                     &query,
@@ -56,11 +53,11 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
             };
 
             match decision {
-                SubmitDecision::Block { reason } => {
+                Err(reason) => {
                     state.sql_modal.finish_adhoc_error(reason);
                     DispatchResult::handled()
                 }
-                SubmitDecision::Allow { risk } => handle_allowed_query(state, query, now, risk),
+                Ok(risk) => handle_allowed_query(state, query, now, risk),
             }
         }
         _ => DispatchResult::pass(),
