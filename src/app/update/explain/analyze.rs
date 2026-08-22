@@ -93,29 +93,14 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
-                    let Some(explain_query) = services
-                        .sql_dialect
-                        .build_explain_analyze_sql(database_type, &content)
-                    else {
-                        finish_explain_unsupported_analyze(state);
-                        return DispatchResult::handled();
-                    };
-                    let run_id = begin_explain_running(state, now);
-                    let database_generation = state.session.database_generation();
-                    return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
+                    return start_analyze_execution(
+                        state,
+                        now,
+                        services,
                         dsn,
                         database_type,
-                        database_generation,
-                        run_id,
-                        query: explain_query,
-                        source_query: content,
-                        is_analyze: true,
-                        access_mode: if database_type == DatabaseType::MySQL {
-                            AccessMode::ReadOnly
-                        } else {
-                            AccessMode::from_read_only(state.session.is_read_only())
-                        },
-                    }]);
+                        content,
+                    );
                 }
             }
 
@@ -146,29 +131,7 @@ pub(super) fn reduce_analyze(
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 }
-                let Some(explain_query) = services
-                    .sql_dialect
-                    .build_explain_analyze_sql(database_type, &query)
-                else {
-                    finish_explain_unsupported_analyze(state);
-                    return DispatchResult::handled();
-                };
-                let run_id = begin_explain_running(state, now);
-                let database_generation = state.session.database_generation();
-                return DispatchResult::handled_with(vec![Effect::ExecuteExplain {
-                    dsn,
-                    database_type,
-                    database_generation,
-                    run_id,
-                    query: explain_query,
-                    source_query: query,
-                    is_analyze: true,
-                    access_mode: if database_type == DatabaseType::MySQL {
-                        AccessMode::ReadOnly
-                    } else {
-                        AccessMode::from_read_only(state.session.is_read_only())
-                    },
-                }]);
+                return start_analyze_execution(state, now, services, dsn, database_type, query);
             }
             DispatchResult::handled()
         }
@@ -185,4 +148,37 @@ pub(super) fn reduce_analyze(
         }
         _ => DispatchResult::pass(),
     }
+}
+
+fn start_analyze_execution(
+    state: &mut AppState,
+    now: Instant,
+    services: &AppServices,
+    dsn: String,
+    database_type: DatabaseType,
+    source_query: String,
+) -> DispatchResult {
+    let Some(query) = services
+        .sql_dialect
+        .build_explain_analyze_sql(database_type, &source_query)
+    else {
+        finish_explain_unsupported_analyze(state);
+        return DispatchResult::handled();
+    };
+    let run_id = begin_explain_running(state, now);
+    let database_generation = state.session.database_generation();
+    DispatchResult::handled_with(vec![Effect::ExecuteExplain {
+        dsn,
+        database_type,
+        database_generation,
+        run_id,
+        query,
+        source_query,
+        is_analyze: true,
+        access_mode: if database_type == DatabaseType::MySQL {
+            AccessMode::ReadOnly
+        } else {
+            AccessMode::from_read_only(state.session.is_read_only())
+        },
+    }])
 }
