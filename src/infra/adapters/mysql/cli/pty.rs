@@ -137,33 +137,30 @@ pub(super) async fn read_pty_all(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
 pub(super) async fn read_pty_until_idle(pty: &mut MySqlPty) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
-    read_pty_until_idle_from(&mut pty.output, output, false, None).await
+    read_pty_until_idle_from(&mut pty.output, output, None).await
 }
 
 pub(super) async fn read_pty_until_idle_from<R>(
     reader: &mut R,
     mut output: Vec<u8>,
-    wait_for_first_byte: bool,
-    first_byte_timeout: Option<Duration>,
+    initial_byte_timeout: Option<Duration>,
 ) -> io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {
     let mut chunk = [0; 4096];
     loop {
-        if wait_for_first_byte && output.is_empty() {
-            let read = if let Some(timeout) = first_byte_timeout {
-                tokio::time::timeout(timeout, reader.read(&mut chunk))
-                    .await
-                    .map_err(|_| {
-                        io::Error::new(
-                            io::ErrorKind::TimedOut,
-                            "initial MySQL PTY output wait timed out",
-                        )
-                    })?
-            } else {
-                reader.read(&mut chunk).await
-            };
+        if output.is_empty()
+            && let Some(timeout) = initial_byte_timeout
+        {
+            let read = tokio::time::timeout(timeout, reader.read(&mut chunk))
+                .await
+                .map_err(|_| {
+                    io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "initial MySQL PTY output wait timed out",
+                    )
+                })?;
             match read {
                 Ok(0) => return Ok(output),
                 Ok(count) => output.extend_from_slice(&chunk[..count]),
@@ -503,9 +500,10 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     #[tokio::test(start_paused = true)]
     async fn keeps_zero_byte_idle_timeout_for_production_pty_reads() {
         let (_writer, mut reader) = tokio::io::duplex(1);
-        let read_task = tokio::spawn(async move {
-            read_pty_until_idle_from(&mut reader, Vec::new(), false, None).await
-        });
+        let read_task =
+            tokio::spawn(
+                async move { read_pty_until_idle_from(&mut reader, Vec::new(), None).await },
+            );
 
         tokio::task::yield_now().await;
         tokio::time::advance(Duration::from_millis(101)).await;
@@ -517,8 +515,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     async fn waits_for_the_first_pty_byte_before_using_idle_timeout() {
         let (mut writer, mut reader) = tokio::io::duplex(1);
         let read_task = tokio::spawn(async move {
-            read_pty_until_idle_from(&mut reader, Vec::new(), true, Some(Duration::from_secs(1)))
-                .await
+            read_pty_until_idle_from(&mut reader, Vec::new(), Some(Duration::from_secs(1))).await
         });
 
         tokio::task::yield_now().await;
@@ -533,8 +530,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
     async fn times_out_when_test_support_pty_has_no_initial_output() {
         let (_writer, mut reader) = tokio::io::duplex(1);
         let read_task = tokio::spawn(async move {
-            read_pty_until_idle_from(&mut reader, Vec::new(), true, Some(Duration::from_secs(1)))
-                .await
+            read_pty_until_idle_from(&mut reader, Vec::new(), Some(Duration::from_secs(1))).await
         });
 
         tokio::task::yield_now().await;

@@ -17,7 +17,7 @@ async fn read_pty_until_first_byte_then_idle(
 ) -> io::Result<Vec<u8>> {
     let output = std::mem::take(&mut pty.pending);
     pty.frame_scanner.reset();
-    read_pty_until_idle_from(&mut pty.output, output, true, Some(first_byte_timeout)).await
+    read_pty_until_idle_from(&mut pty.output, output, Some(first_byte_timeout)).await
 }
 
 pub(in crate::adapters::mysql) async fn run_mysql_cli_script_with_program(
