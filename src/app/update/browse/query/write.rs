@@ -262,7 +262,15 @@ pub fn reduce_write(
             state.result_interaction.clear_write_preview();
             match operation {
                 WriteOperation::Update => {
-                    if *affected_rows != 1 {
+                    if *affected_rows == 1 {
+                        state.messages.set_success_at(
+                            write_message_with_diagnostics(
+                                "Updated 1 row".to_string(),
+                                diagnostics,
+                            ),
+                            now,
+                        );
+                    } else {
                         state.messages.set_error_at(
                             write_message_with_diagnostics(
                                 format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
@@ -270,22 +278,8 @@ pub fn reduce_write(
                             ),
                             now,
                         );
-                        state.result_interaction.clear_cell_edit();
-                        state.modal.set_mode(InputMode::Normal);
-
-                        let page = state.query.pagination.current_page();
-                        let generation = state.session.selection_generation();
-                        return match preview_effect_for_current_table(state, now, page, generation)
-                        {
-                            Some(effect) => DispatchResult::handled_with(vec![effect]),
-                            None => DispatchResult::handled(),
-                        };
                     }
 
-                    state.messages.set_success_at(
-                        write_message_with_diagnostics("Updated 1 row".to_string(), diagnostics),
-                        now,
-                    );
                     state.result_interaction.clear_cell_edit();
                     state.modal.set_mode(InputMode::Normal);
 
@@ -1365,6 +1359,27 @@ mod tests {
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
+            );
+            assert!(matches!(
+                effects.first(),
+                Some(Effect::ExecutePreview { .. })
+            ));
+        }
+
+        #[test]
+        fn execute_write_with_multiple_rows_sets_error() {
+            let mut state = editable_state();
+            let action = write_succeeded_action(&mut state, 2);
+
+            let effects =
+                dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
+
+            assert_eq!(effects.len(), 1);
+            assert_eq!(state.input_mode(), InputMode::Normal);
+            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("UPDATE expected 1 row, but affected 2 rows")
             );
             assert!(matches!(
                 effects.first(),
