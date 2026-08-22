@@ -507,7 +507,7 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="wrong">x</field></row></resultset>'
     else
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
     fi
     continue
   fi
@@ -520,7 +520,7 @@ while IFS= read -r line; do
         exit 1
       fi
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
       ;;
     *TABLES*)
       if [ "$mode" = "empty" ]; then
@@ -659,6 +659,7 @@ done
                     "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
+                    "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",
@@ -672,6 +673,7 @@ done
                     "SET SESSION autocommit=1, completion_type=NO_CHAIN",
                     "SET SESSION TRANSACTION READ ONLY",
                     "__sabiql_session_marker",
+                    "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "INFORMATION_SCHEMA.TABLES",
                     "INFORMATION_SCHEMA.COLUMNS",

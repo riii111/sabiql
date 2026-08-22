@@ -18,12 +18,11 @@ use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_a
 use super::error::classify_mysql_query_failure;
 use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, map_mysql_cli_spawn_error,
-    validate_mode_probe,
 };
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_change, validate_mysql_session_marker,
+    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_change, validate_mysql_session,
 };
 #[cfg(unix)]
 use super::pty::{
@@ -83,19 +82,6 @@ impl MySqlProcess {
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
         Self::spawn_with_query_args(program, mysql_adhoc_args(option_file))
-    }
-
-    pub(in crate::adapters::mysql::cli) async fn probe_sql_mode(
-        &mut self,
-    ) -> Result<(), DbOperationError> {
-        let probe_marker = Uuid::new_v4().simple().to_string();
-        let probe_query = format!(
-            "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
-        );
-        write_mysql_statement(self, &probe_query).await?;
-        let probe_xml = read_one_mysql_resultset(self).await?;
-        let probe = parse_mysql_xml(&probe_xml)?;
-        validate_mode_probe(&probe, &probe_marker)
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_query_args(
@@ -349,7 +335,9 @@ pub(super) async fn configure_mysql_session(
     }
     write_mysql_statement(
         process,
-        &format!("SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"),
+        &format!(
+            "SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS __sabiql_sql_mode"
+        ),
     )
     .await?;
     loop {
@@ -358,7 +346,7 @@ pub(super) async fn configure_mysql_session(
         if result.columns.is_empty() && result.values.is_empty() {
             continue;
         }
-        return validate_mysql_session_marker(&result, &marker);
+        return validate_mysql_session(&result, &marker);
     }
 }
 
@@ -724,15 +712,15 @@ mod tests {
         fs::write(&option_file, "[client]\n").unwrap();
         let program = directory.path().join("mysql");
         let log_file = PathBuf::from(format!("{}.log", option_file.display()));
-        let probe_response = match mode {
+        let session_response = match mode {
             "missing" => "exit 0".to_string(),
             "invalid" => {
                 "printf '%s\\n' '<resultset><row><field name=\"wrong\">x</field></row></resultset>'"
                     .to_string()
             }
-            "unsupported" => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">ANSI_QUOTES</field></row></resultset>'".to_string(),
+            "unsupported" => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_session_marker\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">ANSI_QUOTES</field></row></resultset>'".to_string(),
             "timeout" => "while :; do :; done".to_string(),
-            _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_probe\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
+            _ => "printf '%s\\n' '<resultset><row><field name=\"__sabiql_session_marker\">'\"$marker\"'</field><field name=\"__sabiql_sql_mode\">STRICT_TRANS_TABLES</field></row></resultset>'".to_string(),
         };
         let user_response = if mode == "failure" {
             "printf '%s\\n' '<resultset><row><field name=\"partial\">row</field></row></resultset>'\n    printf '%s\\n' 'ERROR 1064 (42000): syntax error' >&2\n    exit 1"
@@ -772,13 +760,13 @@ while IFS= read -r line; do
     "SET SESSION TRANSACTION READ ONLY")
       {session_failure}
       ;;
-    *__sabiql_probe*)
-      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)'.*/\\1/")
-      {probe_response}
-      ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      if printf '%s\n' "$line" | grep -q sql_mode; then
+        {session_response}
+      else
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      fi
       ;;
     *)
       {user_response}
@@ -814,13 +802,13 @@ while IFS= read -r line; do
       ;;
     ";"|"SET SESSION autocommit=1, completion_type=NO_CHAIN"|"SET SESSION TRANSACTION READ ONLY"|"SET SESSION TRANSACTION READ WRITE")
       ;;
-    *__sabiql_probe*)
-      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
-      ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      if printf '%s\n' "$line" | grep -q sql_mode; then
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      fi
       ;;
     *)
       printf '%s\n' '<resultset><row><field name="value">tree</field></row></resultset>'
@@ -882,11 +870,6 @@ printf 'process=%s\n' "$$" >> "$log"
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "$log"
   case "$line" in
-    *__sabiql_probe*)
-      marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
-      printf '%s\t%s\n' '__sabiql_probe' '__sabiql_sql_mode'
-      printf '%s\t%s\n' "$marker" 'STRICT_TRANS_TABLES'
-      ;;
     *"SET SESSION autocommit=1, completion_type=NO_CHAIN"*)
       ;;
     *"SET SESSION TRANSACTION READ ONLY"*)
@@ -894,8 +877,8 @@ while IFS= read -r line; do
       ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
-      printf '%s\n' '__sabiql_session_marker'
-      printf '%s\n' "$marker"
+      printf '%s\t%s\n' '__sabiql_session_marker' '__sabiql_sql_mode'
+      printf '%s\t%s\n' "$marker" 'STRICT_TRANS_TABLES'
       ;;
     *"SHOW DATABASES"*)
       printf '%s\n' 'Database'
@@ -965,11 +948,7 @@ while IFS= read -r line; do
       ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_probe.*/\\1/")
-      if printf '%s\n' "$line" | grep -q lower_case_table_names; then
-        printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
-      else
-        printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
-      fi
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     "SET SESSION autocommit=1, completion_type=NO_CHAIN"|"SET SESSION TRANSACTION READ ONLY")
       ;;
@@ -977,7 +956,11 @@ while IFS= read -r line; do
       ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\\([^']*\\)' AS __sabiql_session_marker.*/\\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      if printf '%s\n' "$line" | grep -q sql_mode; then
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      fi
       ;;
       *__sabiql_marker*)
       {marker_response}
@@ -1079,7 +1062,7 @@ done
         }
 
         #[tokio::test]
-        async fn sends_user_sql_only_after_a_valid_mode_probe() {
+        async fn sends_user_sql_only_after_a_valid_session_configuration() {
             let (_directory, program, log_file) = fake_mysql("success");
             let option_file = log_file.with_extension("cnf");
             fs::write(&option_file, "[client]\n").unwrap();
@@ -1099,7 +1082,7 @@ done
             let positions = [
                 MYSQL_SESSION_SETTINGS,
                 MYSQL_SESSION_MARKER_COLUMN,
-                "__sabiql_probe",
+                "__sabiql_sql_mode",
                 "SELECT 123",
             ]
             .into_iter()
@@ -1221,11 +1204,11 @@ done
                 .find(MYSQL_READ_ONLY_STATEMENT)
                 .expect("read-only session statement");
             let settings_index = log.find(MYSQL_SESSION_SETTINGS).expect("session settings");
-            let probe_index = log.find("__sabiql_probe").expect("mode probe");
+            let mode_index = log.find("__sabiql_sql_mode").expect("sql_mode validation");
             let user_index = log.find("SELECT 2").expect("user statement");
             assert!(settings_index < session_index, "{log}");
-            assert!(session_index < probe_index, "{log}");
-            assert!(probe_index < user_index, "{log}");
+            assert!(session_index < mode_index, "{log}");
+            assert!(mode_index < user_index, "{log}");
             assert!(session_index < user_index, "{log}");
             assert!(log.contains(MYSQL_SESSION_MARKER_COLUMN));
         }
@@ -1377,6 +1360,7 @@ done
                 MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,
                 MYSQL_SESSION_MARKER_COLUMN,
+                "__sabiql_sql_mode",
                 "__sabiql_probe",
                 "SELECT TABLES",
                 "SELECT COLUMNS",
@@ -1413,7 +1397,7 @@ done
                 MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,
                 MYSQL_SESSION_MARKER_COLUMN,
-                "__sabiql_probe",
+                "__sabiql_sql_mode",
                 "SHOW DATABASES",
             ]
             .into_iter()

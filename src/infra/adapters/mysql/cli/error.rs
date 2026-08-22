@@ -2,8 +2,7 @@ use std::io::{self, Write};
 
 use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
 
-use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind, validate_sql_mode};
-use super::xml::MySqlResultSet;
+use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind};
 
 pub(super) fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
     if error.kind() == io::ErrorKind::NotFound {
@@ -48,32 +47,6 @@ pub(super) fn write_mysql_transcript_line(line: &str) {
     let mut stderr = io::stderr();
     let _ = stderr.write_all(line.as_bytes());
     let _ = stderr.write_all(b"\n");
-}
-
-pub(super) fn validate_mode_probe(
-    result: &MySqlResultSet,
-    marker: &str,
-) -> Result<(), DbOperationError> {
-    if result.values.len() != 1 || result.columns != ["__sabiql_probe", "__sabiql_sql_mode"] {
-        return Err(DbOperationError::QueryFailed(
-            "mysql sql_mode probe returned an unexpected result".to_string(),
-        ));
-    }
-    let values = &result.values[0];
-    if values.len() != 2 {
-        return Err(DbOperationError::QueryFailed(
-            "mysql sql_mode probe returned an unexpected result".to_string(),
-        ));
-    }
-    if values[0].as_str() != Some(marker) {
-        return Err(DbOperationError::QueryFailed(
-            "mysql sql_mode probe marker did not match".to_string(),
-        ));
-    }
-    let mode = values[1].as_str().ok_or_else(|| {
-        DbOperationError::QueryFailed("mysql sql_mode probe returned no mode".to_string())
-    })?;
-    validate_sql_mode(mode)
 }
 
 pub(super) fn classify_mysql_query_failure(stderr: &[u8]) -> DbOperationError {

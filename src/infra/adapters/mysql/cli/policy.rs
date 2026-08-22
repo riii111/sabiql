@@ -12,6 +12,7 @@ use crate::domain::{
 };
 
 use super::super::sql;
+use super::probe::validate_sql_mode;
 use super::xml::MySqlResultSet;
 
 pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
@@ -372,6 +373,25 @@ pub(super) fn validate_mysql_session_marker(
     Ok(())
 }
 
+pub(super) fn validate_mysql_session(
+    result: &MySqlResultSet,
+    marker: &str,
+) -> Result<(), DbOperationError> {
+    if result.columns != [MYSQL_SESSION_MARKER_COLUMN, "__sabiql_sql_mode"]
+        || result.values.len() != 1
+        || result.values[0].len() != 2
+        || result.values[0][0].as_str() != Some(marker)
+    {
+        return Err(DbOperationError::QueryFailed(
+            "mysql read-only session marker did not match".to_string(),
+        ));
+    }
+    let mode = result.values[0][1].as_str().ok_or_else(|| {
+        DbOperationError::QueryFailed("mysql sql_mode probe returned no mode".to_string())
+    })?;
+    validate_sql_mode(mode)
+}
+
 pub(super) fn query_failed_after_change(
     error: DbOperationError,
     refresh_scope: RefreshScope,
@@ -482,7 +502,6 @@ pub(super) fn mysql_possible_refresh_scope(statements: &[MySqlStatement]) -> Ref
 mod tests {
     use crate::app::ports::outbound::UnsupportedOperationKind;
 
-    use super::super::error::validate_mode_probe;
     use super::*;
 
     #[test]
@@ -565,29 +584,47 @@ mod tests {
     }
 
     #[test]
-    fn mode_probe_requires_marker_and_allowed_mode_before_user_sql() {
-        let probe = MySqlResultSet {
-            columns: vec![
-                "__sabiql_probe".to_string(),
-                "__sabiql_sql_mode".to_string(),
-            ],
-            values: vec![vec![
-                QueryValue::Text("marker".to_string()),
-                QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
-            ]],
-        };
-        assert!(validate_mode_probe(&probe, "marker").is_ok());
+    fn session_bootstrap_requires_marker_and_allowed_mode() {
+        fn make_session(mode: QueryValue, marker: &str) -> MySqlResultSet {
+            MySqlResultSet {
+                columns: vec![
+                    MYSQL_SESSION_MARKER_COLUMN.to_string(),
+                    "__sabiql_sql_mode".to_string(),
+                ],
+                values: vec![vec![QueryValue::Text(marker.to_string()), mode]],
+            }
+        }
 
-        let mut unsupported = probe;
-        unsupported.values[0][1] = QueryValue::Text("ANSI_QUOTES".to_string());
+        let session = make_session(
+            QueryValue::Text("STRICT_TRANS_TABLES".to_string()),
+            "marker",
+        );
+        assert!(validate_mysql_session(&session, "marker").is_ok());
+
+        let unsupported = make_session(QueryValue::Text("ANSI_QUOTES".to_string()), "marker");
         assert!(matches!(
-            validate_mode_probe(&unsupported, "marker"),
+            validate_mysql_session(&unsupported, "marker"),
             Err(DbOperationError::UnsupportedOperationWithKind {
                 kind: UnsupportedOperationKind::SessionMode,
                 ..
             })
         ));
+
+        let missing_mode = make_session(QueryValue::Null, "marker");
+        assert!(matches!(
+            validate_mysql_session(&missing_mode, "marker"),
+            Err(DbOperationError::QueryFailed(details)) if details.contains("no mode")
+        ));
+
+        let mismatched_marker =
+            make_session(QueryValue::Text("STRICT_TRANS_TABLES".to_string()), "other");
+        assert!(matches!(
+            validate_mysql_session(&mismatched_marker, "marker"),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "mysql read-only session marker did not match"
+        ));
     }
+
     #[test]
     fn metadata_only_select_rejects_known_side_effects() {
         for query in [
