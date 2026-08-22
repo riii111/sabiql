@@ -12,7 +12,12 @@ pub(super) fn mysql_connection_args(option_file: &Path) -> Vec<String> {
 }
 
 pub(super) fn mysql_query_args(option_file: &Path) -> Vec<String> {
-    mysql_result_args(option_file, true)
+    let mut args = mysql_result_args(option_file);
+    args.extend([
+        format!("--max-allowed-packet={MYSQL_CLIENT_MAX_PACKET_BYTES}"),
+        "--quick".to_string(),
+    ]);
+    args
 }
 
 pub(super) fn mysql_adhoc_args(option_file: &Path) -> Vec<String> {
@@ -22,23 +27,15 @@ pub(super) fn mysql_adhoc_args(option_file: &Path) -> Vec<String> {
 }
 
 pub(super) fn mysql_metadata_session_args(option_file: &Path) -> Vec<String> {
-    mysql_result_args(option_file, false)
+    mysql_result_args(option_file)
 }
 
-fn mysql_result_args(option_file: &Path, quick: bool) -> Vec<String> {
+fn mysql_result_args(option_file: &Path) -> Vec<String> {
     let mut args = mysql_connection_args(option_file);
     args.extend([
         "--xml".to_string(),
         "--binary-as-hex".to_string(),
         "--binary-mode".to_string(),
-    ]);
-    if quick {
-        args.extend([
-            format!("--max-allowed-packet={MYSQL_CLIENT_MAX_PACKET_BYTES}"),
-            "--quick".to_string(),
-        ]);
-    }
-    args.extend([
         "--unbuffered".to_string(),
         "--default-character-set=utf8mb4".to_string(),
         "--batch".to_string(),
@@ -96,13 +93,13 @@ mod tests {
                 "--xml",
                 "--binary-as-hex",
                 "--binary-mode",
-                "--max-allowed-packet=33554432",
-                "--quick",
                 "--unbuffered",
                 "--default-character-set=utf8mb4",
                 "--batch",
                 "--silent",
                 "--prompt=",
+                "--max-allowed-packet=33554432",
+                "--quick",
             ]
         );
         assert!(args.iter().all(|argument| !argument.contains("password")));
@@ -134,7 +131,7 @@ mod tests {
     }
 
     #[test]
-    fn metadata_session_arguments_keep_result_options_without_quick() {
+    fn metadata_session_arguments_keep_result_options_without_query_flags() {
         let args = mysql_metadata_session_args(Path::new("/tmp/sabiql-mysql.cnf"));
 
         assert_eq!(

@@ -554,7 +554,12 @@ done
             1
         );
         let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
-        assert!(argv.contains("--quick"), "{argv}");
+        assert_eq!(argv.matches("--quick").count(), 1, "{argv}");
+        assert_eq!(
+            argv.matches("--max-allowed-packet=33554432").count(),
+            1,
+            "{argv}"
+        );
         let positions = [
             "SET SESSION autocommit=1, completion_type=NO_CHAIN",
             "SET SESSION TRANSACTION READ ONLY",
