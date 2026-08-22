@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-use std::io;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -8,7 +7,7 @@ use tokio::process::{Child, Command};
 use tokio::time::timeout;
 use uuid::Uuid;
 
-use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{MySqlDiagnostic, QueryValue};
 
 use super::super::args::mysql_metadata_args;
@@ -157,16 +156,7 @@ impl MySqlMetadataProcess {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         sanitize_mysql_command_environment(&mut command);
-        let mut child = command.spawn().map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                DbOperationError::CommandNotFound {
-                    command: DatabaseCli::MySql,
-                    details: error.to_string(),
-                }
-            } else {
-                DbOperationError::ConnectionFailed(error.to_string())
-            }
-        })?;
+        let mut child = command.spawn().map_err(super::map_mysql_cli_spawn_error)?;
         let stdin = child.stdin.take().ok_or_else(|| {
             DbOperationError::QueryFailed("mysql stdin was not piped".to_string())
         })?;
