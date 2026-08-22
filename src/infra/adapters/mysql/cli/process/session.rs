@@ -128,7 +128,7 @@ impl MySqlMetadataSession {
         result
     }
 
-    pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
+    async fn cleanup(&mut self) {
         cleanup_mysql_process(&mut self.process).await;
     }
 }
