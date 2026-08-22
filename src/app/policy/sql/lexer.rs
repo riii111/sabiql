@@ -1286,43 +1286,17 @@ impl SqlLexer {
         &statement_tokens[..end_idx]
     }
 
-    fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
-        tokens
-            .iter()
-            .enumerate()
-            .filter_map(|(i, t)| {
-                if t.kind == TokenKind::Punctuation(';') {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
     fn find_statement_range(&self, tokens: &[Token], cursor_pos: usize) -> (usize, usize) {
-        let semicolons = self.find_semicolon_positions(tokens);
-
-        if semicolons.is_empty() {
-            // Single statement - entire token stream
-            return (0, tokens.len());
-        }
-
-        // Find which statement the cursor belongs to
         let mut start = 0;
-        for &semi_idx in &semicolons {
-            if semi_idx >= tokens.len() {
-                break;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind == TokenKind::Punctuation(';') {
+                if cursor_pos < token.end {
+                    return (start, index + 1);
+                }
+                start = index + 1;
             }
-            let semi_pos = tokens[semi_idx].end;
-            if cursor_pos < semi_pos {
-                // Cursor is before this semicolon
-                return (start, semi_idx + 1);
-            }
-            start = semi_idx + 1;
         }
 
-        // Cursor is after the last semicolon
         (start, tokens.len())
     }
 
