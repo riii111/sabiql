@@ -1356,6 +1356,7 @@ done
             );
             let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
             assert!(!argv.contains("--quick"), "{argv}");
+            assert!(!argv.contains("--max-allowed-packet="), "{argv}");
             let positions = [
                 MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,
