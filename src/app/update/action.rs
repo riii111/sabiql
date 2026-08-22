@@ -23,8 +23,7 @@ use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, QueryResult, QuerySource, Table, TableSignatureSnapshot,
-    WriteDiagnostic,
+    DatabaseMetadata, DiagnosticField, QueryResult, Table, TableSignatureSnapshot, WriteDiagnostic,
 };
 
 #[derive(Clone, thiserror::Error)]
@@ -316,6 +315,18 @@ impl fmt::Debug for ConnectionTarget {
 // setup -> DB structure -> SQL -> query results -> result derivatives.
 // Product groups follow the object in the action sentence, not UI/reducer names
 // (e.g., MetadataLoaded -> Database structure, QueryCompleted -> Query results).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryCompletionContext {
+    Adhoc,
+    Preview { generation: u64, target_page: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueryFailureContext {
+    Adhoc,
+    Preview { generation: u64 },
+}
+
 #[derive(Debug, Clone)]
 pub enum Action {
     // App shell
@@ -592,15 +603,13 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         result: Arc<QueryResult>,
-        generation: u64,
-        target_page: Option<usize>,
+        context: QueryCompletionContext,
     },
     QueryFailed {
         dsn: String,
         run_id: u64,
         error: DbOperationError,
-        generation: u64,
-        source: QuerySource,
+        context: QueryFailureContext,
     },
     RevealPendingPreview {
         generation: u64,

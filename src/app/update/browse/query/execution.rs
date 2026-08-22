@@ -10,7 +10,9 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
 use crate::ports::outbound::{AccessMode, DbOperationError};
 use crate::services::AppServices;
-use crate::update::action::{Action, ModalKind, TableTarget};
+use crate::update::action::{
+    Action, ModalKind, QueryCompletionContext, QueryFailureContext, TableTarget,
+};
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
 use crate::update::helpers::reject_pending_mysql_connection_probe;
@@ -29,25 +31,32 @@ pub fn reduce_execution(
             dsn,
             run_id,
             result,
-            generation,
-            target_page,
+            context,
         } => {
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
-            if *generation != 0 && *generation != state.session.selection_generation() {
+            if let QueryCompletionContext::Preview { generation, .. } = context
+                && *generation != state.session.selection_generation()
+            {
                 return DispatchResult::handled();
             }
 
-            if *generation != 0
+            if let QueryCompletionContext::Preview {
+                generation,
+                target_page,
+            } = context
                 && result.source == QuerySource::Preview
                 && state.session.selected_table_key().is_some()
                 && !state.session.is_table_detail_terminal(*generation)
             {
                 state.query.mark_idle();
-                state
-                    .query
-                    .defer_preview(Arc::clone(result), *generation, *target_page, true);
+                state.query.defer_preview(
+                    Arc::clone(result),
+                    *generation,
+                    Some(*target_page),
+                    true,
+                );
                 return DispatchResult::handled();
             }
 
@@ -78,7 +87,11 @@ pub fn reduce_execution(
                 // Preview errors arrive as error results and are shown in the
                 // Result pane like any other preview.
                 (QuerySource::Preview, _) => {
-                    apply_preview_result(state, result, *target_page, now, true);
+                    let target_page = match context {
+                        QueryCompletionContext::Adhoc => None,
+                        QueryCompletionContext::Preview { target_page, .. } => Some(*target_page),
+                    };
+                    apply_preview_result(state, result, target_page, now, true);
                 }
             }
 
@@ -88,23 +101,20 @@ pub fn reduce_execution(
             dsn,
             run_id,
             error,
-            generation,
-            source,
+            context,
         } => {
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
-            if *source == QuerySource::Preview
-                && matches!(error, DbOperationError::PreviewSizeExceeded(_))
-            {
+            let is_preview = matches!(context, QueryFailureContext::Preview { .. });
+            if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
                 state.query.mark_idle();
                 state.messages.set_error_at(error.user_message(), now);
                 return DispatchResult::handled();
             }
 
-            if *source == QuerySource::Preview
-                && *generation != 0
+            if let QueryFailureContext::Preview { generation } = context
                 && *generation == state.session.selection_generation()
                 && state.session.selected_table_key().is_some()
                 && !state.session.is_table_detail_terminal(*generation)
@@ -125,9 +135,13 @@ pub fn reduce_execution(
                 return DispatchResult::handled();
             }
 
-            if *generation == 0 || *generation == state.session.selection_generation() {
+            if !matches!(
+                context,
+                QueryFailureContext::Preview { generation }
+                    if *generation != state.session.selection_generation()
+            ) {
                 state.query.mark_idle();
-                if *source == QuerySource::Preview {
+                if is_preview {
                     state.result_interaction.reset_view();
                     state
                         .query
@@ -150,10 +164,10 @@ pub fn reduce_execution(
                 DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
                 _ => RefreshScope::None,
             };
-            let effects = if *source == QuerySource::Adhoc {
-                refresh_effects_for_scope(state, refresh_scope, now)
-            } else {
+            let effects = if is_preview {
                 vec![]
+            } else {
+                refresh_effects_for_scope(state, refresh_scope, now)
             };
             DispatchResult::handled_with(effects)
         }
@@ -572,8 +586,10 @@ mod tests {
             dsn: state.session.dsn().unwrap_or_default().to_string(),
             run_id,
             error,
-            generation,
-            source,
+            context: match source {
+                QuerySource::Adhoc => QueryFailureContext::Adhoc,
+                QuerySource::Preview => QueryFailureContext::Preview { generation },
+            },
         }
     }
 
@@ -1274,8 +1290,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     result: adhoc_result(),
-                    generation: 0,
-                    target_page: None,
+                    context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
                 &AppServices::stub(),
@@ -1299,8 +1314,7 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id: stale_run_id,
                     result: adhoc_result(),
-                    generation: 0,
-                    target_page: None,
+                    context: QueryCompletionContext::Adhoc,
                 },
                 Instant::now(),
                 &AppServices::stub(),

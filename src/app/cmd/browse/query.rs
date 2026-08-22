@@ -6,16 +6,16 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::query_task::QueryTaskRegistry;
+use crate::domain::DatabaseType;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
-use crate::domain::{DatabaseType, QuerySource};
 use crate::domain::{
     mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
     sqlite_explain_query_plan_text_from_result,
 };
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
-use crate::update::action::Action;
+use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
@@ -111,8 +111,10 @@ pub async fn run(
                             dsn,
                             run_id,
                             result: Arc::new(result),
-                            generation,
-                            target_page: Some(target_page),
+                            context: QueryCompletionContext::Preview {
+                                generation,
+                                target_page,
+                            },
                         })
                         .await
                         .ok();
@@ -122,8 +124,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             error: e,
-                            generation,
-                            source: QuerySource::Preview,
+                            context: QueryFailureContext::Preview { generation },
                         })
                         .await
                         .ok();
@@ -223,8 +224,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             result: Arc::new(result),
-                            generation: 0,
-                            target_page: None,
+                            context: QueryCompletionContext::Adhoc,
                         })
                         .await
                         .ok();
@@ -245,8 +245,7 @@ pub async fn run(
                             dsn,
                             run_id,
                             error: e,
-                            generation: 0,
-                            source: QuerySource::Adhoc,
+                            context: QueryFailureContext::Adhoc,
                         })
                         .await
                         .ok();
@@ -655,14 +654,13 @@ mod tests {
         use crate::cmd::test_fixtures;
         use std::time::Instant;
 
-        use crate::domain::QuerySource;
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
         use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
         use crate::services::AppServices;
-        use crate::update::action::Action;
+        use crate::update::action::{Action, QueryFailureContext};
 
         struct NoopRenderer;
         impl Renderer for NoopRenderer {
@@ -780,7 +778,7 @@ mod tests {
                 matches!(
                     action,
                     Action::QueryFailed {
-                        source: QuerySource::Preview,
+                        context: QueryFailureContext::Preview { .. },
                         ..
                     }
                 ),
