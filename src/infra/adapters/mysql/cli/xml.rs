@@ -35,18 +35,9 @@ pub(super) struct MySqlResultsetFrameScanner {
 
 impl MySqlResultsetFrameScanner {
     pub(super) fn frame_start(&mut self, buffer: &[u8]) -> Option<usize> {
-        let _ = self.frame_bounds(buffer);
-        self.resultset_start
-    }
-
-    pub(super) fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
         if self.resultset_start_cursor > buffer.len() {
             self.resultset_start_cursor = 0;
         }
-        if self.resultset_end_cursor > buffer.len() {
-            self.resultset_end_cursor = 0;
-        }
-
         if self.resultset_start.is_none() {
             let scan_start = self
                 .resultset_start_cursor
@@ -56,11 +47,17 @@ impl MySqlResultsetFrameScanner {
                 self.resultset_end_cursor = start;
             } else {
                 self.resultset_start_cursor = buffer.len();
-                return None;
             }
         }
+        self.resultset_start
+    }
 
-        let start = self.resultset_start?;
+    pub(super) fn frame_bounds(&mut self, buffer: &[u8]) -> Option<(usize, usize)> {
+        if self.resultset_end_cursor > buffer.len() {
+            self.resultset_end_cursor = 0;
+        }
+
+        let start = self.frame_start(buffer)?;
         if self.resultset_end.is_none() {
             let scan_start = self
                 .resultset_end_cursor
@@ -104,26 +101,24 @@ impl MySqlResultsetFrameScanner {
     }
 }
 
-fn ensure_mysql_resultset_frame_within_limit(
-    scanner: &MySqlResultsetFrameScanner,
-    buffer: &[u8],
-    bounds: Option<(usize, usize)>,
+fn take_resultset_frame(
+    buffer: &mut Vec<u8>,
+    scanner: &mut MySqlResultsetFrameScanner,
     preview_byte_budget: bool,
-) -> Result<(), DbOperationError> {
-    if !preview_byte_budget {
-        return Ok(());
+) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
+    let bounds = scanner.frame_bounds(buffer);
+    if preview_byte_budget {
+        let Some(start) = scanner.resultset_start else {
+            return Ok(None);
+        };
+        let end = bounds.map_or(buffer.len(), |(_, end)| end);
+        if end.saturating_sub(start) > MYSQL_PREVIEW_MAX_FRAME_BYTES {
+            return Err(DbOperationError::PreviewSizeExceeded(format!(
+                "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
+            )));
+        }
     }
-    let Some(start) = scanner.resultset_start else {
-        return Ok(());
-    };
-    let end = bounds.map_or(buffer.len(), |(_, end)| end);
-    let frame_bytes = end.saturating_sub(start);
-    if frame_bytes > MYSQL_PREVIEW_MAX_FRAME_BYTES {
-        return Err(DbOperationError::PreviewSizeExceeded(format!(
-            "MySQL preview XML frame exceeded the {MYSQL_PREVIEW_MAX_FRAME_BYTES}-byte limit"
-        )));
-    }
-    Ok(())
+    Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
 }
 
 #[cfg(any(unix, test))]
@@ -133,8 +128,7 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
-    let bounds = scanner.frame_bounds(buffer);
-    let resultset_start = scanner.resultset_start.unwrap_or(buffer.len());
+    let resultset_start = scanner.frame_start(buffer).unwrap_or(buffer.len());
     if has_mysql_cli_error(&buffer[..resultset_start]) {
         trace_mysql_error(&buffer[..resultset_start]);
         return Err(classify_mysql_query_failure_with_packet_limit(
@@ -142,8 +136,7 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget
             client_packet_limit_bytes,
         ));
     }
-    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds, preview_byte_budget)?;
-    Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
+    take_resultset_frame(buffer, scanner, preview_byte_budget)
 }
 
 #[cfg(any(not(unix), test))]
@@ -161,9 +154,7 @@ pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics_and_
             client_packet_limit_bytes,
         ));
     }
-    let bounds = scanner.frame_bounds(buffer);
-    ensure_mysql_resultset_frame_within_limit(scanner, buffer, bounds, preview_byte_budget)?;
-    Ok(bounds.map(|bounds| scanner.take_bounds_with_diagnostics(buffer, bounds)))
+    take_resultset_frame(buffer, scanner, preview_byte_budget)
 }
 
 fn find_bytes_from(haystack: &[u8], needle: &[u8], start: usize) -> Option<usize> {
@@ -639,6 +630,15 @@ mod tests {
             Some(b"<resultset></resultset>".to_vec())
         );
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn frame_start_does_not_scan_for_the_end_delimiter() {
+        let buffer = b"<resultset></resultset>";
+        let mut scanner = MySqlResultsetFrameScanner::default();
+
+        assert_eq!(scanner.frame_start(buffer), Some(0));
+        assert_eq!(scanner.resultset_end, None);
     }
 
     #[test]
