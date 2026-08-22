@@ -126,13 +126,6 @@ pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySq
     side_effect::mysql_statement_reads_session_diagnostics(sql)
 }
 
-pub fn target_is_selected_database(
-    statement: &MySqlStatement,
-    selected_database: Option<&str>,
-) -> bool {
-    target::target_is_selected_database(statement, selected_database)
-}
-
 pub fn target_is_selected_database_with_lower_case_table_names(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
