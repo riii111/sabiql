@@ -1,8 +1,8 @@
 use std::ffi::OsStr;
-use std::process::{ExitStatus, Stdio};
+use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -21,8 +21,8 @@ use super::super::policy::{
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
 use super::super::sanitize_mysql_command_environment;
 use super::{
-    MYSQL_QUERY_TIMEOUT, MySqlProcess, read_one_mysql_resultset_with_diagnostics,
-    write_mysql_statement,
+    MYSQL_QUERY_TIMEOUT, MySqlProcess, finish_mysql_pipe,
+    read_one_mysql_resultset_with_diagnostics, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
@@ -221,27 +221,10 @@ impl MySqlMetadataProcess {
     }
 }
 
-async fn finish_mysql_metadata_process(
-    process: &mut MySqlMetadataProcess,
-) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError> {
-    let mut stdout = Vec::new();
-    let mut stderr = Vec::new();
-    let (stdout_result, stderr_result, status_result) = tokio::join!(
-        process.stdout.read_to_end(&mut stdout),
-        process.stderr.read_to_end(&mut stderr),
-        process.child.wait(),
-    );
-    stdout_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    stderr_result.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-    let status =
-        status_result.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, stdout, stderr))
-}
-
 async fn cleanup_mysql_metadata_process(process: &mut MySqlMetadataProcess) {
     drop(process.stdin.take());
     let _ = process.child.kill().await;
-    let _ = finish_mysql_metadata_process(process).await;
+    let _ = finish_mysql_pipe(&mut process.stdout, &mut process.stderr, &mut process.child).await;
 }
 
 async fn run_mysql_metadata_query_with_read_only_session(
@@ -314,7 +297,8 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
     drop(stdin);
-    let (status, stdout, stderr) = finish_mysql_metadata_process(process).await?;
+    let (status, stdout, stderr) =
+        finish_mysql_pipe(&mut process.stdout, &mut process.stderr, &mut process.child).await?;
     if has_mysql_cli_error(&stderr) {
         return Err(classify_mysql_query_failure(&stderr));
     }

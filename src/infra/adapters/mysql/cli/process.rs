@@ -4,7 +4,7 @@ use std::time::Duration;
 
 #[cfg(unix)]
 use tokio::fs::File as TokioFile;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 #[cfg(not(unix))]
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
@@ -20,7 +20,7 @@ use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, map_mysql_cli_spawn_error,
 };
 #[cfg(not(unix))]
-use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
+use super::pipe::read_one_mysql_resultset_from_pipes;
 use super::policy::{
     MYSQL_SESSION_MARKER_COLUMN, query_failed_after_change, validate_mysql_session,
 };
@@ -216,6 +216,31 @@ pub(super) async fn stop_mysql_process(
     Ok((status, true))
 }
 
+pub(super) async fn read_all<R>(reader: &mut R) -> std::io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).await?;
+    Ok(output)
+}
+
+async fn finish_mysql_pipe<O, E>(
+    stdout: &mut O,
+    stderr: &mut E,
+    child: &mut Child,
+) -> Result<(ExitStatus, Vec<u8>, Vec<u8>), DbOperationError>
+where
+    O: AsyncRead + Unpin,
+    E: AsyncRead + Unpin,
+{
+    let (stdout, stderr, status) = tokio::join!(read_all(stdout), read_all(stderr), child.wait());
+    let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+    let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+    Ok((status, stdout, stderr))
+}
+
 pub(super) struct MySqlSessionResult {
     pub(super) status: ExitStatus,
     pub(super) forcibly_stopped: bool,
@@ -271,14 +296,8 @@ pub(in crate::adapters::mysql::cli) async fn finish_mysql_session(
 
     #[cfg(not(unix))]
     let (stdout, error_bytes, status) = {
-        let (stdout, stderr, status) = tokio::join!(
-            read_all(&mut process.stdout),
-            read_all(&mut process.stderr),
-            process.child.wait()
-        );
-        let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
-        let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
+        let (status, stdout, stderr) =
+            finish_mysql_pipe(&mut process.stdout, &mut process.stderr, &mut process.child).await?;
         let mut error_bytes = std::mem::take(&mut process.pending_stderr);
         error_bytes.extend_from_slice(&stderr);
         (stdout, error_bytes, status)

@@ -7,6 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
+use super::process::read_all;
 use super::xml::{
     MySqlResultsetFrameScanner,
     take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget,
@@ -139,15 +140,6 @@ where
         }
         result
     }
-}
-
-pub(super) async fn read_all<R>(reader: &mut R) -> io::Result<Vec<u8>>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut output = Vec::new();
-    reader.read_to_end(&mut output).await?;
-    Ok(output)
 }
 
 pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
