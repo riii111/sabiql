@@ -288,12 +288,13 @@ async fn run_mysql_adhoc_process(
     .await?;
 
     let marker = Uuid::new_v4().simple().to_string();
-    let marker_query =
-        if statements.len() == 1 && mysql_statement_is_data_modifying(statements[0].kind()) {
-            format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows")
-        } else {
-            format!("SELECT '{marker}' AS __sabiql_marker")
-        };
+    let data_modifying_single =
+        statements.len() == 1 && mysql_statement_is_data_modifying(statements[0].kind());
+    let marker_query = if data_modifying_single {
+        format!("SELECT '{marker}' AS __sabiql_marker, ROW_COUNT() AS affected_rows")
+    } else {
+        format!("SELECT '{marker}' AS __sabiql_marker")
+    };
     if let Err(error) = write_mysql_statement(process, &marker_query).await {
         return Err(query_failed_after_change(error, refresh_scope));
     }
@@ -309,30 +310,12 @@ async fn run_mysql_adhoc_process(
         Ok(result) => result,
         Err(error) => return Err(query_failed_after_change(error, refresh_scope)),
     };
-    let command_tag = if statements.len() == 1 {
-        let affected_rows = if mysql_statement_is_data_modifying(statements[0].kind()) {
-            Some(
-                mysql_row_count_marker(&marker_result, &marker)
-                    .map_err(|error| query_failed_after_change(error, refresh_scope))?,
-            )
-        } else {
-            if marker_result.columns != ["__sabiql_marker"]
-                || marker_result.values.len() != 1
-                || marker_result.values[0].len() != 1
-                || marker_result.values[0][0].as_str() != Some(marker.as_str())
-            {
-                return Err(query_failed_after_change(
-                    DbOperationError::QueryFailed(
-                        "mysql adhoc completion marker did not match".to_string(),
-                    ),
-                    refresh_scope,
-                ));
-            }
-            None
-        };
+    let command_tag = if data_modifying_single {
+        let affected_rows = mysql_row_count_marker(&marker_result, &marker)
+            .map_err(|error| query_failed_after_change(error, refresh_scope))?;
         Some(mysql_command_tag(
             &statements[0],
-            affected_rows.unwrap_or_default(),
+            affected_rows,
             last_result_set.as_ref(),
         ))
     } else {
@@ -348,7 +331,15 @@ async fn run_mysql_adhoc_process(
                 refresh_scope,
             ));
         }
-        None
+        if statements.len() == 1 {
+            Some(mysql_command_tag(
+                &statements[0],
+                0,
+                last_result_set.as_ref(),
+            ))
+        } else {
+            None
+        }
     };
 
     let result = finish_mysql_session(process).await?;
