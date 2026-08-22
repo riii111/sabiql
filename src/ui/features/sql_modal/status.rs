@@ -6,7 +6,9 @@ use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::shared::text_input::TextInputState;
-use crate::app::model::sql_editor::modal::{HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus};
+use crate::app::model::sql_editor::modal::{
+    AdhocSuccessSnapshot, HIGH_RISK_INPUT_VISIBLE_WIDTH, SqlModalStatus,
+};
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
 use crate::domain::MySqlDiagnostic;
@@ -15,11 +17,7 @@ use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_
 use crate::theme::ThemePalette;
 
 pub(super) fn status_height(state: &AppState, width: u16) -> u16 {
-    if !matches!(state.sql_modal.status(), SqlModalStatus::Success) {
-        return 1;
-    }
-
-    let Some(snapshot) = state.sql_modal.last_adhoc_success() else {
+    let SqlModalStatus::Success(snapshot) = state.sql_modal.status() else {
         return 1;
     };
     if snapshot.mysql_diagnostics.is_empty() {
@@ -27,7 +25,7 @@ pub(super) fn status_height(state: &AppState, width: u16) -> u16 {
     }
 
     let status_width = width.saturating_sub(" [NORMAL]".len() as u16 + 1);
-    let base_lines = wrapped_line_count(&success_status_message(state), status_width);
+    let base_lines = wrapped_line_count(&success_status_message(snapshot), status_width);
     let diagnostic_lines = snapshot
         .mysql_diagnostics
         .iter()
@@ -52,13 +50,10 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
         return;
     }
 
-    if matches!(state.sql_modal.status(), SqlModalStatus::Success)
-        && state
-            .sql_modal
-            .last_adhoc_success()
-            .is_some_and(|snapshot| !snapshot.mysql_diagnostics.is_empty())
+    if let SqlModalStatus::Success(snapshot) = state.sql_modal.status()
+        && !snapshot.mysql_diagnostics.is_empty()
     {
-        render_success_status_with_diagnostics(frame, area, state, theme);
+        render_success_status_with_diagnostics(frame, area, snapshot, theme);
         return;
     }
 
@@ -104,8 +99,8 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
                 Style::default().fg(theme.semantic.text.accent),
             )
         }
-        SqlModalStatus::Success => {
-            let msg = success_status_message(state);
+        SqlModalStatus::Success(snapshot) => {
+            let msg = success_status_message(snapshot);
             (
                 "[NORMAL]",
                 Style::default().fg(theme.semantic.status.success),
@@ -115,8 +110,8 @@ pub(super) fn render_status(frame: &mut Frame, area: Rect, state: &AppState, the
                     .add_modifier(Modifier::BOLD),
             )
         }
-        SqlModalStatus::Error => {
-            let msg = error_status_message(state);
+        SqlModalStatus::Error(error) => {
+            let msg = error_status_message(error);
             (
                 "[NORMAL]",
                 Style::default().fg(theme.semantic.status.error),
@@ -260,10 +255,7 @@ fn render_confirming_risk_status(
     frame.render_widget(Paragraph::new(vec![line1, line2]), area);
 }
 
-fn success_status_message(state: &AppState) -> String {
-    let Some(snapshot) = state.sql_modal.last_adhoc_success() else {
-        return "\u{2713} OK".to_string();
-    };
+fn success_status_message(snapshot: &AdhocSuccessSnapshot) -> String {
     let time_secs = snapshot.execution_time_ms as f64 / 1000.0;
 
     if let Some(tag) = snapshot.command_tag.as_ref() {
@@ -284,7 +276,7 @@ fn success_status_message(state: &AppState) -> String {
 fn render_success_status_with_diagnostics(
     frame: &mut Frame,
     area: Rect,
-    state: &AppState,
+    snapshot: &AdhocSuccessSnapshot,
     theme: &ThemePalette,
 ) {
     let badge_display = " [NORMAL]";
@@ -301,19 +293,17 @@ fn render_success_status_with_diagnostics(
     );
 
     let mut lines = vec![Line::from(Span::styled(
-        format!("{} ", success_status_message(state)),
+        format!("{} ", success_status_message(snapshot)),
         Style::default()
             .fg(theme.semantic.status.success)
             .add_modifier(Modifier::BOLD),
     ))];
-    if let Some(snapshot) = state.sql_modal.last_adhoc_success() {
-        lines.extend(snapshot.mysql_diagnostics.iter().map(|diagnostic| {
-            Line::from(Span::styled(
-                diagnostic_status_line(diagnostic),
-                Style::default().fg(theme.semantic.status.warning),
-            ))
-        }));
-    }
+    lines.extend(snapshot.mysql_diagnostics.iter().map(|diagnostic| {
+        Line::from(Span::styled(
+            diagnostic_status_line(diagnostic),
+            Style::default().fg(theme.semantic.status.warning),
+        ))
+    }));
     frame.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }),
         status_area,
@@ -324,21 +314,16 @@ fn diagnostic_status_line(diagnostic: &MySqlDiagnostic) -> String {
     format!("⚠ {}", diagnostic.display_message())
 }
 
-fn error_status_message(state: &AppState) -> String {
-    state
-        .sql_modal
-        .last_adhoc_error()
-        .and_then(|e| e.lines().next())
-        .map_or_else(
-            || "\u{2717} Error".to_string(),
-            |line| format!("\u{2717} {line}"),
-        )
+fn error_status_message(error: &str) -> String {
+    error.lines().next().map_or_else(
+        || "\u{2717} Error".to_string(),
+        |line| format!("\u{2717} {line}"),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::model::sql_editor::modal::AdhocSuccessSnapshot;
     use crate::domain::MySqlDiagnosticLevel;
 
     #[test]
@@ -360,7 +345,7 @@ mod tests {
             SqlModalStatus::Normal,
             SqlModalStatus::Editing,
             SqlModalStatus::Running,
-            SqlModalStatus::Error,
+            SqlModalStatus::Error("error".to_string()),
         ] {
             state.sql_modal.set_status_for_test(status);
             assert_eq!(status_height(&state, 80), 1);

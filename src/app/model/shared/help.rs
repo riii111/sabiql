@@ -291,15 +291,17 @@ impl SqlHelpMode {
             | SqlModalStatus::ConfirmingRisk { .. }
             | SqlModalStatus::ConfirmingAnalyzeRisk { .. } => Self::Confirm,
             SqlModalStatus::Running => Self::Running,
-            SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error => match state
-                .session
-                .active_engine_feature_profile()
-                .normalize_sql_modal_tab(state.sql_modal.active_tab())
-            {
-                SqlModalTab::Sql => Self::Normal,
-                SqlModalTab::Plan => Self::Plan,
-                SqlModalTab::Compare => Self::Compare,
-            },
+            SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_) => {
+                match state
+                    .session
+                    .active_engine_feature_profile()
+                    .normalize_sql_modal_tab(state.sql_modal.active_tab())
+                {
+                    SqlModalTab::Sql => Self::Normal,
+                    SqlModalTab::Plan => Self::Plan,
+                    SqlModalTab::Compare => Self::Compare,
+                }
+            }
         }
     }
 

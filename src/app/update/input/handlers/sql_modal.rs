@@ -54,7 +54,7 @@ fn handle_sql_modal_keys_internal(
     // Normal / Success / Error share the same command set (no text editing)
     if matches!(
         status,
-        SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+        SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_)
     ) {
         let ctrl = combo.modifiers.contains(Modifiers::CTRL);
         let alt = combo.modifiers.contains(Modifiers::ALT);
@@ -393,6 +393,7 @@ fn handle_sql_modal_keys_internal(
 mod tests {
     use super::*;
     use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
+    use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
     use crate::update::action::CursorMove;
     use crate::update::input::keybindings::{Key, KeyCombo};
     use rstest::rstest;
@@ -407,6 +408,19 @@ mod tests {
 
     fn combo_alt(k: Key) -> KeyCombo {
         KeyCombo::alt(k)
+    }
+
+    fn success_status() -> SqlModalStatus {
+        SqlModalStatus::Success(AdhocSuccessSnapshot {
+            command_tag: None,
+            row_count: 0,
+            execution_time_ms: 0,
+            mysql_diagnostics: Vec::new(),
+        })
+    }
+
+    fn error_status() -> SqlModalStatus {
+        SqlModalStatus::Error("error".to_string())
     }
 
     fn handle_sql_modal_keys(
@@ -1185,8 +1199,8 @@ mod tests {
         }
 
         #[rstest]
-        #[case(SqlModalStatus::Success)]
-        #[case(SqlModalStatus::Error)]
+        #[case(success_status())]
+        #[case(error_status())]
         fn success_error_share_normal_keybindings(#[case] status: SqlModalStatus) {
             let yank =
                 handle_sql_modal_keys(combo(Key::Char('y')), false, &status, SqlModalTab::Sql);
@@ -1470,8 +1484,8 @@ mod tests {
         }
 
         #[rstest]
-        #[case(SqlModalStatus::Success)]
-        #[case(SqlModalStatus::Error)]
+        #[case(success_status())]
+        #[case(error_status())]
         fn plan_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
             let scroll =
                 handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Plan);
@@ -1482,8 +1496,8 @@ mod tests {
         }
 
         #[rstest]
-        #[case(SqlModalStatus::Success)]
-        #[case(SqlModalStatus::Error)]
+        #[case(success_status())]
+        #[case(error_status())]
         fn compare_tab_read_only_keys_work_in_success_error(#[case] status: SqlModalStatus) {
             let scroll =
                 handle_sql_modal_keys(combo(Key::Char('j')), false, &status, SqlModalTab::Compare);
