@@ -340,6 +340,32 @@ impl MySqlConnectionProbe for DbAdapterRegistry {
     }
 }
 
+#[async_trait]
+impl SqliteDiagnosticsProvider for DbAdapterRegistry {
+    async fn fetch_diagnostics_core(
+        &self,
+        dsn: &str,
+    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+                Err(DbOperationError::ConnectionFailed(
+                    "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
+                ))
+            }
+            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
+        }
+    }
+
+    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
+        match Self::db_type_from_dsn(dsn) {
+            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
+            Ok(DatabaseType::PostgreSQL | DatabaseType::MySQL) | Err(_) => DiagnosticField::err(
+                "SQLite diagnostics are unavailable for non-SQLite connections",
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::adapters::test_support;
@@ -595,37 +621,6 @@ mod tests {
         assert_eq!(detail.schema, "main");
         assert_eq!(detail.name, "users");
     }
-}
-
-#[async_trait]
-impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_diagnostics_core(
-        &self,
-        dsn: &str,
-    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL | DatabaseType::MySQL => {
-                Err(DbOperationError::ConnectionFailed(
-                    "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
-                ))
-            }
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
-        }
-    }
-
-    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        match Self::db_type_from_dsn(dsn) {
-            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
-            Ok(DatabaseType::PostgreSQL | DatabaseType::MySQL) | Err(_) => DiagnosticField::err(
-                "SQLite diagnostics are unavailable for non-SQLite connections",
-            ),
-        }
-    }
-}
-
-#[cfg(test)]
-mod sqlite_diagnostics_registry {
-    use super::*;
 
     #[tokio::test]
     async fn postgres_dsn_is_rejected() {
