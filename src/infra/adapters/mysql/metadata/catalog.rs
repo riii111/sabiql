@@ -196,8 +196,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
     let option_file = MySqlOptionFile::create(target)?;
     let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
     let result = tokio::time::timeout(timeout, async {
-        session.prepare_read_only().await?;
-        let lower_case_table_names = session.probe().await?;
+        let lower_case_table_names = session.prepare_read_only_and_probe().await?;
         let mut results = Vec::with_capacity(queries.len());
         for (query, expected_columns) in queries {
             results.push(

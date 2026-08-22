@@ -150,8 +150,7 @@ async fn fetch_table_detail_with_session(
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    session.prepare_read_only().await?;
-    let lower_case_table_names = session.probe().await?;
+    let lower_case_table_names = session.prepare_read_only_and_probe().await?;
     let tables_result = session
         .execute_with_expected_columns(&table_query(schema, table), TABLES_RESULT_COLUMNS)
         .await?;
