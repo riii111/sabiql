@@ -51,19 +51,16 @@ impl MySqlMetadataSession {
         })
     }
 
-    pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<u8, DbOperationError> {
+    pub(in crate::adapters::mysql) async fn prepare_read_only_and_probe(
+        &mut self,
+    ) -> Result<u8, DbOperationError> {
+        configure_mysql_session(&mut self.process, AccessMode::ReadOnly).await?;
         let marker = Uuid::new_v4().simple().to_string();
         let query = format!(
             "SELECT '{marker}' AS __sabiql_probe, @@lower_case_table_names AS __sabiql_lower_case_table_names"
         );
         let result = self.execute(&query).await?;
         validate_metadata_probe(&result, &marker)
-    }
-
-    pub(in crate::adapters::mysql) async fn prepare_read_only(
-        &mut self,
-    ) -> Result<(), DbOperationError> {
-        configure_mysql_session(&mut self.process, AccessMode::ReadOnly).await
     }
 
     pub(in crate::adapters::mysql) async fn execute(

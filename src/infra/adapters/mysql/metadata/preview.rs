@@ -88,8 +88,7 @@ async fn execute_preview_with_session(
     limit: usize,
     offset: usize,
 ) -> Result<PreviewExecution, DbOperationError> {
-    session.prepare_read_only().await?;
-    let lower_case_table_names = session.probe().await?;
+    let lower_case_table_names = session.prepare_read_only_and_probe().await?;
     validate_selected_schema_name(database, schema, lower_case_table_names)?;
 
     let column_result = session

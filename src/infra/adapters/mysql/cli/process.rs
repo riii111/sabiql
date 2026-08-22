@@ -1341,10 +1341,9 @@ done
             assert!(option_file_path.exists());
 
             session
-                .prepare_read_only()
+                .prepare_read_only_and_probe()
                 .await
-                .expect("read-only session setup");
-            session.probe().await.expect("mode probe");
+                .expect("read-only session setup and metadata probe");
             for query in [
                 "SELECT TABLES",
                 "SELECT COLUMNS",
