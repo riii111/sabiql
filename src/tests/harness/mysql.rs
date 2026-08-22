@@ -87,21 +87,21 @@ pub fn mysql_integration_config() -> MySqlConnectionConfig {
 }
 
 fn mysql_config(ssl_mode: MySqlSslMode) -> MySqlConnectionConfig {
+    mysql_config_with(ssl_mode, |name| std::env::var(name).ok())
+}
+
+fn mysql_config_with(
+    ssl_mode: MySqlSslMode,
+    env: impl Fn(&str) -> Option<String>,
+) -> MySqlConnectionConfig {
     MySqlConnectionConfig::new(
-        std::env::var("SABIQL_MYSQL_TEST_HOST")
-            .unwrap_or_else(|_| "host.docker.internal".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PORT")
-            .ok()
+        env("SABIQL_MYSQL_TEST_HOST").unwrap_or_else(|| "host.docker.internal".to_string()),
+        env("SABIQL_MYSQL_TEST_PORT")
             .and_then(|port| port.parse().ok())
             .unwrap_or(3306),
-        Some(
-            std::env::var("SABIQL_MYSQL_TEST_DATABASE")
-                .unwrap_or_else(|_| "sabiql_test".to_string()),
-        ),
-        std::env::var("SABIQL_MYSQL_TEST_USER")
-            .unwrap_or_else(|_| "sabiql_test_runner".to_string()),
-        std::env::var("SABIQL_MYSQL_TEST_PASSWORD")
-            .unwrap_or_else(|_| "p a#ss;=\"word".to_string()),
+        Some(env("SABIQL_MYSQL_TEST_DATABASE").unwrap_or_else(|| "sabiql_test".to_string())),
+        env("SABIQL_MYSQL_TEST_USER").unwrap_or_else(|| "sabiql_test_runner".to_string()),
+        env("SABIQL_MYSQL_TEST_PASSWORD").unwrap_or_else(|| "p a#ss;=\"word".to_string()),
         ssl_mode,
     )
 }
@@ -125,76 +125,22 @@ pub fn mysql_tls_config() -> MySqlConnectionConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
-    use super::{mysql_integration_config, mysql_tls_config};
+    use super::mysql_config_with;
     use sabiql_domain::connection::{MySqlConnectionConfig, MySqlSslMode};
 
-    const COMMON_ENV_VARS: [&str; 5] = [
-        "SABIQL_MYSQL_TEST_HOST",
-        "SABIQL_MYSQL_TEST_PORT",
-        "SABIQL_MYSQL_TEST_DATABASE",
-        "SABIQL_MYSQL_TEST_USER",
-        "SABIQL_MYSQL_TEST_PASSWORD",
+    const COMMON_ENV_VALUES: [(&str, &str); 5] = [
+        ("SABIQL_MYSQL_TEST_HOST", "mysql.example"),
+        ("SABIQL_MYSQL_TEST_PORT", "13306"),
+        ("SABIQL_MYSQL_TEST_DATABASE", "fixture_db"),
+        ("SABIQL_MYSQL_TEST_USER", "fixture_user"),
+        ("SABIQL_MYSQL_TEST_PASSWORD", "fixture password"),
     ];
-    const TLS_ENV_VARS: [&str; 3] = [
-        "SABIQL_MYSQL_TEST_SSL_CA",
-        "SABIQL_MYSQL_TEST_SSL_CERT",
-        "SABIQL_MYSQL_TEST_SSL_KEY",
-    ];
-    const TLS_ENV_VALUES: [(&str, &str); 3] = [
-        ("SABIQL_MYSQL_TEST_SSL_CA", "/fixtures/ca.pem"),
-        ("SABIQL_MYSQL_TEST_SSL_CERT", "/fixtures/client-cert.pem"),
-        ("SABIQL_MYSQL_TEST_SSL_KEY", "/fixtures/client-key.pem"),
-    ];
-    const SERVER_PUBLIC_KEY_ENV: &str = "SABIQL_MYSQL_TEST_SERVER_PUBLIC_KEY";
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    struct EnvGuard {
-        original_values: Vec<(&'static str, Option<String>)>,
-    }
-
-    impl EnvGuard {
-        fn new(names: impl IntoIterator<Item = &'static str>) -> Self {
-            Self {
-                original_values: names
-                    .into_iter()
-                    .map(|name| (name, std::env::var(name).ok()))
-                    .collect(),
-            }
-        }
-
-        fn set(&self, name: &'static str, value: Option<&str>) {
-            // SAFETY: The test holds ENV_LOCK while mutating these process-wide variables.
-            unsafe {
-                match value {
-                    Some(value) => std::env::set_var(name, value),
-                    None => std::env::remove_var(name),
-                }
-            }
-        }
-    }
-
-    impl Drop for EnvGuard {
-        fn drop(&mut self) {
-            // SAFETY: The test holds ENV_LOCK while restoring these process-wide variables.
-            unsafe {
-                for (name, value) in &self.original_values {
-                    match value {
-                        Some(value) => std::env::set_var(name, value),
-                        None => std::env::remove_var(name),
-                    }
-                }
-            }
-        }
-    }
-
-    fn common_env_names() -> impl Iterator<Item = &'static str> {
-        COMMON_ENV_VARS
-            .into_iter()
-            .chain(TLS_ENV_VARS)
-            .chain([SERVER_PUBLIC_KEY_ENV])
+    fn env_value(values: &[(&str, &str)], name: &str) -> Option<String> {
+        values
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| (*value).to_string())
     }
 
     fn assert_common_fields_equal(
@@ -210,26 +156,18 @@ mod tests {
 
     #[test]
     fn config_wrappers_share_common_env_values_and_keep_tls_specific_settings() {
-        let _lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let env = EnvGuard::new(common_env_names());
-        for (name, value) in [
-            ("SABIQL_MYSQL_TEST_HOST", "mysql.example"),
-            ("SABIQL_MYSQL_TEST_PORT", "13306"),
-            ("SABIQL_MYSQL_TEST_DATABASE", "fixture_db"),
-            ("SABIQL_MYSQL_TEST_USER", "fixture_user"),
-            ("SABIQL_MYSQL_TEST_PASSWORD", "fixture password"),
-            (SERVER_PUBLIC_KEY_ENV, "/fixtures/server-key.pem"),
-        ] {
-            env.set(name, Some(value));
-        }
-        for (name, value) in TLS_ENV_VALUES {
-            env.set(name, Some(value));
-        }
-
-        let integration = mysql_integration_config();
-        let tls = mysql_tls_config();
+        let integration = mysql_config_with(MySqlSslMode::Disabled, |name| {
+            env_value(&COMMON_ENV_VALUES, name)
+        })
+        .with_server_public_key_path(Some("/fixtures/server-key.pem".to_string()));
+        let tls = mysql_config_with(MySqlSslMode::VerifyCa, |name| {
+            env_value(&COMMON_ENV_VALUES, name)
+        })
+        .with_tls_paths(
+            Some("/fixtures/ca.pem".to_string()),
+            Some("/fixtures/client-cert.pem".to_string()),
+            Some("/fixtures/client-key.pem".to_string()),
+        );
 
         assert_common_fields_equal(&integration, &tls);
         assert_eq!(integration.host, "mysql.example");
@@ -251,19 +189,12 @@ mod tests {
 
     #[test]
     fn config_wrappers_share_common_fallback_values_when_env_is_missing() {
-        let _lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let env = EnvGuard::new(common_env_names());
-        for name in common_env_names() {
-            env.set(name, None);
-        }
-        for (name, value) in TLS_ENV_VALUES {
-            env.set(name, Some(value));
-        }
-
-        let integration = mysql_integration_config();
-        let tls = mysql_tls_config();
+        let integration = mysql_config_with(MySqlSslMode::Disabled, |_| None);
+        let tls = mysql_config_with(MySqlSslMode::VerifyCa, |_| None).with_tls_paths(
+            Some("/fixtures/ca.pem".to_string()),
+            Some("/fixtures/client-cert.pem".to_string()),
+            Some("/fixtures/client-key.pem".to_string()),
+        );
 
         assert_common_fields_equal(&integration, &tls);
         assert_eq!(integration.host, "host.docker.internal");
