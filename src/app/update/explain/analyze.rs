@@ -93,12 +93,19 @@ pub(super) fn reduce_analyze(
                         .begin_confirming_analyze_risk(content, reason);
                 }
                 ConfirmationType::Immediate => {
+                    let Some(explain_query) = services
+                        .sql_dialect
+                        .build_explain_analyze_sql(database_type, &content)
+                    else {
+                        finish_explain_unsupported_analyze(state);
+                        return DispatchResult::handled();
+                    };
                     return start_analyze_execution(
                         state,
                         now,
-                        services,
                         dsn,
                         database_type,
+                        explain_query,
                         content,
                     );
                 }
@@ -131,7 +138,21 @@ pub(super) fn reduce_analyze(
                     finish_explain_unsupported_analyze(state);
                     return DispatchResult::handled();
                 }
-                return start_analyze_execution(state, now, services, dsn, database_type, query);
+                let Some(explain_query) = services
+                    .sql_dialect
+                    .build_explain_analyze_sql(database_type, &query)
+                else {
+                    finish_explain_unsupported_analyze(state);
+                    return DispatchResult::handled();
+                };
+                return start_analyze_execution(
+                    state,
+                    now,
+                    dsn,
+                    database_type,
+                    explain_query,
+                    query,
+                );
             }
             DispatchResult::handled()
         }
@@ -153,18 +174,11 @@ pub(super) fn reduce_analyze(
 fn start_analyze_execution(
     state: &mut AppState,
     now: Instant,
-    services: &AppServices,
     dsn: String,
     database_type: DatabaseType,
+    query: String,
     source_query: String,
 ) -> DispatchResult {
-    let Some(query) = services
-        .sql_dialect
-        .build_explain_analyze_sql(database_type, &source_query)
-    else {
-        finish_explain_unsupported_analyze(state);
-        return DispatchResult::handled();
-    };
     let run_id = begin_explain_running(state, now);
     let database_generation = state.session.database_generation();
     DispatchResult::handled_with(vec![Effect::ExecuteExplain {
