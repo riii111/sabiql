@@ -81,19 +81,7 @@ async fn execute_preview_with_program(
         execute_preview_with_session(&mut session, database, schema, table, limit, offset),
     )
     .await;
-    let result = match result {
-        Ok(Ok(execution)) => Ok(execution),
-        Ok(Err(error)) => {
-            session.cleanup().await;
-            Err(error)
-        }
-        Err(_) => {
-            session.cleanup().await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    };
+    let result = session.resolve_timed_result(result).await;
     drop(option_file);
     result
 }

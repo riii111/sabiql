@@ -113,7 +113,22 @@ impl MySqlMetadataSession {
         Ok(())
     }
 
-    pub(in crate::adapters::mysql) async fn cleanup(&mut self) {
+    pub(in crate::adapters::mysql) async fn resolve_timed_result<T>(
+        &mut self,
+        result: Result<Result<T, DbOperationError>, tokio::time::error::Elapsed>,
+    ) -> Result<T, DbOperationError> {
+        let result = match result {
+            Ok(Ok(value)) => return Ok(value),
+            Ok(Err(error)) => Err(error),
+            Err(_) => Err(DbOperationError::Timeout(
+                "mysql query exceeded the execution timeout".to_string(),
+            )),
+        };
+        self.cleanup().await;
+        result
+    }
+
+    async fn cleanup(&mut self) {
         cleanup_mysql_process(&mut self.process).await;
     }
 }

@@ -150,19 +150,7 @@ async fn fetch_table_detail_in_session_with_program(
         fetch_table_detail_with_session(&mut session, database, schema, table),
     )
     .await;
-    let result = match result {
-        Ok(Ok(table)) => Ok(table),
-        Ok(Err(error)) => {
-            session.cleanup().await;
-            Err(error)
-        }
-        Err(_) => {
-            session.cleanup().await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    };
+    let result = session.resolve_timed_result(result).await;
     drop(option_file);
     result
 }
