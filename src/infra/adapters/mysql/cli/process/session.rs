@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
-use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
+use super::super::probe::validate_lower_case_table_names;
 use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
 use super::{
     MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
@@ -44,7 +44,7 @@ impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) async fn probe(&mut self) -> Result<u8, DbOperationError> {
         let marker = Uuid::new_v4().simple().to_string();
         let query = format!(
-            "SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode, @@lower_case_table_names AS __sabiql_lower_case_table_names"
+            "SELECT '{marker}' AS __sabiql_probe, @@lower_case_table_names AS __sabiql_lower_case_table_names"
         );
         let result = self.execute(&query).await?;
         validate_metadata_probe(&result, &marker)
@@ -135,28 +135,19 @@ impl MySqlMetadataSession {
 
 fn validate_metadata_probe(result: &MySqlResultSet, marker: &str) -> Result<u8, DbOperationError> {
     if result.values.len() != 1
-        || result.columns
-            != [
-                "__sabiql_probe",
-                "__sabiql_sql_mode",
-                "__sabiql_lower_case_table_names",
-            ]
+        || result.columns != ["__sabiql_probe", "__sabiql_lower_case_table_names"]
     {
         return Err(DbOperationError::QueryFailed(
             "mysql metadata probe returned an unexpected result".to_string(),
         ));
     }
     let values = &result.values[0];
-    if values.len() != 3 || values[0].as_str() != Some(marker) {
+    if values.len() != 2 || values[0].as_str() != Some(marker) {
         return Err(DbOperationError::QueryFailed(
             "mysql metadata probe returned an unexpected result".to_string(),
         ));
     }
-    let sql_mode = values[1].as_str().ok_or_else(|| {
-        DbOperationError::QueryFailed("mysql metadata probe returned no mode".to_string())
-    })?;
-    validate_sql_mode(sql_mode)?;
-    let lower_case_table_names = values[2]
+    let lower_case_table_names = values[1]
         .as_str()
         .ok_or_else(|| {
             DbOperationError::QueryFailed(

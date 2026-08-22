@@ -365,8 +365,6 @@ pub(super) async fn run_mysql_export_process(
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
     configure_mysql_session(process, AccessMode::ReadOnly).await?;
-    process.probe_sql_mode().await?;
-
     write_mysql_statement(process, query).await?;
     let mut csv_writer = CsvFileWriter::create(path).await?;
     let columns = stream_mysql_resultset_to_csv(process, &mut csv_writer).await?;

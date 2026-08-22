@@ -298,19 +298,11 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .await?;
     process
         .write_statement(&format!(
-            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}"
+            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS __sabiql_sql_mode"
         ))
         .await?;
     let session_output = process.read_until_marker(&session_marker).await?;
-    validate_metadata_session_marker(&session_output, &session_marker)?;
-
-    let probe_marker = Uuid::new_v4().simple().to_string();
-    let probe_query = format!(
-        "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
-    );
-    process.write_statement(&probe_query).await?;
-    let probe_output = process.read_until_marker(&probe_marker).await?;
-    validate_metadata_mode_probe(&probe_output, &probe_marker)?;
+    validate_metadata_session_probe(&session_output, &session_marker)?;
 
     process.write_statement(query).await?;
     let mut stdin = process
@@ -332,10 +324,10 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
     parse_mysql_metadata_header(&stdout, query)
 }
 
-fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
+fn validate_metadata_session_probe(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
     let fields = parse_metadata_marker_fields(output, marker).ok_or_else(|| {
         DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned an invalid mode probe".to_string(),
+            "MySQL metadata fallback returned an invalid read-only session marker".to_string(),
         )
     })?;
     let sql_mode = fields.get(1).ok_or_else(|| {
@@ -346,16 +338,6 @@ fn validate_metadata_mode_probe(output: &[u8], marker: &str) -> Result<(), DbOpe
     let sql_mode = String::from_utf8(sql_mode.to_vec())
         .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     validate_sql_mode(&sql_mode)
-}
-
-fn validate_metadata_session_marker(output: &[u8], marker: &str) -> Result<(), DbOperationError> {
-    if parse_metadata_marker_fields(output, marker).is_some() {
-        Ok(())
-    } else {
-        Err(DbOperationError::QueryFailed(
-            "MySQL metadata fallback returned an invalid read-only session marker".to_string(),
-        ))
-    }
 }
 
 fn parse_metadata_marker_fields<'a>(output: &'a [u8], marker: &str) -> Option<Vec<&'a [u8]>> {
@@ -434,20 +416,26 @@ mod tests {
 
     #[test]
     fn preserves_marker_and_header_validation_boundaries() {
-        assert!(validate_metadata_session_marker(b"\r\nmarker\r\n", "marker").is_ok());
+        assert!(
+            validate_metadata_session_probe(b"\r\nmarker\tSTRICT_TRANS_TABLES\r\n", "marker")
+                .is_ok()
+        );
         assert!(matches!(
-            validate_metadata_session_marker(b"marker-prefix\n", "marker"),
+            validate_metadata_session_probe(b"marker-prefix\n", "marker"),
             Err(DbOperationError::QueryFailed(details))
                 if details == "MySQL metadata fallback returned an invalid read-only session marker"
         ));
         assert!(matches!(
-            validate_metadata_mode_probe(b"marker\n", "marker"),
+            validate_metadata_session_probe(b"marker\n", "marker"),
             Err(DbOperationError::QueryFailed(details))
                 if details == "MySQL metadata fallback returned an incomplete mode probe"
         ));
-        assert!(validate_metadata_mode_probe(b"marker\t\xff\n", "marker").is_err());
+        assert!(validate_metadata_session_probe(b"marker\t\xff\n", "marker").is_err());
         assert!(
-            validate_metadata_mode_probe(b"marker\tSTRICT_TRANS_TABLES,ANSI_QUOTES\n", "marker",)
+            validate_metadata_session_probe(
+                b"marker\tSTRICT_TRANS_TABLES,ANSI_QUOTES\n",
+                "marker",
+            )
                 .is_err()
         );
         assert_eq!(

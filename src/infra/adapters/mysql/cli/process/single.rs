@@ -37,8 +37,6 @@ pub(super) async fn run_mysql_single_statement_process_with_diagnostics(
     access_mode: AccessMode,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     configure_mysql_session(process, access_mode).await?;
-    process.probe_sql_mode().await?;
-
     write_mysql_statement(process, query).await?;
     let (stdout, mut diagnostics) = read_one_mysql_resultset_with_diagnostics(process).await?;
     let result_set = parse_mysql_xml(&stdout)?;
@@ -78,8 +76,6 @@ pub(super) mod test_support {
         access_mode: AccessMode,
     ) -> Result<MySqlResultSet, DbOperationError> {
         configure_mysql_session(process, access_mode).await?;
-        process.probe_sql_mode().await?;
-
         write_mysql_statement(process, query).await?;
 
         #[cfg(unix)]

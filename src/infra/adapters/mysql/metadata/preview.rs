@@ -431,12 +431,12 @@ while IFS= read -r line; do
     ";") ;;
     *__sabiql_probe*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_probe">'"$marker"'</field><field name="__sabiql_lower_case_table_names">0</field></row></resultset>'
       ;;
     *"SET SESSION TRANSACTION READ ONLY"*) ;;
     *__sabiql_session_marker*)
       marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)' AS __sabiql_session_marker.*/\1/")
-      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
+      printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field><field name="__sabiql_sql_mode">STRICT_TRANS_TABLES</field></row></resultset>'
       ;;
     *INFORMATION_SCHEMA.COLUMNS*)
       {columns_result}
@@ -558,6 +558,8 @@ done
         let positions = [
             "SET SESSION autocommit=1, completion_type=NO_CHAIN",
             "SET SESSION TRANSACTION READ ONLY",
+            "__sabiql_session_marker",
+            "__sabiql_sql_mode",
             "__sabiql_probe",
             "INFORMATION_SCHEMA.COLUMNS",
             "LIMIT 2 OFFSET 1",

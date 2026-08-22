@@ -233,8 +233,6 @@ async fn run_mysql_adhoc_process(
     expected_columns: Option<&[&str]>,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     configure_mysql_session(process, access_mode).await?;
-    process.probe_sql_mode().await?;
-
     let mut last_result_set = None;
     let mut last_result_statement = None;
     let mut refresh_scope = RefreshScope::None;
