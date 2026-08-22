@@ -452,7 +452,7 @@ mod tests {
         ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, WriteDiagnosticLevel,
     };
     use crate::model::browse::query_execution::{
-        DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection, QueryStatus,
+        DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
     };
     use crate::policy::write::write_guardrails::{
         GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
@@ -1329,7 +1329,7 @@ mod tests {
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.is_running());
             assert!(state.query.start_time().is_some());
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -1355,7 +1355,7 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.is_running());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 0 rows")
@@ -1376,7 +1376,7 @@ mod tests {
 
             assert_eq!(effects.len(), 1);
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.is_running());
             assert_eq!(
                 state.messages.last_error.as_deref(),
                 Some("UPDATE expected 1 row, but affected 2 rows")
@@ -1451,7 +1451,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
-            assert_eq!(state.query.status(), QueryStatus::Running);
+            assert!(state.query.is_running());
             assert!(effects.iter().any(|effect| matches!(
                 effect,
                 Effect::ExecutePreview { table, .. } if table == "users"
@@ -1482,7 +1482,7 @@ mod tests {
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(!state.result_interaction.cell_edit().is_active());
             assert!(state.session.table_detail().is_none());
-            assert_eq!(state.query.status(), QueryStatus::Idle);
+            assert!(!state.query.is_running());
             assert!(
                 effects
                     .iter()

@@ -9,7 +9,6 @@ use crate::domain::connection::{
 };
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::QueryStatus;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
@@ -218,7 +217,7 @@ pub fn build_bulk_delete_preview(
     if state.session.dsn().is_none() {
         return Err(EditGuardrailError::NoActiveConnection);
     }
-    if state.query.status() != QueryStatus::Idle {
+    if state.query.is_running() {
         return Err(EditGuardrailError::WriteUnavailableWhileQueryRunning);
     }
 
