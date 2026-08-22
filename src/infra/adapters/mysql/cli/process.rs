@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-use std::io;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
@@ -11,14 +10,15 @@ use tokio::process::{Child, Command};
 use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use uuid::Uuid;
 
-use crate::app::ports::outbound::{AccessMode, DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{MySqlDiagnostic, RefreshScope};
 
 use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
 #[cfg(not(unix))]
 use super::error::classify_mysql_query_failure;
 use super::error::{
-    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, map_mysql_cli_spawn_error,
+    validate_mode_probe,
 };
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
@@ -49,17 +49,6 @@ pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::f
 const MYSQL_PTY_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MYSQL_SESSION_SETTINGS: &str = "SET SESSION autocommit=1, completion_type=NO_CHAIN";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
-
-fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
-    if error.kind() == io::ErrorKind::NotFound {
-        DbOperationError::CommandNotFound {
-            command: DatabaseCli::MySql,
-            details: error.to_string(),
-        }
-    } else {
-        DbOperationError::ConnectionFailed(error.to_string())
-    }
-}
 
 pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
@@ -504,8 +493,11 @@ fn mysql_statement_input(query: &str) -> Vec<u8> {
 
 #[cfg(test)]
 mod process_tests {
+    use std::io;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
+
+    use crate::app::ports::outbound::DatabaseCli;
 
     use super::*;
 

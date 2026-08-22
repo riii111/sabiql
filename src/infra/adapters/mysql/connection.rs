@@ -12,17 +12,11 @@ use super::option_file::MySqlOptionFile;
 impl MySqlConnectionProbe for MySqlAdapter {
     async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
-        self.check_cli_version().await?;
+        check_mysql_cli_version().await?;
 
         let option_file = MySqlOptionFile::create(&target)?;
         let result = super::cli::probe_mysql_server(&option_file.path).await;
         drop(option_file);
         result
-    }
-}
-
-impl MySqlAdapter {
-    async fn check_cli_version(&self) -> Result<(), DbOperationError> {
-        check_mysql_cli_version().await
     }
 }

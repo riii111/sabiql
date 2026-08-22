@@ -1,6 +1,5 @@
 use std::ffi::OsStr;
-use std::io;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -9,16 +8,19 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
+    ConnectionFailureKind, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     MySqlConnectionProbeResult, UnsupportedOperationKind,
 };
 
 use super::args::mysql_connection_args;
+use super::error::{clean_mysql_stderr, map_mysql_cli_spawn_error};
 use super::sanitize_mysql_command_environment;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
 const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
 const MYSQL_VERSION_ARGS: [&str; 3] = ["--no-defaults", "--no-login-paths", "--version"];
+const MYSQL_SUPPORTED_MAJOR: u32 = 8;
+const MYSQL_SUPPORTED_MINOR: u32 = 4;
 
 #[derive(Debug, Deserialize)]
 struct MySqlProbeResponse {
@@ -59,13 +61,7 @@ async fn run_mysql_version_command(
 
     match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
         Ok(Ok(output)) => Ok(output),
-        Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
-            Err(DbOperationError::CommandNotFound {
-                command: DatabaseCli::MySql,
-                details: error.to_string(),
-            })
-        }
-        Ok(Err(error)) => Err(DbOperationError::ConnectionFailed(error.to_string())),
+        Ok(Err(error)) => Err(map_mysql_cli_spawn_error(error)),
         Err(_) => Err(DbOperationError::Timeout(
             "mysql probe exceeded the connection timeout".to_string(),
         )),
@@ -73,11 +69,19 @@ async fn run_mysql_version_command(
 }
 
 pub(in crate::adapters::mysql) async fn probe_mysql_server(
-    option_file: &PathBuf,
+    option_file: &Path,
 ) -> Result<MySqlConnectionProbeResult, DbOperationError> {
-    let output = run_mysql_command(mysql_probe_args(option_file), Some(option_file)).await?;
+    let output = run_mysql_command_with_timeout(
+        mysql_probe_args(option_file),
+        MYSQL_PROBE_TIMEOUT,
+        "mysql probe exceeded the connection timeout",
+    )
+    .await?;
     if !output.status.success() {
-        return Err(classify_mysql_probe_failure(clean_stderr(&output.stderr)));
+        return Err(classify_mysql_probe_failure(clean_mysql_stderr(
+            &output.stderr,
+            "mysql probe failed",
+        )));
     }
 
     let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
@@ -108,17 +112,16 @@ fn contains_unsupported_mysql_product(value: &str) -> bool {
 
 fn is_oracle_mysql_cli_84_version(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
-    lower.contains("mysql")
-        && !contains_unsupported_mysql_product(value)
-        && version_major_minor(value) == Some((8, 4))
+    lower.contains("mysql") && is_oracle_mysql_84_version(value)
 }
 
-fn is_oracle_mysql_server_84_version(value: &str) -> bool {
-    !contains_unsupported_mysql_product(value) && version_major_minor(value) == Some((8, 4))
+fn is_oracle_mysql_84_version(value: &str) -> bool {
+    !contains_unsupported_mysql_product(value)
+        && version_major_minor(value) == Some((MYSQL_SUPPORTED_MAJOR, MYSQL_SUPPORTED_MINOR))
 }
 
 fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
-    if is_oracle_mysql_server_84_version(version) {
+    if is_oracle_mysql_84_version(version) {
         Ok(())
     } else {
         Err(DbOperationError::UnsupportedOperationWithKind {
@@ -163,26 +166,8 @@ fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
     args
 }
 
-pub(super) async fn run_mysql_command<I, S>(
-    args: I,
-    option_file: Option<&PathBuf>,
-) -> Result<std::process::Output, DbOperationError>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    run_mysql_command_with_timeout(
-        args,
-        option_file,
-        MYSQL_PROBE_TIMEOUT,
-        "mysql probe exceeded the connection timeout",
-    )
-    .await
-}
-
 pub(super) async fn run_mysql_command_with_timeout<I, S>(
     args: I,
-    option_file: Option<&PathBuf>,
     command_timeout: Duration,
     timeout_message: &str,
 ) -> Result<std::process::Output, DbOperationError>
@@ -193,29 +178,11 @@ where
     let mut command = Command::new("mysql");
     command.args(args).stdin(Stdio::null()).kill_on_drop(true);
     sanitize_mysql_command_environment(&mut command);
-    if option_file.is_some() {
-        command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    }
 
     match timeout(command_timeout, command.output()).await {
         Ok(Ok(output)) => Ok(output),
-        Ok(Err(error)) if error.kind() == io::ErrorKind::NotFound => {
-            Err(DbOperationError::CommandNotFound {
-                command: DatabaseCli::MySql,
-                details: error.to_string(),
-            })
-        }
-        Ok(Err(error)) => Err(DbOperationError::ConnectionFailed(error.to_string())),
+        Ok(Err(error)) => Err(map_mysql_cli_spawn_error(error)),
         Err(_) => Err(DbOperationError::Timeout(timeout_message.to_string())),
-    }
-}
-
-fn clean_stderr(stderr: &[u8]) -> String {
-    let text = String::from_utf8_lossy(stderr).trim().to_string();
-    if text.is_empty() {
-        "mysql probe failed".to_string()
-    } else {
-        text
     }
 }
 
@@ -315,9 +282,9 @@ mod probe_tests {
         assert!(!is_oracle_mysql_cli_84_version(
             "mysql  Ver 8.4.3-3 for Linux (Percona Server)"
         ));
-        assert!(is_oracle_mysql_server_84_version("8.4.3"));
-        assert!(!is_oracle_mysql_server_84_version("8.4.3-TiDB"));
-        assert!(!is_oracle_mysql_server_84_version("8.4.3-Percona"));
+        assert!(is_oracle_mysql_84_version("8.4.3"));
+        assert!(!is_oracle_mysql_84_version("8.4.3-TiDB"));
+        assert!(!is_oracle_mysql_84_version("8.4.3-Percona"));
         assert!(matches!(
             validate_server_version("8.0.36"),
             Err(DbOperationError::UnsupportedOperationWithKind {
@@ -492,8 +459,9 @@ mod probe_tests {
     mod version_command {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
-        use std::path::Path;
+        use std::path::PathBuf;
 
+        use crate::app::ports::outbound::DatabaseCli;
         use tempfile::TempDir;
 
         use super::*;
