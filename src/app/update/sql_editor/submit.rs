@@ -15,6 +15,18 @@ use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::helpers::start_adhoc_if_connected;
 
+enum SubmitDecision {
+    Block { reason: String },
+    Allow { risk: SqlRiskDecision },
+}
+
+fn into_submit_decision<Statement>(decision: MultiStatementDecision<Statement>) -> SubmitDecision {
+    match decision {
+        MultiStatementDecision::Block { reason } => SubmitDecision::Block { reason },
+        MultiStatementDecision::Allow { risk, .. } => SubmitDecision::Allow { risk },
+    }
+}
+
 pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalSubmit => {
@@ -29,34 +41,26 @@ pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant)
 
             let database_type = state.session.active_database_type_or_default();
 
-            if database_type == DatabaseType::MySQL {
-                return match evaluate_mysql_multi_statement_with_lower_case_table_names(
+            let decision = if database_type == DatabaseType::MySQL {
+                into_submit_decision(evaluate_mysql_multi_statement_with_lower_case_table_names(
                     &query,
                     state.session.active_database(),
                     state.session.mysql_lower_case_table_names(),
-                ) {
-                    MultiStatementDecision::Block { reason } => {
-                        state.sql_modal.finish_adhoc_error(reason);
-                        DispatchResult::handled()
-                    }
-                    MultiStatementDecision::Allow { risk, .. } => {
-                        handle_allowed_query(state, query, now, risk)
-                    }
-                };
-            }
+                ))
+            } else {
+                into_submit_decision(evaluate_multi_statement_for_database_with_context(
+                    database_type,
+                    state.session.active_database(),
+                    &query,
+                ))
+            };
 
-            match evaluate_multi_statement_for_database_with_context(
-                database_type,
-                state.session.active_database(),
-                &query,
-            ) {
-                MultiStatementDecision::Block { reason } => {
+            match decision {
+                SubmitDecision::Block { reason } => {
                     state.sql_modal.finish_adhoc_error(reason);
                     DispatchResult::handled()
                 }
-                MultiStatementDecision::Allow { risk, .. } => {
-                    handle_allowed_query(state, query, now, risk)
-                }
+                SubmitDecision::Allow { risk } => handle_allowed_query(state, query, now, risk),
             }
         }
         _ => DispatchResult::pass(),
