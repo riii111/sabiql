@@ -468,6 +468,7 @@ done
         (directory, program, log_path)
     }
 
+    #[cfg(unix)]
     fn assert_option_file_removed(log_path: &std::path::Path) {
         let log = fs::read_to_string(log_path).expect("fake MySQL transcript");
         assert!(log.contains("option-exists=yes"), "{log}");
