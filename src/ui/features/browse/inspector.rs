@@ -688,17 +688,6 @@ impl Inspector {
         horizontal_offset: usize,
         theme: &ThemePalette,
     ) -> ViewportPlan {
-        if database_type == DatabaseType::MySQL {
-            return Self::render_mysql_trigger_details(
-                frame,
-                area,
-                rows,
-                scroll_offset,
-                horizontal_offset,
-                theme,
-            );
-        }
-
         let (headers, widths): (&[&str], &[Constraint]) = match database_type {
             DatabaseType::PostgreSQL => (
                 &["Name", "Timing", "Event", "Function", "Security"],
@@ -719,22 +708,17 @@ impl Inspector {
                     Constraint::Percentage(40),
                 ],
             ),
-            DatabaseType::MySQL => unreachable!("MySQL uses the detail renderer"),
+            DatabaseType::MySQL => {
+                return Self::render_mysql_trigger_details(
+                    frame,
+                    area,
+                    rows,
+                    scroll_offset,
+                    horizontal_offset,
+                    theme,
+                );
+            }
         };
-        let data_rows: Vec<Vec<String>> = rows
-            .iter()
-            .take(50)
-            .map(|row| trigger_row_cells(row, database_type))
-            .collect();
-        let col_widths = calculate_column_widths(headers, &data_rows);
-        let widths: Vec<Constraint> = widths
-            .iter()
-            .zip(col_widths)
-            .map(|(configured, calculated)| match configured {
-                Constraint::Percentage(_) => *configured,
-                _ => Constraint::Length(calculated),
-            })
-            .collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
         render_striped_table(
@@ -742,7 +726,7 @@ impl Inspector {
             area,
             &StripedTableConfig {
                 headers,
-                widths: &widths,
+                widths,
                 total_items: rows.len(),
                 empty_message: "No triggers",
             },
