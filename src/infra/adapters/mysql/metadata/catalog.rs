@@ -214,19 +214,7 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
         Ok((lower_case_table_names, results))
     })
     .await;
-    let result = match result {
-        Ok(Ok(results)) => Ok(results),
-        Ok(Err(error)) => {
-            session.cleanup().await;
-            Err(error)
-        }
-        Err(_) => {
-            session.cleanup().await;
-            Err(DbOperationError::Timeout(
-                "mysql query exceeded the execution timeout".to_string(),
-            ))
-        }
-    };
+    let result = session.resolve_timed_result(result).await;
     drop(option_file);
     result
 }
