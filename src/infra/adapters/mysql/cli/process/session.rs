@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
+use super::super::super::option_file::MySqlOptionFile;
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
 use super::super::probe::validate_lower_case_table_names;
 use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
@@ -15,6 +16,7 @@ use super::{
 
 pub(in crate::adapters::mysql) struct MySqlMetadataSession {
     process: MySqlProcess,
+    _option_file: MySqlOptionFile,
 }
 
 const MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN: &str = "__sabiql_preview_completion";
@@ -22,22 +24,30 @@ const MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN: &str = "__sabiql_preview_completio
 impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) fn spawn_with_program(
         program: &OsStr,
-        option_file: &std::path::Path,
+        option_file: MySqlOptionFile,
     ) -> Result<Self, DbOperationError> {
-        MySqlProcess::spawn_with_preview_program(program, mysql_query_args(option_file))
-            .map(|process| Self { process })
+        let args = mysql_query_args(&option_file.path);
+        Self::from_process(
+            MySqlProcess::spawn_with_preview_program(program, args),
+            option_file,
+        )
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_metadata_program(
         program: &OsStr,
-        option_file: &std::path::Path,
+        option_file: MySqlOptionFile,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args(program, mysql_metadata_session_args(option_file))
+        let args = mysql_metadata_session_args(&option_file.path);
+        Self::from_process(MySqlProcess::spawn_with_args(program, args), option_file)
     }
 
-    fn spawn_with_args(program: &OsStr, args: Vec<String>) -> Result<Self, DbOperationError> {
-        Ok(Self {
-            process: MySqlProcess::spawn_with_args(program, args)?,
+    fn from_process(
+        process: Result<MySqlProcess, DbOperationError>,
+        option_file: MySqlOptionFile,
+    ) -> Result<Self, DbOperationError> {
+        process.map(|process| Self {
+            process,
+            _option_file: option_file,
         })
     }
 
