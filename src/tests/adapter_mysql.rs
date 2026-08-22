@@ -291,7 +291,6 @@ mod metadata_fetch {
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
     const MYSQL_INDEX_METADATA: &str = "mysql_metadata_index_parts";
-
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
     async fn registry_fetches_mysql_effective_user_for_the_connection_header() {

@@ -27,7 +27,11 @@ pub(super) fn mysql_adhoc_args(option_file: &Path) -> Vec<String> {
 }
 
 pub(super) fn mysql_metadata_session_args(option_file: &Path) -> Vec<String> {
-    mysql_result_args(option_file)
+    let mut args = mysql_result_args(option_file);
+    args.push(format!(
+        "--max-allowed-packet={MYSQL_CLIENT_MAX_PACKET_BYTES}"
+    ));
+    args
 }
 
 fn mysql_result_args(option_file: &Path) -> Vec<String> {
@@ -149,12 +153,13 @@ mod tests {
                 "--batch",
                 "--silent",
                 "--prompt=",
+                "--max-allowed-packet=33554432",
             ]
         );
         assert!(!args.iter().any(|argument| argument == "--quick"));
         assert!(
             args.iter()
-                .all(|argument| !argument.starts_with("--max-allowed-packet="))
+                .any(|argument| argument == "--max-allowed-packet=33554432")
         );
     }
 

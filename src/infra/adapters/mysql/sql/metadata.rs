@@ -62,6 +62,8 @@ pub(in crate::adapters::mysql) const FOREIGN_KEY_RESULT_COLUMNS: &[&str] = &[
     "UPDATE_RULE",
     "DELETE_RULE",
 ];
+pub(in crate::adapters::mysql) const TABLE_DETAIL_METADATA_RESULT_COLUMNS: &[&str] =
+    &["METADATA_JSON"];
 
 pub(in crate::adapters::mysql) fn table_query(schema: &str, table: &str) -> String {
     format!(
@@ -101,6 +103,99 @@ pub(in crate::adapters::mysql) fn foreign_keys_query(schema: &str, table: &str) 
         quote_string(schema),
         quote_string(schema),
         quote_string(table),
+    )
+}
+
+pub(in crate::adapters::mysql) fn table_detail_metadata_query(schema: &str, table: &str) -> String {
+    let quoted_schema = quote_string(schema);
+    let quoted_table = quote_string(table);
+    format!(
+        concat!(
+            "SELECT JSON_OBJECT(",
+            "'kind', 'metadata', ",
+            "'tables', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+            "'TABLE_SCHEMA', t.TABLE_SCHEMA, 'TABLE_NAME', t.TABLE_NAME, ",
+            "'TABLE_TYPE', t.TABLE_TYPE, 'TABLE_ROWS', t.TABLE_ROWS, ",
+            "'TABLE_COMMENT', t.TABLE_COMMENT, 'ENGINE', t.ENGINE, ",
+            "'ROW_FORMAT', t.ROW_FORMAT, 'TABLE_COLLATION', t.TABLE_COLLATION, ",
+            "'CREATE_OPTIONS', t.CREATE_OPTIONS)) FROM (SELECT t.TABLE_SCHEMA, ",
+            "t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT, t.ENGINE, ",
+            "t.ROW_FORMAT, t.TABLE_COLLATION, t.CREATE_OPTIONS FROM ",
+            "INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {schema} AND ",
+            "t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {table} ",
+            ") AS t), JSON_ARRAY()), ",
+            "'columns', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+            "'COLUMN_NAME', c.COLUMN_NAME, 'COLUMN_TYPE', c.COLUMN_TYPE, ",
+            "'IS_NULLABLE', c.IS_NULLABLE, 'COLUMN_DEFAULT', c.COLUMN_DEFAULT, ",
+            "'EXTRA', c.EXTRA, 'COLUMN_COMMENT', c.COLUMN_COMMENT, ",
+            "'ORDINAL_POSITION', c.ORDINAL_POSITION, ",
+            "'PRIMARY_KEY_POSITION', c.PRIMARY_KEY_POSITION, ",
+            "'CHARACTER_SET_NAME', c.CHARACTER_SET_NAME, ",
+            "'COLLATION_NAME', c.COLLATION_NAME, ",
+            "'GENERATION_EXPRESSION', c.GENERATION_EXPRESSION)) FROM ",
+            "(SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, ",
+            "c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, ",
+            "kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME, ",
+            "c.COLLATION_NAME, c.GENERATION_EXPRESSION FROM ",
+            "INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN ",
+            "INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON ",
+            "tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA ",
+            "AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' ",
+            "AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN ",
+            "INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON ",
+            "kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND ",
+            "kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME ",
+            "AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND ",
+            "kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {schema} ",
+            "AND c.TABLE_NAME = {table}) AS c), JSON_ARRAY()), ",
+            "'statistics', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+            "'INDEX_NAME', s.INDEX_NAME, 'NON_UNIQUE', s.NON_UNIQUE, ",
+            "'INDEX_TYPE', s.INDEX_TYPE, 'SEQ_IN_INDEX', s.SEQ_IN_INDEX, ",
+            "'COLUMN_NAME', s.COLUMN_NAME, 'SUB_PART', s.SUB_PART, ",
+            "'EXPRESSION', s.EXPRESSION, 'COLLATION', s.COLLATION, ",
+            "'IS_VISIBLE', s.IS_VISIBLE, 'IS_PRIMARY', s.IS_PRIMARY)) FROM ",
+            "(SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, ",
+            "s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, ",
+            "CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY ",
+            "FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {schema} ",
+            "AND s.TABLE_NAME = {table}) AS s), ",
+            "JSON_ARRAY()), 'foreign_keys', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+            "'CONSTRAINT_NAME', fk.CONSTRAINT_NAME, 'TABLE_SCHEMA', fk.TABLE_SCHEMA, ",
+            "'TABLE_NAME', fk.TABLE_NAME, 'COLUMN_NAME', fk.COLUMN_NAME, ",
+            "'REFERENCED_TABLE_SCHEMA', fk.REFERENCED_TABLE_SCHEMA, ",
+            "'REFERENCED_TABLE_NAME', fk.REFERENCED_TABLE_NAME, ",
+            "'REFERENCED_COLUMN_NAME', fk.REFERENCED_COLUMN_NAME, ",
+            "'ORDINAL_POSITION', fk.ORDINAL_POSITION, 'UPDATE_RULE', fk.UPDATE_RULE, ",
+            "'DELETE_RULE', fk.DELETE_RULE)) FROM (SELECT kcu.CONSTRAINT_NAME, ",
+            "kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, ",
+            "kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, ",
+            "kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, ",
+            "rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN ",
+            "INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON ",
+            "kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND ",
+            "kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME ",
+            "AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN ",
+            "INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON ",
+            "rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME ",
+            "AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE ",
+            "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
+            "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
+            ") AS fk), JSON_ARRAY())",
+            ") AS METADATA_JSON UNION ALL SELECT JSON_OBJECT(",
+            "'kind', 'trigger', ",
+            "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
+            "'ACTION_TIMING', tr.ACTION_TIMING, ",
+            "'EVENT_MANIPULATION', tr.EVENT_MANIPULATION, ",
+            "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
+            "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
+            "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
+            "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) AS METADATA_JSON ",
+            "FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
+            "tr.TRIGGER_SCHEMA = {schema} AND tr.EVENT_OBJECT_SCHEMA = {schema} ",
+            "AND tr.EVENT_OBJECT_TABLE = {table}"
+        ),
+        schema = quoted_schema,
+        table = quoted_table,
     )
 }
 
@@ -149,23 +244,6 @@ pub(in crate::adapters::mysql) const TRIGGER_RESULT_COLUMNS: &[&str] = &[
 ];
 const TABLE_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["Table", "Create Table"];
 const VIEW_SHOW_CREATE_RESULT_COLUMNS: &[&str] = &["View", "Create View"];
-
-pub(in crate::adapters::mysql) fn indexes_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {} AND s.TABLE_NAME = {} ORDER BY INDEX_NAME, SEQ_IN_INDEX",
-        quote_string(schema),
-        quote_string(table),
-    )
-}
-
-pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
-    format!(
-        "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
-        quote_string(schema),
-        quote_string(schema),
-        quote_string(table),
-    )
-}
 
 pub(in crate::adapters::mysql) fn show_create_query(table: &str, kind: TableKind) -> String {
     let object_type = if kind == TableKind::View {
@@ -335,20 +413,98 @@ mod tests {
             )
         );
 
-        let indexes_sql = indexes_query(schema, table);
-        assert_eq!(
-            indexes_sql,
-            format!(
-                "SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {quoted_schema} AND s.TABLE_NAME = {quoted_table} ORDER BY INDEX_NAME, SEQ_IN_INDEX"
-            )
+        let table_detail_metadata_sql = table_detail_metadata_query(schema, table);
+        let expected_table_detail_metadata_sql = format!(
+            concat!(
+                "SELECT JSON_OBJECT(",
+                "'kind', 'metadata', ",
+                "'tables', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+                "'TABLE_SCHEMA', t.TABLE_SCHEMA, 'TABLE_NAME', t.TABLE_NAME, ",
+                "'TABLE_TYPE', t.TABLE_TYPE, 'TABLE_ROWS', t.TABLE_ROWS, ",
+                "'TABLE_COMMENT', t.TABLE_COMMENT, 'ENGINE', t.ENGINE, ",
+                "'ROW_FORMAT', t.ROW_FORMAT, 'TABLE_COLLATION', t.TABLE_COLLATION, ",
+                "'CREATE_OPTIONS', t.CREATE_OPTIONS)) FROM (SELECT t.TABLE_SCHEMA, ",
+                "t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS, t.TABLE_COMMENT, t.ENGINE, ",
+                "t.ROW_FORMAT, t.TABLE_COLLATION, t.CREATE_OPTIONS FROM ",
+                "INFORMATION_SCHEMA.TABLES AS t WHERE t.TABLE_SCHEMA = {schema} AND ",
+                "t.TABLE_TYPE IN ('BASE TABLE', 'VIEW') AND t.TABLE_NAME = {table} ",
+                ") AS t), JSON_ARRAY()), ",
+                "'columns', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+                "'COLUMN_NAME', c.COLUMN_NAME, 'COLUMN_TYPE', c.COLUMN_TYPE, ",
+                "'IS_NULLABLE', c.IS_NULLABLE, 'COLUMN_DEFAULT', c.COLUMN_DEFAULT, ",
+                "'EXTRA', c.EXTRA, 'COLUMN_COMMENT', c.COLUMN_COMMENT, ",
+                "'ORDINAL_POSITION', c.ORDINAL_POSITION, ",
+                "'PRIMARY_KEY_POSITION', c.PRIMARY_KEY_POSITION, ",
+                "'CHARACTER_SET_NAME', c.CHARACTER_SET_NAME, ",
+                "'COLLATION_NAME', c.COLLATION_NAME, ",
+                "'GENERATION_EXPRESSION', c.GENERATION_EXPRESSION)) FROM ",
+                "(SELECT c.COLUMN_NAME, c.COLUMN_TYPE, c.IS_NULLABLE, c.COLUMN_DEFAULT, ",
+                "c.EXTRA, c.COLUMN_COMMENT, c.ORDINAL_POSITION, ",
+                "kcu.ORDINAL_POSITION AS PRIMARY_KEY_POSITION, c.CHARACTER_SET_NAME, ",
+                "c.COLLATION_NAME, c.GENERATION_EXPRESSION FROM ",
+                "INFORMATION_SCHEMA.COLUMNS AS c LEFT JOIN ",
+                "INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc ON ",
+                "tc.CONSTRAINT_SCHEMA = DATABASE() AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA ",
+                "AND tc.TABLE_NAME = c.TABLE_NAME AND tc.CONSTRAINT_NAME = 'PRIMARY' ",
+                "AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY' LEFT JOIN ",
+                "INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON ",
+                "kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND ",
+                "kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME ",
+                "AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND ",
+                "kcu.COLUMN_NAME = c.COLUMN_NAME WHERE c.TABLE_SCHEMA = {schema} ",
+                "AND c.TABLE_NAME = {table}) AS c), JSON_ARRAY()), ",
+                "'statistics', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+                "'INDEX_NAME', s.INDEX_NAME, 'NON_UNIQUE', s.NON_UNIQUE, ",
+                "'INDEX_TYPE', s.INDEX_TYPE, 'SEQ_IN_INDEX', s.SEQ_IN_INDEX, ",
+                "'COLUMN_NAME', s.COLUMN_NAME, 'SUB_PART', s.SUB_PART, ",
+                "'EXPRESSION', s.EXPRESSION, 'COLLATION', s.COLLATION, ",
+                "'IS_VISIBLE', s.IS_VISIBLE, 'IS_PRIMARY', s.IS_PRIMARY)) FROM ",
+                "(SELECT s.INDEX_NAME, s.NON_UNIQUE, s.INDEX_TYPE, s.SEQ_IN_INDEX, ",
+                "s.COLUMN_NAME, s.SUB_PART, s.EXPRESSION, s.COLLATION, s.IS_VISIBLE, ",
+                "CASE WHEN s.INDEX_NAME = 'PRIMARY' THEN 'YES' ELSE 'NO' END AS IS_PRIMARY ",
+                "FROM INFORMATION_SCHEMA.STATISTICS AS s WHERE s.TABLE_SCHEMA = {schema} ",
+                "AND s.TABLE_NAME = {table}) AS s), ",
+                "JSON_ARRAY()), 'foreign_keys', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
+                "'CONSTRAINT_NAME', fk.CONSTRAINT_NAME, 'TABLE_SCHEMA', fk.TABLE_SCHEMA, ",
+                "'TABLE_NAME', fk.TABLE_NAME, 'COLUMN_NAME', fk.COLUMN_NAME, ",
+                "'REFERENCED_TABLE_SCHEMA', fk.REFERENCED_TABLE_SCHEMA, ",
+                "'REFERENCED_TABLE_NAME', fk.REFERENCED_TABLE_NAME, ",
+                "'REFERENCED_COLUMN_NAME', fk.REFERENCED_COLUMN_NAME, ",
+                "'ORDINAL_POSITION', fk.ORDINAL_POSITION, 'UPDATE_RULE', fk.UPDATE_RULE, ",
+                "'DELETE_RULE', fk.DELETE_RULE)) FROM (SELECT kcu.CONSTRAINT_NAME, ",
+                "kcu.TABLE_SCHEMA, kcu.TABLE_NAME, kcu.COLUMN_NAME, ",
+                "kcu.REFERENCED_TABLE_SCHEMA, kcu.REFERENCED_TABLE_NAME, ",
+                "kcu.REFERENCED_COLUMN_NAME, kcu.ORDINAL_POSITION, rc.UPDATE_RULE, ",
+                "rc.DELETE_RULE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS AS tc INNER JOIN ",
+                "INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kcu ON ",
+                "kcu.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND ",
+                "kcu.TABLE_SCHEMA = tc.TABLE_SCHEMA AND kcu.TABLE_NAME = tc.TABLE_NAME ",
+                "AND kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME INNER JOIN ",
+                "INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc ON ",
+                "rc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA AND rc.TABLE_NAME = tc.TABLE_NAME ",
+                "AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE ",
+                "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
+                "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
+                ") AS fk), JSON_ARRAY())",
+                ") AS METADATA_JSON UNION ALL SELECT JSON_OBJECT(",
+                "'kind', 'trigger', ",
+                "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
+                "'ACTION_TIMING', tr.ACTION_TIMING, ",
+                "'EVENT_MANIPULATION', tr.EVENT_MANIPULATION, ",
+                "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
+                "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
+                "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
+                "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) AS METADATA_JSON ",
+                "FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
+                "tr.TRIGGER_SCHEMA = {schema} AND tr.EVENT_OBJECT_SCHEMA = {schema} ",
+                "AND tr.EVENT_OBJECT_TABLE = {table}"
+            ),
+            schema = quoted_schema,
+            table = quoted_table,
         );
-
-        let triggers_sql = triggers_query(schema, table);
         assert_eq!(
-            triggers_sql,
-            format!(
-                "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER"
-            )
+            table_detail_metadata_sql,
+            expected_table_detail_metadata_sql
         );
 
         assert_eq!(
@@ -428,6 +584,7 @@ mod tests {
                 "DELETE_RULE",
             ]
         );
+        assert_eq!(TABLE_DETAIL_METADATA_RESULT_COLUMNS, &["METADATA_JSON"]);
         assert_eq!(
             SIGNATURE_COLUMNS_RESULT_COLUMNS,
             &[
