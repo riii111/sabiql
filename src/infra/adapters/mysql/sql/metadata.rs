@@ -111,9 +111,7 @@ pub(in crate::adapters::mysql) fn table_detail_metadata_query(schema: &str, tabl
     let quoted_table = quote_string(table);
     format!(
         concat!(
-            "SELECT metadata_rows.METADATA_JSON FROM (",
-            "SELECT 0 AS METADATA_ROW_KIND, '' AS METADATA_TRIGGER_EVENT, ",
-            "'' AS METADATA_TRIGGER_TIMING, 0 AS METADATA_TRIGGER_ORDER, JSON_OBJECT(",
+            "SELECT JSON_OBJECT(",
             "'kind', 'metadata', ",
             "'tables', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
             "'TABLE_SCHEMA', t.TABLE_SCHEMA, 'TABLE_NAME', t.TABLE_NAME, ",
@@ -183,10 +181,7 @@ pub(in crate::adapters::mysql) fn table_detail_metadata_query(schema: &str, tabl
             "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
             "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
             ") AS fk), JSON_ARRAY())",
-            ") AS METADATA_JSON ",
-            "UNION ALL ",
-            "SELECT 1 AS METADATA_ROW_KIND, tr.EVENT_MANIPULATION AS METADATA_TRIGGER_EVENT, ",
-            "tr.ACTION_TIMING AS METADATA_TRIGGER_TIMING, tr.ACTION_ORDER AS METADATA_TRIGGER_ORDER, JSON_OBJECT(",
+            ") AS METADATA_JSON UNION ALL SELECT JSON_OBJECT(",
             "'kind', 'trigger', ",
             "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
             "'ACTION_TIMING', tr.ACTION_TIMING, ",
@@ -194,12 +189,10 @@ pub(in crate::adapters::mysql) fn table_detail_metadata_query(schema: &str, tabl
             "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
             "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
             "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
-            "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) ",
-            "AS METADATA_JSON FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
+            "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) AS METADATA_JSON ",
+            "FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
             "tr.TRIGGER_SCHEMA = {schema} AND tr.EVENT_OBJECT_SCHEMA = {schema} ",
-            "AND tr.EVENT_OBJECT_TABLE = {table}",
-            ") AS metadata_rows ORDER BY METADATA_ROW_KIND, METADATA_TRIGGER_EVENT, ",
-            "METADATA_TRIGGER_TIMING, METADATA_TRIGGER_ORDER"
+            "AND tr.EVENT_OBJECT_TABLE = {table}"
         ),
         schema = quoted_schema,
         table = quoted_table,
@@ -423,9 +416,7 @@ mod tests {
         let table_detail_metadata_sql = table_detail_metadata_query(schema, table);
         let expected_table_detail_metadata_sql = format!(
             concat!(
-                "SELECT metadata_rows.METADATA_JSON FROM (",
-                "SELECT 0 AS METADATA_ROW_KIND, '' AS METADATA_TRIGGER_EVENT, ",
-                "'' AS METADATA_TRIGGER_TIMING, 0 AS METADATA_TRIGGER_ORDER, JSON_OBJECT(",
+                "SELECT JSON_OBJECT(",
                 "'kind', 'metadata', ",
                 "'tables', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
                 "'TABLE_SCHEMA', t.TABLE_SCHEMA, 'TABLE_NAME', t.TABLE_NAME, ",
@@ -495,10 +486,7 @@ mod tests {
                 "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
                 "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
                 ") AS fk), JSON_ARRAY())",
-                ") AS METADATA_JSON ",
-                "UNION ALL ",
-                "SELECT 1 AS METADATA_ROW_KIND, tr.EVENT_MANIPULATION AS METADATA_TRIGGER_EVENT, ",
-                "tr.ACTION_TIMING AS METADATA_TRIGGER_TIMING, tr.ACTION_ORDER AS METADATA_TRIGGER_ORDER, JSON_OBJECT(",
+                ") AS METADATA_JSON UNION ALL SELECT JSON_OBJECT(",
                 "'kind', 'trigger', ",
                 "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
                 "'ACTION_TIMING', tr.ACTION_TIMING, ",
@@ -506,12 +494,10 @@ mod tests {
                 "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
                 "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
                 "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
-                "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) ",
-                "AS METADATA_JSON FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
+                "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED) AS METADATA_JSON ",
+                "FROM INFORMATION_SCHEMA.TRIGGERS AS tr WHERE ",
                 "tr.TRIGGER_SCHEMA = {schema} AND tr.EVENT_OBJECT_SCHEMA = {schema} ",
-                "AND tr.EVENT_OBJECT_TABLE = {table}",
-                ") AS metadata_rows ORDER BY METADATA_ROW_KIND, METADATA_TRIGGER_EVENT, ",
-                "METADATA_TRIGGER_TIMING, METADATA_TRIGGER_ORDER"
+                "AND tr.EVENT_OBJECT_TABLE = {table}"
             ),
             schema = quoted_schema,
             table = quoted_table,

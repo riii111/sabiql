@@ -215,18 +215,31 @@ fn parse_table_detail_metadata(
     {
         return Err(metadata_shape_error("table detail metadata result"));
     }
-    let payload = required_text(&result.values[0][0], "METADATA_JSON")?;
-    let payload = serde_json::from_str::<Value>(payload).map_err(|error| {
-        DbOperationError::MetadataParseFailed(format!("invalid MySQL metadata JSON: {error}"))
-    })?;
-    let payload = payload
-        .as_object()
-        .ok_or_else(|| metadata_shape_error("table detail metadata JSON root"))?;
-    if payload.get("kind") != Some(&Value::String("metadata".to_string())) {
-        return Err(metadata_shape_error(
-            "table detail metadata JSON metadata row",
-        ));
+    let mut metadata_payload = None;
+    let mut trigger_values = Vec::new();
+    for row in &result.values {
+        let value = required_text(&row[0], "METADATA_JSON")?;
+        let value = serde_json::from_str::<Value>(value).map_err(|error| {
+            DbOperationError::MetadataParseFailed(format!("invalid MySQL metadata JSON: {error}"))
+        })?;
+        let payload = value
+            .as_object()
+            .ok_or_else(|| metadata_shape_error("table detail metadata JSON root"))?;
+        match payload.get("kind").and_then(Value::as_str) {
+            Some("metadata") => {
+                if metadata_payload.is_some() {
+                    return Err(metadata_shape_error(
+                        "table detail metadata JSON metadata rows",
+                    ));
+                }
+                metadata_payload = Some(payload.clone());
+            }
+            Some("trigger") => trigger_values.push(json_trigger_to_result(row.first())?),
+            _ => return Err(metadata_shape_error("table detail metadata JSON row kind")),
+        }
     }
+    let payload = metadata_payload
+        .ok_or_else(|| metadata_shape_error("table detail metadata JSON metadata row"))?;
     let expected_sections = ["tables", "columns", "statistics", "foreign_keys"];
     if payload.len() != expected_sections.len() + 1
         || expected_sections
@@ -237,21 +250,17 @@ fn parse_table_detail_metadata(
     }
 
     Ok(MySqlTableDetailMetadata {
-        tables: json_section_to_result(payload, "tables", TABLES_RESULT_COLUMNS)?,
-        columns: json_section_to_result(payload, "columns", COLUMN_METADATA_RESULT_COLUMNS)?,
-        statistics: json_section_to_result(payload, "statistics", INDEX_RESULT_COLUMNS)?,
-        foreign_keys: json_section_to_result(payload, "foreign_keys", FOREIGN_KEY_RESULT_COLUMNS)?,
-        triggers: result.values[1..]
-            .iter()
-            .map(|row| json_trigger_to_result(row.first()))
-            .collect::<Result<Vec<_>, _>>()
-            .map(|values| MySqlResultSet {
-                columns: TRIGGER_RESULT_COLUMNS
-                    .iter()
-                    .map(|column| (*column).to_string())
-                    .collect(),
-                values,
-            })?,
+        tables: json_section_to_result(&payload, "tables", TABLES_RESULT_COLUMNS)?,
+        columns: json_section_to_result(&payload, "columns", COLUMN_METADATA_RESULT_COLUMNS)?,
+        statistics: json_section_to_result(&payload, "statistics", INDEX_RESULT_COLUMNS)?,
+        foreign_keys: json_section_to_result(&payload, "foreign_keys", FOREIGN_KEY_RESULT_COLUMNS)?,
+        triggers: MySqlResultSet {
+            columns: TRIGGER_RESULT_COLUMNS
+                .iter()
+                .map(|column| (*column).to_string())
+                .collect(),
+            values: trigger_values,
+        },
     })
 }
 
@@ -1096,23 +1105,26 @@ mod tests {
     #[test]
     fn parses_json_metadata_payload_into_existing_result_shapes() {
         let mut result = metadata_json_result(valid_metadata_payload());
-        result.values.push(vec![QueryValue::Text(
-            json!({
-                "kind": "trigger",
-                "TRIGGER_NAME": "items_audit",
-                "ACTION_ORDER": 1,
-                "ACTION_TIMING": "BEFORE",
-                "EVENT_MANIPULATION": "INSERT",
-                "ACTION_STATEMENT": "SET NEW.id = NEW.id",
-                "DEFINER": "app@localhost",
-                "SQL_MODE": "STRICT_TRANS_TABLES",
-                "CHARACTER_SET_CLIENT": "utf8mb4",
-                "COLLATION_CONNECTION": "utf8mb4_0900_ai_ci",
-                "DATABASE_COLLATION": "utf8mb4_0900_ai_ci",
-                "CREATED": "2026-08-21 10:20:30.00"
-            })
-            .to_string(),
-        )]);
+        result.values.insert(
+            0,
+            vec![QueryValue::Text(
+                json!({
+                    "kind": "trigger",
+                    "TRIGGER_NAME": "items_audit",
+                    "ACTION_ORDER": 1,
+                    "ACTION_TIMING": "BEFORE",
+                    "EVENT_MANIPULATION": "INSERT",
+                    "ACTION_STATEMENT": "SET NEW.id = NEW.id",
+                    "DEFINER": "app@localhost",
+                    "SQL_MODE": "STRICT_TRANS_TABLES",
+                    "CHARACTER_SET_CLIENT": "utf8mb4",
+                    "COLLATION_CONNECTION": "utf8mb4_0900_ai_ci",
+                    "DATABASE_COLLATION": "utf8mb4_0900_ai_ci",
+                    "CREATED": "2026-08-21 10:20:30.00"
+                })
+                .to_string(),
+            )],
+        );
         let metadata = parse_table_detail_metadata(&result).unwrap();
 
         assert_eq!(
@@ -1178,6 +1190,26 @@ mod tests {
             error,
             DbOperationError::MetadataParseFailed(message)
                 if message.contains("metadata JSON trigger row")
+        ));
+    }
+
+    #[test]
+    fn rejects_duplicate_json_metadata_rows() {
+        let payload = valid_metadata_payload().to_string();
+        let result = result(
+            TABLE_DETAIL_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![QueryValue::Text(payload.clone())],
+                vec![QueryValue::Text(payload)],
+            ],
+        );
+
+        let error = parse_table_detail_metadata(&result).unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message.contains("metadata JSON metadata rows")
         ));
     }
 
