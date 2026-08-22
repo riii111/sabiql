@@ -102,7 +102,7 @@ impl MySqlProcess {
         program: &OsStr,
         args: Vec<String>,
     ) -> Result<Self, DbOperationError> {
-        Self::spawn_with_args_and_limits(program, args, None, false)
+        Self::spawn_with_args_and_limits(program, args, Some(MYSQL_CLIENT_MAX_PACKET_BYTES), false)
     }
 
     fn spawn_with_args_and_limits(
@@ -1392,7 +1392,7 @@ done
             );
             let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
             assert!(!argv.contains("--quick"), "{argv}");
-            assert!(!argv.contains("--max-allowed-packet="), "{argv}");
+            assert!(argv.contains("--max-allowed-packet=33554432"), "{argv}");
             let positions = [
                 MYSQL_SESSION_SETTINGS,
                 MYSQL_READ_ONLY_STATEMENT,

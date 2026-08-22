@@ -616,6 +616,11 @@ while IFS= read -r line; do
         while :; do sleep 1; done
       elif [ "$mode" = "malformed" ]; then
         payload='{"tables":[],"columns":[{"WRONG":"x"}],"statistics":[],"foreign_keys":[],"triggers":[]}'
+      elif [ "$mode" = "large" ]; then
+        printf '%s' '<resultset><row><field name="METADATA_JSON">{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"'
+        awk 'BEGIN { for (i = 0; i < 17000000; i++) printf "x" }'
+        printf '%s\n' '","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[],"triggers":[]}</field></row></resultset>'
+        continue
       elif [ "$mode" = "view" ]; then
         payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items_view","TABLE_TYPE":"VIEW","TABLE_ROWS":null,"TABLE_COMMENT":"view comment","ENGINE":null,"ROW_FORMAT":null,"TABLE_COLLATION":null,"CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[],"triggers":[]}'
       else
@@ -785,6 +790,36 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_orchestration_accepts_metadata_payload_larger_than_default_client_packet()
+     {
+        let (_directory, program, transcript) = fake_metadata_cli("large");
+        let detail = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(10),
+        )
+        .await
+        .unwrap_or_else(|error| {
+            panic!(
+                "fake large metadata CLI failed: {error:?}\n{}",
+                std::fs::read_to_string(&transcript).unwrap()
+            )
+        });
+
+        assert_eq!(detail.name, "items");
+        assert!(
+            detail
+                .comment
+                .as_deref()
+                .is_some_and(|comment| comment.len() > 16 * 1024 * 1024)
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]
