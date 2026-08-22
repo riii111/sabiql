@@ -223,41 +223,6 @@ impl MySqlProcess {
     }
 }
 
-#[cfg(test)]
-mod spawn_error_tests {
-    use super::*;
-
-    #[test]
-    fn maps_missing_mysql_cli_to_command_not_found() {
-        let error = map_mysql_cli_spawn_error(io::Error::new(
-            io::ErrorKind::NotFound,
-            "mysql executable was not found",
-        ));
-
-        assert!(matches!(
-            error,
-            DbOperationError::CommandNotFound {
-                command: DatabaseCli::MySql,
-                details,
-            } if details == "mysql executable was not found"
-        ));
-    }
-
-    #[test]
-    fn maps_other_mysql_cli_spawn_errors_to_connection_failed() {
-        let error = map_mysql_cli_spawn_error(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "mysql executable permission denied",
-        ));
-
-        assert!(matches!(
-            error,
-            DbOperationError::ConnectionFailed(details)
-                if details == "mysql executable permission denied"
-        ));
-    }
-}
-
 #[cfg(unix)]
 pub(super) async fn stop_mysql_process(
     child: &mut Child,
@@ -483,66 +448,6 @@ where
     }
 }
 
-#[cfg(test)]
-mod timeout_tests {
-    use std::time::Duration;
-
-    use super::MYSQL_QUERY_TIMEOUT;
-
-    #[test]
-    fn keeps_production_query_timeout_at_31_seconds() {
-        assert_eq!(MYSQL_QUERY_TIMEOUT, Duration::from_secs(31));
-    }
-}
-
-#[cfg(all(test, unix))]
-mod session_exit_tests {
-    use std::os::unix::process::ExitStatusExt;
-    use std::process::ExitStatus;
-
-    use crate::app::ports::outbound::DbOperationError;
-
-    use super::{MySqlSessionResult, validate_mysql_session_exit};
-
-    fn session(status: i32, forcibly_stopped: bool, error_bytes: &[u8]) -> MySqlSessionResult {
-        MySqlSessionResult {
-            status: ExitStatus::from_raw(status),
-            forcibly_stopped,
-            error_bytes: error_bytes.to_vec(),
-        }
-    }
-
-    #[test]
-    fn preserves_mysql_session_exit_rules() {
-        assert!(validate_mysql_session_exit(&session(0, false, b""), None).is_ok());
-        assert!(matches!(
-            validate_mysql_session_exit(
-                &session(
-                    0,
-                    true,
-                    b"ERROR 1054 (42S22): Unknown column missing_column"
-                ),
-                None,
-            ),
-            Err(DbOperationError::ObjectMissing(_))
-        ));
-        assert!(validate_mysql_session_exit(&session(1, false, b""), None).is_err());
-        assert!(validate_mysql_session_exit(&session(9, true, b""), None).is_ok());
-        assert!(matches!(
-            validate_mysql_session_exit(
-                &session(
-                    1,
-                    false,
-                    b"ERROR 2020 (HY000): Got packet bigger than 'max_allowed_packet' bytes",
-                ),
-                Some(33_554_432),
-            ),
-            Err(DbOperationError::QueryFailed(details))
-                if details == "MySQL protocol packet exceeds the 33554432-byte client limit"
-        ));
-    }
-}
-
 pub(super) async fn read_one_mysql_resultset(
     process: &mut MySqlProcess,
 ) -> Result<Vec<u8>, DbOperationError> {
@@ -601,8 +506,86 @@ fn mysql_statement_input(query: &str) -> Vec<u8> {
 }
 
 #[cfg(test)]
-mod statement_input_tests {
-    use super::mysql_statement_input;
+mod process_tests {
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+
+    use super::*;
+
+    #[test]
+    fn maps_missing_mysql_cli_to_command_not_found() {
+        let error = map_mysql_cli_spawn_error(io::Error::new(
+            io::ErrorKind::NotFound,
+            "mysql executable was not found",
+        ));
+
+        assert!(matches!(
+            error,
+            DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details,
+            } if details == "mysql executable was not found"
+        ));
+    }
+
+    #[test]
+    fn maps_other_mysql_cli_spawn_errors_to_connection_failed() {
+        let error = map_mysql_cli_spawn_error(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "mysql executable permission denied",
+        ));
+
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "mysql executable permission denied"
+        ));
+    }
+
+    #[test]
+    fn keeps_production_query_timeout_at_31_seconds() {
+        assert_eq!(MYSQL_QUERY_TIMEOUT, Duration::from_secs(31));
+    }
+
+    #[cfg(unix)]
+    fn session(status: i32, forcibly_stopped: bool, error_bytes: &[u8]) -> MySqlSessionResult {
+        MySqlSessionResult {
+            status: ExitStatus::from_raw(status),
+            forcibly_stopped,
+            error_bytes: error_bytes.to_vec(),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_mysql_session_exit_rules() {
+        assert!(validate_mysql_session_exit(&session(0, false, b""), None).is_ok());
+        assert!(matches!(
+            validate_mysql_session_exit(
+                &session(
+                    0,
+                    true,
+                    b"ERROR 1054 (42S22): Unknown column missing_column"
+                ),
+                None,
+            ),
+            Err(DbOperationError::ObjectMissing(_))
+        ));
+        assert!(validate_mysql_session_exit(&session(1, false, b""), None).is_err());
+        assert!(validate_mysql_session_exit(&session(9, true, b""), None).is_ok());
+        assert!(matches!(
+            validate_mysql_session_exit(
+                &session(
+                    1,
+                    false,
+                    b"ERROR 2020 (HY000): Got packet bigger than 'max_allowed_packet' bytes",
+                ),
+                Some(33_554_432),
+            ),
+            Err(DbOperationError::QueryFailed(details))
+                if details == "MySQL protocol packet exceeds the 33554432-byte client limit"
+        ));
+    }
 
     #[test]
     fn separates_statements_after_line_comments_with_semicolons() {
