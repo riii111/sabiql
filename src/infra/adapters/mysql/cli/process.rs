@@ -17,7 +17,9 @@ use crate::domain::{MySqlDiagnostic, RefreshScope};
 use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
 #[cfg(not(unix))]
 use super::error::classify_mysql_query_failure;
-use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
+use super::error::{
+    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
+};
 #[cfg(not(unix))]
 use super::pipe::{read_all, read_one_mysql_resultset_from_pipes};
 use super::policy::{
@@ -81,6 +83,19 @@ impl MySqlProcess {
         option_file: &std::path::Path,
     ) -> Result<Self, DbOperationError> {
         Self::spawn_with_query_args(program, mysql_adhoc_args(option_file))
+    }
+
+    pub(in crate::adapters::mysql::cli) async fn probe_sql_mode(
+        &mut self,
+    ) -> Result<(), DbOperationError> {
+        let probe_marker = Uuid::new_v4().simple().to_string();
+        let probe_query = format!(
+            "SELECT '{probe_marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode"
+        );
+        write_mysql_statement(self, &probe_query).await?;
+        let probe_xml = read_one_mysql_resultset(self).await?;
+        let probe = parse_mysql_xml(&probe_xml)?;
+        validate_mode_probe(&probe, &probe_marker)
     }
 
     pub(in crate::adapters::mysql) fn spawn_with_query_args(

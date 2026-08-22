@@ -5,31 +5,27 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use crate::adapters::csv_export::CsvFileWriter;
+use crate::app::ports::outbound::{AccessMode, DbOperationError};
+use crate::domain::{RefreshScope, mysql_sql::classify_mysql_statement};
 use quick_xml::Reader;
 use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
-use uuid::Uuid;
-
-use crate::adapters::csv_export::CsvFileWriter;
-use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::{RefreshScope, mysql_sql::classify_mysql_statement};
 
 use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
-use super::error::{
-    classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, validate_mode_probe,
-};
+use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    mysql_metadata_columns, read_one_mysql_resultset, run_mysql_process_with_timeout,
-    validate_mysql_session_exit, write_mysql_statement,
+    mysql_metadata_columns, run_mysql_process_with_timeout, validate_mysql_session_exit,
+    write_mysql_statement,
 };
 #[cfg(unix)]
 use super::pty::MySqlExportPtySource;
-use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field, parse_mysql_xml};
+use super::xml::{MySqlField, decode_mysql_xml_reference, parse_mysql_field};
 
 const MYSQL_EXPORT_TIMEOUT: Duration = Duration::from_secs(MYSQL_QUERY_TIMEOUT.as_secs() * 10);
 const MYSQL_CSV_MAX_DECODED_FIELD_BYTES: usize = 16 * 1024 * 1024;
@@ -369,14 +365,7 @@ pub(super) async fn run_mysql_export_process(
     path: PathBuf,
 ) -> Result<(), DbOperationError> {
     configure_mysql_session(process, AccessMode::ReadOnly).await?;
-
-    let marker = Uuid::new_v4().simple().to_string();
-    let probe_query =
-        format!("SELECT '{marker}' AS __sabiql_probe, @@SESSION.sql_mode AS __sabiql_sql_mode");
-    write_mysql_statement(process, &probe_query).await?;
-    let probe_xml = read_one_mysql_resultset(process).await?;
-    let probe = parse_mysql_xml(&probe_xml)?;
-    validate_mode_probe(&probe, &marker)?;
+    process.probe_sql_mode().await?;
 
     write_mysql_statement(process, query).await?;
     let mut csv_writer = CsvFileWriter::create(path).await?;
