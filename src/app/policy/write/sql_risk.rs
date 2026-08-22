@@ -67,14 +67,6 @@ pub enum MultiStatementDecision<Statement = String> {
     },
 }
 
-fn mysql_low(read_only_allowed: bool) -> SqlRiskDecision {
-    SqlRiskDecision {
-        risk_level: RiskLevel::Low,
-        confirmation: ConfirmationType::Immediate,
-        read_only_allowed,
-    }
-}
-
 fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
     match statement.target() {
         Some(target) => SqlRiskDecision {
@@ -84,14 +76,7 @@ fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
             },
             read_only_allowed: false,
         },
-        None => SqlRiskDecision {
-            risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::Acknowledge {
-                reason: AcknowledgeReason::TargetNameUnavailable,
-                label: mysql_statement_label(statement.kind()).to_string(),
-            },
-            read_only_allowed: false,
-        },
+        None => high_acknowledge_label(mysql_statement_label(statement.kind())),
     }
 }
 
@@ -101,7 +86,7 @@ fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
         | MySqlStatementKind::Table
         | MySqlStatementKind::Show
         | MySqlStatementKind::Describe => {
-            mysql_low(!has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true))
+            low_immediate(!has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true))
         }
         MySqlStatementKind::Begin
         | MySqlStatementKind::StartTransaction
@@ -113,7 +98,7 @@ fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
         | MySqlStatementKind::Insert
         | MySqlStatementKind::CreateTable { .. }
         | MySqlStatementKind::CreateView
-        | MySqlStatementKind::CreateIndex => mysql_low(false),
+        | MySqlStatementKind::CreateIndex => low_immediate(false),
         MySqlStatementKind::Update { has_where: true }
         | MySqlStatementKind::Delete { has_where: true }
         | MySqlStatementKind::RenameTable
@@ -187,22 +172,19 @@ pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
         Ok(statements) => statements,
         Err(reason) => return MultiStatementDecision::Block { reason },
     };
-    let planned = statements
-        .into_iter()
-        .map(|statement| {
-            let decision = mysql_statement_risk(&statement);
-            (statement, decision)
-        })
+    let decisions = statements
+        .iter()
+        .map(mysql_statement_risk)
         .collect::<Vec<_>>();
 
-    let max_risk = planned
+    let max_risk = decisions
         .iter()
-        .map(|(_, decision)| decision.risk_level)
+        .map(|decision| decision.risk_level)
         .max()
         .unwrap_or(RiskLevel::Low);
-    let table_confirmations: Vec<String> = planned
+    let table_confirmations: Vec<String> = decisions
         .iter()
-        .filter_map(|(_, decision)| match &decision.confirmation {
+        .filter_map(|decision| match &decision.confirmation {
             ConfirmationType::TableNameInput { target } => Some(target.clone()),
             _ => None,
         })
@@ -217,13 +199,7 @@ pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
     } else {
         ConfirmationType::Immediate
     };
-    let read_only_allowed = planned
-        .iter()
-        .all(|(_, decision)| decision.read_only_allowed);
-    let statements = planned
-        .into_iter()
-        .map(|(statement, _)| statement)
-        .collect();
+    let read_only_allowed = decisions.iter().all(|decision| decision.read_only_allowed);
     MultiStatementDecision::Allow {
         statements,
         risk: SqlRiskDecision {
@@ -419,11 +395,11 @@ fn is_comment_only(sql: &str) -> bool {
     true
 }
 
-fn low_immediate() -> SqlRiskDecision {
+fn low_immediate(read_only_allowed: bool) -> SqlRiskDecision {
     SqlRiskDecision {
         risk_level: RiskLevel::Low,
         confirmation: ConfirmationType::Immediate,
-        read_only_allowed: true,
+        read_only_allowed,
     }
 }
 
@@ -461,17 +437,13 @@ pub fn evaluate_sql_risk_for_database(
     }
 
     Some(match kind {
-        StatementKind::Select | StatementKind::Transaction => low_immediate(),
-        StatementKind::Insert | StatementKind::Create => SqlRiskDecision {
-            risk_level: RiskLevel::Low,
-            confirmation: ConfirmationType::Immediate,
-            read_only_allowed: false,
-        },
+        StatementKind::Select | StatementKind::Transaction => low_immediate(true),
+        StatementKind::Insert | StatementKind::Create => low_immediate(false),
         StatementKind::Unsupported | StatementKind::Other => {
             // Empty / comment-only input has nothing to execute; gating it
             // would show a confirm dialog for a no-op.
             if sql.trim().is_empty() || is_comment_only(sql) {
-                return Some(low_immediate());
+                return Some(low_immediate(true));
             }
             SqlRiskDecision {
                 risk_level: RiskLevel::Low,
@@ -501,11 +473,7 @@ pub fn evaluate_sql_risk_for_database(
                     None => high_acknowledge(kind),
                 }
             } else {
-                SqlRiskDecision {
-                    risk_level: RiskLevel::Low,
-                    confirmation: ConfirmationType::Immediate,
-                    read_only_allowed: false,
-                }
+                low_immediate(false)
             }
         }
         StatementKind::Update { has_where: false }
@@ -597,7 +565,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
         };
     }
 
-    let mut decisions: Vec<(String, StatementKind, SqlRiskDecision)> = Vec::new();
+    let mut decisions: Vec<SqlRiskDecision> = Vec::new();
 
     for stmt in &statements {
         let kind = classify(stmt);
@@ -606,15 +574,15 @@ pub fn evaluate_multi_statement_for_database_with_context(
                 reason: "SQL risk evaluation is not supported for this database".to_string(),
             };
         };
-        decisions.push((stmt.clone(), kind, decision));
+        decisions.push(decision);
     }
 
     let has_table_name_input = decisions
         .iter()
-        .any(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+        .any(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
     let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
-        .filter_map(|(_, _, d)| match &d.confirmation {
+        .filter_map(|d| match &d.confirmation {
             ConfirmationType::Acknowledge { reason, .. } => Some(reason),
             _ => None,
         })
@@ -642,17 +610,14 @@ pub fn evaluate_multi_statement_for_database_with_context(
     // acknowledgment must not cover statements flagged for a different reason
     // (the dialog would hide the other reason from the user).
     let has_non_transaction_acknowledge = transaction_policy.requires_acknowledgement()
-        && decisions
-            .iter()
-            .enumerate()
-            .any(|(index, (_, _, decision))| {
-                matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
-                    && !matches!(
-                        sqlite_classifications[index],
-                        SqliteStatementClassification::SessionSideEffect
-                            | SqliteStatementClassification::TransactionIncompatible
-                    )
-            });
+        && decisions.iter().enumerate().any(|(index, decision)| {
+            matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
+                && !matches!(
+                    sqlite_classifications[index],
+                    SqliteStatementClassification::SessionSideEffect
+                        | SqliteStatementClassification::TransactionIncompatible
+                )
+        });
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
@@ -663,11 +628,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
         };
     }
 
-    let max_risk = decisions
-        .iter()
-        .map(|(_, _, d)| d.risk_level)
-        .max()
-        .unwrap();
+    let max_risk = decisions.iter().map(|d| d.risk_level).max().unwrap();
     let confirmation = if transaction_policy.requires_acknowledgement() && !has_acknowledge {
         ConfirmationType::Acknowledge {
             reason: AcknowledgeReason::NonAtomicTransaction,
@@ -676,15 +637,15 @@ pub fn evaluate_multi_statement_for_database_with_context(
     } else if has_table_name_input {
         decisions
             .iter()
-            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
-            .map(|(_, _, d)| d.confirmation.clone())
+            .find(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+            .map(|d| d.confirmation.clone())
             .unwrap()
     } else if has_acknowledge {
         // Mixed reasons are blocked above; the first Acknowledge represents all.
         decisions
             .iter()
-            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
-            .map(|(_, _, d)| d.confirmation.clone())
+            .find(|d| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
+            .map(|d| d.confirmation.clone())
             .unwrap()
     } else {
         ConfirmationType::Immediate
@@ -695,7 +656,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
         risk: SqlRiskDecision {
             risk_level: max_risk,
             confirmation,
-            read_only_allowed: decisions.iter().all(|(_, _, d)| d.read_only_allowed),
+            read_only_allowed: decisions.iter().all(|d| d.read_only_allowed),
         },
     }
 }
@@ -914,7 +875,7 @@ fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
 
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
     match sqlite_statement_classification(sql) {
-        SqliteStatementClassification::ReadOnly => return Some(low_immediate()),
+        SqliteStatementClassification::ReadOnly => return Some(low_immediate(true)),
         SqliteStatementClassification::TransactionalWrite => {
             return Some(SqlRiskDecision {
                 risk_level: RiskLevel::Medium,
