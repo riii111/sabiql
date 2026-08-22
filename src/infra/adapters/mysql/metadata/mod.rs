@@ -5,6 +5,7 @@ use crate::domain::{DatabaseMetadata, Schema, Table, TableSignatureSnapshot};
 
 use super::adapter::MySqlAdapter;
 use super::cli::MySqlResultSet;
+use super::dsn::parse_and_validate_mysql_dsn;
 use super::sql::{EFFECTIVE_USER_QUERY, EFFECTIVE_USER_RESULT_COLUMNS};
 
 mod catalog;
@@ -17,16 +18,23 @@ pub(super) use preview::{convert_preview_values_with_binary_charset, execute_pre
 #[async_trait]
 impl MetadataProvider for MySqlAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let snapshot = catalog::fetch_metadata_snapshot(dsn).await?;
-        let mut metadata = DatabaseMetadata::new(snapshot.database.clone());
-        metadata.schemas = vec![Schema::new(snapshot.database)];
-        metadata.table_summaries = snapshot.table_summaries;
+        let target = parse_and_validate_mysql_dsn(dsn)?;
+        let database = catalog::selected_database(&target)?;
+        let snapshot = catalog::fetch_metadata_snapshot(&target, database).await?;
+        let mut metadata = DatabaseMetadata::new(database.to_string());
+        metadata.schemas = vec![Schema::new(database.to_string())];
+        metadata.table_summaries = snapshot
+            .tables
+            .into_iter()
+            .map(catalog::table_summary)
+            .collect();
         Ok(metadata)
     }
 
     async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+        let target = parse_and_validate_mysql_dsn(dsn)?;
         let (_, result) = catalog::execute_metadata_query(
-            dsn,
+            &target,
             EFFECTIVE_USER_QUERY,
             EFFECTIVE_USER_RESULT_COLUMNS,
         )

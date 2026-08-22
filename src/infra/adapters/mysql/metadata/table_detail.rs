@@ -90,14 +90,15 @@ async fn fetch_table_columns_and_fks_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
-    let database = selected_database(dsn)?;
+    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let database = selected_database(&target)?;
     let table_query = table_query(schema, table);
     let columns_query = columns_query(schema, table);
     let unique_columns_query = unique_columns_query(schema, table);
     let foreign_keys_query = foreign_keys_query(schema, table);
     let (lower_case_table_names, results) =
         super::catalog::execute_metadata_queries_in_session_with_program(
-            dsn,
+            &target,
             &[
                 (table_query.as_str(), TABLES_RESULT_COLUMNS),
                 (columns_query.as_str(), COLUMN_METADATA_RESULT_COLUMNS),
@@ -108,18 +109,14 @@ async fn fetch_table_columns_and_fks_with_program(
             timeout,
         )
         .await?;
-    let snapshot = metadata_snapshot_from_result(
-        &database,
-        Some(schema),
-        &results[0],
-        lower_case_table_names,
-    )?;
+    let snapshot =
+        metadata_snapshot_from_result(database, Some(schema), &results[0], lower_case_table_names)?;
     let table_metadata = find_table(schema, table, &snapshot.tables, lower_case_table_names)?;
     let mut columns = parse_columns_for_table(&results[1], schema, table)?;
     mark_single_column_unique(&mut columns, &parse_unique_column_metadata(&results[2])?);
     let foreign_keys = foreign_keys_from_metadata(
         parse_foreign_key_metadata(&results[3])?,
-        &database,
+        database,
         lower_case_table_names,
     )?;
     Ok(table_from_columns_and_foreign_keys(
@@ -137,11 +134,7 @@ async fn fetch_table_detail_in_session_with_program(
     timeout: Duration,
 ) -> Result<Table, DbOperationError> {
     let target = parse_and_validate_mysql_dsn(dsn)?;
-    let database = target.database.as_deref().ok_or_else(|| {
-        DbOperationError::UnsupportedOperation(
-            "MySQL metadata requires a selected database".to_string(),
-        )
-    })?;
+    let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
     let mut session =
         MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;

@@ -8,6 +8,7 @@ use crate::domain::{
 };
 
 use super::super::cli::{MYSQL_QUERY_TIMEOUT, MySqlResultSet};
+use super::super::dsn::parse_and_validate_mysql_dsn;
 use super::super::sql::{
     FOREIGN_KEY_RESULT_COLUMNS, SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS,
     SIGNATURE_FOREIGN_KEYS_QUERY, SIGNATURE_UNIQUE_COLUMNS_QUERY,
@@ -39,9 +40,10 @@ async fn fetch_table_signatures_with_program(
     program: &OsStr,
     timeout: Duration,
 ) -> Result<TableSignatureSnapshot, DbOperationError> {
-    let database = selected_database(dsn)?;
+    let target = parse_and_validate_mysql_dsn(dsn)?;
+    let database = selected_database(&target)?;
     let (lower_case_table_names, results) = execute_metadata_queries_in_session_with_program(
-        dsn,
+        &target,
         &[
             (TABLES_QUERY, TABLES_RESULT_COLUMNS),
             (SIGNATURE_COLUMNS_QUERY, SIGNATURE_COLUMNS_RESULT_COLUMNS),
@@ -56,10 +58,10 @@ async fn fetch_table_signatures_with_program(
     )
     .await?;
     let snapshot =
-        metadata_snapshot_from_result(&database, None, &results[0], lower_case_table_names)?;
+        metadata_snapshot_from_result(database, None, &results[0], lower_case_table_names)?;
     table_signatures_from_metadata(
         &snapshot.tables,
-        &database,
+        database,
         lower_case_table_names,
         parse_signature_column_metadata(&results[1])?,
         parse_foreign_key_metadata(&results[2])?,
