@@ -205,6 +205,7 @@ mod tests {
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
+    use crate::update::action::QueryCompletionContext;
     use crate::update::action::{ConnectionSaveError, ConnectionTarget, SmartErRefreshError};
     use crate::update::action::{InputTarget, SelectMotion};
     use crate::update::test_fixtures;
@@ -3196,8 +3197,10 @@ mod tests {
                     dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     result,
-                    generation: current_gen,
-                    target_page: Some(0),
+                    context: QueryCompletionContext::Preview {
+                        generation: current_gen,
+                        target_page: 0,
+                    },
                 },
                 now,
                 &AppServices::stub(),

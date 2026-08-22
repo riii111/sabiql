@@ -67,7 +67,7 @@ pub(super) mod tests {
         Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, QueryCompletionContext};
     use crate::update::test_fixtures;
 
     pub fn create_test_state() -> AppState {
@@ -91,8 +91,13 @@ pub(super) mod tests {
             dsn: "postgres://localhost/test".to_string(),
             run_id,
             result,
-            generation,
-            target_page,
+            context: match target_page {
+                Some(target_page) => QueryCompletionContext::Preview {
+                    generation,
+                    target_page,
+                },
+                None => QueryCompletionContext::Adhoc,
+            },
         }
     }
 
