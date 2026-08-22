@@ -386,32 +386,17 @@ pub(super) async fn write_mysql_input(
     input: &[u8],
 ) -> Result<(), DbOperationError> {
     #[cfg(unix)]
-    process
-        .pty
-        .input
+    let writer = &mut process.pty.input;
+    #[cfg(not(unix))]
+    let writer = process
+        .stdin
+        .as_mut()
+        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?;
+    writer
         .write_all(input)
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .as_mut()
-        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
-        .write_all(input)
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    #[cfg(unix)]
-    process
-        .pty
-        .input
-        .flush()
-        .await
-        .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    #[cfg(not(unix))]
-    process
-        .stdin
-        .as_mut()
-        .ok_or_else(|| DbOperationError::ConnectionLost("mysql stdin was closed".to_string()))?
+    writer
         .flush()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;

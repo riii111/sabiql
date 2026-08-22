@@ -510,28 +510,7 @@ impl Inspector {
         scroll_offset: usize,
         theme: &ThemePalette,
     ) {
-        let headers_with_type_and_details =
-            ["Name", "Columns", "Type", "Unique", "Partial", "Detail"];
-        let headers_with_type_and_details_without_partial =
-            ["Name", "Columns", "Type", "Unique", "Detail"];
-        let headers_with_type = ["Name", "Columns", "Type", "Unique"];
-        let headers_without_type_and_details = ["Name", "Columns", "Unique", "Partial", "Detail"];
-        let headers_without_type_and_details_without_partial =
-            ["Name", "Columns", "Unique", "Detail"];
-        let headers_without_type = ["Name", "Columns", "Unique"];
-        let headers = if show_type && show_partial && has_details {
-            &headers_with_type_and_details[..]
-        } else if show_type && has_details {
-            &headers_with_type_and_details_without_partial[..]
-        } else if show_type {
-            &headers_with_type[..]
-        } else if show_partial && has_details {
-            &headers_without_type_and_details[..]
-        } else if has_details {
-            &headers_without_type_and_details_without_partial[..]
-        } else {
-            &headers_without_type[..]
-        };
+        let headers = index_headers(show_type, show_partial, has_details);
         // Width sampling sees only the first 50 rows, so row_fn rebuilds text
         // per visible row instead of indexing into the sample
         let data_rows: Vec<Vec<String>> = rows
@@ -539,7 +518,7 @@ impl Inspector {
             .take(50)
             .map(|row| index_row_cells(row, show_type, show_partial, has_details))
             .collect();
-        let col_widths = calculate_column_widths(headers, &data_rows);
+        let col_widths = calculate_column_widths(&headers, &data_rows);
         let widths: Vec<Constraint> = col_widths.iter().map(|&w| Constraint::Length(w)).collect();
 
         use crate::primitives::molecules::{StripedTableConfig, render_striped_table};
@@ -547,7 +526,7 @@ impl Inspector {
             frame,
             area,
             &StripedTableConfig {
-                headers,
+                headers: &headers,
                 widths: &widths,
                 total_items: rows.len(),
                 empty_message: "No indexes",
@@ -853,6 +832,21 @@ impl Inspector {
     }
 }
 
+fn index_headers(show_type: bool, show_partial: bool, has_details: bool) -> Vec<&'static str> {
+    let mut headers = vec!["Name", "Columns"];
+    if show_type {
+        headers.push("Type");
+    }
+    headers.push("Unique");
+    if show_partial && has_details {
+        headers.push("Partial");
+    }
+    if has_details {
+        headers.push("Detail");
+    }
+    headers
+}
+
 fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> Vec<String> {
     let mut cells = vec![
         row.name.clone(),
@@ -1023,18 +1017,96 @@ mod tests {
     use crate::domain::TriggerCreationContext;
 
     #[test]
-    fn index_row_cells_match_partial_header_visibility() {
+    fn index_headers_match_row_cells_for_all_flag_combinations() {
         let row = InspectorIndexRow {
             name: "idx_users_email".to_string(),
             columns: "email".to_string(),
-            index_type: None,
+            index_type: Some("B-tree".to_string()),
             unique: false,
             partial: true,
-            detail: None,
+            detail: Some("CREATE INDEX idx_users_email ON users(email)".to_string()),
         };
 
-        assert_eq!(index_row_cells(&row, false, true, false).len(), 3);
-        assert_eq!(index_row_cells(&row, false, true, true).len(), 5);
+        let cases = [
+            (
+                (false, false, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
+            (
+                (true, false, false),
+                vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
+            ),
+            (
+                (false, true, false),
+                vec!["Name", "Columns", "Unique"],
+                vec!["idx_users_email", "email", ""],
+            ),
+            (
+                (true, true, false),
+                vec!["Name", "Columns", "Type", "Unique"],
+                vec!["idx_users_email", "email", "B-tree", ""],
+            ),
+            (
+                (false, false, true),
+                vec!["Name", "Columns", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (true, false, true),
+                vec!["Name", "Columns", "Type", "Unique", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (false, true, true),
+                vec!["Name", "Columns", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+            (
+                (true, true, true),
+                vec!["Name", "Columns", "Type", "Unique", "Partial", "Detail"],
+                vec![
+                    "idx_users_email",
+                    "email",
+                    "B-tree",
+                    "",
+                    "✓",
+                    "CREATE INDEX idx_users_email ON users(email)",
+                ],
+            ),
+        ];
+
+        for ((show_type, show_partial, has_details), expected_headers, expected_cells) in cases {
+            let headers = index_headers(show_type, show_partial, has_details);
+            let cells = index_row_cells(&row, show_type, show_partial, has_details);
+
+            assert_eq!(headers, expected_headers);
+            assert_eq!(
+                cells,
+                expected_cells
+                    .into_iter()
+                    .map(String::from)
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]
