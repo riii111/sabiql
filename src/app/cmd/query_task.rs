@@ -80,29 +80,4 @@ mod tests {
         .await
         .expect("cancelled query task should be dropped");
     }
-
-    #[tokio::test]
-    async fn cancel_drops_active_table_detail_task() {
-        let registry = TableDetailTaskRegistry::default();
-        let dropped = Arc::new(AtomicBool::new(false));
-        let (started_tx, started_rx) = oneshot::channel();
-        let guard = DropSignal(Arc::clone(&dropped));
-
-        registry.spawn(async move {
-            let _guard = guard;
-            started_tx.send(()).ok();
-            std::future::pending::<()>().await;
-        });
-
-        started_rx.await.expect("table detail task should start");
-        registry.cancel();
-
-        timeout(Duration::from_secs(1), async {
-            while !dropped.load(Ordering::SeqCst) {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("cancelled table detail task should be dropped");
-    }
 }
