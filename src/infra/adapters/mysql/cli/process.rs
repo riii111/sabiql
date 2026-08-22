@@ -541,6 +541,7 @@ mod process_tests {
                 if details == "mysql executable permission denied"
         ));
     }
+
     #[test]
     fn keeps_production_query_timeout_at_31_seconds() {
         assert_eq!(MYSQL_QUERY_TIMEOUT, Duration::from_secs(31));
