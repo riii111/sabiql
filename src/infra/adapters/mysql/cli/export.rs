@@ -25,7 +25,7 @@ use super::policy::mysql_metadata_fallback_kind;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
     mysql_metadata_columns, read_one_mysql_resultset, run_mysql_process_with_timeout,
-    write_mysql_statement,
+    validate_mysql_session_exit, write_mysql_statement,
 };
 #[cfg(unix)]
 use super::pty::MySqlExportPtySource;
@@ -401,35 +401,9 @@ pub(super) async fn run_mysql_export_process(
     }
 
     let result = finish_mysql_session(process).await?;
-    validate_mysql_export_exit(
-        result.status,
-        result.forcibly_stopped,
-        &result.error_bytes,
-        process.client_packet_limit_bytes,
-    )?;
+    validate_mysql_session_exit(&result, process.client_packet_limit_bytes)?;
 
     csv_writer.finish().await
-}
-
-fn validate_mysql_export_exit(
-    status: std::process::ExitStatus,
-    forcibly_stopped: bool,
-    error_bytes: &[u8],
-    client_packet_limit_bytes: Option<usize>,
-) -> Result<(), DbOperationError> {
-    if has_mysql_cli_error(error_bytes) {
-        return Err(classify_mysql_query_failure_with_packet_limit(
-            error_bytes,
-            client_packet_limit_bytes,
-        ));
-    }
-    if !status.success() && !forcibly_stopped {
-        return Err(classify_mysql_query_failure_with_packet_limit(
-            error_bytes,
-            client_packet_limit_bytes,
-        ));
-    }
-    Ok(())
 }
 
 pub(super) async fn stream_mysql_resultset_to_csv(
@@ -664,9 +638,6 @@ where
 #[cfg(test)]
 mod tests {
     use std::fs;
-
-    #[cfg(unix)]
-    use std::os::unix::process::ExitStatusExt;
 
     use crate::adapters::csv_export::export_to_path;
     use tokio::io::AsyncWriteExt;
@@ -941,18 +912,5 @@ line2]]></field>
                 .unwrap();
             assert_eq!(output, xml.as_bytes());
         }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn rejects_cli_error_after_forced_stop() {
-        let result = validate_mysql_export_exit(
-            std::process::ExitStatus::from_raw(9),
-            true,
-            b"ERROR 1054 (42S02): Unknown column missing_column",
-            None,
-        );
-
-        assert!(matches!(result, Err(DbOperationError::ObjectMissing(_))));
     }
 }

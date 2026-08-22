@@ -5,12 +5,12 @@ use uuid::Uuid;
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 
 use super::super::args::{mysql_metadata_session_args, mysql_query_args};
-use super::super::error::classify_mysql_query_failure_with_packet_limit;
 use super::super::probe::{validate_lower_case_table_names, validate_sql_mode};
 use super::super::xml::{MySqlResultSet, parse_mysql_preview_xml, parse_mysql_xml};
 use super::{
     MySqlProcess, cleanup_mysql_process, configure_mysql_session, finish_mysql_session,
-    finish_mysql_session_after_preview_frame, read_one_mysql_resultset, write_mysql_statement,
+    finish_mysql_session_after_preview_frame, read_one_mysql_resultset,
+    validate_mysql_session_exit, write_mysql_statement,
 };
 
 pub(in crate::adapters::mysql) struct MySqlMetadataSession {
@@ -86,18 +86,7 @@ impl MySqlMetadataSession {
 
     pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
         let result = finish_mysql_session(&mut self.process).await?;
-        if super::has_mysql_cli_error(&result.error_bytes) {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                self.process.client_packet_limit_bytes,
-            ));
-        }
-        if !result.status.success() && !result.forcibly_stopped {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                self.process.client_packet_limit_bytes,
-            ));
-        }
+        validate_mysql_session_exit(&result, self.process.client_packet_limit_bytes)?;
         Ok(())
     }
 
@@ -120,18 +109,7 @@ impl MySqlMetadataSession {
             ));
         }
         let result = finish_mysql_session_after_preview_frame(&mut self.process).await?;
-        if super::has_mysql_cli_error(&result.error_bytes) {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                self.process.client_packet_limit_bytes,
-            ));
-        }
-        if !result.status.success() && !result.forcibly_stopped {
-            return Err(classify_mysql_query_failure_with_packet_limit(
-                &result.error_bytes,
-                self.process.client_packet_limit_bytes,
-            ));
-        }
+        validate_mysql_session_exit(&result, self.process.client_packet_limit_bytes)?;
         Ok(())
     }
 
