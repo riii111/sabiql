@@ -596,7 +596,7 @@ mod tests {
     use super::super::export::run_mysql_export_process;
     use super::super::policy::MySqlExecutionResult;
     use super::super::xml::MySqlResultSet;
-    use super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns;
+    use super::adhoc::run_mysql_adhoc_with_program_and_statements;
     use super::metadata::{
         mysql_metadata_columns_external_with_program,
         run_mysql_metadata_query_with_read_only_session_with_timeout,
@@ -962,12 +962,21 @@ while IFS= read -r line; do
         printf '%s\n' '<resultset><row><field name="__sabiql_session_marker">'"$marker"'</field></row></resultset>'
       fi
       ;;
-      *__sabiql_marker*)
+    *__sabiql_marker*)
       {marker_response}
       ;;
-    *metadata_source*)
-      printf '%s\n' 'ERROR 1060 (42S21): Duplicate column name duplicate_alias'
-      printf '%s\n' '<resultset></resultset>'
+    *"WITH "*__sabiql_metadata_source*)
+      case "$line" in
+        *duplicate_alias*)
+          printf '%s\n' 'ERROR 1060 (42S21): Duplicate column name duplicate_alias'
+          printf '%s\n' '<resultset></resultset>'
+          ;;
+        *)
+          printf '%s\n' '<resultset xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><row><field name="first_alias" xsi:nil="true"/></row></resultset>'
+          ;;
+      esac
+      ;;
+    *__sabiql_metadata_*)
       ;;
     *missing_column*)
       printf '%s\\n' 'ERROR 1054 (42S22): Unknown column missing_column' >&2
@@ -1181,12 +1190,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadOnly,
-                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1214,7 +1222,7 @@ done
         }
 
         #[tokio::test]
-        async fn known_empty_result_uses_expected_columns_without_replaying_query() {
+        async fn empty_result_uses_metadata_fallback_without_replaying_query() {
             let (_directory, program, option_file) = fake_mysql_multi();
             let query = "SELECT 1 AS first_alias WHERE FALSE";
             let statements = split_mysql_statements(query)
@@ -1223,23 +1231,30 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadOnly,
-                Some(&["first_alias"]),
                 Duration::from_secs(5),
             )
             .await
-            .expect("known empty result");
+            .unwrap_or_else(|error| {
+                let log = fs::read_to_string(format!("{}.log", option_file.display()))
+                    .unwrap_or_default();
+                panic!("empty result failed: {error:?}; log: {log}");
+            });
             let result_set = result.result_set.expect("result set");
             assert_eq!(result_set.columns, ["first_alias"]);
             assert!(result_set.values.is_empty());
 
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            assert_eq!(log.matches(query).count(), 1, "{log}");
-            assert!(!log.contains("__sabiql_metadata_inner"));
+            assert_eq!(
+                log.lines().filter(|line| *line == query).count(),
+                1,
+                "{log}"
+            );
+            assert!(log.contains("__sabiql_metadata_inner"));
         }
 
         #[tokio::test]
@@ -1252,12 +1267,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await;
@@ -1291,12 +1305,11 @@ done
                     .map(|sql| classify_mysql_statement(&sql).unwrap())
                     .collect::<Vec<_>>();
 
-                run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                run_mysql_adhoc_with_program_and_statements(
                     OsStr::new(&program),
                     &option_file,
                     &statements,
                     AccessMode::ReadOnly,
-                    None,
                     Duration::from_secs(5),
                 )
                 .await
@@ -1646,12 +1659,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1683,12 +1695,11 @@ done
                     .map(|sql| classify_mysql_statement(&sql).unwrap())
                     .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1717,12 +1728,11 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1760,12 +1770,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await
@@ -1787,12 +1796,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await;
@@ -1818,12 +1826,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await;
@@ -1866,12 +1873,11 @@ done
                     .map(|sql| classify_mysql_statement(&sql).unwrap())
                     .collect::<Vec<_>>();
 
-                let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+                let result = run_mysql_adhoc_with_program_and_statements(
                     OsStr::new(&program),
                     &option_file,
                     &statements,
                     AccessMode::ReadWrite,
-                    None,
                     Duration::from_secs(5),
                 )
                 .await;
@@ -1907,12 +1913,11 @@ done
             .map(|sql| classify_mysql_statement(&sql).unwrap())
             .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await;
@@ -1936,12 +1941,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_millis(100),
             )
             .await;
@@ -1965,12 +1969,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_millis(100),
             )
             .await;
@@ -1987,12 +1990,11 @@ done
                 .map(|sql| classify_mysql_statement(&sql).unwrap())
                 .collect::<Vec<_>>();
 
-            let result = run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+            let result = run_mysql_adhoc_with_program_and_statements(
                 OsStr::new(&program),
                 &option_file,
                 &statements,
                 AccessMode::ReadWrite,
-                None,
                 Duration::from_secs(5),
             )
             .await;

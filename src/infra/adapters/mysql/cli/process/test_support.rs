@@ -9,12 +9,11 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc_with_timeout_for_test(
     statements: &[MySqlStatement],
     execution_timeout: Duration,
 ) -> Result<(), DbOperationError> {
-    super::adhoc::run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+    super::adhoc::run_mysql_adhoc_with_program_and_statements(
         std::ffi::OsStr::new("mysql"),
         option_file,
         statements,
         AccessMode::ReadWrite,
-        None,
         execution_timeout,
     )
     .await

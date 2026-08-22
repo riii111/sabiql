@@ -32,23 +32,21 @@ pub(in crate::adapters::mysql) async fn run_mysql_adhoc(
     statements: &[MySqlStatement],
     access_mode: AccessMode,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
-    run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+    run_mysql_adhoc_with_program_and_statements(
         OsStr::new("mysql"),
         option_file,
         statements,
         access_mode,
-        None,
         MYSQL_QUERY_TIMEOUT,
     )
     .await
 }
 
-pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_columns(
+pub(super) async fn run_mysql_adhoc_with_program_and_statements(
     program: &OsStr,
     option_file: &Path,
     statements: &[MySqlStatement],
     access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
     execution_timeout: Duration,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     if mysql_metadata_fallback_has_unsupported_session_state(statements) {
@@ -64,14 +62,7 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements_and_expected_col
         &mut process,
         possible_refresh_scope,
         async |process| {
-            run_mysql_adhoc_process(
-                process,
-                option_file,
-                statements,
-                access_mode,
-                expected_columns,
-            )
-            .await
+            run_mysql_adhoc_process(process, option_file, statements, access_mode).await
         },
     )
     .await
@@ -90,17 +81,9 @@ pub(super) async fn fill_mysql_empty_result_columns(
     query: &str,
     kind: &MySqlStatementKind,
     access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
     diagnostics: &mut Vec<MySqlDiagnostic>,
 ) -> Result<MySqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
-        return Ok(result);
-    }
-    if let Some(expected_columns) = expected_columns {
-        result.columns = expected_columns
-            .iter()
-            .map(|column| (*column).to_string())
-            .collect();
         return Ok(result);
     }
     let fallback_kind =
@@ -198,7 +181,6 @@ async fn fill_mysql_last_result_columns(
     last_result_set: &mut Option<MySqlResultSet>,
     last_result_statement: Option<&MySqlStatement>,
     access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
     refresh_scope: RefreshScope,
     diagnostics: &mut Vec<MySqlDiagnostic>,
 ) -> Result<(), DbOperationError> {
@@ -216,7 +198,6 @@ async fn fill_mysql_last_result_columns(
         statement.sql(),
         statement.kind(),
         access_mode,
-        expected_columns,
         diagnostics,
     )
     .await
@@ -230,16 +211,12 @@ async fn run_mysql_adhoc_process(
     option_file: &Path,
     statements: &[MySqlStatement],
     access_mode: AccessMode,
-    expected_columns: Option<&[&str]>,
 ) -> Result<MySqlExecutionResult, DbOperationError> {
     configure_mysql_session(process, access_mode).await?;
     let mut last_result_set = None;
     let mut last_result_statement = None;
     let mut refresh_scope = RefreshScope::None;
     let mut diagnostics = Vec::new();
-    let expected_columns = (statements.len() == 1)
-        .then_some(expected_columns)
-        .flatten();
 
     for (index, statement) in statements.iter().enumerate() {
         if last_result_set
@@ -255,7 +232,6 @@ async fn run_mysql_adhoc_process(
                 &mut last_result_set,
                 last_result_statement,
                 access_mode,
-                expected_columns,
                 refresh_scope,
                 &mut diagnostics,
             )
@@ -276,7 +252,6 @@ async fn run_mysql_adhoc_process(
         &mut last_result_set,
         last_result_statement,
         access_mode,
-        expected_columns,
         refresh_scope,
         &mut diagnostics,
     )
