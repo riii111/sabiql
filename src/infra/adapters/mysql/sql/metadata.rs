@@ -179,25 +179,20 @@ pub(in crate::adapters::mysql) fn table_detail_metadata_query(schema: &str, tabl
             "AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE ",
             "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
             "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
-            ") AS fk), JSON_ARRAY()), ",
-            "'triggers', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
-            "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
-            "'ACTION_TIMING', tr.ACTION_TIMING, ",
-            "'EVENT_MANIPULATION', tr.EVENT_MANIPULATION, ",
-            "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
-            "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
-            "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
-            "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED)) FROM ",
-            "(SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ",
-            "ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, ",
-            "COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM ",
-            "INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {schema} ",
-            "AND EVENT_OBJECT_SCHEMA = {schema} AND EVENT_OBJECT_TABLE = {table}) AS tr), ",
-            "JSON_ARRAY()",
-            ")) AS METADATA_JSON"
+            ") AS fk), JSON_ARRAY())",
+            ") AS METADATA_JSON"
         ),
         schema = quoted_schema,
         table = quoted_table,
+    )
+}
+
+pub(in crate::adapters::mysql) fn triggers_query(schema: &str, table: &str) -> String {
+    format!(
+        "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {} AND EVENT_OBJECT_SCHEMA = {} AND EVENT_OBJECT_TABLE = {} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER",
+        quote_string(schema),
+        quote_string(schema),
+        quote_string(table),
     )
 }
 
@@ -486,22 +481,8 @@ mod tests {
                 "AND rc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME WHERE ",
                 "tc.CONSTRAINT_SCHEMA = {schema} AND tc.TABLE_SCHEMA = {schema} ",
                 "AND tc.TABLE_NAME = {table} AND tc.CONSTRAINT_TYPE = 'FOREIGN KEY' ",
-                ") AS fk), JSON_ARRAY()), ",
-                "'triggers', COALESCE((SELECT JSON_ARRAYAGG(JSON_OBJECT(",
-                "'TRIGGER_NAME', tr.TRIGGER_NAME, 'ACTION_ORDER', tr.ACTION_ORDER, ",
-                "'ACTION_TIMING', tr.ACTION_TIMING, ",
-                "'EVENT_MANIPULATION', tr.EVENT_MANIPULATION, ",
-                "'ACTION_STATEMENT', tr.ACTION_STATEMENT, 'DEFINER', tr.DEFINER, ",
-                "'SQL_MODE', tr.SQL_MODE, 'CHARACTER_SET_CLIENT', tr.CHARACTER_SET_CLIENT, ",
-                "'COLLATION_CONNECTION', tr.COLLATION_CONNECTION, ",
-                "'DATABASE_COLLATION', tr.DATABASE_COLLATION, 'CREATED', tr.CREATED)) FROM ",
-                "(SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ",
-                "ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, ",
-                "COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM ",
-                "INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {schema} ",
-                "AND EVENT_OBJECT_SCHEMA = {schema} AND EVENT_OBJECT_TABLE = {table}) AS tr), ",
-                "JSON_ARRAY()",
-                ")) AS METADATA_JSON"
+                ") AS fk), JSON_ARRAY())",
+                ") AS METADATA_JSON"
             ),
             schema = quoted_schema,
             table = quoted_table,
@@ -509,6 +490,14 @@ mod tests {
         assert_eq!(
             table_detail_metadata_sql,
             expected_table_detail_metadata_sql
+        );
+
+        let triggers_sql = triggers_query(schema, table);
+        assert_eq!(
+            triggers_sql,
+            format!(
+                "SELECT TRIGGER_NAME, ACTION_ORDER, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT, DEFINER, SQL_MODE, CHARACTER_SET_CLIENT, COLLATION_CONNECTION, DATABASE_COLLATION, CREATED FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = {quoted_schema} AND EVENT_OBJECT_SCHEMA = {quoted_schema} AND EVENT_OBJECT_TABLE = {quoted_table} ORDER BY EVENT_MANIPULATION, ACTION_TIMING, ACTION_ORDER"
+            )
         );
 
         assert_eq!(

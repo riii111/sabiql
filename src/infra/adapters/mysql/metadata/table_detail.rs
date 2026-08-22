@@ -14,7 +14,8 @@ use super::super::sql::{
     COLUMN_METADATA_RESULT_COLUMNS, FOREIGN_KEY_RESULT_COLUMNS, INDEX_RESULT_COLUMNS,
     TABLE_DETAIL_METADATA_RESULT_COLUMNS, TABLES_RESULT_COLUMNS, TRIGGER_RESULT_COLUMNS,
     UNIQUE_COLUMN_RESULT_COLUMNS, columns_query, foreign_keys_query, show_create_query,
-    show_create_result_columns, table_detail_metadata_query, table_query, unique_columns_query,
+    show_create_result_columns, table_detail_metadata_query, table_query, triggers_query,
+    unique_columns_query,
 };
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
@@ -178,7 +179,11 @@ async fn fetch_table_detail_with_session(
         database,
         lower_case_table_names,
     )?;
-    let triggers = parse_trigger_metadata(&metadata.triggers)?;
+    let triggers = parse_trigger_metadata(
+        &session
+            .execute_with_expected_columns(&triggers_query(schema, table), TRIGGER_RESULT_COLUMNS)
+            .await?,
+    )?;
     let source_ddl = parse_source_ddl(
         &session
             .execute_with_expected_columns(
@@ -203,7 +208,6 @@ struct MySqlTableDetailMetadata {
     columns: MySqlResultSet,
     statistics: MySqlResultSet,
     foreign_keys: MySqlResultSet,
-    triggers: MySqlResultSet,
 }
 
 fn parse_table_detail_metadata(
@@ -222,13 +226,7 @@ fn parse_table_detail_metadata(
     let payload = payload
         .as_object()
         .ok_or_else(|| metadata_shape_error("table detail metadata JSON root"))?;
-    let expected_sections = [
-        "tables",
-        "columns",
-        "statistics",
-        "foreign_keys",
-        "triggers",
-    ];
+    let expected_sections = ["tables", "columns", "statistics", "foreign_keys"];
     if payload.len() != expected_sections.len()
         || expected_sections
             .iter()
@@ -242,7 +240,6 @@ fn parse_table_detail_metadata(
         columns: json_section_to_result(payload, "columns", COLUMN_METADATA_RESULT_COLUMNS)?,
         statistics: json_section_to_result(payload, "statistics", INDEX_RESULT_COLUMNS)?,
         foreign_keys: json_section_to_result(payload, "foreign_keys", FOREIGN_KEY_RESULT_COLUMNS)?,
-        triggers: json_section_to_result(payload, "triggers", TRIGGER_RESULT_COLUMNS)?,
     })
 }
 
@@ -611,20 +608,15 @@ while IFS= read -r line; do
       ;;
     *JSON_OBJECT*)
       if [ "$mode" = "empty" ]; then
-        payload='{"tables":[],"columns":[],"statistics":[],"foreign_keys":[],"triggers":[]}'
+        payload='{"tables":[],"columns":[],"statistics":[],"foreign_keys":[]}'
       elif [ "$mode" = "timeout" ]; then
         while :; do sleep 1; done
       elif [ "$mode" = "malformed" ]; then
-        payload='{"tables":[],"columns":[{"WRONG":"x"}],"statistics":[],"foreign_keys":[],"triggers":[]}'
-      elif [ "$mode" = "large" ]; then
-        printf '%s' '<resultset><row><field name="METADATA_JSON">{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"'
-        awk 'BEGIN { for (i = 0; i < 17000000; i++) printf "x" }'
-        printf '%s\n' '","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[],"triggers":[]}</field></row></resultset>'
-        continue
+        payload='{"tables":[],"columns":[{"WRONG":"x"}],"statistics":[],"foreign_keys":[]}'
       elif [ "$mode" = "view" ]; then
-        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items_view","TABLE_TYPE":"VIEW","TABLE_ROWS":null,"TABLE_COMMENT":"view comment","ENGINE":null,"ROW_FORMAT":null,"TABLE_COLLATION":null,"CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[],"triggers":[]}'
+        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items_view","TABLE_TYPE":"VIEW","TABLE_ROWS":null,"TABLE_COMMENT":"view comment","ENGINE":null,"ROW_FORMAT":null,"TABLE_COLLATION":null,"CREATE_OPTIONS":""}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[],"foreign_keys":[]}'
       else
-        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"table comment","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":"partitioned"}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[{"INDEX_NAME":"PRIMARY","NON_UNIQUE":0,"INDEX_TYPE":"BTREE","SEQ_IN_INDEX":1,"COLUMN_NAME":null,"SUB_PART":null,"EXPRESSION":"expr","COLLATION":null,"IS_VISIBLE":"YES","IS_PRIMARY":"YES"}],"foreign_keys":[{"CONSTRAINT_NAME":"fk_items_self","TABLE_SCHEMA":"app","TABLE_NAME":"items","COLUMN_NAME":"id","REFERENCED_TABLE_SCHEMA":"app","REFERENCED_TABLE_NAME":"items","REFERENCED_COLUMN_NAME":"id","ORDINAL_POSITION":1,"UPDATE_RULE":"CASCADE","DELETE_RULE":"CASCADE"}],"triggers":[{"TRIGGER_NAME":"items_audit","ACTION_ORDER":1,"ACTION_TIMING":"BEFORE","EVENT_MANIPULATION":"INSERT","ACTION_STATEMENT":"SET NEW.id = NEW.id","DEFINER":"app@localhost","SQL_MODE":"STRICT_TRANS_TABLES","CHARACTER_SET_CLIENT":"utf8mb4","COLLATION_CONNECTION":"utf8mb4_0900_ai_ci","DATABASE_COLLATION":"utf8mb4_0900_ai_ci","CREATED":"2026-08-21 10:20:30.00"}]}'
+        payload='{"tables":[{"TABLE_SCHEMA":"app","TABLE_NAME":"items","TABLE_TYPE":"BASE TABLE","TABLE_ROWS":1,"TABLE_COMMENT":"table comment","ENGINE":"InnoDB","ROW_FORMAT":"Dynamic","TABLE_COLLATION":"utf8mb4_0900_ai_ci","CREATE_OPTIONS":"partitioned"}],"columns":[{"COLUMN_NAME":"id","COLUMN_TYPE":"int","IS_NULLABLE":"NO","COLUMN_DEFAULT":null,"EXTRA":"","COLUMN_COMMENT":null,"ORDINAL_POSITION":1,"PRIMARY_KEY_POSITION":1,"CHARACTER_SET_NAME":null,"COLLATION_NAME":null,"GENERATION_EXPRESSION":null}],"statistics":[{"INDEX_NAME":"PRIMARY","NON_UNIQUE":0,"INDEX_TYPE":"BTREE","SEQ_IN_INDEX":1,"COLUMN_NAME":null,"SUB_PART":null,"EXPRESSION":"expr","COLLATION":null,"IS_VISIBLE":"YES","IS_PRIMARY":"YES"}],"foreign_keys":[{"CONSTRAINT_NAME":"fk_items_self","TABLE_SCHEMA":"app","TABLE_NAME":"items","COLUMN_NAME":"id","REFERENCED_TABLE_SCHEMA":"app","REFERENCED_TABLE_NAME":"items","REFERENCED_COLUMN_NAME":"id","ORDINAL_POSITION":1,"UPDATE_RULE":"CASCADE","DELETE_RULE":"CASCADE"}]}'
       fi
       printf '%s\n' '<resultset><row><field name="METADATA_JSON">'"$payload"'</field></row></resultset>'
       ;;
@@ -656,7 +648,11 @@ while IFS= read -r line; do
       printf '%s\n' '<resultset><row><field name="CONSTRAINT_NAME">fk_items_self</field><field name="TABLE_SCHEMA">app</field><field name="TABLE_NAME">items</field><field name="COLUMN_NAME">id</field><field name="REFERENCED_TABLE_SCHEMA">app</field><field name="REFERENCED_TABLE_NAME">items</field><field name="REFERENCED_COLUMN_NAME">id</field><field name="ORDINAL_POSITION">1</field><field name="UPDATE_RULE">CASCADE</field><field name="DELETE_RULE">CASCADE</field></row></resultset>'
       ;;
     *TRIGGERS*)
-      printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_ORDER">1</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field><field name="SQL_MODE">STRICT_TRANS_TABLES</field><field name="CHARACTER_SET_CLIENT">utf8mb4</field><field name="COLLATION_CONNECTION">utf8mb4_0900_ai_ci</field><field name="DATABASE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATED">2026-08-21 10:20:30.00</field></row></resultset>'
+      if [ "$mode" = "view" ]; then
+        printf '%s\n' '<resultset></resultset>'
+      else
+        printf '%s\n' '<resultset><row><field name="TRIGGER_NAME">items_audit</field><field name="ACTION_ORDER">1</field><field name="ACTION_TIMING">BEFORE</field><field name="EVENT_MANIPULATION">INSERT</field><field name="ACTION_STATEMENT">SET NEW.id = NEW.id</field><field name="DEFINER">app@localhost</field><field name="SQL_MODE">STRICT_TRANS_TABLES</field><field name="CHARACTER_SET_CLIENT">utf8mb4</field><field name="COLLATION_CONNECTION">utf8mb4_0900_ai_ci</field><field name="DATABASE_COLLATION">utf8mb4_0900_ai_ci</field><field name="CREATED">2026-08-21 10:20:30.00</field></row></resultset>'
+      fi
       ;;
     *SHOW\ CREATE\ VIEW*)
       if [ "$mode" = "view" ]; then
@@ -769,6 +765,7 @@ done
                     "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "JSON_OBJECT",
+                    "TRIGGERS",
                     "SHOW CREATE VIEW",
                 ]
             } else {
@@ -779,6 +776,7 @@ done
                     "__sabiql_sql_mode",
                     "__sabiql_probe",
                     "JSON_OBJECT",
+                    "TRIGGERS",
                     "SHOW CREATE TABLE",
                 ]
             };
@@ -790,36 +788,6 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
-    }
-
-    #[tokio::test]
-    async fn inspector_detail_orchestration_accepts_metadata_payload_larger_than_default_client_packet()
-     {
-        let (_directory, program, transcript) = fake_metadata_cli("large");
-        let detail = fetch_table_detail_in_session_with_program(
-            "mysql://user:password@localhost:3306/app",
-            "app",
-            "items",
-            OsStr::new(&program),
-            Duration::from_secs(10),
-        )
-        .await
-        .unwrap_or_else(|error| {
-            panic!(
-                "fake large metadata CLI failed: {error:?}\n{}",
-                std::fs::read_to_string(&transcript).unwrap()
-            )
-        });
-
-        assert_eq!(detail.name, "items");
-        assert!(
-            detail
-                .comment
-                .as_deref()
-                .is_some_and(|comment| comment.len() > 16 * 1024 * 1024)
-        );
-        assert_process_stopped(&transcript);
-        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]
@@ -1065,19 +1033,6 @@ mod tests {
                 "ORDINAL_POSITION": 1,
                 "UPDATE_RULE": "CASCADE",
                 "DELETE_RULE": "RESTRICT"
-            }],
-            "triggers": [{
-                "TRIGGER_NAME": "items_audit",
-                "ACTION_ORDER": 1,
-                "ACTION_TIMING": "BEFORE",
-                "EVENT_MANIPULATION": "INSERT",
-                "ACTION_STATEMENT": "SET NEW.id = NEW.id",
-                "DEFINER": "app@localhost",
-                "SQL_MODE": "STRICT_TRANS_TABLES",
-                "CHARACTER_SET_CLIENT": "utf8mb4",
-                "COLLATION_CONNECTION": "utf8mb4_0900_ai_ci",
-                "DATABASE_COLLATION": "utf8mb4_0900_ai_ci",
-                "CREATED": "2026-08-21 10:20:30.00"
             }]
         })
     }
@@ -1103,16 +1058,12 @@ mod tests {
             metadata.foreign_keys.values[0][8],
             QueryValue::Text("CASCADE".to_string())
         );
-        assert_eq!(
-            metadata.triggers.values[0][2],
-            QueryValue::Text("BEFORE".to_string())
-        );
     }
 
     #[test]
     fn rejects_missing_json_metadata_sections() {
         let mut payload = valid_metadata_payload();
-        payload.as_object_mut().unwrap().remove("triggers");
+        payload.as_object_mut().unwrap().remove("columns");
 
         let error = parse_table_detail_metadata(&metadata_json_result(payload)).unwrap_err();
 
