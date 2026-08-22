@@ -84,15 +84,31 @@ pub enum TableDetailState {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+struct InterruptedTableDetail {
+    dsn: String,
+    run_id: u64,
+    generation: u64,
+}
+
+impl fmt::Debug for InterruptedTableDetail {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("InterruptedTableDetail")
+            .field("dsn", &mask_password(&self.dsn))
+            .field("run_id", &self.run_id)
+            .field("generation", &self.generation)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct PendingMySqlConnectionProbe {
     pub id: ConnectionId,
     pub name: String,
     pub dsn: String,
     pub database: Option<String>,
     pub run_id: u64,
-    pub table_detail_dsn: Option<String>,
-    pub table_detail_run_id: Option<u64>,
-    pub table_detail_generation: u64,
+    table_detail: Option<InterruptedTableDetail>,
 }
 
 impl fmt::Debug for PendingMySqlConnectionProbe {
@@ -104,12 +120,7 @@ impl fmt::Debug for PendingMySqlConnectionProbe {
             .field("dsn", &mask_password(&self.dsn))
             .field("database", &self.database)
             .field("run_id", &self.run_id)
-            .field(
-                "table_detail_dsn",
-                &self.table_detail_dsn.as_deref().map(mask_password),
-            )
-            .field("table_detail_run_id", &self.table_detail_run_id)
-            .field("table_detail_generation", &self.table_detail_generation)
+            .field("table_detail", &self.table_detail)
             .finish()
     }
 }
@@ -251,15 +262,15 @@ impl BrowseSession {
     }
 
     pub fn mark_table_detail_probe_failed(&mut self, dsn: &str, error: String) -> bool {
-        let belongs_to_probe =
-            self.pending_mysql_connection_probe
-                .as_ref()
-                .is_some_and(|pending| {
-                    pending.table_detail_dsn.as_deref() == Some(dsn)
-                        && pending.table_detail_run_id == Some(self.table_detail_run.last_id())
-                        && pending.table_detail_generation == self.selection_generation
-                });
-        if belongs_to_probe
+        if self
+            .pending_mysql_connection_probe
+            .as_ref()
+            .and_then(|pending| pending.table_detail.as_ref())
+            .is_some_and(|table_detail| {
+                table_detail.dsn == dsn
+                    && table_detail.run_id == self.table_detail_run.last_id()
+                    && table_detail.generation == self.selection_generation
+            })
             && self.dsn_matches(dsn)
             && self.selected_table_key.is_some()
             && matches!(&self.table_detail_state, TableDetailState::Loading)
@@ -272,10 +283,15 @@ impl BrowseSession {
     }
 
     pub fn retry_table_detail_after_probe_failure(&mut self) -> Option<(String, u64, u64)> {
-        let pending = self.pending_mysql_connection_probe.as_ref()?;
-        let dsn = pending.table_detail_dsn.clone()?;
-        let generation = pending.table_detail_generation;
-        let run_id = pending.table_detail_run_id?;
+        let InterruptedTableDetail {
+            dsn,
+            run_id,
+            generation,
+        } = self
+            .pending_mysql_connection_probe
+            .as_ref()?
+            .table_detail
+            .clone()?;
         if run_id != self.table_detail_run.last_id()
             || generation != self.selection_generation
             || !self.dsn_matches(&dsn)
@@ -333,9 +349,15 @@ impl BrowseSession {
         dsn: &str,
         database: Option<&str>,
     ) -> u64 {
-        let table_detail_dsn = self.dsn.clone();
-        let table_detail_run_id = self.table_detail_run.active_id();
-        let table_detail_generation = self.selection_generation;
+        let table_detail =
+            self.dsn
+                .clone()
+                .zip(self.table_detail_run.active_id())
+                .map(|(dsn, run_id)| InterruptedTableDetail {
+                    dsn,
+                    run_id,
+                    generation: self.selection_generation,
+                });
         self.cancel_metadata_for_mysql_connection_probe();
         self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.mysql_connection_probe_run.begin();
@@ -345,9 +367,7 @@ impl BrowseSession {
             dsn: dsn.to_string(),
             database: database.map(str::to_string),
             run_id,
-            table_detail_dsn,
-            table_detail_run_id,
-            table_detail_generation,
+            table_detail,
         });
         run_id
     }
@@ -1096,6 +1116,170 @@ mod tests {
                 session.table_detail_state(),
                 TableDetailState::Loading
             ));
+        }
+    }
+
+    // ── MySQL probe table-detail recovery ────────────────────────────
+
+    mod table_detail_probe_tests {
+        use super::*;
+
+        fn session_with_interrupted_table_detail() -> (BrowseSession, u64, u64) {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string("mysql-current");
+            let current_dsn = "mysql://current";
+            session.activate_connection_with_target(
+                &id,
+                "mysql-current",
+                DatabaseType::MySQL,
+                current_dsn,
+                Some("app"),
+            );
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let table_detail_run_id = session.begin_table_detail_run();
+            let _ = session.begin_mysql_connection_probe(
+                &id,
+                "mysql-target",
+                "mysql://target",
+                Some("app"),
+            );
+            (session, generation, table_detail_run_id)
+        }
+
+        #[test]
+        fn probe_cancellation_keeps_old_detail_for_retry() {
+            let (mut session, generation, table_detail_run_id) =
+                session_with_interrupted_table_detail();
+
+            assert!(!session.is_current_table_detail_run(table_detail_run_id));
+            let (dsn, retry_generation, retry_run_id) = session
+                .retry_table_detail_after_probe_failure()
+                .expect("matching interrupted detail should be retryable");
+
+            assert_eq!(dsn, "mysql://current");
+            assert_eq!(retry_generation, generation);
+            assert_ne!(retry_run_id, table_detail_run_id);
+            assert!(session.is_current_table_detail_run(retry_run_id));
+        }
+
+        #[test]
+        fn probe_failure_marks_current_detail_as_error() {
+            let (mut session, _, _) = session_with_interrupted_table_detail();
+
+            assert!(session.mark_table_detail_probe_failed(
+                "mysql://current",
+                "connection refused".to_string()
+            ));
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Error(error) if error == "connection refused"
+            ));
+        }
+
+        #[test]
+        fn probe_without_complete_detail_context_keeps_no_snapshot() {
+            let mut without_dsn = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let _ = without_dsn.select_table("public", "users", &mut query);
+            let _ = without_dsn.begin_table_detail_run();
+            let _ = without_dsn.begin_mysql_connection_probe(
+                &ConnectionId::new(),
+                "mysql-target",
+                "mysql://target",
+                Some("app"),
+            );
+            assert!(
+                without_dsn
+                    .pending_mysql_connection_probe
+                    .as_ref()
+                    .is_some_and(|pending| pending.table_detail.is_none())
+            );
+            assert!(
+                without_dsn
+                    .retry_table_detail_after_probe_failure()
+                    .is_none()
+            );
+
+            let mut without_run = BrowseSession::default();
+            let id = ConnectionId::from_string("mysql-current");
+            without_run.activate_connection_with_target(
+                &id,
+                "mysql-current",
+                DatabaseType::MySQL,
+                "mysql://current",
+                Some("app"),
+            );
+            let _ = without_run.select_table("public", "users", &mut query);
+            let _ = without_run.begin_mysql_connection_probe(
+                &id,
+                "mysql-target",
+                "mysql://target",
+                Some("app"),
+            );
+            assert!(
+                without_run
+                    .pending_mysql_connection_probe
+                    .as_ref()
+                    .is_some_and(|pending| pending.table_detail.is_none())
+            );
+            assert!(
+                without_run
+                    .retry_table_detail_after_probe_failure()
+                    .is_none()
+            );
+        }
+
+        #[test]
+        fn stale_detail_context_is_not_retried() {
+            let (mut stale_dsn, _, _) = session_with_interrupted_table_detail();
+            stale_dsn.dsn = Some("mysql://other".to_string());
+            assert!(stale_dsn.retry_table_detail_after_probe_failure().is_none());
+
+            let (mut stale_run, _, _) = session_with_interrupted_table_detail();
+            let _ = stale_run.begin_table_detail_run();
+            assert!(stale_run.retry_table_detail_after_probe_failure().is_none());
+
+            let (mut stale_generation, _, _) = session_with_interrupted_table_detail();
+            let mut query = QueryExecution::default();
+            let _ = stale_generation.select_table("public", "posts", &mut query);
+            assert!(
+                stale_generation
+                    .retry_table_detail_after_probe_failure()
+                    .is_none()
+            );
+
+            let (mut unselected, _, _) = session_with_interrupted_table_detail();
+            unselected.clear_table_selection(&mut query);
+            assert!(
+                unselected
+                    .retry_table_detail_after_probe_failure()
+                    .is_none()
+            );
+
+            let (mut non_loading, _, _) = session_with_interrupted_table_detail();
+            non_loading.set_table_detail_raw(Some(make_table_detail()));
+            assert!(
+                non_loading
+                    .retry_table_detail_after_probe_failure()
+                    .is_none()
+            );
+        }
+
+        #[test]
+        fn successful_probe_clears_interrupted_detail() {
+            let (mut session, _, _) = session_with_interrupted_table_detail();
+            let id = ConnectionId::from_string("mysql-target");
+            session.activate_connection_with_target(
+                &id,
+                "mysql-target",
+                DatabaseType::MySQL,
+                "mysql://target",
+                Some("app"),
+            );
+
+            assert!(session.pending_mysql_connection_probe().is_none());
+            assert!(session.retry_table_detail_after_probe_failure().is_none());
         }
     }
 
