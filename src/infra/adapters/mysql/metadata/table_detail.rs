@@ -135,16 +135,13 @@ async fn fetch_table_detail_in_session_with_program(
     let target = parse_and_validate_mysql_dsn(dsn)?;
     let database = selected_database(&target)?;
     let option_file = MySqlOptionFile::create(&target)?;
-    let mut session =
-        MySqlMetadataSession::spawn_with_metadata_program(program, &option_file.path)?;
+    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
     let result = tokio::time::timeout(
         timeout,
         fetch_table_detail_with_session(&mut session, database, schema, table),
     )
     .await;
-    let result = session.resolve_timed_result(result).await;
-    drop(option_file);
-    result
+    session.resolve_timed_result(result).await
 }
 
 async fn fetch_table_detail_with_session(
@@ -492,6 +489,7 @@ mod session_tests {
 option=$(printf '%s\n' "$1" | sed 's/^--defaults-file=//')
 transcript=$(dirname "$0")/transcript.log
 printf 'option=%s\nprocess=%s\n' "$option" "$$" >> "$transcript"
+if [ -e "$option" ]; then printf 'option-exists=yes\n' >> "$transcript"; else printf 'option-exists=no\n' >> "$transcript"; fi
 mode=$(basename "$0" | sed 's/^mysql-//')
 trap 'printf "exit=%s\n" "$?" >> "$transcript"' EXIT
 if [ "$mode" = "probe-failure" ] || [ "$mode" = "timeout" ]; then
@@ -594,6 +592,7 @@ done
 
     fn assert_option_file_removed(transcript: &std::path::Path) {
         let transcript_text = std::fs::read_to_string(transcript).unwrap();
+        assert!(transcript_text.contains("option-exists=yes"));
         let option = transcript_text
             .lines()
             .find_map(|line| line.strip_prefix("option="))
