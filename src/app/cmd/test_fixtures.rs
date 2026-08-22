@@ -229,13 +229,14 @@ pub fn make_runner_with_cached_result_exporter(
     action_tx: mpsc::Sender<Action>,
     cached_result_exporter: Arc<dyn CachedResultExporter>,
 ) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter(
+    make_runner_with_dsn_and_cached_result_exporter_and_probe(
         metadata_provider,
         query_executor,
         connection_store,
         cache,
         action_tx,
         Arc::new(NoopDsnBuilder),
+        Arc::new(NoopMySqlConnectionProbe),
         cached_result_exporter,
     )
 }
@@ -277,27 +278,6 @@ pub fn make_runner_with_dsn_and_probe(
         dsn_builder,
         mysql_connection_probe,
         Arc::new(TestCachedResultExporter),
-    )
-}
-
-fn make_runner_with_dsn_and_cached_result_exporter(
-    metadata_provider: Arc<dyn MetadataProvider>,
-    query_executor: Arc<dyn QueryExecutor>,
-    connection_store: Arc<dyn ConnectionStore>,
-    cache: TtlCache<String, Arc<DatabaseMetadata>>,
-    action_tx: mpsc::Sender<Action>,
-    dsn_builder: Arc<dyn DsnBuilder>,
-    cached_result_exporter: Arc<dyn CachedResultExporter>,
-) -> EffectRunner {
-    make_runner_with_dsn_and_cached_result_exporter_and_probe(
-        metadata_provider,
-        query_executor,
-        connection_store,
-        cache,
-        action_tx,
-        dsn_builder,
-        Arc::new(NoopMySqlConnectionProbe),
-        cached_result_exporter,
     )
 }
 
