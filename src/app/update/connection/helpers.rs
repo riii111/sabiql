@@ -7,6 +7,8 @@ use crate::update::action::ConnectionTarget;
 use crate::update::query_context::termination_effects;
 
 fn reset_connection_scoped_state(state: &mut AppState) {
+    state.query_history_picker.reset();
+    state.sql_modal.reset_completion();
     state.sql_modal.reset_prefetch();
     state.explain.reset_for_connection_change();
     state.er_preparation.reset();
@@ -31,6 +33,7 @@ pub(super) fn reset_for_new_connection(
     dsn: &str,
     name: &str,
     database_type: DatabaseType,
+    database: Option<&str>,
 ) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
@@ -39,7 +42,7 @@ pub(super) fn reset_for_new_connection(
     state.sql_modal.set_active_tab(sql_modal_tab);
     state
         .session
-        .activate_connection_with_dsn(id, name, database_type, dsn);
+        .activate_connection_with_target(id, name, database_type, dsn, database);
     reconcile_connection_state(state, inspector_tab);
 }
 
@@ -72,13 +75,36 @@ pub(super) fn connection_save_fetch_effects(
     }
 }
 
+pub(super) fn mysql_connection_completion_effects(state: &mut AppState, dsn: &str) -> Vec<Effect> {
+    state.session.mark_connecting();
+    let run_id = state.session.begin_metadata_refresh();
+    let effects = vec![
+        Effect::ClearCompletionEngineCache,
+        Effect::FetchMetadata {
+            dsn: dsn.to_string(),
+            run_id,
+        },
+    ];
+    termination_effects(&state.query, effects)
+}
+
 pub(super) fn save_current_cache(state: &AppState) -> ConnectionCache {
     state.session.to_cache(
         state.ui.explorer_selected(),
         state.ui.inspector_tab(),
         state.query.current_result().cloned(),
         state.query.result_history().clone(),
+        state.query.pagination.clone(),
     )
+}
+
+pub(super) fn save_current_connection_cache(state: &mut AppState) {
+    let Some(current_id) = state.session.active_connection_id().cloned() else {
+        return;
+    };
+
+    let cache = save_current_cache(state);
+    state.connection_caches.save(&current_id, cache);
 }
 
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
@@ -106,6 +132,7 @@ pub(super) fn restore_cache(
         &target.name,
         target.database_type,
         &target.dsn,
+        target.database.as_deref(),
     );
     reconcile_connection_state(state, cache.inspector_tab);
     state

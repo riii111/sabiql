@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use crate::domain::DatabaseType;
 use crate::domain::explain_plan::{self, ExplainPlan};
 use crate::model::sql_editor::modal::sql_modal_visible_rows;
 
@@ -21,6 +22,7 @@ impl SlotSource {
 #[derive(Debug, Clone)]
 pub struct CompareSlot {
     pub plan: ExplainPlan,
+    pub database_type: DatabaseType,
     pub query_snippet: String,
     pub full_query: String,
     pub source: SlotSource,
@@ -56,6 +58,10 @@ impl ExplainContext {
         self.plan_query_snippet.as_deref()
     }
 
+    pub fn current_plan(&self) -> Option<&ExplainPlan> {
+        self.right.as_ref().map(|slot| &slot.plan)
+    }
+
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
@@ -80,18 +86,6 @@ impl ExplainContext {
         self.left.is_some() && self.right.is_some()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn left(&self) -> Option<&CompareSlot> {
-        self.left.as_ref()
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn right(&self) -> Option<&CompareSlot> {
-        self.right.as_ref()
-    }
-
     pub fn history(&self) -> &VecDeque<CompareSlot> {
         &self.history
     }
@@ -107,16 +101,25 @@ impl ExplainContext {
     pub fn set_plan(
         &mut self,
         text: String,
+        database_type: DatabaseType,
         is_analyze: bool,
         execution_time_ms: u64,
         query: &str,
     ) {
-        let parsed = explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms);
+        let parsed = match database_type {
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                explain_plan::parse_explain_text(&text, is_analyze, execution_time_ms)
+            }
+            DatabaseType::MySQL => {
+                explain_plan::parse_mysql_tree_explain_text(&text, is_analyze, execution_time_ms)
+            }
+        };
         let snippet = query.lines().next().unwrap_or("").to_string();
         let plan_snippet = snippet.clone();
 
         let new_slot = CompareSlot {
             plan: parsed,
+            database_type,
             query_snippet: snippet,
             full_query: query.to_string(),
             source: SlotSource::AutoLatest,
@@ -220,6 +223,23 @@ impl ExplainContext {
 }
 
 #[cfg(test)]
+pub mod test_support {
+    use super::{CompareSlot, ExplainContext};
+
+    impl ExplainContext {
+        #[doc(hidden)]
+        pub fn left(&self) -> Option<&CompareSlot> {
+            self.left.as_ref()
+        }
+
+        #[doc(hidden)]
+        pub fn right(&self) -> Option<&CompareSlot> {
+            self.right.as_ref()
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -240,6 +260,7 @@ mod tests {
 
         ctx.set_plan(
             "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             42,
             "SELECT * FROM users",
@@ -253,10 +274,47 @@ mod tests {
     }
 
     #[test]
+    fn mysql_plan_uses_tree_parser() {
+        let mut ctx = ExplainContext::default();
+
+        ctx.set_plan(
+            "-> Table scan on users  (cost=1.25 rows=2.5)".to_string(),
+            DatabaseType::MySQL,
+            false,
+            0,
+            "SELECT * FROM users",
+        );
+
+        assert_eq!(ctx.right().unwrap().plan.total_cost, Some(1.25));
+        assert_eq!(ctx.right().unwrap().plan.estimated_rows, Some(2.5));
+    }
+
+    #[test]
+    fn mysql_analyze_continuation_metrics_reach_the_compare_slot() {
+        let mut ctx = ExplainContext::default();
+
+        ctx.set_plan(
+            "-> Filter: (t3.i > 8)  (cost=0.75 rows=1.67)\n(actual time=0.0168..0.0182 rows=1 loops=1)"
+                .to_string(),
+            DatabaseType::MySQL,
+            true,
+            42,
+            "SELECT * FROM t3 WHERE i > 8",
+        );
+
+        let plan = &ctx.right().unwrap().plan;
+        assert_eq!(plan.actual_start_ms, Some(0.0168));
+        assert_eq!(plan.actual_end_ms, Some(0.0182));
+        assert_eq!(plan.actual_rows, Some(1.0));
+        assert_eq!(plan.loops, Some(1));
+    }
+
+    #[test]
     fn second_explain_auto_advances_right_to_left() {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "Seq Scan  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT * FROM users",
@@ -264,6 +322,7 @@ mod tests {
 
         ctx.set_plan(
             "Index Scan  (cost=0.00..5.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT * FROM users WHERE id = 1",
@@ -281,18 +340,21 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..20.00 rows=2 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
         );
         ctx.set_plan(
             "C  (cost=0.00..30.00 rows=3 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "C",
@@ -308,12 +370,14 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
@@ -337,12 +401,14 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..100.00 rows=10 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
         );
         ctx.set_plan(
             "B  (cost=0.00..50.00 rows=5 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "B",
@@ -368,6 +434,7 @@ mod tests {
         let mut ctx = ExplainContext::default();
         ctx.set_plan(
             "A  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "A",
@@ -384,6 +451,7 @@ mod tests {
         for i in 0..15 {
             ctx.set_plan(
                 format!("Scan  (cost=0.00..{i}.00 rows=1 width=32)"),
+                DatabaseType::PostgreSQL,
                 false,
                 0,
                 &format!("Q{i}"),
@@ -399,6 +467,7 @@ mod tests {
 
         ctx.set_plan(
             "Seq Scan  (cost=0.00..10.00 rows=1 width=32)".to_string(),
+            DatabaseType::PostgreSQL,
             false,
             0,
             "SELECT *\nFROM users\nWHERE id = 1",
@@ -410,7 +479,13 @@ mod tests {
     #[test]
     fn line_count_with_plan() {
         let mut ctx = ExplainContext::default();
-        ctx.set_plan("line1\nline2\nline3".to_string(), false, 0, "Q");
+        ctx.set_plan(
+            "line1\nline2\nline3".to_string(),
+            DatabaseType::PostgreSQL,
+            false,
+            0,
+            "Q",
+        );
 
         assert_eq!(ctx.line_count(), 3);
     }

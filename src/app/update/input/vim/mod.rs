@@ -9,7 +9,7 @@ use crate::update::input::keybindings::KeyCombo;
 
 pub use classify::{classify_command, classify_sequence};
 pub use types::{
-    BrowseVimContext, InspectorVimContext, JsonbDetailVimContext, ResultVimContext,
+    BrowseVimContext, InspectorVimContext, JsonDetailVimContext, ResultVimContext,
     SearchContinuation, SqlModalVimContext, StagedDeleteState, VimCommand, VimModeTransition,
     VimNavigation, VimOperator, VimSurfaceContext,
 };

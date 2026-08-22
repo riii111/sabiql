@@ -1,5 +1,34 @@
-use crate::domain::{TableKind, TableKindInfo, TableSummary};
+use crate::domain::{DatabaseType, TableKind, TableKindInfo, TableSummary};
 use crate::model::shared::ui_state::text_display_width;
+
+pub fn table_display_name(database_type: DatabaseType, schema: &str, name: &str) -> String {
+    match database_type {
+        DatabaseType::MySQL => name.to_string(),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => format!("{schema}.{name}"),
+    }
+}
+
+pub fn table_key_display_name(
+    database_type: DatabaseType,
+    database: Option<&str>,
+    qualified_name: &str,
+) -> String {
+    if database_type != DatabaseType::MySQL {
+        return qualified_name.to_string();
+    }
+
+    database
+        .and_then(|database| {
+            let qualified_database = qualified_name.get(..database.len())?;
+            let suffix = qualified_name.get(database.len()..)?;
+            qualified_database
+                .eq_ignore_ascii_case(database)
+                .then(|| suffix.strip_prefix('.'))
+                .flatten()
+        })
+        .unwrap_or(qualified_name)
+        .to_string()
+}
 
 fn has_list_annotation(kind_info: &TableKindInfo) -> bool {
     kind_info.kind != TableKind::Table
@@ -34,24 +63,25 @@ pub fn explorer_kind_suffix(kind_info: &TableKindInfo) -> Option<String> {
     Some(format!(" [{}]", parts.join("+")))
 }
 
-pub fn explorer_table_label(summary: &TableSummary) -> String {
-    let mut label = summary.qualified_name();
+pub fn explorer_table_label(summary: &TableSummary, database_type: DatabaseType) -> String {
+    let mut label = table_display_name(database_type, &summary.schema, &summary.name);
     if let Some(suffix) = explorer_kind_suffix(&summary.kind_info) {
         label.push_str(&suffix);
     }
     label
 }
 
-pub fn explorer_table_label_width(summary: &TableSummary) -> usize {
-    text_display_width(&explorer_table_label(summary))
+pub fn explorer_table_label_width(summary: &TableSummary, database_type: DatabaseType) -> usize {
+    text_display_width(&explorer_table_label(summary, database_type))
 }
 
 pub fn max_explorer_table_label_width<'a>(
     summaries: impl IntoIterator<Item = &'a TableSummary>,
+    database_type: DatabaseType,
 ) -> usize {
     summaries
         .into_iter()
-        .map(explorer_table_label_width)
+        .map(|summary| explorer_table_label_width(summary, database_type))
         .max()
         .unwrap_or(0)
 }
@@ -89,7 +119,10 @@ mod tests {
         let summary = TableSummary::new("main".to_string(), "users".to_string(), None, false);
 
         assert_eq!(explorer_kind_suffix(&summary.kind_info), None);
-        assert_eq!(explorer_table_label(&summary), "main.users");
+        assert_eq!(
+            explorer_table_label(&summary, DatabaseType::SQLite),
+            "main.users"
+        );
     }
 
     #[test]
@@ -106,7 +139,7 @@ mod tests {
             Some(" [virtual/fts5]".to_string())
         );
         assert_eq!(
-            explorer_table_label(&summary),
+            explorer_table_label(&summary, DatabaseType::SQLite),
             "main.notes_fts [virtual/fts5]"
         );
         assert_eq!(
@@ -148,5 +181,36 @@ mod tests {
             Some(" [view]".to_string())
         );
         assert_eq!(inspector_kind_label(&summary.kind_info), "View");
+    }
+
+    #[test]
+    fn mysql_table_display_omits_database() {
+        let summary = TableSummary::new("app".to_string(), "users".to_string(), None, false);
+
+        assert_eq!(explorer_table_label(&summary, DatabaseType::MySQL), "users");
+        assert_eq!(
+            explorer_table_label(&summary, DatabaseType::PostgreSQL),
+            "app.users"
+        );
+    }
+
+    #[test]
+    fn mysql_table_key_display_uses_table_name_without_changing_identity() {
+        assert_eq!(
+            table_key_display_name(DatabaseType::MySQL, Some("app"), "app.users"),
+            "users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::MySQL, Some("APP"), "app.users"),
+            "users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::MySQL, Some("app.db"), "app.db.users"),
+            "users"
+        );
+        assert_eq!(
+            table_key_display_name(DatabaseType::PostgreSQL, Some("app"), "app.users"),
+            "app.users"
+        );
     }
 }

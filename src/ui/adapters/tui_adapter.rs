@@ -4,7 +4,7 @@ use crossterm::cursor::SetCursorStyle;
 use crossterm::execute;
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::browse::jsonb_detail::JsonbDetailMode;
+use crate::app::model::browse::json_detail::JsonDetailMode;
 use crate::app::model::shared::help::HelpMode;
 use crate::app::model::shared::input_mode::InputMode;
 use crate::app::model::sql_editor::modal::SqlModalStatus;
@@ -56,8 +56,8 @@ impl Renderer for TuiAdapter<'_> {
 
 fn uses_insert_cursor(state: &AppState) -> bool {
     match state.input_mode() {
-        InputMode::JsonbEdit => true,
-        InputMode::JsonbDetail => matches!(state.jsonb_detail.mode(), JsonbDetailMode::Searching),
+        InputMode::JsonEdit => true,
+        InputMode::JsonDetail => matches!(state.json_detail.mode(), JsonDetailMode::Searching),
         InputMode::CellDetail => state.cell_detail.search().is_active(),
         InputMode::Help => matches!(state.ui.help().mode(), HelpMode::EditingFilter),
         InputMode::SqlModal => matches!(state.sql_modal.status(), SqlModalStatus::Editing),

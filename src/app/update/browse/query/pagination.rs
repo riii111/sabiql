@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{DatabaseType, QuerySource, QueryValue};
+use crate::domain::{
+    DatabaseType, QuerySource, QueryValue,
+    mysql_sql::{MySqlExportPlan, mysql_export_plan},
+};
 use crate::model::app_state::AppState;
 use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
 use crate::model::shared::input_mode::InputMode;
@@ -11,6 +14,7 @@ use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::preview_effect_for_current_table;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 const LARGE_EXPORT_THRESHOLD: usize = 100_000;
 
@@ -73,14 +77,78 @@ fn dispatch_cached_csv_export(
     }
 }
 
-fn dispatch_rerunnable_csv_export(
+enum RerunnableCsvRowCount {
+    QueryDatabase,
+    Known(usize),
+}
+
+fn dispatch_counted_rerunnable_csv_export(
+    state: &mut AppState,
     dsn: String,
     run_id: u64,
     export_query: String,
     file_name: String,
+    row_count: Option<usize>,
 ) -> DispatchResult {
-    let stripped = export_query.trim_end().trim_end_matches(';').to_string();
-    let count_query = format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count");
+    let needs_confirm = match row_count {
+        Some(count) => count > LARGE_EXPORT_THRESHOLD,
+        None => true,
+    };
+    if needs_confirm {
+        let msg = match row_count {
+            Some(n) => format!("Export {n} rows to CSV? This may take a while."),
+            None => "Row count unknown. Export to CSV?".to_string(),
+        };
+        state.confirm_dialog.open(
+            "Confirm CSV Export",
+            msg,
+            ConfirmIntent::CsvExportRerunnable {
+                dsn,
+                run_id,
+                export_query,
+                file_name,
+                row_count,
+            },
+        );
+        state.modal.push_mode(InputMode::ConfirmDialog);
+        DispatchResult::handled()
+    } else {
+        DispatchResult::handled_with(vec![Effect::ExportCsv {
+            dsn,
+            run_id,
+            query: export_query,
+            file_name,
+            row_count,
+        }])
+    }
+}
+
+fn dispatch_rerunnable_csv_export(
+    state: &mut AppState,
+    dsn: String,
+    run_id: u64,
+    export_query: String,
+    file_name: String,
+    row_count: RerunnableCsvRowCount,
+    count_query_statement: Option<String>,
+) -> DispatchResult {
+    if let RerunnableCsvRowCount::Known(row_count) = row_count {
+        return dispatch_counted_rerunnable_csv_export(
+            state,
+            dsn,
+            run_id,
+            export_query,
+            file_name,
+            Some(row_count),
+        );
+    }
+
+    let count_query = if let Some(statement) = count_query_statement {
+        format!("SELECT COUNT(*) FROM (\n{statement}\n) AS _export_count")
+    } else {
+        let stripped = export_query.trim_end().trim_end_matches(';').to_string();
+        format!("SELECT COUNT(*) FROM ({stripped}) AS _export_count")
+    };
     DispatchResult::handled_with(vec![Effect::CountRowsForExport {
         dsn,
         run_id,
@@ -98,6 +166,9 @@ pub fn reduce_pagination(
 ) -> DispatchResult {
     match action {
         Action::RequestCsvExport => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if !state.can_request_csv_export() {
                 return DispatchResult::handled();
             }
@@ -120,7 +191,15 @@ pub fn reduce_pagination(
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
                         let run_id = state.query.begin_running(now);
-                        return dispatch_rerunnable_csv_export(dsn, run_id, query, file_name);
+                        return dispatch_rerunnable_csv_export(
+                            state,
+                            dsn,
+                            run_id,
+                            query,
+                            file_name,
+                            RerunnableCsvRowCount::QueryDatabase,
+                            None,
+                        );
                     }
                     SqliteExportPlan::CachedResult { row_count } => {
                         let columns = result.columns.clone();
@@ -139,8 +218,55 @@ pub fn reduce_pagination(
                 }
             }
 
+            if state.session.active_database_type() == Some(DatabaseType::MySQL) {
+                if result.source == QuerySource::Preview {
+                    let columns = result.columns.clone();
+                    let values = result.values().to_vec();
+                    let run_id = state.query.begin_running(now);
+                    return dispatch_cached_csv_export(
+                        state,
+                        dsn,
+                        run_id,
+                        file_name,
+                        columns,
+                        values,
+                        Some(row_count),
+                    );
+                }
+
+                let Some(plan) = mysql_export_plan(&export_query) else {
+                    return DispatchResult::handled();
+                };
+                let (row_count, count_query_statement) = match plan {
+                    MySqlExportPlan::CountRows { statement } => {
+                        (RerunnableCsvRowCount::QueryDatabase, Some(statement))
+                    }
+                    MySqlExportPlan::UseResultRowCount => {
+                        (RerunnableCsvRowCount::Known(row_count), None)
+                    }
+                };
+                let run_id = state.query.begin_running(now);
+                return dispatch_rerunnable_csv_export(
+                    state,
+                    dsn,
+                    run_id,
+                    export_query,
+                    file_name,
+                    row_count,
+                    count_query_statement,
+                );
+            }
+
             let run_id = state.query.begin_running(now);
-            dispatch_rerunnable_csv_export(dsn, run_id, export_query, file_name)
+            dispatch_rerunnable_csv_export(
+                state,
+                dsn,
+                run_id,
+                export_query,
+                file_name,
+                RerunnableCsvRowCount::QueryDatabase,
+                None,
+            )
         }
 
         Action::CsvExportRowsCounted {
@@ -150,42 +276,21 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
 
-            let needs_confirm = match row_count {
-                Some(n) => *n > LARGE_EXPORT_THRESHOLD,
-                None => true,
-            };
-
-            if needs_confirm {
-                let msg = match row_count {
-                    Some(n) => format!("Export {n} rows to CSV? This may take a while."),
-                    None => "Row count unknown. Export to CSV?".to_string(),
-                };
-                state.confirm_dialog.open(
-                    "Confirm CSV Export",
-                    msg,
-                    ConfirmIntent::CsvExportRerunnable {
-                        dsn: dsn.clone(),
-                        run_id: *run_id,
-                        export_query: export_query.clone(),
-                        file_name: file_name.clone(),
-                        row_count: *row_count,
-                    },
-                );
-                state.modal.push_mode(InputMode::ConfirmDialog);
-                DispatchResult::handled()
-            } else {
-                DispatchResult::handled_with(vec![Effect::ExportCsv {
-                    dsn: dsn.clone(),
-                    run_id: *run_id,
-                    query: export_query.clone(),
-                    file_name: file_name.clone(),
-                    row_count: *row_count,
-                }])
-            }
+            dispatch_counted_rerunnable_csv_export(
+                state,
+                dsn.clone(),
+                *run_id,
+                export_query.clone(),
+                file_name.clone(),
+                *row_count,
+            )
         }
 
         Action::ExecuteCsvExport {
@@ -195,6 +300,9 @@ pub fn reduce_pagination(
             file_name,
             row_count,
         } => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.is_stale_query_run(dsn, *run_id) {
                 return DispatchResult::handled();
             }
@@ -249,6 +357,9 @@ pub fn reduce_pagination(
         }
 
         Action::ResultNextPage => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return DispatchResult::handled();
             }
@@ -267,6 +378,9 @@ pub fn reduce_pagination(
         }
 
         Action::ResultPrevPage => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
                 return DispatchResult::handled();
             }
@@ -486,6 +600,81 @@ mod tests {
             assert!(state.result_interaction.selection().row().is_none());
             assert!(state.result_interaction.selection().cell().is_none());
             assert!(state.result_interaction.staged_delete_rows().is_empty());
+        }
+
+        #[test]
+        fn prev_then_next_reopens_the_page_after_an_empty_forward_result() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
+            state.query.pagination.reset_for_table("public", "users");
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
+
+            let next_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(1));
+            dispatch_query(
+                &mut state,
+                &next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let empty_next_result =
+                query_completed_action(&mut state, preview_result(0), 0, Some(2));
+            dispatch_query(
+                &mut state,
+                &empty_next_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert_eq!(state.query.pagination.current_page(), 1);
+            assert!(state.query.pagination.reached_end());
+
+            let prev_effects = dispatch_query(
+                &mut state,
+                &Action::ResultPrevPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                prev_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 0, .. })
+            ));
+            assert!(!state.query.pagination.reached_end());
+
+            let prev_result =
+                query_completed_action(&mut state, preview_result(PREVIEW_PAGE_SIZE), 0, Some(0));
+            dispatch_query(
+                &mut state,
+                &prev_result,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            let next_effects = dispatch_query(
+                &mut state,
+                &Action::ResultNextPage,
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .unwrap();
+            assert!(matches!(
+                next_effects.first(),
+                Some(Effect::ExecutePreview { target_page: 1, .. })
+            ));
         }
     }
 
@@ -931,6 +1120,141 @@ mod tests {
                 };
                 assert_eq!(columns, &["message"]);
                 assert_eq!(values, &vec![vec![QueryValue::text("a\0bc")]]);
+            }
+        }
+
+        mod mysql {
+            use super::*;
+
+            fn mysql_state(query: &str) -> AppState {
+                let mut state = AppState::new("test_project".to_string());
+                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success(
+                        query.to_string(),
+                        vec!["column".to_string()],
+                        vec![vec!["value".to_string()]],
+                        1,
+                        QuerySource::Adhoc,
+                    )));
+                state
+            }
+
+            #[rstest]
+            #[case::select("SELECT 1", true)]
+            #[case::table("TABLE users", false)]
+            #[case::show("SHOW TABLES", false)]
+            #[case::describe("DESCRIBE users", false)]
+            fn uses_count_only_for_mysql_select(#[case] query: &str, #[case] expects_count: bool) {
+                let mut state = mysql_state(query);
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                assert_eq!(effects.len(), 1);
+                assert_eq!(
+                    matches!(&effects[0], Effect::CountRowsForExport { .. }),
+                    expects_count
+                );
+                assert_eq!(
+                    matches!(
+                        &effects[0],
+                        Effect::ExportCsv {
+                            row_count: Some(1),
+                            ..
+                        }
+                    ),
+                    !expects_count
+                );
+            }
+
+            #[test]
+            fn preview_exports_visible_typed_values_from_cache() {
+                let mut state = AppState::new("test_project".to_string());
+                test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/test");
+                let values = vec![vec![
+                    QueryValue::Blob(vec![0x00, 0xFF, 0xA1]),
+                    QueryValue::text("0x00FFA1"),
+                    QueryValue::Null,
+                    QueryValue::text("text"),
+                ]];
+                state
+                    .query
+                    .set_current_result(Arc::new(QueryResult::success_with_values(
+                        "SELECT payload, text_value, nullable, text FROM users".to_string(),
+                        vec![
+                            "payload".to_string(),
+                            "text_value".to_string(),
+                            "nullable".to_string(),
+                            "text".to_string(),
+                        ],
+                        values.clone(),
+                        1,
+                        QuerySource::Preview,
+                    )));
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::ExportCsvFromCache {
+                    columns,
+                    values: cached_values,
+                    row_count,
+                    ..
+                } = &effects[0]
+                else {
+                    panic!("expected cached CSV export effect");
+                };
+                assert_eq!(columns, &["payload", "text_value", "nullable", "text"]);
+                assert_eq!(cached_values, &values);
+                assert_eq!(*row_count, Some(1));
+            }
+
+            #[rstest]
+            #[case::semicolon_comment(
+                "SELECT id FROM users; -- trailing comment",
+                "SELECT id FROM users"
+            )]
+            #[case::dash_comment(
+                "SELECT id FROM users -- trailing comment",
+                "SELECT id FROM users -- trailing comment"
+            )]
+            #[case::hash_comment(
+                "SELECT id FROM users # trailing comment",
+                "SELECT id FROM users # trailing comment"
+            )]
+            fn count_query_wraps_mysql_statement_with_newlines(
+                #[case] query: &str,
+                #[case] normalized_statement: &str,
+            ) {
+                let mut state = mysql_state(query);
+
+                let effects = dispatch_query(
+                    &mut state,
+                    &Action::RequestCsvExport,
+                    Instant::now(),
+                    &AppServices::stub(),
+                )
+                .unwrap();
+
+                let Effect::CountRowsForExport { count_query, .. } = &effects[0] else {
+                    panic!("expected CountRowsForExport effect");
+                };
+                assert_eq!(
+                    count_query,
+                    &format!("SELECT COUNT(*) FROM (\n{normalized_statement}\n) AS _export_count")
+                );
             }
         }
     }

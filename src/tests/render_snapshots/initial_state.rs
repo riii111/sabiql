@@ -15,9 +15,6 @@ fn initial_state_no_metadata() {
 fn explorer_shows_not_connected_when_no_active_connection() {
     let mut state = create_test_state();
     state.session.clear_connection();
-    state
-        .session
-        .set_active_engine_feature_profile_for_test(sabiql_domain::DatabaseType::PostgreSQL);
     let mut terminal = create_test_terminal();
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -42,6 +39,26 @@ fn header_shows_effective_user_at_normal_width() {
     let output = render_to_string(&mut terminal, &mut state);
 
     insta::assert_snapshot!(output);
+}
+
+#[test]
+fn mysql_header_shows_effective_user_without_dsn_password() {
+    let mut state = connected_state();
+    state.session.activate_connection_with_dsn(
+        &ConnectionId::new(),
+        "test",
+        DatabaseType::MySQL,
+        "mysql://app:header-secret@localhost/app",
+    );
+    state
+        .session
+        .mark_effective_user_loaded(Some("app@%".to_string()));
+    let mut terminal = create_test_terminal();
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("user: app@%"));
+    assert!(!output.contains("header-secret"));
 }
 
 #[test]

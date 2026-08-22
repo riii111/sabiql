@@ -1,0 +1,544 @@
+use std::ffi::OsStr;
+use std::path::Path;
+use std::process::Stdio;
+use std::time::Duration;
+
+use serde::Deserialize;
+use tokio::process::Command;
+use tokio::time::timeout;
+
+use crate::app::ports::outbound::{
+    ConnectionFailureKind, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
+    MySqlConnectionProbeResult, UnsupportedOperationKind,
+};
+
+use super::args::mysql_connection_args;
+use super::error::{clean_mysql_stderr, map_mysql_cli_spawn_error};
+use super::sanitize_mysql_command_environment;
+
+const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
+const MYSQL_PROBE_QUERY: &str = "SELECT JSON_OBJECT('version', VERSION(), 'sql_mode', @@SESSION.sql_mode, 'lower_case_table_names', @@lower_case_table_names)";
+const MYSQL_VERSION_ARGS: [&str; 3] = ["--no-defaults", "--no-login-paths", "--version"];
+const MYSQL_SUPPORTED_MAJOR: u32 = 8;
+const MYSQL_SUPPORTED_MINOR: u32 = 4;
+
+#[derive(Debug, Deserialize)]
+struct MySqlProbeResponse {
+    version: String,
+    sql_mode: String,
+    lower_case_table_names: u8,
+}
+
+pub(in crate::adapters::mysql) async fn check_mysql_cli_version() -> Result<(), DbOperationError> {
+    check_mysql_cli_version_with_program(OsStr::new("mysql")).await
+}
+
+async fn check_mysql_cli_version_with_program(program: &OsStr) -> Result<(), DbOperationError> {
+    let output = run_mysql_version_command(program).await?;
+    let version_output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output.status.success() || !is_oracle_mysql_cli_84_version(&version_output) {
+        return Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ClientVersion,
+            details: version_output.trim().to_string(),
+        });
+    }
+    Ok(())
+}
+
+async fn run_mysql_version_command(
+    program: &OsStr,
+) -> Result<std::process::Output, DbOperationError> {
+    let mut command = Command::new(program);
+    command
+        .args(MYSQL_VERSION_ARGS)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    sanitize_mysql_command_environment(&mut command);
+
+    match timeout(MYSQL_PROBE_TIMEOUT, command.output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) => Err(map_mysql_cli_spawn_error(error)),
+        Err(_) => Err(DbOperationError::Timeout(
+            "mysql probe exceeded the connection timeout".to_string(),
+        )),
+    }
+}
+
+pub(in crate::adapters::mysql) async fn probe_mysql_server(
+    option_file: &Path,
+) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+    let output = run_mysql_command_with_timeout(
+        mysql_probe_args(option_file),
+        MYSQL_PROBE_TIMEOUT,
+        "mysql probe exceeded the connection timeout",
+    )
+    .await?;
+    if !output.status.success() {
+        return Err(classify_mysql_probe_failure(clean_mysql_stderr(
+            &output.stderr,
+            "mysql probe failed",
+        )));
+    }
+
+    let response: MySqlProbeResponse = serde_json::from_slice(&output.stdout)?;
+    validate_server_version(&response.version)?;
+    validate_sql_mode(&response.sql_mode)?;
+    validate_lower_case_table_names(response.lower_case_table_names)?;
+    Ok(MySqlConnectionProbeResult {
+        lower_case_table_names: response.lower_case_table_names,
+    })
+}
+
+pub(super) fn validate_lower_case_table_names(value: u8) -> Result<(), DbOperationError> {
+    if value <= 2 {
+        Ok(())
+    } else {
+        Err(DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL lower_case_table_names value: {value}"
+        )))
+    }
+}
+
+fn contains_unsupported_mysql_product(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    ["mariadb", "percona", "tidb", "vitess", "aurora"]
+        .iter()
+        .any(|product| lower.contains(product))
+}
+
+fn is_oracle_mysql_cli_84_version(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("mysql") && is_oracle_mysql_84_version(value)
+}
+
+fn is_oracle_mysql_84_version(value: &str) -> bool {
+    !contains_unsupported_mysql_product(value)
+        && version_major_minor(value) == Some((MYSQL_SUPPORTED_MAJOR, MYSQL_SUPPORTED_MINOR))
+}
+
+fn validate_server_version(version: &str) -> Result<(), DbOperationError> {
+    if is_oracle_mysql_84_version(version) {
+        Ok(())
+    } else {
+        Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ServerVersion,
+            details: version.to_string(),
+        })
+    }
+}
+
+pub(super) fn validate_sql_mode(sql_mode: &str) -> Result<(), DbOperationError> {
+    let unsupported = sql_mode.split(',').map(str::trim).any(|mode| {
+        mode.eq_ignore_ascii_case("NO_BACKSLASH_ESCAPES")
+            || mode.eq_ignore_ascii_case("ANSI_QUOTES")
+    });
+    if unsupported {
+        Err(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::SessionMode,
+            details: sql_mode.to_string(),
+        })
+    } else {
+        Ok(())
+    }
+}
+
+fn version_major_minor(value: &str) -> Option<(u32, u32)> {
+    let mut numbers = value
+        .split(|character: char| !character.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse::<u32>().ok());
+    Some((numbers.next()?, numbers.next()?))
+}
+
+fn mysql_probe_args(option_file: &std::path::Path) -> Vec<String> {
+    let mut args = mysql_connection_args(option_file);
+    args.extend([
+        "--batch".to_string(),
+        "--raw".to_string(),
+        "--skip-column-names".to_string(),
+        "--binary-mode".to_string(),
+    ]);
+    args.push(format!("--execute={MYSQL_PROBE_QUERY}"));
+    args
+}
+
+pub(super) async fn run_mysql_command_with_timeout<I, S>(
+    args: I,
+    command_timeout: Duration,
+    timeout_message: &str,
+) -> Result<std::process::Output, DbOperationError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut command = Command::new("mysql");
+    command.args(args).stdin(Stdio::null()).kill_on_drop(true);
+    sanitize_mysql_command_environment(&mut command);
+
+    match timeout(command_timeout, command.output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) => Err(map_mysql_cli_spawn_error(error)),
+        Err(_) => Err(DbOperationError::Timeout(timeout_message.to_string())),
+    }
+}
+
+fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
+    if is_mysql_connect_timeout_message(&stderr) {
+        DbOperationError::Timeout(stderr)
+    } else if let Some(kind) = mysql_tls_failure_kind(&stderr.to_ascii_lowercase()) {
+        DbOperationError::ConnectionFailedWithKind {
+            kind,
+            details: stderr,
+        }
+    } else if stderr
+        .to_ascii_lowercase()
+        .contains("can't connect to mysql server")
+    {
+        DbOperationError::ConnectionFailed(stderr)
+    } else {
+        super::error::classify_mysql_query_failure(stderr.as_bytes())
+    }
+}
+
+pub(super) fn mysql_tls_failure_kind(lowercase_details: &str) -> Option<ConnectionFailureKind> {
+    if lowercase_details.contains("certificate required")
+        || lowercase_details.contains("client certificate")
+        || lowercase_details.contains("peer did not return a certificate")
+        || lowercase_details.contains("bad certificate")
+        || lowercase_details.contains("tlsv1 alert certificate required")
+    {
+        return Some(ConnectionFailureKind::TlsClientCertificateRejected);
+    }
+
+    if lowercase_details.contains("hostname mismatch")
+        || lowercase_details.contains("host name mismatch")
+        || lowercase_details.contains("hostname does not match")
+        || lowercase_details.contains("host name does not match")
+        || lowercase_details.contains("hostname verification failed")
+        || lowercase_details.contains("host name verification failed")
+        || lowercase_details.contains("certificate name mismatch")
+        || lowercase_details.contains("certificate does not match")
+        || lowercase_details.contains("does not match certificate")
+        || lowercase_details.contains("not valid for the requested host")
+        || lowercase_details.contains("not valid for hostname")
+        || lowercase_details.contains("subject alternative name")
+        || (lowercase_details.contains("verify identity")
+            && lowercase_details.contains("certificate"))
+    {
+        return Some(ConnectionFailureKind::TlsHostnameVerification);
+    }
+
+    if lowercase_details.contains("unable to get local issuer")
+        || lowercase_details.contains("self-signed certificate")
+        || lowercase_details.contains("unknown ca")
+        || lowercase_details.contains("certificate signature failure")
+    {
+        return Some(ConnectionFailureKind::TlsCaVerification);
+    }
+
+    if lowercase_details.contains("error:0a000086:ssl routines::certificate verify failed") {
+        return Some(ConnectionFailureKind::TlsCertificateVerification);
+    }
+
+    if lowercase_details.contains("error 2026")
+        || lowercase_details.contains("tls/ssl error")
+        || lowercase_details.contains("ssl handshake")
+        || lowercase_details.contains("tls handshake")
+        || lowercase_details.contains("handshake failure")
+        || lowercase_details.contains("ssl connection error")
+        || lowercase_details.contains("tlsv1 alert")
+    {
+        return Some(ConnectionFailureKind::TlsHandshake);
+    }
+
+    None
+}
+
+pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.contains("can't connect to mysql server")
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lower.contains(errno))
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::*;
+
+    #[test]
+    fn validates_supported_versions_and_sql_modes() {
+        assert!(is_oracle_mysql_cli_84_version("mysql  Ver 8.4.3 for macos"));
+        assert!(!is_oracle_mysql_cli_84_version(
+            "mysql  Ver 8.0.36 for macos"
+        ));
+        assert!(!is_oracle_mysql_cli_84_version(
+            "mysql  Ver 15.1 Distrib 10.11.8-MariaDB"
+        ));
+        assert!(!is_oracle_mysql_cli_84_version(
+            "mysql  Ver 8.4.3-3 for Linux (Percona Server)"
+        ));
+        assert!(is_oracle_mysql_84_version("8.4.3"));
+        assert!(!is_oracle_mysql_84_version("8.4.3-TiDB"));
+        assert!(!is_oracle_mysql_84_version("8.4.3-Percona"));
+        assert!(matches!(
+            validate_server_version("8.0.36"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::ServerVersion,
+                ..
+            })
+        ));
+        assert!(validate_sql_mode("STRICT_TRANS_TABLES").is_ok());
+        assert!(validate_sql_mode("").is_ok());
+        assert!(matches!(
+            validate_sql_mode("STRICT_TRANS_TABLES,ANSI_QUOTES"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::SessionMode,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn rejects_no_backslash_escapes_sql_mode() {
+        assert!(matches!(
+            validate_sql_mode("STRICT_TRANS_TABLES,NO_BACKSLASH_ESCAPES"),
+            Err(DbOperationError::UnsupportedOperationWithKind {
+                kind: UnsupportedOperationKind::SessionMode,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn validates_supported_lower_case_table_names_modes() {
+        for mode in [0, 1, 2] {
+            assert!(validate_lower_case_table_names(mode).is_ok());
+        }
+        assert!(matches!(
+            validate_lower_case_table_names(3),
+            Err(DbOperationError::MetadataParseFailed(message))
+                if message == "invalid MySQL lower_case_table_names value: 3"
+        ));
+    }
+
+    #[test]
+    fn uses_tcp_and_keeps_defaults_file_first() {
+        let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert_eq!(
+            args,
+            vec![
+                "--defaults-file=/tmp/sabiql-mysql.cnf".to_string(),
+                "--no-login-paths".to_string(),
+                "--connect-timeout=10".to_string(),
+                "--skip-reconnect".to_string(),
+                "--batch".to_string(),
+                "--raw".to_string(),
+                "--skip-column-names".to_string(),
+                "--binary-mode".to_string(),
+                format!("--execute={MYSQL_PROBE_QUERY}"),
+            ]
+        );
+        assert!(!args.iter().any(|argument| argument == "--quick"));
+    }
+
+    #[test]
+    fn version_arguments_stay_isolated_from_query_options() {
+        assert_eq!(
+            MYSQL_VERSION_ARGS,
+            ["--no-defaults", "--no-login-paths", "--version"]
+        );
+        assert!(!MYSQL_VERSION_ARGS.contains(&"--quick"));
+    }
+
+    #[test]
+    fn arguments_do_not_contain_credentials() {
+        let args = mysql_probe_args(std::path::Path::new("/tmp/sabiql-mysql.cnf"));
+
+        assert!(
+            args.iter()
+                .all(|argument| { !argument.contains("password") && !argument.contains("secret") })
+        );
+    }
+
+    #[test]
+    fn classifies_mysql_cli_timeout_errno_before_connection_refusal() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)"
+                    .to_string()
+            ),
+            DbOperationError::Timeout(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
+                    .to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)".to_string()
+            ),
+            DbOperationError::Timeout(_)
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_tls_probe_failure_for_connection_error() {
+        let error = classify_mysql_probe_failure(
+            "ERROR 2026 (HY000): SSL connection error: error:0A000086:SSL routines::certificate verify failed"
+                .to_string(),
+        );
+
+        assert!(matches!(
+            error,
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::TlsCertificateVerification,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_server_probe_failures_with_query_error_vocabulary() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'".to_string()
+            ),
+            DbOperationError::PermissionDenied(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1045 (28000): Access denied for user 'user'".to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 1049 (42000): Unknown database 'missing'".to_string()
+            ),
+            DbOperationError::ConnectionFailed(_)
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_tls_failures_before_the_app_boundary() {
+        for (stderr, expected) in [
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: hostname mismatch",
+                ConnectionFailureKind::TlsHostnameVerification,
+            ),
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: unable to get local issuer certificate",
+                ConnectionFailureKind::TlsCaVerification,
+            ),
+            (
+                "ERROR 2026 (HY000): TLS/SSL error: peer did not return a certificate",
+                ConnectionFailureKind::TlsClientCertificateRejected,
+            ),
+            (
+                "ERROR 2026 (HY000): SSL connection error",
+                ConnectionFailureKind::TlsHandshake,
+            ),
+        ] {
+            assert_eq!(
+                mysql_tls_failure_kind(&stderr.to_ascii_lowercase()),
+                Some(expected)
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    mod version_command {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        use std::path::PathBuf;
+
+        use crate::app::ports::outbound::DatabaseCli;
+        use tempfile::TempDir;
+
+        use super::*;
+
+        fn fake_mysql_version_client(body: &str) -> (TempDir, PathBuf) {
+            let directory = tempfile::tempdir().unwrap();
+            let program = directory.path().join("mysql");
+            let script = format!("#!/bin/sh\n{body}\n");
+            fs::write(&program, script).unwrap();
+            let mut permissions = fs::metadata(&program).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&program, permissions).unwrap();
+            (directory, program)
+        }
+
+        fn assert_client_version_error(error: DbOperationError, expected_details: &str) {
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithKind {
+                    kind: UnsupportedOperationKind::ClientVersion,
+                    details,
+                } if details == expected_details
+            ));
+        }
+
+        #[tokio::test]
+        async fn isolates_version_check_from_ambient_unknown_options() {
+            let (_directory, program) = fake_mysql_version_client(
+                r#"if [ "$#" -ne 3 ] || [ "$1" != "--no-defaults" ] || [ "$2" != "--no-login-paths" ] || [ "$3" != "--version" ]; then
+    printf '%s\n' "unknown option '--ambient-unknown'" >&2
+    exit 1
+fi
+printf '%s\n' 'mysql  Ver 8.4.3 for macos'
+"#,
+            );
+
+            check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap();
+        }
+
+        #[tokio::test]
+        async fn preserves_binary_not_found_error() {
+            let missing = Path::new("/definitely/missing/mysql");
+
+            assert!(matches!(
+                check_mysql_cli_version_with_program(missing.as_os_str()).await,
+                Err(DbOperationError::CommandNotFound {
+                    command: DatabaseCli::MySql,
+                    ..
+                })
+            ));
+        }
+
+        #[tokio::test]
+        async fn rejects_non_oracle_client_output() {
+            let (_directory, program) = fake_mysql_version_client(
+                "printf '%s\\n' 'mysql  Ver 15.1 Distrib 10.11.8-MariaDB'",
+            );
+
+            let error = check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap_err();
+
+            assert_client_version_error(error, "mysql  Ver 15.1 Distrib 10.11.8-MariaDB");
+        }
+
+        #[tokio::test]
+        async fn rejects_unsupported_client_version() {
+            let (_directory, program) =
+                fake_mysql_version_client("printf '%s\\n' 'mysql  Ver 8.0.36 for macos'");
+
+            let error = check_mysql_cli_version_with_program(program.as_os_str())
+                .await
+                .unwrap_err();
+
+            assert_client_version_error(error, "mysql  Ver 8.0.36 for macos");
+        }
+    }
+}

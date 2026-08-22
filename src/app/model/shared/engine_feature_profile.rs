@@ -11,30 +11,48 @@ pub enum InspectorInfoField {
     TableName,
     TableKind,
     TableFlags,
+    Engine,
+    RowFormat,
+    TableCollation,
+    CreateOptions,
+}
+
+impl InspectorInfoField {
+    pub const fn omit_when_empty(self) -> bool {
+        matches!(
+            self,
+            Self::Engine | Self::RowFormat | Self::TableCollation | Self::CreateOptions
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectionFeature {
+enum ConnectionFeature {
     ErDiagram,
-    JsonbDetail,
+    JsonDocumentDetail,
+    JsonDocumentEdit,
     SqliteDiagnostics,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ComparisonSupport {
+enum ComparisonSupport {
+    #[allow(
+        dead_code,
+        reason = "Retain comparison state for profiles without plan comparison"
+    )]
     Unsupported,
     Supported,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplainProfile {
+enum ExplainProfile {
     Unsupported,
     QueryPlanOnly,
     QueryPlanAndAnalyze { comparison: ComparisonSupport },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InspectorProfile {
+struct InspectorProfile {
     tabs: &'static [InspectorTab],
     info_fields: &'static [InspectorInfoField],
 }
@@ -102,11 +120,38 @@ const SQLITE_INSPECTOR: InspectorProfile = InspectorProfile::new(
         InspectorInfoField::TableFlags,
     ],
 );
+const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
+    &[
+        InspectorTab::Info,
+        InspectorTab::Columns,
+        InspectorTab::Indexes,
+        InspectorTab::ForeignKeys,
+        InspectorTab::Triggers,
+        InspectorTab::Ddl,
+    ],
+    &[
+        InspectorInfoField::Comment,
+        InspectorInfoField::RowCount,
+        InspectorInfoField::TableName,
+        InspectorInfoField::Engine,
+        InspectorInfoField::RowFormat,
+        InspectorInfoField::TableCollation,
+        InspectorInfoField::CreateOptions,
+    ],
+);
 
 const NO_CONNECTION_FEATURES: &[ConnectionFeature] = &[];
-const POSTGRESQL_FEATURES: &[ConnectionFeature] =
-    &[ConnectionFeature::ErDiagram, ConnectionFeature::JsonbDetail];
+const POSTGRESQL_FEATURES: &[ConnectionFeature] = &[
+    ConnectionFeature::ErDiagram,
+    ConnectionFeature::JsonDocumentDetail,
+    ConnectionFeature::JsonDocumentEdit,
+];
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
+const MYSQL_FEATURES: &[ConnectionFeature] = &[
+    ConnectionFeature::ErDiagram,
+    ConnectionFeature::JsonDocumentDetail,
+    ConnectionFeature::JsonDocumentEdit,
+];
 
 impl EngineFeatureProfile {
     fn new(
@@ -167,23 +212,22 @@ impl EngineFeatureProfile {
         )
     }
 
+    pub fn mysql_like() -> Self {
+        Self::new(
+            MYSQL_INSPECTOR,
+            ExplainProfile::QueryPlanAndAnalyze {
+                comparison: ComparisonSupport::Supported,
+            },
+            MYSQL_FEATURES,
+        )
+    }
+
     pub fn for_database_type(database_type: DatabaseType) -> Self {
         match database_type {
             DatabaseType::PostgreSQL => Self::postgres_like(),
             DatabaseType::SQLite => Self::sqlite_like(),
+            DatabaseType::MySQL => Self::mysql_like(),
         }
-    }
-
-    pub fn inspector(&self) -> InspectorProfile {
-        self.inspector
-    }
-
-    pub fn explain(&self) -> ExplainProfile {
-        self.explain
-    }
-
-    pub fn connection_features(&self) -> &'static [ConnectionFeature] {
-        self.connection_features
     }
 
     pub fn supports_explain(&self) -> bool {
@@ -207,8 +251,12 @@ impl EngineFeatureProfile {
         )
     }
 
-    pub fn supports_jsonb_detail(&self) -> bool {
-        self.supports_connection_feature(ConnectionFeature::JsonbDetail)
+    pub fn supports_json_document_detail(&self) -> bool {
+        self.supports_connection_feature(ConnectionFeature::JsonDocumentDetail)
+    }
+
+    pub fn supports_json_document_edit(&self) -> bool {
+        self.supports_connection_feature(ConnectionFeature::JsonDocumentEdit)
     }
 
     pub fn supports_sqlite_diagnostics(&self) -> bool {
@@ -317,7 +365,7 @@ mod tests {
             assert!(!profile.supported_inspector_info_fields().is_empty());
             assert!(has_unique_items(profile.supported_inspector_tabs()));
             assert!(has_unique_items(profile.supported_inspector_info_fields()));
-            assert!(has_unique_items(profile.connection_features()));
+            assert!(has_unique_items(profile.connection_features));
 
             if profile.supports_plan_comparison() {
                 assert!(profile.supports_explain());
@@ -336,7 +384,8 @@ mod tests {
         assert!(profile.supports_explain_analyze());
         assert!(profile.supports_plan_comparison());
         assert!(profile.supports_er_diagram());
-        assert!(profile.supports_jsonb_detail());
+        assert!(profile.supports_json_document_detail());
+        assert!(profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert!(profile.supports_inspector_tab(InspectorTab::Ddl));
         assert_eq!(
@@ -371,7 +420,8 @@ mod tests {
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
-        assert!(!profile.supports_jsonb_detail());
+        assert!(!profile.supports_json_document_detail());
+        assert!(!profile.supports_json_document_edit());
         assert!(profile.supports_sqlite_diagnostics());
         assert_eq!(
             profile.supported_inspector_tabs(),
@@ -410,6 +460,50 @@ mod tests {
             EngineFeatureProfile::for_database_type(DatabaseType::SQLite),
             EngineFeatureProfile::sqlite_like()
         );
+        assert_eq!(
+            EngineFeatureProfile::for_database_type(DatabaseType::MySQL),
+            EngineFeatureProfile::mysql_like()
+        );
+    }
+
+    #[test]
+    fn mysql_profile_exposes_browse_metadata_ddl_analyze_and_compare() {
+        let profile = EngineFeatureProfile::mysql_like();
+
+        assert!(profile.supports_explain());
+        assert!(profile.supports_explain_analyze());
+        assert!(profile.supports_plan_comparison());
+        assert!(profile.supports_er_diagram());
+        assert!(profile.supports_json_document_detail());
+        assert!(profile.supports_json_document_edit());
+        assert!(!profile.supports_sqlite_diagnostics());
+        assert_eq!(
+            profile.supported_inspector_tabs(),
+            &[
+                InspectorTab::Info,
+                InspectorTab::Columns,
+                InspectorTab::Indexes,
+                InspectorTab::ForeignKeys,
+                InspectorTab::Triggers,
+                InspectorTab::Ddl,
+            ]
+        );
+        assert_eq!(
+            profile.supported_inspector_info_fields(),
+            &[
+                InspectorInfoField::Comment,
+                InspectorInfoField::RowCount,
+                InspectorInfoField::TableName,
+                InspectorInfoField::Engine,
+                InspectorInfoField::RowFormat,
+                InspectorInfoField::TableCollation,
+                InspectorInfoField::CreateOptions,
+            ]
+        );
+        assert_eq!(
+            profile.supported_sql_modal_tabs(),
+            &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+        );
     }
 
     #[test]
@@ -420,7 +514,8 @@ mod tests {
         assert!(!profile.supports_explain_analyze());
         assert!(!profile.supports_plan_comparison());
         assert!(!profile.supports_er_diagram());
-        assert!(!profile.supports_jsonb_detail());
+        assert!(!profile.supports_json_document_detail());
+        assert!(!profile.supports_json_document_edit());
         assert!(!profile.supports_sqlite_diagnostics());
         assert_eq!(profile.supported_inspector_tabs(), &[InspectorTab::Info]);
         assert_eq!(
@@ -455,7 +550,7 @@ mod tests {
         let profile = EngineFeatureProfile::postgres_like();
 
         assert!(matches!(
-            profile.explain(),
+            profile.explain,
             ExplainProfile::QueryPlanAndAnalyze {
                 comparison: ComparisonSupport::Supported,
             }

@@ -17,9 +17,10 @@ pub(super) fn check_er_completion(state: &mut AppState, now: Instant) -> Vec<Eff
     }
 
     if !state.er_preparation.fk_expanded() {
-        return vec![Effect::DispatchActions(vec![
-            Action::ExpandPrefetchWithFkNeighbors,
-        ])];
+        let Some(run_id) = state.sql_modal.active_prefetch_run_id() else {
+            return vec![];
+        };
+        return er_neighbors::expand_prefetch_with_fk_neighbors(state, run_id);
     }
 
     if !state.er_preparation.has_failures() {
@@ -56,7 +57,10 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, Table};
     use crate::model::app_state::AppState;
+    use crate::model::browse::session::TableDetailState;
+    use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::FailedPrefetchEntry;
+    use crate::ports::outbound::DbOperationError;
     use crate::update::action::Action;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
@@ -79,6 +83,7 @@ mod tests {
     mod freshness_guards {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
+        use crate::model::connection::state::ConnectionState;
 
         fn metadata_with_users() -> Arc<DatabaseMetadata> {
             Arc::new({
@@ -135,6 +140,64 @@ mod tests {
         }
 
         #[test]
+        fn current_table_detail_failure_updates_inspector_and_footer() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let run_id = state.session.begin_table_detail_run();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    generation,
+                },
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(_)
+            ));
+            assert!(state.messages.last_error().is_some());
+        }
+
+        #[test]
+        fn stale_table_detail_failure_does_not_update_current_inspector() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let _ = state.session.begin_table_detail_run();
+            let current_generation =
+                state
+                    .session
+                    .select_table("public", "orders", &mut state.query);
+            let current_run_id = state.session.begin_table_detail_run();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: current_run_id,
+                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                    generation: stale_generation,
+                },
+                Instant::now(),
+            );
+
+            assert_eq!(state.session.selection_generation(), current_generation);
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Loading
+            ));
+            assert!(state.messages.last_error().is_none());
+        }
+
+        #[test]
         fn stale_prefetch_run_does_not_advance_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let old_run_id = state.sql_modal.begin_prefetch();
@@ -154,6 +217,120 @@ mod tests {
             assert!(state.sql_modal.has_pending_prefetch());
             assert!(state.sql_modal.is_prefetch_queued("public.users"));
             assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
+        }
+
+        #[test]
+        fn mysql_metadata_actions_start_fetches() {
+            let mut state = AppState::new("test".to_string());
+            state.session.activate_connection_with_target(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+                Some("app"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+
+            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
+                let effects = dispatch_metadata(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .unwrap();
+
+                assert!(effects.iter().any(contains_fetch_metadata));
+            }
+            assert!(state.messages.last_error().is_none());
+        }
+
+        #[test]
+        fn mysql_metadata_actions_during_pending_switch_preserve_probe() {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("mysql-a");
+            let target_id = ConnectionId::from_string("mysql-b");
+            state.session.activate_connection_with_target(
+                &current_id,
+                "mysql-a",
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/a",
+                Some("a"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let probe_run_id = state.session.begin_mysql_connection_probe(
+                &target_id,
+                "mysql-b",
+                "mysql://user@localhost:3306/b",
+                Some("b"),
+            );
+
+            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
+                let effects = dispatch_metadata(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .unwrap();
+
+                assert!(effects.is_empty());
+                assert_eq!(
+                    state
+                        .session
+                        .pending_mysql_connection_probe()
+                        .map(|pending| pending.run_id),
+                    Some(probe_run_id)
+                );
+                assert_eq!(
+                    state.messages.last_error(),
+                    Some("Connection switch in progress")
+                );
+            }
+        }
+
+        #[test]
+        fn mysql_metadata_actions_during_same_connection_retry_preserve_probe() {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql-a");
+            let dsn = "mysql://user@localhost:3306/a";
+            state.session.activate_connection_with_target(
+                &id,
+                "mysql-a",
+                DatabaseType::MySQL,
+                dsn,
+                Some("a"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let probe_run_id =
+                state
+                    .session
+                    .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
+
+            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
+                let effects = dispatch_metadata(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .unwrap();
+
+                assert!(effects.is_empty());
+                assert_eq!(
+                    state
+                        .session
+                        .pending_mysql_connection_probe()
+                        .map(|pending| pending.run_id),
+                    Some(probe_run_id)
+                );
+                assert_eq!(
+                    state.messages.last_error(),
+                    Some("Connection switch in progress")
+                );
+            }
+        }
+
+        fn contains_fetch_metadata(effect: &Effect) -> bool {
+            match effect {
+                Effect::FetchMetadata { .. } => true,
+                Effect::Sequence(effects) => effects.iter().any(contains_fetch_metadata),
+                _ => false,
+            }
         }
     }
 
@@ -234,6 +411,39 @@ mod tests {
                     Effect::DelayedProcessPrefetchQueue { delay_secs: 1, .. }
                 ))
             );
+        }
+
+        #[test]
+        fn process_queue_does_not_reprocess_requeued_backoff_table() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
+            let qualified = "public.users".to_string();
+            state.sql_modal.fail_table_prefetch(
+                qualified.clone(),
+                FailedPrefetchEntry {
+                    failed_at: Instant::now(),
+                    error: "timeout".to_string(),
+                    retry_count: 1,
+                },
+            );
+            state.sql_modal.queue_table_prefetch(qualified.clone());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                effects
+                    .iter()
+                    .filter(|effect| matches!(effect, Effect::DelayedProcessPrefetchQueue { .. }))
+                    .count(),
+                1
+            );
+            assert_eq!(state.sql_modal.take_next_prefetch(), Some(qualified));
+            assert!(!state.sql_modal.has_pending_prefetch());
         }
 
         #[test]
@@ -411,7 +621,6 @@ mod tests {
 
     mod table_detail_cache_failed {
         use super::*;
-        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn increments_retry_count() {
@@ -800,6 +1009,36 @@ mod tests {
 
             assert!(state.er_preparation.fk_expanded());
         }
+
+        #[test]
+        fn process_queue_starts_prefetch_effects_without_action_redispatch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.session.set_metadata(Some(make_metadata(2)));
+            dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+            let run_id = state
+                .sql_modal
+                .active_prefetch_run_id()
+                .expect("prefetch run");
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(effects.len(), 2);
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| matches!(effect, Effect::PrefetchTableDetail { .. }))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::DispatchActions(_)))
+            );
+        }
     }
 
     mod start_prefetch_scoped {
@@ -911,12 +1150,119 @@ mod tests {
         }
     }
 
+    mod start_completion_prefetch {
+        use super::*;
+
+        #[test]
+        fn queues_only_referenced_tables_without_er_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let tables = vec!["public.users".to_string(), "public.orders".to_string()];
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::StartCompletionPrefetch { tables },
+                Instant::now(),
+            )
+            .expect("completion prefetch should be handled");
+
+            assert!(state.sql_modal.is_prefetch_started());
+            assert!(!state.sql_modal.prefetch_tracks_er());
+            assert!(state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.orders"));
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::ProcessPrefetchQueue { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .all(|effect| !matches!(effect, Effect::ResizeCompletionCache { .. }))
+            );
+        }
+
+        #[test]
+        fn cached_table_retriggers_sql_completion_without_er_state() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state.modal.set_mode(InputMode::SqlModal);
+            let run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCached {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: empty_table("public", "users"),
+                },
+                Instant::now(),
+            )
+            .expect("cached detail should be handled");
+
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CacheTableInCompletionEngine { .. }))
+            );
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::TriggerCompletion))
+            );
+        }
+
+        #[test]
+        fn er_prefetch_replaces_an_active_completion_prefetch() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let completion_run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::StartPrefetchScoped {
+                    tables: vec!["public.orders".to_string()],
+                },
+                Instant::now(),
+            )
+            .expect("ER prefetch should be handled");
+
+            let er_run_id = state
+                .sql_modal
+                .active_prefetch_run_id()
+                .expect("ER prefetch should have an active run");
+            assert_ne!(completion_run_id, er_run_id);
+            assert!(state.sql_modal.prefetch_tracks_er());
+            assert!(!state.sql_modal.is_table_prefetching("public.users"));
+            assert!(state.sql_modal.is_prefetch_queued("public.orders"));
+            assert!(!state.sql_modal.is_prefetch_queued("public.users"));
+            assert!(
+                state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.orders")
+            );
+            assert!(effects.iter().any(|effect| matches!(
+                effect,
+                Effect::ProcessPrefetchQueue { run_id } if *run_id == er_run_id
+            )));
+        }
+    }
+
     mod completion_check {
         use super::*;
 
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
@@ -925,8 +1271,8 @@ mod tests {
 
             assert!(effects.iter().any(|e| matches!(
                 e,
-                Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::ExpandPrefetchWithFkNeighbors))
+                Effect::ExtractFkNeighbors { run_id: action_run_id, .. }
+                    if *action_run_id == run_id
             )));
         }
 
@@ -944,6 +1290,28 @@ mod tests {
                     if actions.iter().any(|a| matches!(a, Action::ErGenerateFromCache))
             )));
         }
+
+        #[test]
+        fn stale_expand_does_not_start_neighbor_extraction() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_run_id = state.sql_modal.begin_prefetch();
+            let current_run_id = state.sql_modal.begin_prefetch();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ExpandPrefetchWithFkNeighbors {
+                    run_id: stale_run_id,
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(current_run_id)
+            );
+            assert!(effects.is_empty());
+        }
     }
 
     mod fk_neighbors_discovered {
@@ -953,12 +1321,15 @@ mod tests {
         #[test]
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::FkNeighborsDiscovered { tables: vec![] },
+                &Action::FkNeighborsDiscovered {
+                    run_id,
+                    tables: vec![],
+                },
                 Instant::now(),
             )
             .unwrap();
@@ -974,12 +1345,13 @@ mod tests {
         #[test]
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id,
                     tables: vec!["public.posts".to_string(), "public.tags".to_string()],
                 },
                 Instant::now(),
@@ -1016,6 +1388,7 @@ mod tests {
             let effects = dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id: 1,
                     tables: vec!["public.posts".to_string()],
                 },
                 Instant::now(),
@@ -1029,9 +1402,35 @@ mod tests {
         }
 
         #[test]
+        fn stale_neighbors_from_previous_run_do_not_mutate_current_run() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            let stale_run_id = state.sql_modal.begin_prefetch();
+            let current_run_id = state.sql_modal.begin_prefetch();
+            state.er_preparation.mark_waiting_for_test();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    run_id: stale_run_id,
+                    tables: vec!["public.posts".to_string()],
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(current_run_id)
+            );
+            assert!(!state.er_preparation.fk_expanded());
+            assert!(state.er_preparation.pending_tables().is_empty());
+            assert!(effects.is_empty());
+        }
+
+        #[test]
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
@@ -1046,6 +1445,7 @@ mod tests {
             dispatch_metadata(
                 &mut state,
                 &Action::FkNeighborsDiscovered {
+                    run_id,
                     tables: vec![
                         "public.posts".to_string(),
                         "public.tags".to_string(),

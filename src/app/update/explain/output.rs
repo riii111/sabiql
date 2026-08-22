@@ -14,18 +14,21 @@ pub(super) fn reduce_output(
     match action {
         Action::ExplainCompleted {
             dsn,
+            database_type,
+            database_generation,
             run_id,
             query,
             plan_text,
             is_analyze,
             execution_time_ms,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if state.is_stale_explain_run(dsn, *database_generation, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_success(
                 state,
                 plan_text.clone(),
+                *database_type,
                 *is_analyze,
                 *execution_time_ms,
                 query,
@@ -34,9 +37,13 @@ pub(super) fn reduce_output(
         }
 
         Action::ExplainFailed {
-            dsn, run_id, error, ..
+            dsn,
+            database_generation,
+            run_id,
+            error,
+            ..
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if state.is_stale_explain_run(dsn, *database_generation, *run_id) {
                 return DispatchResult::handled();
             }
             finish_explain_error(state, error.user_message());

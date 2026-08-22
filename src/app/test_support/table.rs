@@ -1,4 +1,4 @@
-use crate::domain::{Table, TableKind, TableKindInfo};
+use crate::domain::{Table, TableKind, TableKindInfo, TableStorageAttributes};
 
 #[must_use]
 pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
@@ -15,6 +15,7 @@ pub fn minimal(schema: impl Into<String>, name: impl Into<String>) -> Table {
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: TableStorageAttributes::default(),
         kind_info: TableKindInfo::default(),
     }
 }

@@ -1,7 +1,10 @@
+use crate::domain::DatabaseType;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
     Keyword(String),
     Identifier(String),
+    BacktickIdentifier(String),
     Operator(String),
     Punctuation(char),
     StringLiteral,
@@ -24,13 +27,11 @@ pub struct TableReference {
     pub schema: Option<String>,
     pub table: String,
     pub alias: Option<String>,
-    pub position: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CteDefinition {
     pub name: String,
-    pub position: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -41,18 +42,24 @@ pub struct SqlContext {
     pub target_table: Option<TableReference>,
 }
 
+const MYSQL_INSERT_MODIFIERS: &[&str] = &["LOW_PRIORITY", "DELAYED", "HIGH_PRIORITY", "IGNORE"];
+const MYSQL_UPDATE_MODIFIERS: &[&str] = &["LOW_PRIORITY", "IGNORE"];
+const MYSQL_DELETE_MODIFIERS: &[&str] = &["LOW_PRIORITY", "QUICK", "IGNORE"];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LexerState {
     Normal,
     InSingleQuote,
-    InDoubleQuote,
+    InDoubleQuoteIdentifier,
+    InDoubleQuoteString,
+    InBacktickIdentifier,
     InDollarQuote,
     InLineComment,
     InBlockComment,
     InEscapeString,
 }
 
-const SQL_KEYWORDS: &[&str] = &[
+const POSTGRESQL_KEYWORDS: &[&str] = &[
     "SELECT",
     "FROM",
     "WHERE",
@@ -149,11 +156,137 @@ const SQL_KEYWORDS: &[&str] = &[
     "RELEASE",
 ];
 
-pub struct SqlLexer;
+const MYSQL_KEYWORDS: &[&str] = &[
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "JOIN",
+    "STRAIGHT_JOIN",
+    "LEFT",
+    "RIGHT",
+    "INNER",
+    "OUTER",
+    "CROSS",
+    "ON",
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "IS",
+    "NULL",
+    "TRUE",
+    "FALSE",
+    "LIKE",
+    "BETWEEN",
+    "EXISTS",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "AS",
+    "DISTINCT",
+    "ORDER",
+    "BY",
+    "ASC",
+    "DESC",
+    "GROUP",
+    "HAVING",
+    "LIMIT",
+    "OFFSET",
+    "UNION",
+    "INTERSECT",
+    "EXCEPT",
+    "ALL",
+    "INSERT",
+    "REPLACE",
+    "INTO",
+    "VALUES",
+    "CALL",
+    "UPDATE",
+    "SET",
+    "DELETE",
+    "CREATE",
+    "DROP",
+    "TRUNCATE",
+    "ALTER",
+    "TABLE",
+    "INDEX",
+    "VIEW",
+    "WITH",
+    "RECURSIVE",
+    "COALESCE",
+    "NULLIF",
+    "CAST",
+    "USING",
+    "FULL",
+    "NATURAL",
+    "WINDOW",
+    "OVER",
+    "PARTITION",
+    "ROWS",
+    "RANGE",
+    "UNBOUNDED",
+    "PRECEDING",
+    "FOLLOWING",
+    "CURRENT",
+    "ROW",
+    "EXPLAIN",
+    "ANALYZE",
+    "SHOW",
+    "DESCRIBE",
+    "DATABASE",
+    "DATABASES",
+    "PRIMARY",
+    "KEY",
+    "FOREIGN",
+    "REFERENCES",
+    "UNIQUE",
+    "DEFAULT",
+    "CONSTRAINT",
+    "CHECK",
+    "IF",
+    "CASCADE",
+    "RENAME",
+    "MODIFY",
+    "COLUMN",
+    "ENGINE",
+    "CHARACTER",
+    "CHARSET",
+    "COLLATE",
+    "AUTO_INCREMENT",
+    "SAVEPOINT",
+    "RELEASE",
+    "USE",
+    "FOR",
+    "LOCK",
+    "SHARE",
+    "START",
+    "TRANSACTION",
+    "COMMIT",
+    "ROLLBACK",
+];
+
+pub struct SqlLexer {
+    database_type: DatabaseType,
+}
 
 impl SqlLexer {
-    pub fn new() -> Self {
-        Self
+    pub fn new(database_type: DatabaseType) -> Self {
+        Self { database_type }
+    }
+
+    fn is_mysql(&self) -> bool {
+        self.database_type == DatabaseType::MySQL
+    }
+
+    fn is_keyword(&self, word: &str) -> bool {
+        let keywords = if self.is_mysql() {
+            MYSQL_KEYWORDS
+        } else {
+            POSTGRESQL_KEYWORDS
+        };
+        keywords.contains(&word)
     }
 
     pub fn tokenize(&self, text: &str, cursor_pos: usize) -> Vec<Token> {
@@ -184,8 +317,14 @@ impl SqlLexer {
                         continue;
                     }
 
-                    // Line comment: --
-                    if c == '-' && pos + 1 < end_pos && chars[pos + 1] == '-' {
+                    // MySQL starts a -- comment only when followed by ASCII whitespace or EOF.
+                    if c == '-'
+                        && pos + 1 < end_pos
+                        && chars[pos + 1] == '-'
+                        && (!self.is_mysql()
+                            || pos + 2 == end_pos
+                            || chars[pos + 2].is_ascii_whitespace())
+                    {
                         token_start = pos;
                         state = LexerState::InLineComment;
                         pos += 2;
@@ -197,6 +336,13 @@ impl SqlLexer {
                         token_start = pos;
                         state = LexerState::InBlockComment;
                         pos += 2;
+                        continue;
+                    }
+
+                    if self.is_mysql() && c == '#' {
+                        token_start = pos;
+                        state = LexerState::InLineComment;
+                        pos += 1;
                         continue;
                     }
 
@@ -244,10 +390,21 @@ impl SqlLexer {
                         continue;
                     }
 
-                    // Double-quoted identifier: "..."
+                    // MySQL treats double quotes as strings; PostgreSQL treats them as identifiers.
                     if c == '"' {
                         token_start = pos;
-                        state = LexerState::InDoubleQuote;
+                        state = if self.is_mysql() {
+                            LexerState::InDoubleQuoteString
+                        } else {
+                            LexerState::InDoubleQuoteIdentifier
+                        };
+                        pos += 1;
+                        continue;
+                    }
+
+                    if self.is_mysql() && c == '`' {
+                        token_start = pos;
+                        state = LexerState::InBacktickIdentifier;
                         pos += 1;
                         continue;
                     }
@@ -316,7 +473,7 @@ impl SqlLexer {
                         }
                         let text: String = chars[start..pos].iter().collect();
                         let upper = text.to_uppercase();
-                        let kind = if SQL_KEYWORDS.contains(&upper.as_str()) {
+                        let kind = if self.is_keyword(&upper) {
                             TokenKind::Keyword(upper)
                         } else {
                             TokenKind::Identifier(text.clone())
@@ -341,6 +498,10 @@ impl SqlLexer {
                 }
 
                 LexerState::InSingleQuote => {
+                    if self.is_mysql() && c == '\\' && pos + 1 < end_pos {
+                        pos += 2;
+                        continue;
+                    }
                     // Handle escaped single quotes: ''
                     if c == '\'' {
                         if pos + 1 < end_pos && chars[pos + 1] == '\'' {
@@ -361,7 +522,7 @@ impl SqlLexer {
                     pos += 1;
                 }
 
-                LexerState::InDoubleQuote => {
+                LexerState::InDoubleQuoteIdentifier => {
                     // Handle escaped double quotes: ""
                     if c == '"' {
                         if pos + 1 < end_pos && chars[pos + 1] == '"' {
@@ -373,6 +534,53 @@ impl SqlLexer {
                         tokens.push(Token {
                             kind: TokenKind::Identifier(text.clone()),
                             text,
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InDoubleQuoteString => {
+                    if c == '\\' && pos + 1 < end_pos {
+                        pos += 2;
+                        continue;
+                    }
+                    // Handle escaped double quotes: ""
+                    if c == '"' {
+                        if pos + 1 < end_pos && chars[pos + 1] == '"' {
+                            pos += 2;
+                            continue;
+                        }
+                        tokens.push(Token {
+                            kind: TokenKind::StringLiteral,
+                            text: chars[token_start..=pos].iter().collect(),
+                            start: token_start,
+                            end: pos + 1,
+                        });
+                        state = LexerState::Normal;
+                        pos += 1;
+                        continue;
+                    }
+                    pos += 1;
+                }
+
+                LexerState::InBacktickIdentifier => {
+                    if c == '`' {
+                        if pos + 1 < end_pos && chars[pos + 1] == '`' {
+                            pos += 2;
+                            continue;
+                        }
+                        let name: String = chars[token_start + 1..pos]
+                            .iter()
+                            .collect::<String>()
+                            .replace("``", "`");
+                        tokens.push(Token {
+                            kind: TokenKind::BacktickIdentifier(name),
+                            text: chars[token_start..=pos].iter().collect(),
                             start: token_start,
                             end: pos + 1,
                         });
@@ -469,9 +677,13 @@ impl SqlLexer {
             let text: String = chars[token_start..end_pos].iter().collect();
             let kind = match state {
                 LexerState::InSingleQuote
+                | LexerState::InDoubleQuoteString
                 | LexerState::InDollarQuote
                 | LexerState::InEscapeString => TokenKind::StringLiteral,
-                LexerState::InDoubleQuote => TokenKind::Identifier(text.clone()),
+                LexerState::InDoubleQuoteIdentifier => TokenKind::Identifier(text.clone()),
+                LexerState::InBacktickIdentifier => {
+                    TokenKind::BacktickIdentifier(text[1..].to_string())
+                }
                 LexerState::InLineComment | LexerState::InBlockComment => TokenKind::Comment,
                 LexerState::Normal => unreachable!(),
             };
@@ -486,30 +698,33 @@ impl SqlLexer {
         tokens
     }
 
-    pub fn is_in_string_or_comment(&self, text: &str, cursor_pos: usize) -> bool {
-        let tokens = self.tokenize(text, cursor_pos);
-
-        if let Some(last) = tokens.last() {
-            // If cursor is at the end of the last token
-            if last.end == cursor_pos {
-                matches!(last.kind, TokenKind::StringLiteral | TokenKind::Comment)
-            } else if last.start <= cursor_pos && cursor_pos < last.end {
-                // Cursor is inside a token
-                matches!(last.kind, TokenKind::StringLiteral | TokenKind::Comment)
+    pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
+        tokens.iter().any(|t| {
+            if matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment) {
+                t.start < cursor_pos && cursor_pos <= t.end
+            } else if matches!(t.kind, TokenKind::BacktickIdentifier(_)) {
+                (t.start < cursor_pos && cursor_pos < t.end)
+                    || (cursor_pos == t.end && Self::is_unterminated_backtick(&t.text))
             } else {
                 false
             }
-        } else {
-            false
-        }
+        })
     }
 
-    pub fn is_in_string_or_comment_from_tokens(tokens: &[Token], cursor_pos: usize) -> bool {
-        tokens.iter().any(|t| {
-            t.start < cursor_pos
-                && cursor_pos <= t.end
-                && matches!(t.kind, TokenKind::StringLiteral | TokenKind::Comment)
-        })
+    fn is_unterminated_backtick(text: &str) -> bool {
+        if !text.starts_with('`') {
+            return false;
+        }
+        let mut chars = text.chars().skip(1).peekable();
+        while let Some(ch) = chars.next() {
+            if ch != '`' {
+                continue;
+            }
+            if chars.next_if_eq(&'`').is_none() {
+                return false;
+            }
+        }
+        true
     }
 
     fn is_operator_char(c: char) -> bool {
@@ -519,16 +734,116 @@ impl SqlLexer {
         )
     }
 
+    fn is_mysql_index_hint_scope(&self, tokens: &[Token], scope_index: usize) -> bool {
+        if !self.is_mysql() {
+            return false;
+        }
+
+        let is_scope = matches!(
+            &tokens[scope_index].kind,
+            TokenKind::Keyword(word)
+                if matches!(word.as_str(), "JOIN" | "ORDER" | "GROUP")
+        );
+        if !is_scope {
+            return false;
+        }
+
+        let Some(for_index) = tokens[..scope_index]
+            .iter()
+            .rposition(|token| token.kind != TokenKind::Whitespace)
+        else {
+            return false;
+        };
+        let is_for = matches!(
+            &tokens[for_index].kind,
+            TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                if word.eq_ignore_ascii_case("FOR")
+        );
+        if !is_for {
+            return false;
+        }
+
+        let Some(index_hint_index) = tokens[..for_index]
+            .iter()
+            .rposition(|token| token.kind != TokenKind::Whitespace)
+        else {
+            return false;
+        };
+        matches!(
+            &tokens[index_hint_index].kind,
+            TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                if word.eq_ignore_ascii_case("INDEX") || word.eq_ignore_ascii_case("KEY")
+        )
+    }
+
     fn is_punctuation(c: char) -> bool {
         matches!(c, '(' | ')' | ',' | ';' | '.' | '[' | ']')
+    }
+
+    fn skip_mysql_modifiers(
+        &self,
+        tokens: &[Token],
+        mut index: usize,
+        modifiers: &[&str],
+    ) -> usize {
+        if !self.is_mysql() {
+            return index;
+        }
+
+        loop {
+            while index < tokens.len() && tokens[index].kind == TokenKind::Whitespace {
+                index += 1;
+            }
+            let Some(token) = tokens.get(index) else {
+                return index;
+            };
+            let is_modifier = matches!(
+                &token.kind,
+                TokenKind::Identifier(_) | TokenKind::Keyword(_)
+            ) && modifiers
+                .iter()
+                .any(|modifier| token.text.eq_ignore_ascii_case(modifier));
+            if !is_modifier {
+                return index;
+            }
+            index += 1;
+        }
+    }
+
+    fn is_mysql_upsert_update(&self, tokens: &[Token], update_index: usize) -> bool {
+        if !self.is_mysql() {
+            return false;
+        }
+
+        let mut index = update_index;
+        for expected in ["KEY", "DUPLICATE", "ON"] {
+            let Some(previous_index) = tokens[..index]
+                .iter()
+                .rposition(|token| token.kind != TokenKind::Whitespace)
+            else {
+                return false;
+            };
+            index = previous_index;
+            let token = &tokens[index];
+            let is_expected = matches!(
+                &token.kind,
+                TokenKind::Keyword(word) | TokenKind::Identifier(word)
+                    if word.eq_ignore_ascii_case(expected)
+            );
+            if !is_expected {
+                return false;
+            }
+        }
+
+        true
     }
 
     pub fn extract_table_references(&self, tokens: &[Token]) -> Vec<TableReference> {
         let mut refs = Vec::new();
         let mut i = 0;
-        let mut prev_keyword: Option<&str> = None;
         // Track FOR locking clause: FOR [NO KEY | KEY]? (UPDATE | SHARE)
         let mut in_for_clause = false;
+        let mut can_start_straight_join = false;
 
         while i < tokens.len() {
             let token = &tokens[i];
@@ -536,16 +851,24 @@ impl SqlLexer {
             // Reset state on statement terminator
             if token.kind == TokenKind::Punctuation(';') {
                 in_for_clause = false;
-                prev_keyword = None;
+                can_start_straight_join = false;
                 i += 1;
                 continue;
             }
 
             if let TokenKind::Keyword(kw) = &token.kind {
                 match kw.as_str() {
-                    "FROM" | "JOIN" => {
+                    "FROM" | "JOIN" | "STRAIGHT_JOIN" => {
+                        if kw == "JOIN" && self.is_mysql_index_hint_scope(tokens, i) {
+                            i += 1;
+                            continue;
+                        }
+                        if kw == "STRAIGHT_JOIN" && !can_start_straight_join {
+                            i += 1;
+                            continue;
+                        }
                         in_for_clause = false;
-                        prev_keyword = Some(kw.as_str());
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -561,13 +884,14 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
                     }
                     // JOIN modifiers - skip to find JOIN, then parse table
                     "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" => {
                         in_for_clause = false;
-                        prev_keyword = Some(kw.as_str());
+                        can_start_straight_join = false;
                         i += 1;
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
@@ -582,23 +906,67 @@ impl SqlLexer {
                             }
                             if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                                 refs.push(table_ref);
+                                can_start_straight_join = true;
                                 continue;
                             }
                         }
                     }
                     // FOR starts a locking clause (FOR UPDATE, FOR NO KEY UPDATE, etc.)
                     "FOR" => {
-                        in_for_clause = true;
-                        prev_keyword = Some("FOR");
+                        let mut next = i + 1;
+                        while next < tokens.len() && tokens[next].kind == TokenKind::Whitespace {
+                            next += 1;
+                        }
+                        if next >= tokens.len() || !self.is_mysql_index_hint_scope(tokens, next) {
+                            in_for_clause = true;
+                            can_start_straight_join = false;
+                        }
                     }
                     // NO, KEY, SHARE are part of FOR locking clause
-                    "NO" | "KEY" | "SHARE" if in_for_clause => {
-                        prev_keyword = Some(kw.as_str());
+                    "NO" | "KEY" | "SHARE" if in_for_clause => {}
+                    "GROUP" | "ORDER" if self.is_mysql_index_hint_scope(tokens, i) => {
+                        i += 1;
+                        continue;
+                    }
+                    "INSERT" | "REPLACE" => {
+                        in_for_clause = false;
+                        can_start_straight_join = false;
+                        i += 1;
+                        i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
+                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                            i += 1;
+                        }
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "INTO")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
+                        if i < tokens.len()
+                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
+                        {
+                            i += 1;
+                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
+                                i += 1;
+                            }
+                        }
+                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
+                            refs.push(table_ref);
+                            continue;
+                        }
+                    }
+                    "UPDATE" if self.is_mysql_upsert_update(tokens, i) => {
+                        can_start_straight_join = false;
+                        i += 1;
+                        continue;
                     }
                     // UPDATE: skip if in FOR locking clause
                     "UPDATE" if !in_for_clause => {
-                        prev_keyword = Some("UPDATE");
+                        can_start_straight_join = false;
                         i += 1;
+                        i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                         while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                             i += 1;
                         }
@@ -613,32 +981,17 @@ impl SqlLexer {
                         }
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
+                            can_start_straight_join = true;
                             continue;
                         }
                     }
-                    // INSERT INTO table_name ... (only after INSERT, not SELECT INTO)
-                    "INTO" if prev_keyword == Some("INSERT") => {
-                        i += 1;
-                        while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                            i += 1;
-                        }
-                        // Skip ONLY keyword (PostgreSQL inheritance)
-                        if i < tokens.len()
-                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
-                        {
-                            i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
-                        }
-                        if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
-                            refs.push(table_ref);
-                            continue;
-                        }
-                    }
-                    other => {
+                    "SELECT" | "WHERE" | "GROUP" | "ORDER" | "HAVING" | "LIMIT" | "OFFSET"
+                    | "SET" | "UNION" | "INTERSECT" | "EXCEPT" => {
                         in_for_clause = false;
-                        prev_keyword = Some(other);
+                        can_start_straight_join = false;
+                    }
+                    _ => {
+                        in_for_clause = false;
                     }
                 }
             }
@@ -653,14 +1006,15 @@ impl SqlLexer {
             return None;
         }
 
-        let position = tokens[*i].start;
         let mut schema = None;
         let mut table;
         let mut alias = None;
 
         // Get first identifier (could be schema or table)
         match &tokens[*i].kind {
-            TokenKind::Identifier(name) | TokenKind::Keyword(name) => {
+            TokenKind::Identifier(name)
+            | TokenKind::BacktickIdentifier(name)
+            | TokenKind::Keyword(name) => {
                 table = name.clone();
             }
             _ => return None,
@@ -679,18 +1033,58 @@ impl SqlLexer {
             while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
                 *i += 1;
             }
-            if *i < tokens.len()
-                && let TokenKind::Identifier(name) | TokenKind::Keyword(name) = &tokens[*i].kind
+            let token = tokens.get(*i)?;
+            if let TokenKind::Identifier(name)
+            | TokenKind::BacktickIdentifier(name)
+            | TokenKind::Keyword(name) = &token.kind
             {
                 schema = Some(table);
                 table = name.clone();
                 *i += 1;
+            } else {
+                return None;
             }
         }
 
         // Skip whitespace
         while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
             *i += 1;
+        }
+
+        if self.is_mysql()
+            && *i < tokens.len()
+            && matches!(&tokens[*i].kind, TokenKind::Keyword(kw) if kw == "PARTITION")
+        {
+            let mut partition_start = *i + 1;
+            while partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Whitespace
+            {
+                partition_start += 1;
+            }
+
+            if partition_start < tokens.len()
+                && tokens[partition_start].kind == TokenKind::Punctuation('(')
+            {
+                *i = partition_start;
+                let mut partition_depth = 0;
+                while *i < tokens.len() {
+                    match tokens[*i].kind {
+                        TokenKind::Punctuation('(') => partition_depth += 1,
+                        TokenKind::Punctuation(')') => {
+                            partition_depth -= 1;
+                        }
+                        _ => {}
+                    }
+                    *i += 1;
+                    if partition_depth == 0 {
+                        break;
+                    }
+                }
+
+                while *i < tokens.len() && tokens[*i].kind == TokenKind::Whitespace {
+                    *i += 1;
+                }
+            }
         }
 
         // Check for alias (optional AS keyword)
@@ -708,7 +1102,7 @@ impl SqlLexer {
         // Get alias if present (identifier that's not a keyword like ON, WHERE, etc.)
         if *i < tokens.len() {
             match &tokens[*i].kind {
-                TokenKind::Identifier(name) => {
+                TokenKind::Identifier(name) | TokenKind::BacktickIdentifier(name) => {
                     alias = Some(name.clone());
                     *i += 1;
                 }
@@ -724,7 +1118,6 @@ impl SqlLexer {
             schema,
             table,
             alias,
-            position,
         })
     }
 
@@ -735,6 +1128,7 @@ impl SqlLexer {
                 | "FROM"
                 | "WHERE"
                 | "JOIN"
+                | "STRAIGHT_JOIN"
                 | "ON"
                 | "AND"
                 | "OR"
@@ -792,15 +1186,13 @@ impl SqlLexer {
                     }
 
                     // Get CTE name
-                    let position = tokens[i].start;
-                    if let TokenKind::Identifier(name) | TokenKind::Keyword(name) = &tokens[i].kind
+                    if let TokenKind::Identifier(name)
+                    | TokenKind::BacktickIdentifier(name)
+                    | TokenKind::Keyword(name) = &tokens[i].kind
                     {
                         // Don't treat SELECT as a CTE name
                         if name != "SELECT" {
-                            ctes.push(CteDefinition {
-                                name: name.clone(),
-                                position,
-                            });
+                            ctes.push(CteDefinition { name: name.clone() });
                         }
                         i += 1;
 
@@ -838,6 +1230,20 @@ impl SqlLexer {
     }
 
     pub fn build_context(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
+        let tokens = self.tokens_for_statement(tokens, cursor_pos);
+        self.build_context_from_tokens(tokens, cursor_pos)
+    }
+
+    pub(crate) fn build_context_before_cursor(
+        &self,
+        tokens: &[Token],
+        cursor_pos: usize,
+    ) -> SqlContext {
+        let tokens = self.tokens_for_statement_before_cursor(tokens, cursor_pos);
+        self.build_context_from_tokens(tokens, cursor_pos)
+    }
+
+    fn build_context_from_tokens(&self, tokens: &[Token], cursor_pos: usize) -> SqlContext {
         let tables = self.extract_table_references(tokens);
         let ctes = self.extract_cte_definitions(tokens);
         let target_table = self.extract_target_table(tokens, cursor_pos);
@@ -849,43 +1255,40 @@ impl SqlLexer {
         }
     }
 
-    fn find_semicolon_positions(&self, tokens: &[Token]) -> Vec<usize> {
-        tokens
+    pub(crate) fn tokens_for_statement<'a>(
+        &self,
+        tokens: &'a [Token],
+        cursor_pos: usize,
+    ) -> &'a [Token] {
+        let (start_idx, end_idx) = self.find_statement_range(tokens, cursor_pos);
+        &tokens[start_idx..end_idx]
+    }
+
+    pub(crate) fn tokens_for_statement_before_cursor<'a>(
+        &self,
+        tokens: &'a [Token],
+        cursor_pos: usize,
+    ) -> &'a [Token] {
+        let statement_tokens = self.tokens_for_statement(tokens, cursor_pos);
+        let end_idx = statement_tokens
             .iter()
-            .enumerate()
-            .filter_map(|(i, t)| {
-                if t.kind == TokenKind::Punctuation(';') {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect()
+            .position(|token| token.end > cursor_pos)
+            .unwrap_or(statement_tokens.len());
+
+        &statement_tokens[..end_idx]
     }
 
     fn find_statement_range(&self, tokens: &[Token], cursor_pos: usize) -> (usize, usize) {
-        let semicolons = self.find_semicolon_positions(tokens);
-
-        if semicolons.is_empty() {
-            // Single statement - entire token stream
-            return (0, tokens.len());
-        }
-
-        // Find which statement the cursor belongs to
         let mut start = 0;
-        for &semi_idx in &semicolons {
-            if semi_idx >= tokens.len() {
-                break;
+        for (index, token) in tokens.iter().enumerate() {
+            if token.kind == TokenKind::Punctuation(';') {
+                if cursor_pos < token.end {
+                    return (start, index + 1);
+                }
+                start = index + 1;
             }
-            let semi_pos = tokens[semi_idx].end;
-            if cursor_pos <= semi_pos {
-                // Cursor is before or at this semicolon
-                return (start, semi_idx + 1);
-            }
-            start = semi_idx + 1;
         }
 
-        // Cursor is after the last semicolon
         (start, tokens.len())
     }
 
@@ -926,6 +1329,7 @@ impl SqlLexer {
                         }
                         "UPDATE" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_UPDATE_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -942,6 +1346,7 @@ impl SqlLexer {
                         }
                         "DELETE" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_DELETE_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -965,8 +1370,9 @@ impl SqlLexer {
                             }
                             return self.parse_table_reference(tokens, &mut i);
                         }
-                        "INSERT" => {
+                        "INSERT" | "REPLACE" => {
                             i += 1;
+                            i = self.skip_mysql_modifiers(tokens, i, MYSQL_INSERT_MODIFIERS);
                             while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
                                 i += 1;
                             }
@@ -1006,7 +1412,7 @@ impl SqlLexer {
 
 impl Default for SqlLexer {
     fn default() -> Self {
-        Self::new()
+        Self::new(DatabaseType::PostgreSQL)
     }
 }
 
@@ -1015,7 +1421,7 @@ mod tests {
     use super::*;
 
     fn lexer() -> SqlLexer {
-        SqlLexer::new()
+        SqlLexer::default()
     }
 
     mod tokenization {
@@ -1270,14 +1676,191 @@ mod tests {
         }
     }
 
+    mod mysql_syntax {
+        use super::*;
+
+        fn mysql_lexer() -> SqlLexer {
+            SqlLexer::new(DatabaseType::MySQL)
+        }
+
+        #[test]
+        fn backtick_identifiers_are_normalized_and_preserve_escaped_ticks() {
+            let l = mysql_lexer();
+            let sql = "SELECT `select` FROM `app`.`order``items`";
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::BacktickIdentifier(name) if name == "select"
+                )
+            }));
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::BacktickIdentifier(name) if name == "order`items"
+                )
+            }));
+        }
+
+        #[test]
+        fn hash_comment_hides_keywords_from_context() {
+            let l = mysql_lexer();
+            let tokens = l.tokenize("SELECT # FROM\nFROM", 18);
+            let keywords: Vec<_> = tokens
+                .iter()
+                .filter_map(|token| match &token.kind {
+                    TokenKind::Keyword(keyword) => Some(keyword.as_str()),
+                    _ => None,
+                })
+                .collect();
+
+            assert_eq!(keywords, vec!["SELECT", "FROM"]);
+        }
+
+        #[test]
+        fn mysql_keywords_are_distinct_from_postgresql_keywords() {
+            let mysql = mysql_lexer();
+            let postgres = SqlLexer::default();
+
+            assert!(matches!(
+                mysql.tokenize("DESCRIBE users", 14)[0].kind,
+                TokenKind::Keyword(_)
+            ));
+            assert!(matches!(
+                postgres.tokenize("DESCRIBE users", 14)[0].kind,
+                TokenKind::Identifier(_)
+            ));
+        }
+
+        #[test]
+        fn mysql_statement_keywords_are_displayed_as_keywords() {
+            let l = mysql_lexer();
+
+            for word in ["TRUNCATE", "REPLACE", "CALL", "SAVEPOINT", "RELEASE", "USE"] {
+                assert!(matches!(
+                    l.tokenize(word, word.len())[0].kind,
+                    TokenKind::Keyword(_)
+                ));
+            }
+        }
+
+        #[test]
+        fn backtick_identifier_is_not_a_completion_context() {
+            let l = mysql_lexer();
+            let sql = "SELECT `SEL";
+
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize(sql, sql.chars().count()),
+                sql.chars().count()
+            ));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `a``", "SELECT `a``".len()),
+                11
+            ));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `a``b`", "SELECT `a``b`".len()),
+                10
+            ));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize("SELECT `SEL`", "SELECT `SEL`".len()),
+                12
+            ));
+        }
+
+        #[test]
+        fn double_quoted_mysql_string_is_not_an_identifier_context() {
+            let l = mysql_lexer();
+            let sql = r#"SELECT "users.""#;
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::StringLiteral if token.text == r#""users.""#
+                )
+            }));
+            assert!(SqlLexer::is_in_string_or_comment_from_tokens(
+                &tokens,
+                sql.chars().count()
+            ));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &l.tokenize(r#"SELECT "users." FROM "#, 20),
+                20
+            ));
+        }
+
+        #[test]
+        fn mysql_backslash_escape_keeps_following_table_context() {
+            let l = mysql_lexer();
+            let sql = r"SELECT 'it\'s' AS label FROM us";
+            let tokens = l.tokenize(sql, sql.chars().count());
+
+            assert!(tokens.iter().any(|token| {
+                matches!(
+                    &token.kind,
+                    TokenKind::StringLiteral if token.text == "'it\\'s'"
+                )
+            }));
+            assert!(tokens.iter().any(|token| {
+                matches!(&token.kind, TokenKind::Keyword(keyword) if keyword == "FROM")
+            }));
+            assert!(!SqlLexer::is_in_string_or_comment_from_tokens(
+                &tokens,
+                sql.chars().count()
+            ));
+            assert_eq!(l.extract_table_references(&tokens)[0].table, "us");
+        }
+
+        #[test]
+        fn mysql_double_dash_requires_whitespace_or_end_of_input() {
+            let l = mysql_lexer();
+            let tokens = l.tokenize("SELECT 1--1 FROM users", 22);
+
+            assert!(!tokens.iter().any(|token| token.kind == TokenKind::Comment));
+            assert!(tokens.iter().any(|token| {
+                matches!(&token.kind, TokenKind::Keyword(keyword) if keyword == "FROM")
+            }));
+            assert!(
+                l.tokenize("SELECT 1 -- comment", 19)
+                    .iter()
+                    .any(|token| token.kind == TokenKind::Comment)
+            );
+            assert!(
+                l.tokenize("SELECT 1--", 10)
+                    .iter()
+                    .any(|token| token.kind == TokenKind::Comment)
+            );
+        }
+
+        #[test]
+        fn backtick_qualified_table_reference_supports_aliases() {
+            let l = mysql_lexer();
+            let sql = "SELECT * FROM `app`.`users` AS `u`";
+            let tokens = l.tokenize(sql, sql.chars().count());
+            let references = l.extract_table_references(&tokens);
+
+            assert_eq!(
+                references,
+                vec![TableReference {
+                    schema: Some("app".to_string()),
+                    table: "users".to_string(),
+                    alias: Some("u".to_string()),
+                }]
+            );
+        }
+    }
+
     mod cursor_context {
         use super::*;
 
         #[test]
         fn cursor_in_string_returns_true() {
             let l = lexer();
+            let sql = "SELECT 'hel";
 
-            let result = l.is_in_string_or_comment("SELECT 'hel", 11);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 11);
 
             assert!(result);
         }
@@ -1285,8 +1868,10 @@ mod tests {
         #[test]
         fn cursor_in_line_comment_returns_true() {
             let l = lexer();
+            let sql = "SELECT -- com";
 
-            let result = l.is_in_string_or_comment("SELECT -- com", 13);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
 
             assert!(result);
         }
@@ -1294,8 +1879,10 @@ mod tests {
         #[test]
         fn cursor_in_block_comment_returns_true() {
             let l = lexer();
+            let sql = "SELECT /* com";
 
-            let result = l.is_in_string_or_comment("SELECT /* com", 13);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 13);
 
             assert!(result);
         }
@@ -1303,8 +1890,10 @@ mod tests {
         #[test]
         fn cursor_in_normal_context_returns_false() {
             let l = lexer();
+            let sql = "SELECT * FROM ";
 
-            let result = l.is_in_string_or_comment("SELECT * FROM ", 14);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 14);
 
             assert!(!result);
         }
@@ -1312,8 +1901,10 @@ mod tests {
         #[test]
         fn cursor_after_closed_string_returns_false() {
             let l = lexer();
+            let sql = "SELECT 'hello' FROM ";
 
-            let result = l.is_in_string_or_comment("SELECT 'hello' FROM ", 20);
+            let result =
+                SqlLexer::is_in_string_or_comment_from_tokens(&l.tokenize(sql, sql.len()), 20);
 
             assert!(!result);
         }
@@ -1413,6 +2004,110 @@ mod tests {
             assert_eq!(refs[1].table, "posts");
             assert_eq!(refs[2].table, "comments");
         }
+
+        #[test]
+        fn mysql_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_partition_clause_preserves_table_alias() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM events PARTITION (p0) AS e WHERE e.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "events");
+            assert_eq!(refs[0].alias, Some("e".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_select_modifier_does_not_create_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT STRAIGHT_JOIN id FROM users id WHERE id.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 1);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("id".to_string()));
+        }
+
+        #[test]
+        fn mysql_straight_join_after_join_condition_returns_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u STRAIGHT_JOIN orders o ON u.id = o.user_id STRAIGHT_JOIN items i ON i.order_id = o.id WHERE i.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 3);
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+            assert_eq!(refs[2].alias, Some("i".to_string()));
+        }
+
+        #[test]
+        fn mysql_update_straight_join_returns_joined_reference() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql =
+                "UPDATE users u STRAIGHT_JOIN orders o ON u.id = o.user_id SET o.status = 'done'";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_index_hint_for_join_preserves_straight_join() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+            let sql = "SELECT * FROM users u USE INDEX FOR JOIN (idx_users) STRAIGHT_JOIN orders o WHERE o.id = 1";
+            let tokens = l.tokenize(sql, sql.len());
+
+            let refs = l.extract_table_references(&tokens);
+
+            assert_eq!(refs.len(), 2);
+            assert_eq!(refs[0].table, "users");
+            assert_eq!(refs[0].alias, Some("u".to_string()));
+            assert_eq!(refs[1].table, "orders");
+            assert_eq!(refs[1].alias, Some("o".to_string()));
+        }
+
+        #[test]
+        fn mysql_index_hint_scopes_preserve_straight_join() {
+            let l = SqlLexer::new(DatabaseType::MySQL);
+
+            for scope in ["ORDER BY", "GROUP BY"] {
+                let sql = format!(
+                    "SELECT * FROM users u USE INDEX FOR {scope} (idx_users) STRAIGHT_JOIN orders o WHERE o.id = 1"
+                );
+                let tokens = l.tokenize(&sql, sql.len());
+
+                let refs = l.extract_table_references(&tokens);
+
+                assert_eq!(refs.len(), 2, "scope: {scope}");
+                assert_eq!(refs[0].alias, Some("u".to_string()), "scope: {scope}");
+                assert_eq!(refs[1].alias, Some("o".to_string()), "scope: {scope}");
+            }
+        }
     }
 
     mod cte_definitions {
@@ -1480,6 +2175,45 @@ mod tests {
             assert_eq!(ctx.ctes.len(), 1);
             assert_eq!(ctx.tables.len(), 2);
         }
+
+        #[test]
+        fn current_statement_context_excludes_other_statements() {
+            let sql = "SELECT * FROM first_table; WITH current_cte AS (SELECT * FROM public.nested_table) SELECT * FROM public.current_table current_alias WHERE current_alias.id IN (SELECT id FROM public.subquery_table); SELECT * FROM later_table";
+            let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();
+
+            for database_type in DatabaseType::all() {
+                let lexer = SqlLexer::new(*database_type);
+                let tokens = lexer.tokenize(sql, sql.len());
+                let context = lexer.build_context(&tokens, cursor_pos);
+
+                assert_eq!(
+                    context
+                        .ctes
+                        .iter()
+                        .map(|cte| cte.name.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["current_cte"]
+                );
+                assert_eq!(
+                    context
+                        .tables
+                        .iter()
+                        .map(|table| {
+                            (
+                                table.schema.as_deref(),
+                                table.table.as_str(),
+                                table.alias.as_deref(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    vec![
+                        (Some("public"), "nested_table", None),
+                        (Some("public"), "current_table", Some("current_alias")),
+                        (Some("public"), "subquery_table", None),
+                    ]
+                );
+            }
+        }
     }
 
     mod target_table {
@@ -1515,6 +2249,87 @@ mod tests {
 
                 assert_eq!(refs.len(), 1);
                 assert_eq!(refs[0].table, expected);
+            }
+
+            #[test]
+            fn mysql_dml_modifiers_are_skipped_for_targets_and_references() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                for (sql, expected) in [
+                    (
+                        "INSERT LOW_PRIORITY INTO users (name) VALUES ('foo')",
+                        "users",
+                    ),
+                    ("INSERT DELAYED INTO users (name) VALUES ('foo')", "users"),
+                    (
+                        "INSERT HIGH_PRIORITY INTO users (name) VALUES ('foo')",
+                        "users",
+                    ),
+                    ("INSERT IGNORE INTO users (name) VALUES ('foo')", "users"),
+                    ("UPDATE LOW_PRIORITY users SET name = 'foo'", "users"),
+                    ("UPDATE IGNORE users SET name = 'foo'", "users"),
+                    ("DELETE LOW_PRIORITY FROM users WHERE id = 1", "users"),
+                    ("DELETE QUICK FROM users WHERE id = 1", "users"),
+                    ("DELETE IGNORE FROM users WHERE id = 1", "users"),
+                ] {
+                    let tokens = l.tokenize(sql, sql.len());
+
+                    assert_eq!(
+                        l.extract_target_table(&tokens, sql.len())
+                            .as_ref()
+                            .map(|table| table.table.as_str()),
+                        Some(expected),
+                        "target table for {sql}"
+                    );
+                    assert_eq!(
+                        l.extract_table_references(&tokens)
+                            .first()
+                            .map(|table| table.table.as_str()),
+                        Some(expected),
+                        "table reference for {sql}"
+                    );
+                }
+            }
+
+            #[test]
+            fn mysql_replace_target_is_extracted() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                for sql in [
+                    "REPLACE INTO users (name) VALUES ('Ada')",
+                    "REPLACE users (name) VALUES ('Ada')",
+                    "INSERT users (name) VALUES ('Ada')",
+                ] {
+                    let tokens = l.tokenize(sql, sql.len());
+
+                    assert_eq!(
+                        l.extract_target_table(&tokens, sql.len())
+                            .as_ref()
+                            .map(|table| table.table.as_str()),
+                        Some("users")
+                    );
+                    assert_eq!(
+                        l.extract_table_references(&tokens)
+                            .first()
+                            .map(|table| table.table.as_str()),
+                        Some("users")
+                    );
+                }
+            }
+
+            #[test]
+            fn mysql_upsert_update_is_not_a_table_reference() {
+                let l = SqlLexer::new(DatabaseType::MySQL);
+                let sql = "INSERT INTO users (id) VALUES (1) ON DUPLICATE KEY UPDATE name = 'Ada'";
+                let tokens = l.tokenize(sql, sql.len());
+
+                let references = l.extract_table_references(&tokens);
+
+                assert_eq!(
+                    references
+                        .iter()
+                        .map(|table| table.table.as_str())
+                        .collect::<Vec<_>>(),
+                    vec!["users"]
+                );
             }
         }
 
@@ -1745,6 +2560,19 @@ mod tests {
                 let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
                 // Cursor at position 35 (in "orders")
                 let cursor_pos = 35;
+                let tokens = l.tokenize(sql, sql.len());
+
+                let target = l.extract_target_table(&tokens, cursor_pos);
+
+                assert!(target.is_some());
+                assert_eq!(target.unwrap().table, "orders");
+            }
+
+            #[test]
+            fn cursor_immediately_after_semicolon_uses_next_statement() {
+                let l = lexer();
+                let sql = "UPDATE users SET x = 1; UPDATE orders SET y = 2";
+                let cursor_pos = sql.find(';').unwrap() + 1;
                 let tokens = l.tokenize(sql, sql.len());
 
                 let target = l.extract_target_table(&tokens, cursor_pos);

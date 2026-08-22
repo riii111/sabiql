@@ -83,9 +83,8 @@ fn palette_command_supported(kb: &KeyBinding, feature_policy: &FeaturePolicy) ->
 mod tests {
     use super::*;
     use crate::update::action::ModalKind;
-    use crate::update::input::keybindings::{
-        GLOBAL_KEYS, IDE_GLOBAL_KEYS, same_payload_free_action,
-    };
+    use crate::update::input::keybindings::test_support::same_payload_free_action;
+    use crate::update::input::keybindings::{GLOBAL_KEYS, IDE_GLOBAL_KEYS};
 
     // Global keys deliberately kept out of the palette:
     // - COMMAND_LINE: command-line mode is a separate entry mechanism

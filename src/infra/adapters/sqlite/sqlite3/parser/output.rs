@@ -302,7 +302,7 @@ fn parse_quoted_records(
         .collect()
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn quoted_to_query_result(
+pub(in crate::adapters::sqlite) fn quoted_to_query_result(
     query: &str,
     stdout: &str,
     source: QuerySource,
@@ -344,7 +344,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn quoted_to_query_result(
     ))
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn last_sqlite_result_set(
+pub(in crate::adapters::sqlite) fn last_sqlite_result_set(
     stdout: &str,
     marker: &str,
 ) -> Result<Option<String>, DbOperationError> {
@@ -397,7 +397,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn last_sqlite_result_set(
     Ok(last_result)
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn strip_sqlite_probes(
+pub(in crate::adapters::sqlite) fn strip_sqlite_probes(
     stdout: &str,
     marker: &str,
 ) -> Result<(String, HashMap<usize, usize>), DbOperationError> {
@@ -495,7 +495,7 @@ fn last_csv_cell(stdout: &str) -> Result<String, DbOperationError> {
         .ok_or_else(|| DbOperationError::EmptyResponse(stdout.to_string()))
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn parse_affected_rows(
+pub(in crate::adapters::sqlite) fn parse_affected_rows(
     stdout: &str,
 ) -> Result<usize, DbOperationError> {
     last_csv_cell(stdout)
@@ -509,7 +509,7 @@ pub(in crate::adapters::sqlite::sqlite3) fn parse_affected_rows(
         .map_err(|error| DbOperationError::CommandTagParseFailed(error.to_string()))
 }
 
-pub(in crate::adapters::sqlite::sqlite3) fn parse_count_result(
+pub(in crate::adapters::sqlite) fn parse_count_result(
     stdout: &str,
 ) -> Result<usize, DbOperationError> {
     first_csv_cell(stdout)

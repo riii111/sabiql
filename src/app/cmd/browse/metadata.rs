@@ -7,10 +7,11 @@ use tokio::sync::mpsc;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::effect::Effect;
+use crate::cmd::metadata_task::MetadataTaskRegistry;
+use crate::cmd::query_task::TableDetailTaskRegistry;
 use crate::cmd::sqlite_path_validate::validate_sqlite_database_path;
 use crate::domain::DatabaseMetadata;
 use crate::domain::sqlite_path_from_dsn;
-use crate::model::app_state::AppState;
 use crate::policy::sqlite_path::to_db_operation_error;
 use crate::ports::outbound::{DbOperationError, MetadataProvider, SqlitePathValidator};
 use crate::update::action::Action;
@@ -21,7 +22,8 @@ pub async fn run(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
-    _state: &mut AppState,
+    table_detail_tasks: &TableDetailTaskRegistry,
+    metadata_tasks: &Arc<MetadataTaskRegistry>,
     completion_engine: &RefCell<CompletionEngine>,
 ) -> Result<()> {
     match effect {
@@ -31,13 +33,14 @@ pub async fn run(
                 metadata_provider,
                 metadata_cache,
                 sqlite_path_validator,
+                metadata_tasks,
                 dsn,
                 run_id,
             )
             .await
         }
         Effect::FetchEffectiveUser { dsn, run_id } => {
-            fetch_effective_user(action_tx, metadata_provider, dsn, run_id);
+            fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
             Ok(())
         }
         Effect::FetchTableDetail {
@@ -55,6 +58,7 @@ pub async fn run(
                 table,
                 generation,
                 run_id,
+                table_detail_tasks,
             );
             Ok(())
         }
@@ -68,6 +72,7 @@ pub async fn run(
                 action_tx,
                 metadata_provider,
                 completion_engine,
+                metadata_tasks,
                 dsn,
                 run_id,
                 schema,
@@ -84,7 +89,7 @@ pub async fn run(
         }
         Effect::DelayedProcessPrefetchQueue { run_id, delay_secs } => {
             let tx = action_tx.clone();
-            tokio::spawn(async move {
+            MetadataTaskRegistry::spawn(metadata_tasks, async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
                 tx.send(Action::ProcessPrefetchQueue { run_id }).await.ok();
             });
@@ -104,6 +109,7 @@ async fn fetch_metadata(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     sqlite_path_validator: &Arc<dyn SqlitePathValidator>,
+    metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
 ) -> Result<()> {
@@ -138,7 +144,7 @@ async fn fetch_metadata(
     let cache = metadata_cache.clone();
     let tx = action_tx.clone();
 
-    tokio::spawn(async move {
+    MetadataTaskRegistry::spawn(metadata_tasks, async move {
         match provider.fetch_metadata(&dsn).await {
             Ok(metadata) => {
                 let metadata = Arc::new(metadata);
@@ -169,13 +175,14 @@ async fn fetch_metadata(
 fn fetch_effective_user(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
+    metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    tokio::spawn(async move {
+    MetadataTaskRegistry::spawn(metadata_tasks, async move {
         let effective_user = provider.fetch_effective_user(&dsn).await.ok().flatten();
         tx.send(Action::EffectiveUserLoaded {
             dsn,
@@ -195,11 +202,12 @@ fn fetch_table_detail(
     table: String,
     generation: u64,
     run_id: u64,
+    table_detail_tasks: &TableDetailTaskRegistry,
 ) {
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    tokio::spawn(async move {
+    table_detail_tasks.spawn(async move {
         match provider.fetch_table_detail(&dsn, &schema, &table).await {
             Ok(detail) => {
                 tx.send(Action::TableDetailLoaded {
@@ -229,6 +237,7 @@ async fn prefetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     completion_engine: &RefCell<CompletionEngine>,
+    metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
     schema: String,
@@ -253,7 +262,7 @@ async fn prefetch_table_detail(
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    tokio::spawn(async move {
+    MetadataTaskRegistry::spawn(metadata_tasks, async move {
         let result = tokio::time::timeout(
             tokio::time::Duration::from_secs(10),
             provider.fetch_table_columns_and_fks(&dsn, &schema, &table),

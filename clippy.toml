@@ -16,8 +16,10 @@ absolute-paths-allowed-crates = [
     "futures",
     "insta",
     "lru",
+    "libc",
     "mockall",
     "nucleo_matcher",
+    "quick_xml",
     "ratatui",
     "rstest",
     "self_update",
@@ -34,6 +36,7 @@ absolute-paths-allowed-crates = [
     "unicode_width",
     "urlencoding",
     "uuid",
+    "windows_sys",
 ]
 
 disallowed-methods = [

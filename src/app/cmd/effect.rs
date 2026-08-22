@@ -1,7 +1,11 @@
-use crate::domain::connection::{ConnectionConfig, ConnectionId};
-use crate::domain::{QueryValue, Table};
+use std::sync::Arc;
+
+use crate::domain::connection::{ConnectionConfig, ConnectionId, DatabaseType};
+use crate::domain::query_history::QueryHistoryScope;
+use crate::domain::{DatabaseMetadata, QueryValue, Table, TableSignatureSnapshot};
+use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::{AccessMode, AppSettings};
-use crate::update::action::Action;
+use crate::update::action::{Action, ConnectionTarget};
 
 #[derive(Debug, Clone)]
 pub enum Effect {
@@ -11,6 +15,12 @@ pub enum Effect {
         id: Option<ConnectionId>,
         name: String,
         config: ConnectionConfig,
+        run_id: u64,
+        run_guard: Arc<ConnectionSaveGuard>,
+    },
+    ProbeMySqlConnection {
+        target: ConnectionTarget,
+        run_id: u64,
     },
     LoadConnectionForEdit {
         id: ConnectionId,
@@ -72,6 +82,8 @@ pub enum Effect {
     },
     ExecuteExplain {
         dsn: String,
+        database_type: DatabaseType,
+        database_generation: u64,
         run_id: u64,
         query: String,
         source_query: String,
@@ -84,7 +96,7 @@ pub enum Effect {
         query: String,
         access_mode: AccessMode,
     },
-    CancelActiveQuery,
+    CancelActiveTasks,
     CountRowsForExport {
         dsn: String,
         run_id: u64,
@@ -122,6 +134,7 @@ pub enum Effect {
     TriggerCompletion,
 
     GenerateErDiagramFromCache {
+        run_id: u64,
         total_tables: usize,
         project_name: String,
         target_tables: Vec<String>,
@@ -130,11 +143,18 @@ pub enum Effect {
         failed_tables: Vec<(String, String)>,
     },
     ExtractFkNeighbors {
+        run_id: u64,
         seed_tables: Vec<String>,
     },
     SmartErRefresh {
         dsn: String,
         run_id: u64,
+    },
+    SmartErRefreshCacheAndDiff {
+        dsn: String,
+        run_id: u64,
+        new_metadata: Arc<DatabaseMetadata>,
+        signature_snapshot: Arc<TableSignatureSnapshot>,
     },
 
     CopyToClipboard {
@@ -148,7 +168,7 @@ pub enum Effect {
 
     LoadQueryHistory {
         project_name: String,
-        connection_id: ConnectionId,
+        scope: QueryHistoryScope,
     },
 
     SaveSettings {

@@ -1,5 +1,6 @@
 ---
 source: src/tests/render_snapshots/table_explorer.rs
+assertion_line: 120
 expression: output
 ---
 test_project ▸ app.db ▸ -                                                                                                                          connected | app.db
@@ -7,8 +8,8 @@ test_project ▸ app.db ▸ -                                                   
 │> main.users                           │┌ [2] Inspector ───────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │  main.settings [table+no-rowid]       ││(select a table)                                                                                                          │
 │  main.notes_fts [virtual/fts5]        ││                                                                                                                          │
-│  main.active_users [view]             ││                                                                                                                          │
 │  main.typed_users [table+strict]      ││                                                                                                                          │
+│                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │
 │                                       ││                                                                                                                          │

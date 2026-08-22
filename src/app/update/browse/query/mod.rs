@@ -10,6 +10,7 @@ use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub fn dispatch_query(
     state: &mut AppState,
@@ -36,6 +37,9 @@ pub(super) fn preview_effect_for_current_table(
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
+    if reject_pending_mysql_connection_probe(state, now) {
+        return None;
+    }
     let dsn = state.session.dsn().map(String::from)?;
     let run_id = state.query.begin_running(now);
     Some(Effect::ExecutePreview {
@@ -63,7 +67,7 @@ pub(super) mod tests {
         Table, Trigger, TriggerEvent, TriggerTiming,
     };
     use crate::model::app_state::AppState;
-    use crate::update::action::Action;
+    use crate::update::action::{Action, QueryCompletionContext};
     use crate::update::test_fixtures;
 
     pub fn create_test_state() -> AppState {
@@ -87,8 +91,13 @@ pub(super) mod tests {
             dsn: "postgres://localhost/test".to_string(),
             run_id,
             result,
-            generation,
-            target_page,
+            context: match target_page {
+                Some(target_page) => QueryCompletionContext::Preview {
+                    generation,
+                    target_page,
+                },
+                None => QueryCompletionContext::Adhoc,
+            },
         }
     }
 
@@ -146,14 +155,16 @@ pub(super) mod tests {
                 name: "trg".to_string(),
                 timing: TriggerTiming::After,
                 events: vec![TriggerEvent::Update],
-                function_name: "f".to_string(),
-                security_definer: false,
+                action_order: None,
+                definition: "f".to_string(),
+                security_context: None,
+                creation_context: None,
             }],
             ..test_support::table::minimal("", "")
         }
     }
 
-    pub fn jsonb_table_detail() -> Table {
+    pub fn json_table_detail() -> Table {
         let mut detail = users_table_detail();
         detail
             .columns
@@ -163,7 +174,7 @@ pub(super) mod tests {
         detail
     }
 
-    pub fn editable_preview_result_with_jsonb() -> Arc<QueryResult> {
+    pub fn editable_preview_result_with_json() -> Arc<QueryResult> {
         Arc::new(QueryResult::success(
             "SELECT * FROM users".to_string(),
             vec!["id".to_string(), "name".to_string(), "metadata".to_string()],

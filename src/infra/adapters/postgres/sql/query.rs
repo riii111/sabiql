@@ -118,6 +118,8 @@ impl PostgresAdapter {
                         WHERE i.indrelid = cl.oid
                           AND i.indisunique
                           AND NOT i.indisprimary
+                          AND i.indpred IS NULL
+                          AND i.indexprs IS NULL
                           AND array_length(i.indkey, 1) = 1
                           AND a.attnum = ANY(i.indkey)
                     ) as is_unique,
@@ -193,9 +195,11 @@ impl PostgresAdapter {
             FROM (
                 SELECT
                     idx.relname as name,
-                    array_agg(a.attname ORDER BY array_position(ix.indkey, a.attnum)) as columns,
+                    array_agg(key_part.column_name ORDER BY key_part.key_position) as columns,
                     ix.indisunique as is_unique,
                     ix.indisprimary as is_primary,
+                    bool_or(ix.indpred IS NOT NULL) as is_partial,
+                    bool_or(ix.indexprs IS NOT NULL) as has_expression,
                     am.amname as index_type,
                     pg_get_indexdef(idx.oid) as definition
                 FROM pg_index ix
@@ -203,7 +207,17 @@ impl PostgresAdapter {
                 JOIN pg_class tbl ON tbl.oid = ix.indrelid
                 JOIN pg_namespace n ON n.oid = tbl.relnamespace
                 JOIN pg_am am ON am.oid = idx.relam
-                JOIN pg_attribute a ON a.attrelid = tbl.oid AND a.attnum = ANY(ix.indkey)
+                JOIN LATERAL (
+                    SELECT
+                        key_part.key_position,
+                        CASE
+                            WHEN key_part.attnum > 0 THEN a.attname
+                            ELSE pg_get_indexdef(idx.oid, key_part.key_position::integer, true)
+                        END as column_name
+                    FROM unnest(ix.indkey) WITH ORDINALITY AS key_part(attnum, key_position)
+                    LEFT JOIN pg_attribute a
+                        ON a.attrelid = tbl.oid AND a.attnum = key_part.attnum
+                ) key_part ON TRUE
                 WHERE n.nspname = {}
                   AND tbl.relname = {}
                 GROUP BY idx.relname, ix.indisunique, ix.indisprimary, am.amname, idx.oid
@@ -299,8 +313,8 @@ impl PostgresAdapter {
                         CASE WHEN (tg.tgtype & 16) != 0 THEN 'UPDATE' END,
                         CASE WHEN (tg.tgtype & 32) != 0 THEN 'TRUNCATE' END
                     ], NULL) AS events,
-                    p.proname AS function_name,
-                    p.prosecdef AS security_definer
+                    p.proname AS definition,
+                    CASE WHEN p.prosecdef THEN 'DEFINER' ELSE 'INVOKER' END AS security_context
                 FROM pg_trigger tg
                 JOIN pg_class c ON c.oid = tg.tgrelid
                 JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -509,6 +523,29 @@ mod tests {
                 sql,
                 "SELECT * FROM \"public\".\"users\" ORDER BY \"my\"\"col\" LIMIT 100 OFFSET 0"
             );
+        }
+    }
+
+    mod index_metadata_queries {
+        use super::*;
+
+        #[test]
+        fn indexes_query_expands_key_parts_in_server_order() {
+            let sql = PostgresAdapter::indexes_query("public", "users");
+
+            assert!(sql.contains("unnest(ix.indkey) WITH ORDINALITY"));
+            assert!(sql.contains("pg_get_indexdef(idx.oid, key_part.key_position::integer, true)"));
+            assert!(sql.contains("array_agg(key_part.column_name ORDER BY key_part.key_position)"));
+            assert!(sql.contains("bool_or(ix.indpred IS NOT NULL) as is_partial"));
+            assert!(sql.contains("bool_or(ix.indexprs IS NOT NULL) as has_expression"));
+        }
+
+        #[test]
+        fn columns_query_excludes_partial_and_expression_indexes_from_unique_columns() {
+            let sql = PostgresAdapter::columns_query("public", "users");
+
+            assert!(sql.contains("AND i.indpred IS NULL"));
+            assert!(sql.contains("AND i.indexprs IS NULL"));
         }
     }
 

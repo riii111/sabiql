@@ -11,9 +11,6 @@ use crate::config::connection_config::{
     CURRENT_VERSION, ConfigVersionCheck, ConnectionConfigFile, is_supported_config_version,
 };
 
-#[cfg(test)]
-use super::app_config_file::CONFIG_FILE_NAME;
-
 pub struct TomlSettingsStore {
     config_dir: PathBuf,
 }
@@ -129,6 +126,8 @@ fn set_app_settings(config: &mut ConnectionConfigFile, settings: AppSettings) {
 
 #[cfg(test)]
 mod tests {
+    use super::app_config_file::CONFIG_FILE_NAME;
+
     use super::*;
     use tempfile::TempDir;
 

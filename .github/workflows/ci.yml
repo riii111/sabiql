@@ -146,9 +146,15 @@ jobs:
         with:
           tool: nextest
       - name: Start PostgreSQL
-        run: docker compose up -d --wait
+        run: docker compose up -d --wait postgres
       - name: Run psql integration tests (Tier 2)
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
         run: cargo nextest run -p sabiql --run-ignored ignored-only -E 'test(tests::adapter_postgres)' --show-progress=none
+      - name: Run Oracle MySQL 8.4 integration tests (Tier 2)
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/sabiql-integration-cargo-target
+        run: bash scripts/mysql_integration.sh test
 
   sqlite-safe-mode:
     name: SQLite Safe Mode
@@ -193,7 +199,7 @@ jobs:
           export PATH="$HOME/.local/sqlite-below-minimum/bin:$PATH"
           sqlite3 --version
           SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION=1 cargo test -p sabiql-infra \
-            adapters::sqlite::sqlite3::metadata::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
+            adapters::sqlite::metadata::catalog::tests::metadata::rejects_sqlite_before_safe_mode_minimum_at_connection \
             -- --exact
           cargo test -p sabiql-app \
             model::connection::error::tests::error_info::from_db_operation_error_classifies_sqlite_safe_mode_requirement \

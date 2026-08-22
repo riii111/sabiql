@@ -3,6 +3,7 @@ use std::time::Instant;
 use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Wrap};
 
+use crate::domain::DatabaseType;
 use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
@@ -99,6 +100,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
+            && state.connection_error.target_database_type().is_none()
             && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(
@@ -167,17 +169,26 @@ impl ConnectionError {
         theme: &ThemePalette,
     ) {
         let error_state = &state.connection_error;
+        let can_retry = state
+            .session
+            .active_database_type()
+            .is_some_and(|database_type| database_type == DatabaseType::MySQL)
+            && error_state.can_retry();
         let mut spans = vec![Span::styled(
             "Actions: ",
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if state.session.can_reenter_connection_setup() {
-            spans.push(key_chip("e", theme));
-            spans.push(Span::raw(" Re-enter  "));
-        } else {
+        if !error_state.is_save_and_connect_failure()
+            && (state.session.has_pending_connection_switch()
+                || !state.session.can_reenter_connection_setup()
+                || can_retry)
+        {
             spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));
+        } else {
+            spans.push(key_chip("e", theme));
+            spans.push(Span::raw(" Re-enter  "));
         }
 
         spans.extend([

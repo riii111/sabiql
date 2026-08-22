@@ -1,9 +1,17 @@
 use super::write_guardrails::{self, RiskLevel};
-use crate::domain::DatabaseType;
-use crate::policy::sql::sqlite_statement_splitter::split_sqlite_statements;
-use crate::policy::sql::sqlite_transaction::{
-    SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
-    sqlite_statement_classification, sqlite_transaction_policy_for_classifications,
+use crate::domain::{
+    DatabaseType,
+    mysql_sql::{
+        MySqlLexError, MySqlStatement, MySqlStatementKind,
+        classify_mysql_multi_statement_with_lower_case_table_names, classify_mysql_statement,
+        has_mysql_read_only_side_effect, split_mysql_statements,
+        statement_contains_unsupported_mysql_control,
+    },
+    sqlite_sql::{
+        SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
+        split_sqlite_statements, sqlite_statement_classification,
+        sqlite_transaction_policy_for_classifications,
+    },
 };
 use crate::policy::sql::statement_classifier::{
     StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
@@ -24,6 +32,8 @@ pub enum AcknowledgeReason {
     // SQLite cannot run this multi-statement script inside the automatic
     // transaction because one statement changes connection-level settings.
     NonAtomicTransaction,
+    // MySQL EXPLAIN ANALYZE executes an otherwise read-only target statement.
+    AnalyzeExecution,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +46,7 @@ pub enum ConfirmationType {
     },
     TableNameInput {
         target: String,
+        label: &'static str,
     },
 }
 
@@ -47,14 +58,158 @@ pub struct SqlRiskDecision {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MultiStatementDecision {
+pub enum MultiStatementDecision<Statement = String> {
     Allow {
-        statements: Vec<String>,
+        statements: Vec<Statement>,
         risk: SqlRiskDecision,
     },
     Block {
         reason: String,
     },
+}
+
+fn mysql_table_name_input(statement: &MySqlStatement) -> SqlRiskDecision {
+    match statement.target() {
+        Some(target) => SqlRiskDecision {
+            risk_level: RiskLevel::High,
+            confirmation: ConfirmationType::TableNameInput {
+                target: target.to_string(),
+                label: mysql_statement_label(statement.kind()),
+            },
+            read_only_allowed: false,
+        },
+        None => high_acknowledge_label(mysql_statement_label(statement.kind())),
+    }
+}
+
+fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
+    match statement.kind() {
+        MySqlStatementKind::Select
+        | MySqlStatementKind::Table
+        | MySqlStatementKind::Show
+        | MySqlStatementKind::Describe => {
+            low_immediate(!has_mysql_read_only_side_effect(statement.sql()).unwrap_or(true))
+        }
+        MySqlStatementKind::Begin
+        | MySqlStatementKind::StartTransaction
+        | MySqlStatementKind::Commit
+        | MySqlStatementKind::Rollback
+        | MySqlStatementKind::Savepoint
+        | MySqlStatementKind::RollbackToSavepoint
+        | MySqlStatementKind::ReleaseSavepoint
+        | MySqlStatementKind::Insert
+        | MySqlStatementKind::CreateTable { .. }
+        | MySqlStatementKind::CreateView
+        | MySqlStatementKind::CreateIndex => low_immediate(false),
+        MySqlStatementKind::Update { has_where: true }
+        | MySqlStatementKind::Delete { has_where: true }
+        | MySqlStatementKind::RenameTable
+        | MySqlStatementKind::AlterView => SqlRiskDecision {
+            risk_level: RiskLevel::Medium,
+            confirmation: ConfirmationType::Immediate,
+            read_only_allowed: false,
+        },
+        MySqlStatementKind::AlterTable
+        | MySqlStatementKind::Replace
+        | MySqlStatementKind::Update { has_where: false }
+        | MySqlStatementKind::Delete { has_where: false }
+        | MySqlStatementKind::DropTable { .. }
+        | MySqlStatementKind::DropView
+        | MySqlStatementKind::DropIndex
+        | MySqlStatementKind::TruncateTable => mysql_table_name_input(statement),
+    }
+}
+
+pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
+    match kind {
+        MySqlStatementKind::Select => "SELECT",
+        MySqlStatementKind::Table => "TABLE",
+        MySqlStatementKind::Show => "SHOW",
+        MySqlStatementKind::Describe => "DESCRIBE",
+        MySqlStatementKind::Insert => "INSERT",
+        MySqlStatementKind::Replace => "REPLACE",
+        MySqlStatementKind::Update { has_where: true } => "UPDATE",
+        MySqlStatementKind::Update { has_where: false } => "UPDATE (no WHERE)",
+        MySqlStatementKind::Delete { has_where: true } => "DELETE",
+        MySqlStatementKind::Delete { has_where: false } => "DELETE (no WHERE)",
+        MySqlStatementKind::CreateTable { temporary: true } => "CREATE TEMPORARY TABLE",
+        MySqlStatementKind::CreateTable { temporary: false } => "CREATE TABLE",
+        MySqlStatementKind::AlterTable => "ALTER TABLE",
+        MySqlStatementKind::RenameTable => "RENAME TABLE",
+        MySqlStatementKind::DropTable { temporary: true } => "DROP TEMPORARY TABLE",
+        MySqlStatementKind::DropTable { temporary: false } => "DROP TABLE",
+        MySqlStatementKind::TruncateTable => "TRUNCATE TABLE",
+        MySqlStatementKind::CreateView => "CREATE VIEW",
+        MySqlStatementKind::AlterView => "ALTER VIEW",
+        MySqlStatementKind::DropView => "DROP VIEW",
+        MySqlStatementKind::CreateIndex => "CREATE INDEX",
+        MySqlStatementKind::DropIndex => "DROP INDEX",
+        MySqlStatementKind::Begin => "BEGIN",
+        MySqlStatementKind::StartTransaction => "START TRANSACTION",
+        MySqlStatementKind::Commit => "COMMIT",
+        MySqlStatementKind::Rollback => "ROLLBACK",
+        MySqlStatementKind::Savepoint => "SAVEPOINT",
+        MySqlStatementKind::RollbackToSavepoint => "ROLLBACK TO SAVEPOINT",
+        MySqlStatementKind::ReleaseSavepoint => "RELEASE SAVEPOINT",
+    }
+}
+
+pub fn evaluate_mysql_multi_statement(
+    sql: &str,
+    selected_database: Option<&str>,
+) -> MultiStatementDecision<MySqlStatement> {
+    evaluate_mysql_multi_statement_with_lower_case_table_names(sql, selected_database, 0)
+}
+
+pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
+    sql: &str,
+    selected_database: Option<&str>,
+    lower_case_table_names: u8,
+) -> MultiStatementDecision<MySqlStatement> {
+    let statements = match classify_mysql_multi_statement_with_lower_case_table_names(
+        sql,
+        selected_database,
+        lower_case_table_names,
+    ) {
+        Ok(statements) => statements,
+        Err(reason) => return MultiStatementDecision::Block { reason },
+    };
+    let decisions = statements
+        .iter()
+        .map(mysql_statement_risk)
+        .collect::<Vec<_>>();
+
+    let max_risk = decisions
+        .iter()
+        .map(|decision| decision.risk_level)
+        .max()
+        .unwrap_or(RiskLevel::Low);
+    let table_confirmations: Vec<ConfirmationType> = decisions
+        .iter()
+        .filter_map(|decision| match &decision.confirmation {
+            ConfirmationType::TableNameInput { .. } => Some(decision.confirmation.clone()),
+            _ => None,
+        })
+        .collect();
+    if table_confirmations.len() > 1 {
+        return MultiStatementDecision::Block {
+            reason: "MySQL statements require separate destructive confirmations".to_string(),
+        };
+    }
+    let confirmation = if let Some(confirmation) = table_confirmations.into_iter().next() {
+        confirmation
+    } else {
+        ConfirmationType::Immediate
+    };
+    let read_only_allowed = decisions.iter().all(|decision| decision.read_only_allowed);
+    MultiStatementDecision::Allow {
+        statements,
+        risk: SqlRiskDecision {
+            risk_level: max_risk,
+            confirmation,
+            read_only_allowed,
+        },
+    }
 }
 
 fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
@@ -131,19 +286,26 @@ fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
 
 pub fn split_statements(sql: &str) -> Vec<String> {
     split_statements_for_database(DatabaseType::PostgreSQL, sql)
+        .expect("PostgreSQL statement splitting is infallible")
 }
 
-pub fn split_statements_for_database(database_type: DatabaseType, sql: &str) -> Vec<String> {
+pub fn split_statements_for_database(
+    database_type: DatabaseType,
+    sql: &str,
+) -> Result<Vec<String>, MySqlLexError> {
+    if database_type == DatabaseType::MySQL {
+        return split_mysql_statements(sql);
+    }
     if database_type == DatabaseType::SQLite {
-        return split_sqlite_statements(sql)
+        return Ok(split_sqlite_statements(sql)
             .statements()
             .iter()
             .filter(|statement| !is_comment_only(statement))
             .map(|statement| (*statement).to_string())
-            .collect();
+            .collect());
     }
 
-    split_postgres_statements(sql)
+    Ok(split_postgres_statements(sql))
 }
 
 fn split_postgres_statements(sql: &str) -> Vec<String> {
@@ -235,11 +397,11 @@ fn is_comment_only(sql: &str) -> bool {
     true
 }
 
-fn low_immediate() -> SqlRiskDecision {
+fn low_immediate(read_only_allowed: bool) -> SqlRiskDecision {
     SqlRiskDecision {
         risk_level: RiskLevel::Low,
         confirmation: ConfirmationType::Immediate,
-        read_only_allowed: true,
+        read_only_allowed,
     }
 }
 
@@ -259,31 +421,31 @@ fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
 
 pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
     evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
+        .expect("PostgreSQL SQL risk evaluation is supported")
 }
 
 pub fn evaluate_sql_risk_for_database(
     database_type: DatabaseType,
     kind: &StatementKind,
     sql: &str,
-) -> SqlRiskDecision {
+) -> Option<SqlRiskDecision> {
+    if database_type == DatabaseType::MySQL {
+        return None;
+    }
     if database_type == DatabaseType::SQLite
         && let Some(decision) = evaluate_sqlite_specific_risk(sql)
     {
-        return decision;
+        return Some(decision);
     }
 
-    match kind {
-        StatementKind::Select | StatementKind::Transaction => low_immediate(),
-        StatementKind::Insert | StatementKind::Create => SqlRiskDecision {
-            risk_level: RiskLevel::Low,
-            confirmation: ConfirmationType::Immediate,
-            read_only_allowed: false,
-        },
+    Some(match kind {
+        StatementKind::Select | StatementKind::Transaction => low_immediate(true),
+        StatementKind::Insert | StatementKind::Create => low_immediate(false),
         StatementKind::Unsupported | StatementKind::Other => {
             // Empty / comment-only input has nothing to execute; gating it
             // would show a confirm dialog for a no-op.
             if sql.trim().is_empty() || is_comment_only(sql) {
-                return low_immediate();
+                return Some(low_immediate(true));
             }
             SqlRiskDecision {
                 risk_level: RiskLevel::Low,
@@ -307,17 +469,16 @@ pub fn evaluate_sql_risk_for_database(
                 match extract_target_name(sql, kind) {
                     Some(name) => SqlRiskDecision {
                         risk_level: RiskLevel::High,
-                        confirmation: ConfirmationType::TableNameInput { target: name },
+                        confirmation: ConfirmationType::TableNameInput {
+                            target: name,
+                            label: write_guardrails::evaluate_sql_risk(kind).label,
+                        },
                         read_only_allowed: false,
                     },
                     None => high_acknowledge(kind),
                 }
             } else {
-                SqlRiskDecision {
-                    risk_level: RiskLevel::Low,
-                    confirmation: ConfirmationType::Immediate,
-                    read_only_allowed: false,
-                }
+                low_immediate(false)
             }
         }
         StatementKind::Update { has_where: false }
@@ -325,12 +486,42 @@ pub fn evaluate_sql_risk_for_database(
         | StatementKind::Truncate => match extract_target_name(sql, kind) {
             Some(name) => SqlRiskDecision {
                 risk_level: RiskLevel::High,
-                confirmation: ConfirmationType::TableNameInput { target: name },
+                confirmation: ConfirmationType::TableNameInput {
+                    target: name,
+                    label: write_guardrails::evaluate_sql_risk(kind).label,
+                },
                 read_only_allowed: false,
             },
             None => high_acknowledge(kind),
         },
+    })
+}
+
+pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecision> {
+    if statement_contains_unsupported_mysql_control(sql) {
+        return None;
     }
+    let statements = split_mysql_statements(sql).ok()?;
+    if statements.len() != 1 {
+        return None;
+    }
+    let statement = classify_mysql_statement(&statements[0]).ok()?;
+    if !matches!(
+        statement.kind(),
+        MySqlStatementKind::Select | MySqlStatementKind::Table
+    ) {
+        return None;
+    }
+
+    let mut risk = mysql_statement_risk(&statement);
+    if !risk.read_only_allowed {
+        return None;
+    }
+    risk.confirmation = ConfirmationType::Acknowledge {
+        reason: AcknowledgeReason::AnalyzeExecution,
+        label: mysql_statement_label(statement.kind()).to_string(),
+    };
+    Some(risk)
 }
 
 pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
@@ -341,13 +532,40 @@ pub fn evaluate_multi_statement_for_database(
     database_type: DatabaseType,
     sql: &str,
 ) -> MultiStatementDecision {
+    evaluate_multi_statement_for_database_with_context(database_type, None, sql)
+}
+
+pub fn evaluate_multi_statement_for_database_with_context(
+    database_type: DatabaseType,
+    selected_database: Option<&str>,
+    sql: &str,
+) -> MultiStatementDecision {
+    if database_type == DatabaseType::MySQL {
+        return match evaluate_mysql_multi_statement(sql, selected_database) {
+            MultiStatementDecision::Allow { statements, risk } => MultiStatementDecision::Allow {
+                statements: statements
+                    .into_iter()
+                    .map(|statement| statement.sql().to_string())
+                    .collect(),
+                risk,
+            },
+            MultiStatementDecision::Block { reason } => MultiStatementDecision::Block { reason },
+        };
+    }
     if contains_cli_meta_command(database_type, sql) {
         return MultiStatementDecision::Block {
             reason: "CLI meta-commands are not supported in SQL input".to_string(),
         };
     }
 
-    let statements = split_statements_for_database(database_type, sql);
+    let statements = match split_statements_for_database(database_type, sql) {
+        Ok(statements) => statements,
+        Err(error) => {
+            return MultiStatementDecision::Block {
+                reason: error.to_string(),
+            };
+        }
+    };
 
     if statements.is_empty() {
         return MultiStatementDecision::Block {
@@ -355,20 +573,24 @@ pub fn evaluate_multi_statement_for_database(
         };
     }
 
-    let mut decisions: Vec<(String, StatementKind, SqlRiskDecision)> = Vec::new();
+    let mut decisions: Vec<SqlRiskDecision> = Vec::new();
 
     for stmt in &statements {
         let kind = classify(stmt);
-        let decision = evaluate_sql_risk_for_database(database_type, &kind, stmt);
-        decisions.push((stmt.clone(), kind, decision));
+        let Some(decision) = evaluate_sql_risk_for_database(database_type, &kind, stmt) else {
+            return MultiStatementDecision::Block {
+                reason: "SQL risk evaluation is not supported for this database".to_string(),
+            };
+        };
+        decisions.push(decision);
     }
 
     let has_table_name_input = decisions
         .iter()
-        .any(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+        .any(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
     let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
-        .filter_map(|(_, _, d)| match &d.confirmation {
+        .filter_map(|d| match &d.confirmation {
             ConfirmationType::Acknowledge { reason, .. } => Some(reason),
             _ => None,
         })
@@ -396,17 +618,14 @@ pub fn evaluate_multi_statement_for_database(
     // acknowledgment must not cover statements flagged for a different reason
     // (the dialog would hide the other reason from the user).
     let has_non_transaction_acknowledge = transaction_policy.requires_acknowledgement()
-        && decisions
-            .iter()
-            .enumerate()
-            .any(|(index, (_, _, decision))| {
-                matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
-                    && !matches!(
-                        sqlite_classifications[index],
-                        SqliteStatementClassification::SessionSideEffect
-                            | SqliteStatementClassification::TransactionIncompatible
-                    )
-            });
+        && decisions.iter().enumerate().any(|(index, decision)| {
+            matches!(decision.confirmation, ConfirmationType::Acknowledge { .. })
+                && !matches!(
+                    sqlite_classifications[index],
+                    SqliteStatementClassification::SessionSideEffect
+                        | SqliteStatementClassification::TransactionIncompatible
+                )
+        });
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
@@ -417,11 +636,7 @@ pub fn evaluate_multi_statement_for_database(
         };
     }
 
-    let max_risk = decisions
-        .iter()
-        .map(|(_, _, d)| d.risk_level)
-        .max()
-        .unwrap();
+    let max_risk = decisions.iter().map(|d| d.risk_level).max().unwrap();
     let confirmation = if transaction_policy.requires_acknowledgement() && !has_acknowledge {
         ConfirmationType::Acknowledge {
             reason: AcknowledgeReason::NonAtomicTransaction,
@@ -430,15 +645,15 @@ pub fn evaluate_multi_statement_for_database(
     } else if has_table_name_input {
         decisions
             .iter()
-            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
-            .map(|(_, _, d)| d.confirmation.clone())
+            .find(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+            .map(|d| d.confirmation.clone())
             .unwrap()
     } else if has_acknowledge {
         // Mixed reasons are blocked above; the first Acknowledge represents all.
         decisions
             .iter()
-            .find(|(_, _, d)| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
-            .map(|(_, _, d)| d.confirmation.clone())
+            .find(|d| matches!(d.confirmation, ConfirmationType::Acknowledge { .. }))
+            .map(|d| d.confirmation.clone())
             .unwrap()
     } else {
         ConfirmationType::Immediate
@@ -449,7 +664,7 @@ pub fn evaluate_multi_statement_for_database(
         risk: SqlRiskDecision {
             risk_level: max_risk,
             confirmation,
-            read_only_allowed: decisions.iter().all(|(_, _, d)| d.read_only_allowed),
+            read_only_allowed: decisions.iter().all(|d| d.read_only_allowed),
         },
     }
 }
@@ -528,54 +743,11 @@ fn sqlite_drop_risk(sql: &str) -> Option<SqlRiskDecision> {
     Some(match extract_target_name(sql, &kind) {
         Some(target) => SqlRiskDecision {
             risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::TableNameInput { target },
+            confirmation: ConfirmationType::TableNameInput { target, label },
             read_only_allowed: false,
         },
         None => high_acknowledge_label(label),
     })
-}
-
-pub fn sqlite_specific_label(sql: &str) -> Option<&'static str> {
-    let effective = statement_after_leading_ctes(sql);
-    let tokens = top_level_token_lowers(effective);
-    match tokens.first().map(String::as_str)? {
-        "pragma" => Some("PRAGMA"),
-        "attach" => Some("ATTACH"),
-        "detach" => Some("DETACH"),
-        "vacuum" => Some("VACUUM"),
-        "reindex" => Some("REINDEX"),
-        "analyze" => Some("ANALYZE"),
-        "replace" => Some("REPLACE"),
-        "insert" if sqlite_replace_target_in_statement(effective).is_some() => Some("REPLACE"),
-        "drop" => sqlite_drop_label(effective),
-        _ => None,
-    }
-}
-
-pub fn adhoc_label_for_statement(database_type: DatabaseType, sql: &str) -> &'static str {
-    let sqlite_label = (database_type == DatabaseType::SQLite)
-        .then(|| sqlite_specific_label(sql))
-        .flatten();
-    let kind = classify(sql);
-    let decision = write_guardrails::evaluate_sql_risk(&kind);
-    sqlite_label.unwrap_or(decision.label)
-}
-
-pub fn adhoc_label_for_table_name_confirmation(
-    database_type: DatabaseType,
-    sql: &str,
-) -> Option<&'static str> {
-    for stmt in split_statements_for_database(database_type, sql) {
-        let kind = classify(&stmt);
-        let decision = evaluate_sql_risk_for_database(database_type, &kind, &stmt);
-        if matches!(
-            decision.confirmation,
-            ConfirmationType::TableNameInput { .. }
-        ) {
-            return Some(adhoc_label_for_statement(database_type, &stmt));
-        }
-    }
-    None
 }
 
 fn skip_whitespace(sql: &str, mut cursor: usize) -> usize {
@@ -648,7 +820,7 @@ fn sqlite_identifier_after(sql: &str, start: usize) -> Option<String> {
 
 fn sqlite_pragma_risk(sql: &str) -> Option<SqlRiskDecision> {
     match sqlite_statement_classification(sql) {
-        SqliteStatementClassification::ReadOnly => return Some(low_immediate()),
+        SqliteStatementClassification::ReadOnly => return Some(low_immediate(true)),
         SqliteStatementClassification::TransactionalWrite => {
             return Some(SqlRiskDecision {
                 risk_level: RiskLevel::Medium,
@@ -708,14 +880,20 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
             |target| {
                 Some(SqlRiskDecision {
                     risk_level: RiskLevel::High,
-                    confirmation: ConfirmationType::TableNameInput { target },
+                    confirmation: ConfirmationType::TableNameInput {
+                        target,
+                        label: "REPLACE",
+                    },
                     read_only_allowed: false,
                 })
             },
         ),
         "insert" => sqlite_replace_target_in_statement(effective).map(|target| SqlRiskDecision {
             risk_level: RiskLevel::High,
-            confirmation: ConfirmationType::TableNameInput { target },
+            confirmation: ConfirmationType::TableNameInput {
+                target,
+                label: "REPLACE",
+            },
             read_only_allowed: false,
         }),
         "drop" => sqlite_drop_risk(effective),
@@ -995,7 +1173,8 @@ mod tests {
             fn sqlite_read_only_pragma_returns_low_immediate() {
                 let sql = "PRAGMA table_info(users)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(result.read_only_allowed);
@@ -1006,7 +1185,8 @@ mod tests {
             fn sqlite_allowlisted_parameterized_pragma_returns_low_immediate() {
                 let sql = "PRAGMA index_info(users_name_idx)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(result.read_only_allowed);
@@ -1028,7 +1208,8 @@ mod tests {
             #[case::wal_checkpoint("PRAGMA wal_checkpoint")]
             fn sqlite_dangerous_pragma_requires_acknowledgment(#[case] sql: &str) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1045,7 +1226,8 @@ mod tests {
             fn sqlite_non_dangerous_pragma_assignment_is_medium_write() {
                 let sql = "PRAGMA user_version = 3";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(!result.read_only_allowed);
@@ -1056,7 +1238,8 @@ mod tests {
             fn sqlite_non_allowlisted_parameterized_pragma_is_medium_write() {
                 let sql = "PRAGMA user_version(3)";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(!result.read_only_allowed);
@@ -1075,7 +1258,8 @@ mod tests {
             #[case::analyze("ANALYZE users", "ANALYZE")]
             fn requires_acknowledgment(#[case] sql: &str, #[case] expected_label: &str) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1137,28 +1321,18 @@ mod tests {
                 #[case] expected_target: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
                 assert!(matches!(
                     result.confirmation,
-                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ConfirmationType::TableNameInput {
+                        ref target,
+                        label: "REPLACE",
+                    } if target == expected_target
                 ));
-            }
-
-            #[test]
-            fn sqlite_specific_label_detects_commented_insert_or_replace() {
-                let sql = "-- upsert\nINSERT OR REPLACE INTO users(id) VALUES (1)";
-
-                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
-            }
-
-            #[test]
-            fn sqlite_specific_label_detects_with_insert_or_replace() {
-                let sql = "WITH payload(id) AS (VALUES (1)) INSERT OR REPLACE INTO users(id) SELECT id FROM payload";
-
-                assert_eq!(sqlite_specific_label(sql), Some("REPLACE"));
             }
         }
 
@@ -1166,44 +1340,36 @@ mod tests {
             use super::*;
 
             #[rstest]
-            #[case::drop_index("DROP INDEX my_index", "DROP INDEX")]
-            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "DROP INDEX")]
-            #[case::drop_view("DROP VIEW my_view", "DROP VIEW")]
-            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "DROP VIEW")]
-            #[case::drop_trigger("DROP TRIGGER my_trigger", "DROP TRIGGER")]
-            #[case::drop_trigger_if_exists("DROP TRIGGER IF EXISTS my_trigger", "DROP TRIGGER")]
-            fn sqlite_specific_label_detects_dangerous_drops(
-                #[case] sql: &str,
-                #[case] expected: &str,
-            ) {
-                assert_eq!(sqlite_specific_label(sql), Some(expected));
-            }
-
-            #[rstest]
-            #[case::drop_index("DROP INDEX my_index", "my_index")]
-            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index")]
-            #[case::drop_view("DROP VIEW my_view", "my_view")]
-            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view")]
-            #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger")]
+            #[case::drop_index("DROP INDEX my_index", "my_index", "DROP INDEX")]
+            #[case::drop_index_if_exists("DROP INDEX IF EXISTS my_index", "my_index", "DROP INDEX")]
+            #[case::drop_view("DROP VIEW my_view", "my_view", "DROP VIEW")]
+            #[case::drop_view_if_exists("DROP VIEW IF EXISTS my_view", "my_view", "DROP VIEW")]
+            #[case::drop_trigger("DROP TRIGGER my_trigger", "my_trigger", "DROP TRIGGER")]
             #[case::drop_trigger_if_exists(
                 "DROP TRIGGER IF EXISTS main.my_trigger",
-                "main.my_trigger"
+                "main.my_trigger",
+                "DROP TRIGGER"
             )]
-            #[case::drop_index_quoted("DROP INDEX `my index`", "my index")]
-            #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view")]
-            #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger")]
+            #[case::drop_index_quoted("DROP INDEX `my index`", "my index", "DROP INDEX")]
+            #[case::drop_view_quoted(r#"DROP VIEW "my view""#, "my view", "DROP VIEW")]
+            #[case::drop_trigger_quoted("DROP TRIGGER [my trigger]", "my trigger", "DROP TRIGGER")]
             fn sqlite_dangerous_drop_requires_table_name_input(
                 #[case] sql: &str,
                 #[case] expected_target: &str,
+                #[case] expected_label: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
                 assert!(matches!(
                     result.confirmation,
-                    ConfirmationType::TableNameInput { ref target } if target == expected_target
+                    ConfirmationType::TableNameInput {
+                        ref target,
+                        label,
+                    } if target == expected_target && label == expected_label
                 ));
             }
 
@@ -1214,7 +1380,8 @@ mod tests {
                 #[case] sql: &str,
             ) {
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
@@ -1224,7 +1391,8 @@ mod tests {
             fn sqlite_drop_multiple_index_requires_acknowledgment() {
                 let sql = "DROP INDEX a, b";
                 let result =
-                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql);
+                    evaluate_sql_risk_for_database(DatabaseType::SQLite, &classify(sql), sql)
+                        .expect("SQLite SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1303,7 +1471,10 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == "a"
+                            ConfirmationType::TableNameInput {
+                                ref target,
+                                label: "DROP",
+                            } if target == "a"
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1533,7 +1704,7 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                            ConfirmationType::TableNameInput { ref target, .. } if target == expected_target
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1556,7 +1727,7 @@ mod tests {
                         assert_eq!(risk.risk_level, RiskLevel::High);
                         assert!(matches!(
                             risk.confirmation,
-                            ConfirmationType::TableNameInput { ref target } if target == expected_target
+                            ConfirmationType::TableNameInput { ref target, .. } if target == expected_target
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1738,7 +1909,7 @@ mod tests {
                 use super::*;
 
                 #[test]
-                fn sqlite_multiple_high_drops_use_first_target() {
+                fn sqlite_multiple_high_drops_use_first_confirmation() {
                     let result = evaluate_multi_statement_for_database(
                         DatabaseType::SQLite,
                         "DROP INDEX my_index; DROP VIEW my_view",
@@ -1753,20 +1924,14 @@ mod tests {
                             assert!(!risk.read_only_allowed);
                             assert!(matches!(
                                 risk.confirmation,
-                                ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                                ConfirmationType::TableNameInput {
+                                    ref target,
+                                    label: "DROP INDEX",
+                                } if target == "my_index"
                             ));
                         }
                         _ => panic!("expected Allow"),
                     }
-                }
-
-                #[test]
-                fn sqlite_table_name_confirmation_label_matches_first_target_statement() {
-                    let sql = "DROP INDEX my_index; DROP VIEW my_view";
-                    assert_eq!(
-                        adhoc_label_for_table_name_confirmation(DatabaseType::SQLite, sql),
-                        Some("DROP INDEX")
-                    );
                 }
 
                 #[test]
@@ -1781,7 +1946,7 @@ mod tests {
                             assert!(!risk.read_only_allowed);
                             assert!(matches!(
                                 risk.confirmation,
-                                ConfirmationType::TableNameInput { ref target } if target == "my_index"
+                                ConfirmationType::TableNameInput { ref target, .. } if target == "my_index"
                             ));
                         }
                         _ => panic!("expected Allow"),
@@ -1820,6 +1985,253 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn rejects_unsupported_mysql_single_statement_risk_entries() {
+        for sql in [
+            "REPLACE INTO items VALUES (1)",
+            "MERGE INTO items USING source ON items.id = source.id",
+        ] {
+            assert!(
+                evaluate_sql_risk_for_database(DatabaseType::MySQL, &classify(sql), sql).is_none(),
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_begin_work_as_single_statement_risk_entry() {
+        assert!(
+            evaluate_sql_risk_for_database(
+                DatabaseType::MySQL,
+                &classify("BEGIN WORK"),
+                "BEGIN WORK",
+            )
+            .is_none()
+        );
+    }
+}
+
+#[cfg(test)]
+mod mysql_tests {
+    use crate::domain::mysql_sql::mysql_statement_is_schema_modifying;
+
+    use super::*;
+    use rstest::rstest;
+
+    fn mysql(sql: &str) -> MultiStatementDecision {
+        evaluate_multi_statement_for_database_with_context(DatabaseType::MySQL, Some("app"), sql)
+    }
+
+    #[test]
+    fn max_risk_uses_destructive_confirmation() {
+        let decision = mysql(
+            r#"SELECT 'a; b', "quoted; identifier", `back;tick` /* block ; comment */;
+                UPDATE items SET value = 1"#,
+        );
+        match decision {
+            MultiStatementDecision::Allow { risk, statements } => {
+                assert_eq!(statements.len(), 2);
+                assert_eq!(risk.risk_level, RiskLevel::High);
+                assert_eq!(
+                    risk.confirmation,
+                    ConfirmationType::TableNameInput {
+                        target: "items".to_string(),
+                        label: "UPDATE (no WHERE)",
+                    }
+                );
+                assert!(!risk.read_only_allowed);
+            }
+            MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
+        }
+    }
+
+    #[test]
+    fn confirmation_target_preserves_input_case() {
+        let MultiStatementDecision::Allow { risk, .. } =
+            mysql("UPDATE CustomerOrders SET value = 1")
+        else {
+            panic!("unexpected block");
+        };
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target, .. } if target == "CustomerOrders"
+        ));
+    }
+
+    #[test]
+    fn aligns_supported_mysql_ddl_risk_and_schema_classification() {
+        let cases = [
+            (
+                "RENAME TABLE items TO archived_items",
+                MySqlStatementKind::RenameTable,
+                RiskLevel::Medium,
+                "RENAME TABLE",
+            ),
+            (
+                "CREATE OR REPLACE VIEW item_view AS SELECT 1",
+                MySqlStatementKind::CreateView,
+                RiskLevel::Low,
+                "CREATE VIEW",
+            ),
+            (
+                "ALTER VIEW item_view AS SELECT 1",
+                MySqlStatementKind::AlterView,
+                RiskLevel::Medium,
+                "ALTER VIEW",
+            ),
+            (
+                "CREATE FULLTEXT INDEX item_text ON items (body)",
+                MySqlStatementKind::CreateIndex,
+                RiskLevel::Low,
+                "CREATE INDEX",
+            ),
+        ];
+
+        for (sql, expected_kind, expected_risk, expected_label) in cases {
+            let statement = classify_mysql_statement(sql).expect(sql);
+            assert_eq!(statement.kind(), &expected_kind, "{sql}");
+            assert_eq!(
+                mysql_statement_label(statement.kind()),
+                expected_label,
+                "{sql}"
+            );
+            assert!(
+                mysql_statement_is_schema_modifying(statement.kind()),
+                "{sql}"
+            );
+            assert_eq!(
+                mysql_statement_risk(&statement).risk_level,
+                expected_risk,
+                "{sql}"
+            );
+        }
+    }
+
+    #[rstest]
+    #[case::add_column("ALTER TABLE items ADD COLUMN value INT", "items")]
+    #[case::table_named_comment("ALTER TABLE comment ADD COLUMN value INT", "comment")]
+    #[case::table_named_repair("ALTER TABLE repair ADD COLUMN value INT", "repair")]
+    #[case::table_named_secondary_load(
+        "ALTER TABLE secondary_load ADD COLUMN value INT",
+        "secondary_load"
+    )]
+    #[case::table_named_secondary_unload(
+        "ALTER TABLE secondary_unload ADD COLUMN value INT",
+        "secondary_unload"
+    )]
+    #[case::table_option("ALTER TABLE items AVG_ROW_LENGTH=100", "items")]
+    #[case::no_op("ALTER TABLE items", "items")]
+    #[case::tablespace("ALTER TABLE items TABLESPACE ts", "items")]
+    #[case::check_partition("ALTER TABLE items CHECK PARTITION p0", "items")]
+    #[case::drop_column("ALTER TABLE items DROP COLUMN value", "items")]
+    #[case::drop_partition("ALTER TABLE items DROP PARTITION p0", "items")]
+    #[case::truncate_partition("ALTER TABLE items TRUNCATE PARTITION p0", "items")]
+    fn alter_table_requires_table_name_confirmation(#[case] sql: &str, #[case] target: &str) {
+        let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+            panic!("expected Allow: {sql}");
+        };
+
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert_eq!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput {
+                target: target.to_string(),
+                label: "ALTER TABLE",
+            }
+        );
+    }
+
+    #[test]
+    fn replace_has_destructive_risk_mapping() {
+        let statement = classify_mysql_statement("REPLACE INTO items VALUES (1)").unwrap();
+        let risk = mysql_statement_risk(&statement);
+        assert_eq!(risk.risk_level, RiskLevel::High);
+        assert!(!risk.read_only_allowed);
+        assert!(matches!(
+            risk.confirmation,
+            ConfirmationType::TableNameInput { ref target, .. } if target == "items"
+        ));
+    }
+
+    #[test]
+    fn read_only_allows_only_side_effect_free_mysql_reads() {
+        for sql in [
+            "SELECT 1",
+            "TABLE items",
+            "SHOW TABLES",
+            "DESCRIBE items",
+            "WITH rows AS (SELECT 1) SELECT * FROM rows",
+            "WITH RECURSIVE rows AS (SELECT 1) SELECT * FROM rows",
+            "SELECT LAST_INSERT_ID()",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(risk.read_only_allowed, "{sql}");
+        }
+
+        for sql in [
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items FOR SHARE",
+            "SELECT * FROM items LOCK IN SHARE MODE",
+            "SELECT @value := value FROM items",
+            "SELECT GET_LOCK('sabiql', 0)",
+            "SELECT RELEASE_LOCK('sabiql')",
+            "SELECT RELEASE_ALL_LOCKS()",
+            "SELECT `GET_LOCK`('sabiql', 0)",
+            "SELECT `RELEASE_LOCK`('sabiql')",
+            "SELECT `RELEASE_ALL_LOCKS`()",
+            "SELECT LAST_INSERT_ID(42)",
+            "SELECT `LAST_INSERT_ID`(42)",
+            "/*!80000 SELECT 1 */",
+        ] {
+            let MultiStatementDecision::Allow { risk, .. } = mysql(sql) else {
+                panic!("{sql}");
+            };
+            assert!(!risk.read_only_allowed, "{sql}");
+        }
+    }
+
+    #[test]
+    fn explain_analyze_target_rejects_side_effects() {
+        for sql in [
+            "UPDATE items SET value = 1",
+            "SELECT * FROM items FOR UPDATE",
+            "SELECT * FROM items INTO OUTFILE '/tmp/items'",
+            "SELECT id INTO DUMPFILE '/tmp/items' FROM items",
+            "SELECT id INTO @value FROM items",
+            "TABLE items INTO OUTFILE '/tmp/items'",
+            "WITH rows AS (SELECT 1) SELECT * INTO OUTFILE '/tmp/items' FROM rows",
+            "SHOW TABLES",
+            "DESCRIBE items",
+            "SELECT 1; SELECT 2",
+            "SELECT 1\nsystem echo unsafe",
+            "SELECT 1\n\\! echo unsafe",
+            "SELECT 'unfinished",
+            "SELECT 1 /* unfinished",
+            "MERGE INTO items USING source ON items.id = source.id",
+            "REPLACE INTO items VALUES (1)",
+        ] {
+            assert!(
+                evaluate_mysql_explain_analyze_target(sql).is_none(),
+                "{sql}"
+            );
+        }
+        for (sql, label) in [("SELECT 1", "SELECT"), ("TABLE items", "TABLE")] {
+            let risk = evaluate_mysql_explain_analyze_target(sql).expect(sql);
+            assert_eq!(risk.risk_level, RiskLevel::Low);
+            assert!(risk.read_only_allowed);
+            assert_eq!(
+                risk.confirmation,
+                ConfirmationType::Acknowledge {
+                    reason: AcknowledgeReason::AnalyzeExecution,
+                    label: label.to_string(),
+                }
+            );
         }
     }
 }

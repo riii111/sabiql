@@ -1,7 +1,7 @@
 use sabiql_domain::{
     Column, ColumnAttributes, DatabaseMetadata, FkAction, ForeignKey, Index, IndexAttributes,
-    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableSummary, Trigger,
-    TriggerEvent, TriggerTiming,
+    IndexType, QueryResult, QuerySource, Table, TableKind, TableKindInfo, TableStorageAttributes,
+    TableSummary, Trigger, TriggerEvent, TriggerTiming,
 };
 
 pub fn minimal_table(schema: &str, name: &str) -> Table {
@@ -18,6 +18,7 @@ pub fn minimal_table(schema: &str, name: &str) -> Table {
         row_count_estimate: None,
         comment: None,
         source_ddl: None,
+        storage_attributes: TableStorageAttributes::default(),
         kind_info: TableKindInfo::default(),
     }
 }
@@ -55,6 +56,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: Some("Primary key".to_string()),
             ordinal_position: 1,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "name".to_string(),
@@ -63,6 +68,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: None,
             ordinal_position: 2,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
         Column {
             name: "email".to_string(),
@@ -71,6 +80,10 @@ pub fn sample_table_detail() -> Table {
             default: None,
             comment: None,
             ordinal_position: 3,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         },
     ];
     table.primary_key = Some(vec!["id".to_string()]);
@@ -106,8 +119,10 @@ pub fn sample_table_detail() -> Table {
         name: "audit_users".to_string(),
         timing: TriggerTiming::After,
         events: vec![TriggerEvent::Insert, TriggerEvent::Update],
-        function_name: "audit_func".to_string(),
-        security_definer: false,
+        action_order: None,
+        definition: "audit_func".to_string(),
+        security_context: Some("INVOKER".to_string()),
+        creation_context: None,
     }];
     table.row_count_estimate = Some(100);
     table.comment = Some("User accounts".to_string());

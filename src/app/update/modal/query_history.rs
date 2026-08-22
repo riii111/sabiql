@@ -6,6 +6,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::{TextInputEditing, TextInputState};
 use crate::update::action::{Action, InputTarget, ListMotion, ListTarget, ModalKind};
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub(super) fn reduce_query_history_picker(
     state: &mut AppState,
@@ -35,10 +36,13 @@ pub(super) fn reduce_query_history_picker(
             state.query_history_picker.reset();
             state.modal.push_mode(InputMode::QueryHistoryPicker);
 
-            let conn_id = state.session.active_connection_id().unwrap();
+            let scope = state
+                .session
+                .query_history_scope()
+                .expect("active connection checked above");
             DispatchResult::handled_with(vec![Effect::LoadQueryHistory {
                 project_name: state.runtime.project_name.clone(),
-                connection_id: conn_id.clone(),
+                scope,
             }])
         }
         Action::CloseModal(ModalKind::QueryHistoryPicker) => {
@@ -46,21 +50,21 @@ pub(super) fn reduce_query_history_picker(
             state.query_history_picker.reset();
             DispatchResult::handled()
         }
-        Action::QueryHistoryLoaded(conn_id, entries) => {
+        Action::QueryHistoryLoaded(scope, entries) => {
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id() != Some(conn_id) {
+            if state.session.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
             state.query_history_picker.replace_entries(entries);
             DispatchResult::handled()
         }
-        Action::QueryHistoryLoadFailed(conn_id, e) => {
+        Action::QueryHistoryLoadFailed(scope, e) => {
             if state.modal.active_mode() != InputMode::QueryHistoryPicker {
                 return DispatchResult::handled();
             }
-            if state.session.active_connection_id() != Some(conn_id) {
+            if state.session.query_history_scope().as_ref() != Some(scope) {
                 return DispatchResult::handled();
             }
             state.messages.set_error_at(e.to_string(), now);
@@ -130,6 +134,9 @@ pub(super) fn reduce_query_history_picker(
             DispatchResult::handled()
         }
         Action::QueryHistoryConfirmSelection => {
+            if reject_pending_mysql_connection_probe(state, now) {
+                return DispatchResult::handled();
+            }
             let grouped = state.query_history_picker.grouped_filtered_entries();
             let selected = state.query_history_picker.clamped_selected();
             let query = grouped.get(selected).map(|g| g.entry.query.clone());

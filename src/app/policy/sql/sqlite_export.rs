@@ -1,8 +1,4 @@
-use crate::domain::{DatabaseType, QuerySource};
-use crate::policy::sql::sqlite_transaction::{
-    SqliteStatementClassification, sqlite_statement_classification,
-};
-use crate::policy::sql::statement_classifier::first_keyword;
+use crate::domain::{DatabaseType, QuerySource, sqlite_sql};
 use crate::policy::write::sql_risk::{
     MultiStatementDecision, evaluate_multi_statement_for_database,
 };
@@ -43,19 +39,9 @@ pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
             statements.len() == 1
                 && statements
                     .iter()
-                    .all(|statement| is_sqlite_rerunnable_export_statement(statement))
+                    .all(|statement| sqlite_sql::is_sqlite_rerunnable_export_statement(statement))
         }
     }
-}
-
-pub fn is_sqlite_rerunnable_export_statement(statement: &str) -> bool {
-    if sqlite_statement_classification(statement) != SqliteStatementClassification::ReadOnly {
-        return false;
-    }
-    matches!(
-        first_keyword(statement).as_deref(),
-        Some("SELECT" | "EXPLAIN" | "VALUES" | "WITH" | "PRAGMA")
-    )
 }
 
 #[cfg(test)]
@@ -170,6 +156,18 @@ mod tests {
                 &["id".to_string()],
                 1,
             );
+            assert_eq!(plan, SqliteExportPlan::CachedResult { row_count: 1 });
+        }
+
+        #[test]
+        fn cli_meta_command_keeps_cached_result_export() {
+            let plan = sqlite_export_plan(
+                QuerySource::Adhoc,
+                "SELECT 1\n.read file",
+                &["value".to_string()],
+                1,
+            );
+
             assert_eq!(plan, SqliteExportPlan::CachedResult { row_count: 1 });
         }
 

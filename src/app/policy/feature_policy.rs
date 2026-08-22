@@ -4,17 +4,12 @@ use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 pub enum FeatureRequirement {
     None,
     ErDiagram,
-    JsonbDetail,
+    JsonDocumentDetail,
+    JsonDocumentEdit,
     SqliteDiagnostics,
     Explain,
     ExplainAnalyze,
     PlanComparison,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FeatureAvailability {
-    Hidden,
-    Enabled,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,30 +22,17 @@ impl FeaturePolicy {
         Self { profile: *profile }
     }
 
-    pub fn availability(&self, requirement: FeatureRequirement) -> FeatureAvailability {
-        let supported = match requirement {
+    pub fn is_enabled(&self, requirement: FeatureRequirement) -> bool {
+        match requirement {
             FeatureRequirement::None => true,
             FeatureRequirement::ErDiagram => self.profile.supports_er_diagram(),
-            FeatureRequirement::JsonbDetail => self.profile.supports_jsonb_detail(),
+            FeatureRequirement::JsonDocumentDetail => self.profile.supports_json_document_detail(),
+            FeatureRequirement::JsonDocumentEdit => self.profile.supports_json_document_edit(),
             FeatureRequirement::SqliteDiagnostics => self.profile.supports_sqlite_diagnostics(),
             FeatureRequirement::Explain => self.profile.supports_explain(),
             FeatureRequirement::ExplainAnalyze => self.profile.supports_explain_analyze(),
             FeatureRequirement::PlanComparison => self.profile.supports_plan_comparison(),
-        };
-
-        if supported {
-            FeatureAvailability::Enabled
-        } else {
-            FeatureAvailability::Hidden
         }
-    }
-
-    pub fn is_visible(&self, requirement: FeatureRequirement) -> bool {
-        !matches!(self.availability(requirement), FeatureAvailability::Hidden)
-    }
-
-    pub fn is_enabled(&self, requirement: FeatureRequirement) -> bool {
-        matches!(self.availability(requirement), FeatureAvailability::Enabled)
     }
 }
 
@@ -59,54 +41,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn postgres_profile_enables_postgres_features_and_hides_sqlite_diagnostics() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::postgres_like());
+    fn feature_requirements_match_each_engine_profile() {
+        let requirements = [
+            FeatureRequirement::None,
+            FeatureRequirement::ErDiagram,
+            FeatureRequirement::JsonDocumentDetail,
+            FeatureRequirement::JsonDocumentEdit,
+            FeatureRequirement::SqliteDiagnostics,
+            FeatureRequirement::Explain,
+            FeatureRequirement::ExplainAnalyze,
+            FeatureRequirement::PlanComparison,
+        ];
+        let profiles = [
+            (
+                "postgresql",
+                EngineFeatureProfile::postgres_like(),
+                [true, true, true, true, false, true, true, true],
+            ),
+            (
+                "sqlite",
+                EngineFeatureProfile::sqlite_like(),
+                [true, false, false, false, true, true, false, false],
+            ),
+            (
+                "mysql",
+                EngineFeatureProfile::mysql_like(),
+                [true, true, true, true, false, true, true, true],
+            ),
+            (
+                "disconnected",
+                EngineFeatureProfile::disconnected(),
+                [true, false, false, false, false, false, false, false],
+            ),
+        ];
 
-        assert_eq!(
-            policy.availability(FeatureRequirement::ErDiagram),
-            FeatureAvailability::Enabled
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::JsonbDetail),
-            FeatureAvailability::Enabled
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::ExplainAnalyze),
-            FeatureAvailability::Enabled
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::SqliteDiagnostics),
-            FeatureAvailability::Hidden
-        );
-    }
+        for (name, profile, expected) in profiles {
+            let policy = FeaturePolicy::new(&profile);
 
-    #[test]
-    fn sqlite_profile_enables_diagnostics_and_hides_postgres_features() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::sqlite_like());
-
-        assert_eq!(
-            policy.availability(FeatureRequirement::SqliteDiagnostics),
-            FeatureAvailability::Enabled
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::ErDiagram),
-            FeatureAvailability::Hidden
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::JsonbDetail),
-            FeatureAvailability::Hidden
-        );
-        assert_eq!(
-            policy.availability(FeatureRequirement::PlanComparison),
-            FeatureAvailability::Hidden
-        );
-    }
-
-    #[test]
-    fn unrequired_operations_are_enabled() {
-        let policy = FeaturePolicy::new(&EngineFeatureProfile::disconnected());
-
-        assert!(policy.is_visible(FeatureRequirement::None));
-        assert!(policy.is_enabled(FeatureRequirement::None));
+            for (requirement, expected) in requirements.iter().zip(expected) {
+                assert_eq!(
+                    policy.is_enabled(*requirement),
+                    expected,
+                    "{name}: {requirement:?}"
+                );
+            }
+        }
     }
 }

@@ -30,7 +30,7 @@ pub const MODAL_VERTICAL_BORDER_OVERHEAD: usize = 2;
 pub const MODAL_HORIZONTAL_BORDER_OVERHEAD: usize = 2;
 pub const HELP_HORIZONTAL_SCROLLBAR_HEIGHT: usize = 1;
 pub const HELP_VERTICAL_SCROLLBAR_WIDTH: usize = 1;
-pub const DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
+pub const DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS: usize = 8;
 pub const DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_ROWS: usize = 8;
 pub const DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_COLUMNS: usize = 40;
 
@@ -196,7 +196,7 @@ pub struct UiState {
     result_viewport_plan: ViewportPlan,
     result_widths_cache: ColumnWidthsCache,
     result_pane_height: u16,
-    jsonb_detail_editor_visible_rows: usize,
+    json_detail_editor_visible_rows: usize,
     pub row_detail_content_visible_rows: usize,
     pub row_detail_content_visible_columns: usize,
 
@@ -213,7 +213,7 @@ impl UiState {
         Self {
             terminal_width: 80,
             terminal_height: 24,
-            jsonb_detail_editor_visible_rows: DEFAULT_JSONB_DETAIL_EDITOR_VISIBLE_ROWS,
+            json_detail_editor_visible_rows: DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS,
             row_detail_content_visible_rows: DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_ROWS,
             row_detail_content_visible_columns: DEFAULT_ROW_DETAIL_CONTENT_VISIBLE_COLUMNS,
             ..Default::default()
@@ -254,12 +254,6 @@ impl UiState {
 
     pub fn set_explorer_scroll_offset(&mut self, offset: usize) {
         self.explorer_scroll_offset = offset;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_explorer_selected_raw(&mut self, selected: usize) {
-        self.explorer_selected = selected;
     }
 
     pub fn scroll_explorer_page_down(&mut self, item_count: usize, delta: usize) {
@@ -313,12 +307,6 @@ impl UiState {
 
     pub fn set_connection_list_pane_height(&mut self, height: u16) {
         self.connection_list_pane_height = height;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
-        self.connection_list_selected = selected;
     }
 
     pub fn set_connection_list_scroll_offset(&mut self, offset: usize) {
@@ -439,12 +427,12 @@ impl UiState {
         self.result_pane_height = height;
     }
 
-    pub fn jsonb_detail_editor_visible_rows(&self) -> usize {
-        self.jsonb_detail_editor_visible_rows
+    pub fn json_detail_editor_visible_rows(&self) -> usize {
+        self.json_detail_editor_visible_rows
     }
 
-    pub fn set_jsonb_detail_editor_visible_rows(&mut self, rows: usize) {
-        self.jsonb_detail_editor_visible_rows = rows;
+    pub fn set_json_detail_editor_visible_rows(&mut self, rows: usize) {
+        self.json_detail_editor_visible_rows = rows;
     }
 
     pub fn help(&self) -> &HelpState {
@@ -601,6 +589,23 @@ impl UiState {
     pub fn reset_er_picker_request(&mut self) {
         self.er_selected_tables.clear();
         self.pending_er_picker = false;
+    }
+}
+
+#[cfg(test)]
+pub mod test_support {
+    use super::UiState;
+
+    impl UiState {
+        #[doc(hidden)]
+        pub fn set_explorer_selected_raw(&mut self, selected: usize) {
+            self.explorer_selected = selected;
+        }
+
+        #[doc(hidden)]
+        pub fn set_connection_list_selected_raw(&mut self, selected: usize) {
+            self.connection_list_selected = selected;
+        }
     }
 }
 

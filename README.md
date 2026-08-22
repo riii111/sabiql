@@ -1,7 +1,7 @@
 # sabiql
 ![hero](https://github.com/user-attachments/assets/745ab18f-915c-4017-81a6-465c5c5ee11c)
 
-A fast, driver-less TUI for browsing, querying, and editing PostgreSQL and SQLite databases from the terminal. It works with the database CLI you already use: `psql` or `sqlite3`.
+A fast, driver-less TUI for browsing, querying, and editing PostgreSQL, MySQL, and SQLite databases from the terminal. It works with the database CLI you already use: `psql`, `mysql`, or `sqlite3`.
 
 [![CI](https://github.com/riii111/sabiql/actions/workflows/ci.yml/badge.svg)](https://github.com/riii111/sabiql/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -20,13 +20,13 @@ Safety follows a plan-before-apply flow familiar from Terraform: inline edits an
 
 ![hero_1000_20fps](https://github.com/user-attachments/assets/06e1900d-b044-4f29-a2a8-7d7bab5bd3a1)
 
-- **Browse and inspect** — Find tables with fuzzy search and inspect columns, types, constraints, and indexes
+- **Browse and inspect** — Find tables with fuzzy search, inspect columns, constraints, indexes, foreign keys, triggers, and DDL
 - **Run SQL** — Write ad-hoc queries with completion for tables, columns, and keywords, then recall them from query history
 - **Edit with previews** — Update cells or delete rows only after reviewing the SQL and its risk level
 - **Browse in read-only mode** (`Ctrl+R`) — Block writes while investigating data
-- **Analyze queries** — View and compare PostgreSQL execution plans or inspect SQLite query plans
-- **Work with data** — Copy cell values, export CSV, and inspect or edit PostgreSQL JSON/JSONB documents
-- **Visualize relationships** — Generate PostgreSQL ER diagrams with Graphviz and open them in your browser
+- **Analyze queries** — View and compare PostgreSQL or MySQL execution plans, or inspect SQLite query plans
+- **Work with data** — Copy cell values, export CSV, and inspect or edit PostgreSQL and MySQL JSON documents
+- **Visualize relationships** — Generate PostgreSQL and MySQL ER diagrams with Graphviz and open them in your browser
 
 Press `?` inside sabiql to see all commands and keybindings.
 
@@ -68,11 +68,14 @@ curl -fsSL https://raw.githubusercontent.com/riii111/sabiql/main/install.sh | sh
 sabiql uses the CLI for the database you want to open:
 
 - **To use PostgreSQL:** install `psql`
+- **To use MySQL:** install `mysql`
 - **To use SQLite:** install `sqlite3` version 3.41.1 or later
 
-Graphviz is optional and enables ER diagrams for PostgreSQL. Windows support is experimental.
+Graphviz is optional and enables ER diagrams for PostgreSQL and MySQL.
 
-SQLite works with existing, regular database files. See [SQLite support and limitations](docs/sqlite.md) for details.
+Windows support is experimental.
+
+See [MySQL support and limitations](docs/mysql.md) and [SQLite support and limitations](docs/sqlite.md) for supported versions and database-specific limitations.
 
 ## Quick Start
 
@@ -102,10 +105,10 @@ Use `Ctrl+R` before browsing data when you want to block writes. Press `?` for h
 - [x] JSON/JSONB support (tree view, editing, validation)
 - [x] Theme switching (Sabiql Dark / Light)
 - [x] SQLite support
+- [x] MySQL support
 - [ ] Neovim integration (`sabiql.nvim`)
 - [ ] Zero-config connection (env vars, `.pgpass`, URI auto-detect)
 - [ ] Google Cloud SQL / AlloyDB support
-- [ ] MySQL support
 
 Have a feature request? [Open an issue](https://github.com/riii111/sabiql/issues/new). Feedback is welcome!
 

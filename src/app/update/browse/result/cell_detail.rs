@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::QueryValue;
 use crate::model::app_state::AppState;
 use crate::model::browse::cell_detail::CellDetailState;
 use crate::model::shared::detail_view::DetailDisplayMode;
@@ -15,9 +16,9 @@ use crate::update::helpers::find_text_matches;
 pub fn reduce_cell_detail(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::ResultOpenCellDetail => {
-            if selected_cell_uses_jsonb_detail_modal(state) {
+            if selected_cell_uses_json_detail_modal(state) {
                 return DispatchResult::handled_with(vec![Effect::DispatchActions(vec![
-                    Action::OpenModal(ModalKind::JsonbDetail),
+                    Action::OpenModal(ModalKind::JsonDetail),
                 ])]);
             }
 
@@ -158,10 +159,19 @@ fn selected_cell_value(state: &AppState) -> Option<(usize, usize, String, String
     Some((row_idx, col_idx, column_name, cell_value, data_type))
 }
 
-fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
+fn selected_cell_uses_json_detail_modal(state: &AppState) -> bool {
     let Some(col_idx) = state.result_interaction.selection().cell() else {
         return false;
     };
+    let Some(row_idx) = state.result_interaction.selection().row() else {
+        return false;
+    };
+    let Some(result) = state.query.visible_result() else {
+        return false;
+    };
+    if matches!(result.value_at(row_idx, col_idx), Some(QueryValue::Null)) {
+        return false;
+    }
     let Some(column_data_type) = selected_column_data_type(state, col_idx) else {
         return false;
     };
@@ -170,16 +180,16 @@ fn selected_cell_uses_jsonb_detail_modal(state: &AppState) -> bool {
         column_data_type,
         "",
     );
-    policy.uses_jsonb_detail_modal()
+    policy.uses_json_detail_modal()
 }
 
 fn selected_column_data_type(state: &AppState, col_idx: usize) -> Option<&str> {
-    let td = state.session.table_detail()?;
-    if !state.query.pagination.matches_table(td) {
+    let table_detail = state.session.table_detail()?;
+    if !state.query.pagination.matches_table(table_detail) {
         return None;
     }
-    td.columns
-        .get(col_idx)
+    state
+        .visible_preview_column(col_idx)
         .map(|column| column.data_type.as_str())
 }
 
@@ -408,7 +418,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_cell_opens_raw_cell_detail() {
+    fn sqlite_json_cell_opens_raw_cell_detail() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
         state.session.activate_connection_with_dsn(
             &ConnectionId::from_string("sqlite-test"),
@@ -423,11 +433,11 @@ mod tests {
         assert!(state.cell_detail.is_active());
         assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
         assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
-        assert!(!state.jsonb_detail.is_active());
+        assert!(!state.json_detail.is_active());
     }
 
     #[test]
-    fn jsonb_cell_dispatches_to_existing_jsonb_modal() {
+    fn json_cell_dispatches_to_existing_json_modal() {
         let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
 
         let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
@@ -435,9 +445,83 @@ mod tests {
         assert!(matches!(
             result.expect("jsonb dispatch should be handled").as_slice(),
             [Effect::DispatchActions(actions)]
-                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonbDetail)])
+                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
         ));
         assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn json_document_null_dispatches_to_existing_json_modal() {
+        let mut state = state_with_cell("jsonb", "null");
+
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(matches!(
+            result.expect("json null dispatch should be handled").as_slice(),
+            [Effect::DispatchActions(actions)]
+                if matches!(actions.as_slice(), [Action::OpenModal(ModalKind::JsonDetail)])
+        ));
+        assert!(!state.cell_detail.is_active());
+    }
+
+    #[test]
+    fn mysql_json_sql_null_opens_read_only_cell_detail() {
+        let mut state = state_with_cell("json", "");
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("mysql-test"),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success_with_values(
+                String::new(),
+                vec!["id".to_string(), "body".to_string()],
+                vec![vec![QueryValue::text("1"), QueryValue::Null]],
+                1,
+                QuerySource::Preview,
+            )));
+
+        let result = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(result.is_handled_and(Vec::is_empty));
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert_eq!(state.cell_detail.content(), "NULL");
+        assert!(!state.json_detail.is_active());
+    }
+
+    #[test]
+    fn adhoc_json_cell_after_preview_opens_read_only_cell_detail() {
+        let mut state = state_with_cell("jsonb", r#"{"a":1}"#);
+        let mut table = state.session.table_detail().expect("table detail").clone();
+        table.columns[1].data_type = "json".to_string();
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::from_string("mysql-test"),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://localhost/test",
+        );
+        state.session.set_table_detail_raw(Some(table));
+        state
+            .query
+            .set_current_result(Arc::new(QueryResult::success(
+                "SELECT body FROM notes".to_string(),
+                vec!["id".to_string(), "body".to_string()],
+                vec![vec!["1".to_string(), r#"{"a":1}"#.to_string()]],
+                1,
+                QuerySource::Adhoc,
+            )));
+
+        let effects = reduce_cell_detail(&mut state, &Action::ResultOpenCellDetail, Instant::now());
+
+        assert!(effects.is_handled_and(Vec::is_empty));
+        assert_eq!(state.input_mode(), InputMode::CellDetail);
+        assert!(state.cell_detail.is_active());
+        assert!(!state.json_detail.is_active());
+        assert_eq!(state.cell_detail.content(), r#"{"a":1}"#);
+        assert_eq!(state.cell_detail.display_mode(), DetailDisplayMode::RawText);
     }
 
     #[test]

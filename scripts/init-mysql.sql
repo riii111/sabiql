@@ -1,0 +1,201 @@
+SET NAMES utf8mb4;
+
+USE sabiql_test;
+
+CREATE TABLE mysql_cli_fixture (
+    id INT PRIMARY KEY,
+    nullable_text TEXT NULL,
+    empty_text TEXT NOT NULL,
+    unicode_text TEXT NOT NULL,
+    json_value JSON NOT NULL,
+    blob_value BLOB NOT NULL,
+    invisible_value INT INVISIBLE,
+    generated_value INT GENERATED ALWAYS AS (id * 2) STORED,
+    unsigned_value BIGINT UNSIGNED NOT NULL,
+    precise_decimal DECIMAL(65, 30) NOT NULL,
+    scientific_value DOUBLE NOT NULL
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci COMMENT = 'MySQL fixture table';
+
+INSERT INTO mysql_cli_fixture (
+    id,
+    nullable_text,
+    empty_text,
+    unicode_text,
+    json_value,
+    blob_value,
+    unsigned_value,
+    precise_decimal,
+    scientific_value
+) VALUES (
+    1,
+    NULL,
+    '',
+    '日本語の値 🐬',
+    '{"array":[1,true],"text":"空文字ではない"}',
+    X'00FF10',
+    18446744073709551615,
+    12345678901234567890123456789012345.123456789012345678901234567890,
+    1.23e100
+);
+
+CREATE TABLE mysql_preview_binary_charset (
+    id INT PRIMARY KEY,
+    binary_char CHAR(4) CHARACTER SET binary NOT NULL,
+    binary_varchar VARCHAR(4) CHARACTER SET binary NOT NULL,
+    regular_varchar VARCHAR(6) CHARACTER SET utf8mb4 NOT NULL,
+    binary_varbinary VARBINARY(4) NOT NULL,
+    binary_blob BLOB NOT NULL,
+    binary_bit BIT(8) NOT NULL
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_preview_binary_charset (
+    id,
+    binary_char,
+    binary_varchar,
+    regular_varchar,
+    binary_varbinary,
+    binary_blob,
+    binary_bit
+) VALUES (
+    1,
+    X'00FFA10D',
+    X'00FFA10D',
+    '0x00FF',
+    X'00FFA10D',
+    X'00FFA10D',
+    b'10100101'
+);
+
+CREATE DEFINER='sabiql'@'%' TRIGGER mysql_cli_fixture_audit
+BEFORE UPDATE ON mysql_cli_fixture
+FOR EACH ROW
+SET NEW.empty_text = NEW.empty_text;
+
+CREATE DEFINER='sabiql'@'%' TRIGGER a_mysql_cli_fixture_audit
+BEFORE UPDATE ON mysql_cli_fixture
+FOR EACH ROW FOLLOWS mysql_cli_fixture_audit
+SET NEW.empty_text = NEW.empty_text;
+
+CREATE TABLE mysql_preview_composite (
+    first_key INT NOT NULL,
+    second_key INT NOT NULL,
+    payload VARCHAR(255) NOT NULL,
+    PRIMARY KEY (second_key, first_key),
+    UNIQUE KEY uq_mysql_preview_composite_payload (payload),
+    FULLTEXT KEY ft_mysql_preview_composite_payload (payload)
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_preview_composite (first_key, second_key, payload)
+VALUES (1, 20, 'first'), (2, 10, 'second');
+
+CREATE TABLE mysql_edit_invisible_pk (
+    id INT NOT NULL INVISIBLE,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_edit_invisible_pk (id, payload)
+VALUES (1, 'invisible single primary key');
+
+CREATE TABLE mysql_edit_invisible_composite (
+    first_key INT NOT NULL INVISIBLE,
+    second_key INT NOT NULL INVISIBLE,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (second_key, first_key)
+) ENGINE=InnoDB CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_edit_invisible_composite (first_key, second_key, payload)
+VALUES (1, 20, 'invisible composite primary key');
+
+CREATE TABLE mysql_metadata_parent (
+    first_key INT NOT NULL,
+    second_key INT NOT NULL,
+    unique_code VARCHAR(32) NOT NULL,
+    label TEXT NOT NULL,
+    PRIMARY KEY (first_key, second_key),
+    UNIQUE KEY uq_mysql_metadata_parent_code (unique_code),
+    FULLTEXT KEY ft_mysql_metadata_parent_label (label)
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_parent (first_key, second_key, unique_code, label)
+VALUES (1, 2, 'parent-1-2', 'parent row');
+
+CREATE TABLE mysql_metadata_child (
+    parent_first INT NULL,
+    parent_second INT NULL,
+    payload TEXT NOT NULL,
+    CONSTRAINT fk_mysql_metadata_child_parent
+        FOREIGN KEY (parent_first, parent_second)
+        REFERENCES mysql_metadata_parent (first_key, second_key)
+        ON UPDATE CASCADE
+        ON DELETE SET NULL
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_child (parent_first, parent_second, payload)
+VALUES (1, 2, 'child row');
+
+CREATE TABLE mysql_metadata_functional (
+    id INT NOT NULL,
+    payload JSON NOT NULL,
+    sort_key INT NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_mysql_metadata_functional_json (
+        (CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.code')) AS CHAR(32)))
+    ),
+    KEY idx_mysql_metadata_functional_mixed (
+        (CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.code')) AS CHAR(32))),
+        sort_key
+    )
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_metadata_functional (id, payload, sort_key)
+VALUES (1, '{"code":"A-001"}', 10);
+
+CREATE TABLE mysql_preview_no_pk (
+    duplicate_value VARCHAR(20) NOT NULL,
+    payload TEXT NOT NULL
+) CHARACTER SET utf8mb4;
+
+INSERT INTO mysql_preview_no_pk (duplicate_value, payload)
+VALUES ('same', 'first'), ('same', 'second');
+
+CREATE TABLE mysql_preview_empty (
+    id INT PRIMARY KEY,
+    payload TEXT
+) CHARACTER SET utf8mb4;
+
+CREATE VIEW mysql_preview_view AS
+SELECT id, unicode_text FROM mysql_cli_fixture;
+
+CREATE DATABASE SABIQL_TEST CHARACTER SET utf8mb4;
+
+CREATE TABLE SABIQL_TEST.mysql_case_scope_parent (
+    id INT PRIMARY KEY
+) CHARACTER SET utf8mb4;
+
+INSERT INTO SABIQL_TEST.mysql_case_scope_parent (id)
+VALUES (1);
+
+CREATE TABLE sabiql_test.mysql_case_scope_child (
+    parent_id INT NOT NULL,
+    payload TEXT NOT NULL,
+    CONSTRAINT fk_mysql_case_scope_parent
+        FOREIGN KEY (parent_id)
+        REFERENCES SABIQL_TEST.mysql_case_scope_parent (id)
+) CHARACTER SET utf8mb4;
+
+INSERT INTO sabiql_test.mysql_case_scope_child (parent_id, payload)
+VALUES (1, 'case-sensitive foreign key');
+
+CREATE USER 'sabiql_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word';
+GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_test_runner'@'%';
+GRANT ALL PRIVILEGES ON SABIQL_TEST.* TO 'sabiql_test_runner'@'%';
+
+CREATE USER 'sabiql_tls_test_runner'@'%' IDENTIFIED BY 'p a#ss;="word' REQUIRE X509;
+GRANT ALL PRIVILEGES ON sabiql_test.* TO 'sabiql_tls_test_runner'@'%';
+GRANT ALL PRIVILEGES ON SABIQL_TEST.* TO 'sabiql_tls_test_runner'@'%';
+
+GRANT SYSTEM_VARIABLES_ADMIN ON *.* TO
+    'sabiql'@'%',
+    'sabiql_test_runner'@'%',
+    'sabiql_tls_test_runner'@'%';

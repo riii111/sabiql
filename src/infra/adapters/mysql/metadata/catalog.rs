@@ -1,0 +1,1231 @@
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::time::Duration;
+
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::{
+    Column, ColumnAttributes, ColumnGenerationKind, FkAction, ForeignKey, QueryValue, TableKind,
+    TableKindInfo, TableStorageAttributes, TableSummary,
+};
+
+use super::super::{
+    cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
+    dsn::MySqlDsn,
+    option_file::MySqlOptionFile,
+    sql::{
+        COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
+        FOREIGN_KEY_RESULT_COLUMNS, PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, TABLES_QUERY,
+        TABLES_RESULT_COLUMNS, UNIQUE_COLUMN_RESULT_COLUMNS,
+    },
+};
+
+#[derive(Debug, Clone)]
+enum MySqlColumnUnique {
+    None,
+    SingleColumnIndex,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct MySqlColumnMetadata {
+    name: String,
+    data_type: String,
+    character_set_name: Option<String>,
+    collation_name: Option<String>,
+    generation_expression: Option<String>,
+    generation_kind: Option<ColumnGenerationKind>,
+    nullable: bool,
+    default: Option<String>,
+    comment: Option<String>,
+    pub(super) ordinal_position: i32,
+    primary_key_position: Option<i32>,
+    unique: MySqlColumnUnique,
+    invisible: bool,
+    generated: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct MySqlForeignKeyMetadata {
+    pub(super) name: String,
+    pub(super) from_schema: String,
+    pub(super) from_table: String,
+    pub(super) from_column: String,
+    pub(super) to_schema: String,
+    pub(super) to_table: String,
+    pub(super) to_column: String,
+    pub(super) ordinal_position: i32,
+    pub(super) on_update: FkAction,
+    pub(super) on_delete: FkAction,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct MySqlTableMetadata {
+    pub(super) schema: String,
+    pub(super) name: String,
+    pub(super) kind: TableKind,
+    pub(super) row_count_estimate: Option<i64>,
+    pub(super) comment: Option<String>,
+    pub(super) engine: Option<String>,
+    pub(super) row_format: Option<String>,
+    pub(super) table_collation: Option<String>,
+    pub(super) create_options: Option<String>,
+}
+
+impl MySqlTableMetadata {
+    pub(super) fn storage_attributes(&self) -> TableStorageAttributes {
+        TableStorageAttributes {
+            engine: self.engine.clone(),
+            row_format: self.row_format.clone(),
+            table_collation: self.table_collation.clone(),
+            create_options: self.create_options.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct MySqlMetadataSnapshot {
+    pub(super) tables: Vec<MySqlTableMetadata>,
+}
+
+pub(super) async fn fetch_metadata_snapshot(
+    target: &MySqlDsn,
+    database: &str,
+) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+    let (lower_case_table_names, result) =
+        execute_metadata_query(target, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
+    metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
+}
+
+pub(super) fn find_table(
+    schema: &str,
+    table: &str,
+    tables: &[MySqlTableMetadata],
+    lower_case_table_names: u8,
+) -> Result<MySqlTableMetadata, DbOperationError> {
+    tables
+        .iter()
+        .find(|candidate| {
+            mysql_database_names_match(schema, &candidate.schema, lower_case_table_names)
+                && candidate.name == table
+        })
+        .cloned()
+        .ok_or_else(|| {
+            DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
+        })
+}
+
+pub(super) fn parse_columns_for_table(
+    result: &MySqlResultSet,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+    let columns = parse_column_metadata(result)?;
+    if columns.is_empty() {
+        return Err(DbOperationError::ObjectMissing(format!(
+            "MySQL table not found: {schema}.{table}"
+        )));
+    }
+    Ok(columns)
+}
+
+pub(super) fn parse_preview_columns_for_table(
+    result: &MySqlResultSet,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+    expect_columns(result, PREVIEW_COLUMN_METADATA_RESULT_COLUMNS)?;
+    let columns = result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != PREVIEW_COLUMN_METADATA_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("preview COLUMNS row"));
+            }
+            let mut column = parse_column_metadata_row(
+                &row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
+                "preview COLUMNS row",
+            )?;
+            column.character_set_name = optional_nonempty_string(
+                &row[COLUMN_METADATA_BASE_RESULT_COLUMNS.len()],
+                "CHARACTER_SET_NAME",
+            )?;
+            Ok(column)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if columns.is_empty() {
+        return Err(DbOperationError::ObjectMissing(format!(
+            "MySQL table not found: {schema}.{table}"
+        )));
+    }
+    Ok(columns)
+}
+
+pub(super) async fn execute_metadata_query(
+    target: &MySqlDsn,
+    query: &str,
+    expected_columns: &[&str],
+) -> Result<(u8, MySqlResultSet), DbOperationError> {
+    let (lower_case_table_names, results) =
+        execute_metadata_queries_in_session(target, &[(query, expected_columns)]).await?;
+    let result = results.into_iter().next().ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(
+            "MySQL metadata query returned no result set".to_string(),
+        )
+    })?;
+    Ok((lower_case_table_names, result))
+}
+
+pub(super) async fn execute_metadata_queries_in_session(
+    target: &MySqlDsn,
+    queries: &[(&str, &[&str])],
+) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
+    execute_metadata_queries_in_session_with_program(
+        target,
+        queries,
+        OsStr::new("mysql"),
+        MYSQL_QUERY_TIMEOUT,
+    )
+    .await
+}
+
+pub(super) async fn execute_metadata_queries_in_session_with_program(
+    target: &MySqlDsn,
+    queries: &[(&str, &[&str])],
+    program: &OsStr,
+    timeout: Duration,
+) -> Result<(u8, Vec<MySqlResultSet>), DbOperationError> {
+    let option_file = MySqlOptionFile::create(target)?;
+    let mut session = MySqlMetadataSession::spawn_with_metadata_program(program, option_file)?;
+    let result = tokio::time::timeout(timeout, async {
+        let lower_case_table_names = session.prepare_read_only_and_probe().await?;
+        let mut results = Vec::with_capacity(queries.len());
+        for (query, expected_columns) in queries {
+            results.push(
+                session
+                    .execute_with_expected_columns(query, expected_columns)
+                    .await?,
+            );
+        }
+        session.finish().await?;
+        Ok((lower_case_table_names, results))
+    })
+    .await;
+    session.resolve_timed_result(result).await
+}
+
+pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {
+    target.database.as_deref().ok_or_else(|| {
+        DbOperationError::UnsupportedOperation(
+            "MySQL metadata requires a selected database".to_string(),
+        )
+    })
+}
+
+pub(super) fn validate_selected_schema_name(
+    database: &str,
+    schema: &str,
+    lower_case_table_names: u8,
+) -> Result<(), DbOperationError> {
+    if !mysql_database_names_match(database, schema, lower_case_table_names) {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn mysql_database_names_match(
+    left: &str,
+    right: &str,
+    lower_case_table_names: u8,
+) -> bool {
+    match lower_case_table_names {
+        0 => left == right,
+        1 | 2 => left.to_lowercase() == right.to_lowercase(),
+        _ => false,
+    }
+}
+
+pub(super) fn metadata_snapshot_from_result(
+    database: &str,
+    requested_schema: Option<&str>,
+    result: &MySqlResultSet,
+    lower_case_table_names: u8,
+) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+    if let Some(schema) = requested_schema {
+        validate_selected_schema_name(database, schema, lower_case_table_names)?;
+    }
+    let tables = parse_table_metadata(result)?;
+    if tables
+        .iter()
+        .any(|table| !mysql_database_names_match(database, &table.schema, lower_case_table_names))
+    {
+        return Err(DbOperationError::UnsupportedOperation(
+            "MySQL metadata is limited to the selected database".to_string(),
+        ));
+    }
+    Ok(MySqlMetadataSnapshot { tables })
+}
+
+fn parse_table_metadata(
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
+    expect_columns(result, TABLES_RESULT_COLUMNS)?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != TABLES_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("TABLES row"));
+            }
+            let schema = required_text(&row[0], "TABLE_SCHEMA")?.to_string();
+            let name = required_text(&row[1], "TABLE_NAME")?.to_string();
+            let kind = match required_text(&row[2], "TABLE_TYPE")? {
+                "BASE TABLE" => TableKind::Table,
+                "VIEW" => TableKind::View,
+                value => {
+                    return Err(DbOperationError::MetadataParseFailed(format!(
+                        "unexpected MySQL table type: {value}"
+                    )));
+                }
+            };
+            let row_count_estimate = optional_text(&row[3], "TABLE_ROWS")?
+                .map(|value| {
+                    value.parse::<i64>().map_err(|_| {
+                        DbOperationError::MetadataParseFailed(
+                            "invalid MySQL TABLE_ROWS value".to_string(),
+                        )
+                    })
+                })
+                .transpose()?;
+            let comment = optional_nonempty_string(&row[4], "TABLE_COMMENT")?;
+            let engine = optional_nonempty_string(&row[5], "ENGINE")?;
+            let row_format = optional_nonempty_string(&row[6], "ROW_FORMAT")?;
+            let table_collation = optional_nonempty_string(&row[7], "TABLE_COLLATION")?;
+            let create_options = optional_nonempty_string(&row[8], "CREATE_OPTIONS")?;
+            Ok(MySqlTableMetadata {
+                schema,
+                name,
+                kind,
+                row_count_estimate,
+                comment,
+                engine,
+                row_format,
+                table_collation,
+                create_options,
+            })
+        })
+        .collect()
+}
+
+fn parse_column_metadata(
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
+    expect_columns(result, COLUMN_METADATA_RESULT_COLUMNS)?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("COLUMNS row"));
+            }
+            parse_column_metadata_row_with_details(row, "COLUMNS row")
+        })
+        .collect()
+}
+
+pub(super) fn parse_column_metadata_row(
+    row: &[QueryValue],
+    field: &str,
+) -> Result<MySqlColumnMetadata, DbOperationError> {
+    if row.len() != COLUMN_METADATA_BASE_RESULT_COLUMNS.len() {
+        return Err(metadata_shape_error(field));
+    }
+    let extra = required_text(&row[4], "EXTRA")?;
+    Ok(MySqlColumnMetadata {
+        name: required_text(&row[0], "COLUMN_NAME")?.to_string(),
+        data_type: required_text(&row[1], "COLUMN_TYPE")?.to_string(),
+        character_set_name: None,
+        collation_name: None,
+        generation_expression: None,
+        generation_kind: None,
+        nullable: required_text(&row[2], "IS_NULLABLE")? == "YES",
+        default: optional_text(&row[3], "COLUMN_DEFAULT")?.map(str::to_string),
+        comment: optional_nonempty_string(&row[5], "COLUMN_COMMENT")?,
+        ordinal_position: parse_positive_i32(&row[6], "ORDINAL_POSITION")?,
+        primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
+            .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
+            .transpose()?,
+        unique: MySqlColumnUnique::None,
+        invisible: extra
+            .split_ascii_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
+        generated: extra
+            .split_ascii_whitespace()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED")),
+    })
+}
+
+fn parse_column_metadata_row_with_details(
+    row: &[QueryValue],
+    field: &str,
+) -> Result<MySqlColumnMetadata, DbOperationError> {
+    if row.len() != COLUMN_METADATA_RESULT_COLUMNS.len() {
+        return Err(metadata_shape_error(field));
+    }
+    let mut column =
+        parse_column_metadata_row(&row[..COLUMN_METADATA_BASE_RESULT_COLUMNS.len()], field)?;
+    column.character_set_name = optional_nonempty_string(&row[8], "CHARACTER_SET_NAME")?;
+    column.collation_name = optional_nonempty_string(&row[9], "COLLATION_NAME")?;
+    column.generation_expression = optional_nonempty_string(&row[10], "GENERATION_EXPRESSION")?;
+    column.generation_kind = generation_kind(required_text(&row[4], "EXTRA")?);
+    Ok(column)
+}
+
+fn generation_kind(extra: &str) -> Option<ColumnGenerationKind> {
+    let words = extra.split_ascii_whitespace().collect::<Vec<_>>();
+    if words.iter().any(|word| word.eq_ignore_ascii_case("STORED"))
+        && words
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED"))
+    {
+        Some(ColumnGenerationKind::Stored)
+    } else if words
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("VIRTUAL"))
+        && words
+            .iter()
+            .any(|word| word.eq_ignore_ascii_case("GENERATED"))
+    {
+        Some(ColumnGenerationKind::Virtual)
+    } else {
+        None
+    }
+}
+
+pub(super) fn parse_foreign_key_metadata(
+    result: &MySqlResultSet,
+) -> Result<Vec<MySqlForeignKeyMetadata>, DbOperationError> {
+    expect_columns(result, FOREIGN_KEY_RESULT_COLUMNS)?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != FOREIGN_KEY_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("foreign key row"));
+            }
+            Ok(MySqlForeignKeyMetadata {
+                name: required_text(&row[0], "CONSTRAINT_NAME")?.to_string(),
+                from_schema: required_text(&row[1], "TABLE_SCHEMA")?.to_string(),
+                from_table: required_text(&row[2], "TABLE_NAME")?.to_string(),
+                from_column: required_text(&row[3], "COLUMN_NAME")?.to_string(),
+                to_schema: required_text(&row[4], "REFERENCED_TABLE_SCHEMA")?.to_string(),
+                to_table: required_text(&row[5], "REFERENCED_TABLE_NAME")?.to_string(),
+                to_column: required_text(&row[6], "REFERENCED_COLUMN_NAME")?.to_string(),
+                ordinal_position: parse_positive_i32(&row[7], "ORDINAL_POSITION")?,
+                on_update: parse_fk_action(&row[8], "UPDATE_RULE")?,
+                on_delete: parse_fk_action(&row[9], "DELETE_RULE")?,
+            })
+        })
+        .collect()
+}
+
+pub(super) fn foreign_keys_from_metadata(
+    mut raw: Vec<MySqlForeignKeyMetadata>,
+    database: &str,
+    lower_case_table_names: u8,
+) -> Result<Vec<ForeignKey>, DbOperationError> {
+    raw.sort_by(|left, right| {
+        left.name
+            .cmp(&right.name)
+            .then(left.ordinal_position.cmp(&right.ordinal_position))
+    });
+    let mut foreign_keys = Vec::new();
+    for column in raw {
+        let reference_resolved =
+            mysql_database_names_match(&column.to_schema, database, lower_case_table_names);
+        if let Some(foreign_key) = foreign_keys
+            .iter_mut()
+            .find(|foreign_key: &&mut ForeignKey| foreign_key.name == column.name)
+        {
+            if foreign_key.from_schema != column.from_schema
+                || foreign_key.from_table != column.from_table
+                || foreign_key.to_schema != column.to_schema
+                || foreign_key.to_table != column.to_table
+                || foreign_key.on_update != column.on_update
+                || foreign_key.on_delete != column.on_delete
+            {
+                return Err(metadata_shape_error("foreign key constraint columns"));
+            }
+            foreign_key.from_columns.push(column.from_column);
+            foreign_key.to_columns.push(column.to_column);
+            foreign_key.reference_resolved &= reference_resolved;
+            continue;
+        }
+        foreign_keys.push(ForeignKey {
+            name: column.name,
+            from_schema: column.from_schema,
+            from_table: column.from_table,
+            from_columns: vec![column.from_column],
+            to_schema: column.to_schema,
+            to_table: column.to_table,
+            to_columns: vec![column.to_column],
+            on_delete: column.on_delete,
+            on_update: column.on_update,
+            reference_resolved,
+        });
+    }
+    Ok(foreign_keys)
+}
+
+pub(super) fn column_from_metadata(metadata: &MySqlColumnMetadata) -> Column {
+    let primary_key = metadata.primary_key_position.is_some();
+    let attributes = ColumnAttributes::from_parts(
+        metadata.nullable,
+        primary_key,
+        matches!(metadata.unique, MySqlColumnUnique::SingleColumnIndex),
+    ) | if metadata.invisible {
+        ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
+    } else {
+        ColumnAttributes::empty()
+    } | if metadata.generated {
+        ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
+    } else {
+        ColumnAttributes::empty()
+    };
+    Column {
+        name: metadata.name.clone(),
+        data_type: metadata.data_type.clone(),
+        default: metadata.default.clone(),
+        attributes,
+        comment: metadata.comment.clone(),
+        ordinal_position: metadata.ordinal_position,
+        character_set_name: metadata.character_set_name.clone(),
+        collation_name: metadata.collation_name.clone(),
+        generation_expression: metadata.generation_expression.clone(),
+        generation_kind: metadata.generation_kind,
+    }
+}
+
+pub(super) fn parse_unique_column_metadata(
+    result: &MySqlResultSet,
+) -> Result<HashSet<String>, DbOperationError> {
+    expect_columns(result, UNIQUE_COLUMN_RESULT_COLUMNS)?;
+    result
+        .values
+        .iter()
+        .map(|row| {
+            if row.len() != UNIQUE_COLUMN_RESULT_COLUMNS.len() {
+                return Err(metadata_shape_error("single-column UNIQUE row"));
+            }
+            Ok(required_text(&row[0], "COLUMN_NAME")?.to_string())
+        })
+        .collect()
+}
+
+pub(super) fn mark_single_column_unique(
+    columns: &mut [MySqlColumnMetadata],
+    unique_columns: &HashSet<String>,
+) {
+    for column in columns {
+        column.unique = if unique_columns.contains(&column.name) {
+            MySqlColumnUnique::SingleColumnIndex
+        } else {
+            MySqlColumnUnique::None
+        };
+    }
+}
+
+pub(super) fn primary_key_names(columns: &[MySqlColumnMetadata]) -> Vec<String> {
+    let mut columns = columns
+        .iter()
+        .filter_map(|column| {
+            column
+                .primary_key_position
+                .map(|position| (position, column.name.clone()))
+        })
+        .collect::<Vec<_>>();
+    columns.sort_by_key(|(position, _)| *position);
+    columns.into_iter().map(|(_, name)| name).collect()
+}
+
+pub(super) fn parse_boolean_flag(
+    value: &QueryValue,
+    field: &str,
+) -> Result<bool, DbOperationError> {
+    match required_text(value, field)? {
+        "0" | "NO" => Ok(false),
+        "1" | "YES" => Ok(true),
+        _ => Err(DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL metadata boolean: {field}"
+        ))),
+    }
+}
+
+fn parse_fk_action(value: &QueryValue, field: &str) -> Result<FkAction, DbOperationError> {
+    required_text(value, field)?.parse().map_err(|error| {
+        DbOperationError::MetadataParseFailed(format!("invalid MySQL foreign key action: {error}"))
+    })
+}
+
+pub(super) fn table_summary(table: MySqlTableMetadata) -> TableSummary {
+    TableSummary::new(table.schema, table.name, table.row_count_estimate, false).with_kind_info(
+        TableKindInfo {
+            kind: table.kind,
+            is_strict: false,
+            without_rowid: false,
+            virtual_module: None,
+        },
+    )
+}
+
+pub(super) fn expect_columns(
+    result: &MySqlResultSet,
+    expected: &[&str],
+) -> Result<(), DbOperationError> {
+    if result.columns == expected {
+        Ok(())
+    } else {
+        Err(metadata_shape_error("MySQL metadata columns"))
+    }
+}
+
+pub(super) fn required_text<'a>(
+    value: &'a QueryValue,
+    field: &str,
+) -> Result<&'a str, DbOperationError> {
+    optional_text(value, field)?.ok_or_else(|| {
+        DbOperationError::MetadataParseFailed(format!("MySQL metadata field is NULL: {field}"))
+    })
+}
+
+pub(super) fn optional_text<'a>(
+    value: &'a QueryValue,
+    field: &str,
+) -> Result<Option<&'a str>, DbOperationError> {
+    match value {
+        QueryValue::Null => Ok(None),
+        QueryValue::Text(value) | QueryValue::SqlLiteral(value) => Ok(Some(value)),
+        QueryValue::Blob(_) => Err(DbOperationError::MetadataParseFailed(format!(
+            "MySQL metadata field is binary: {field}"
+        ))),
+    }
+}
+
+fn optional_nonempty_string(
+    value: &QueryValue,
+    field: &str,
+) -> Result<Option<String>, DbOperationError> {
+    Ok(optional_text(value, field)?
+        .filter(|value| !value.is_empty())
+        .map(str::to_string))
+}
+
+pub(super) fn parse_positive_i32(value: &QueryValue, field: &str) -> Result<i32, DbOperationError> {
+    parse_positive_i32_text(required_text(value, field)?, field)
+}
+
+pub(super) fn parse_optional_positive_i32(
+    value: &QueryValue,
+    field: &str,
+) -> Result<Option<i32>, DbOperationError> {
+    optional_text(value, field)?
+        .map(|value| {
+            let value = value.parse::<i32>().map_err(|_| {
+                DbOperationError::MetadataParseFailed(format!(
+                    "invalid MySQL metadata integer: {field}"
+                ))
+            })?;
+            (value > 0).then_some(value).ok_or_else(|| {
+                DbOperationError::MetadataParseFailed(format!(
+                    "invalid MySQL metadata integer: {field}"
+                ))
+            })
+        })
+        .transpose()
+}
+
+fn parse_positive_i32_text(value: &str, field: &str) -> Result<i32, DbOperationError> {
+    let value = value.parse::<i32>().map_err(|_| {
+        DbOperationError::MetadataParseFailed(format!("invalid MySQL metadata integer: {field}"))
+    })?;
+    if value > 0 {
+        Ok(value)
+    } else {
+        Err(DbOperationError::MetadataParseFailed(format!(
+            "invalid MySQL metadata ordinal: {field}"
+        )))
+    }
+}
+
+pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
+    DbOperationError::MetadataParseFailed(format!("unexpected MySQL metadata shape: {field}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
+            columns: columns.iter().map(|value| (*value).to_string()).collect(),
+            values,
+        }
+    }
+
+    #[test]
+    fn optional_nonempty_string_preserves_catalog_value_boundaries() {
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Null, "FIELD").unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Text(String::new()), "FIELD").unwrap(),
+            None
+        );
+        assert_eq!(
+            optional_nonempty_string(&QueryValue::Text("value".to_string()), "FIELD").unwrap(),
+            Some("value".to_string())
+        );
+
+        let error = optional_nonempty_string(&QueryValue::Blob(vec![0xff]), "FIELD").unwrap_err();
+        assert!(matches!(
+            error,
+            DbOperationError::MetadataParseFailed(message)
+                if message == "MySQL metadata field is binary: FIELD"
+        ));
+    }
+
+    #[test]
+    fn column_parser_preserves_empty_default_but_drops_empty_comment() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text("column".to_string()),
+                QueryValue::Text("varchar(32)".to_string()),
+                QueryValue::Text("YES".to_string()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text(String::new()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        ))
+        .unwrap();
+
+        assert_eq!(parsed[0].default.as_deref(), Some(""));
+        assert_eq!(parsed[0].comment, None);
+    }
+
+    fn tables_result(schema: &str) -> MySqlResultSet {
+        result(
+            TABLES_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text(schema.to_string()),
+                QueryValue::Text("users".to_string()),
+                QueryValue::Text("BASE TABLE".to_string()),
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        )
+    }
+
+    #[test]
+    fn metadata_snapshot_uses_server_schema() {
+        let snapshot = metadata_snapshot_from_result(
+            "app",
+            Some("app"),
+            &result(
+                TABLES_RESULT_COLUMNS,
+                vec![vec![
+                    QueryValue::Text("app".to_string()),
+                    QueryValue::Text("users".to_string()),
+                    QueryValue::Text("BASE TABLE".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("table comment".to_string()),
+                    QueryValue::Text("InnoDB".to_string()),
+                    QueryValue::Text("Dynamic".to_string()),
+                    QueryValue::Text("utf8mb4_0900_ai_ci".to_string()),
+                    QueryValue::Text("partitioned".to_string()),
+                ]],
+            ),
+            0,
+        )
+        .unwrap();
+
+        let summary = table_summary(snapshot.tables[0].clone());
+        assert_eq!(summary.name, "users");
+        assert_eq!(summary.schema, "app");
+        assert_eq!(snapshot.tables[0].engine.as_deref(), Some("InnoDB"));
+        assert_eq!(snapshot.tables[0].row_format.as_deref(), Some("Dynamic"));
+        assert_eq!(
+            snapshot.tables[0].table_collation.as_deref(),
+            Some("utf8mb4_0900_ai_ci")
+        );
+        assert_eq!(
+            snapshot.tables[0].create_options.as_deref(),
+            Some("partitioned")
+        );
+    }
+
+    #[test]
+    fn metadata_rejects_database_with_different_case() {
+        let error =
+            metadata_snapshot_from_result("app", Some("APP"), &result(&[], vec![]), 0).unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::UnsupportedOperation(message)
+                if message == "MySQL metadata is limited to the selected database"
+        ));
+    }
+
+    #[test]
+    fn metadata_accepts_database_case_difference_for_server_modes_one_and_two() {
+        for lower_case_table_names in [1, 2] {
+            let snapshot = metadata_snapshot_from_result(
+                "app",
+                Some("APP"),
+                &tables_result("APP"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(snapshot.tables[0].schema, "APP");
+            assert_eq!(table_summary(snapshot.tables[0].clone()).schema, "APP");
+
+            let unicode_snapshot = metadata_snapshot_from_result(
+                "äpp",
+                Some("ÄPP"),
+                &tables_result("ÄPP"),
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
+            assert_eq!(
+                table_summary(unicode_snapshot.tables[0].clone()).schema,
+                "ÄPP"
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_schema_mismatch_rejects_before_parsing() {
+        let error = metadata_snapshot_from_result("app", Some("other"), &result(&[], vec![]), 0)
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            DbOperationError::UnsupportedOperation(message)
+                if message == "MySQL metadata is limited to the selected database"
+        ));
+    }
+
+    #[test]
+    fn find_table_rejects_schema_with_different_case() {
+        let error = find_table(
+            "APP",
+            "users",
+            &[MySqlTableMetadata {
+                schema: "app".to_string(),
+                name: "users".to_string(),
+                kind: TableKind::Table,
+                row_count_estimate: None,
+                comment: None,
+                engine: None,
+                row_format: None,
+                table_collation: None,
+                create_options: None,
+            }],
+            0,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+    }
+
+    #[test]
+    fn find_table_accepts_schema_case_difference_for_server_modes_one_and_two() {
+        for lower_case_table_names in [1, 2] {
+            let table = find_table(
+                "APP",
+                "users",
+                &[MySqlTableMetadata {
+                    schema: "app".to_string(),
+                    name: "users".to_string(),
+                    kind: TableKind::Table,
+                    row_count_estimate: None,
+                    comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
+                }],
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(table.schema, "app");
+
+            let unicode_table = find_table(
+                "äpp",
+                "users",
+                &[MySqlTableMetadata {
+                    schema: "ÄPP".to_string(),
+                    name: "users".to_string(),
+                    kind: TableKind::Table,
+                    row_count_estimate: None,
+                    comment: None,
+                    engine: None,
+                    row_format: None,
+                    table_collation: None,
+                    create_options: None,
+                }],
+                lower_case_table_names,
+            )
+            .unwrap();
+
+            assert_eq!(unicode_table.schema, "ÄPP");
+        }
+    }
+
+    #[test]
+    fn metadata_parser_preserves_column_and_composite_key_order() {
+        let result = result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("first_key".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Text(String::new()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::Text("second_key".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Text(String::new()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::Text("generated_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("STORED GENERATED".to_string()),
+                    QueryValue::Text(String::new()),
+                    QueryValue::Text("3".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                ],
+            ],
+        );
+
+        let parsed = parse_column_metadata(&result).expect("metadata parses");
+        assert_eq!(primary_key_names(&parsed), ["second_key", "first_key"]);
+        assert_eq!(
+            parsed
+                .iter()
+                .map(|column| column.ordinal_position)
+                .collect::<Vec<_>>(),
+            [1, 2, 3]
+        );
+        assert!(column_from_metadata(&parsed[2]).is_generated());
+    }
+
+    #[test]
+    fn metadata_parser_preserves_character_set_collation_and_generation_details() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("collated_text".to_string()),
+                    QueryValue::Text("varchar(32)".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("utf8mb4".to_string()),
+                    QueryValue::Text("utf8mb4_bin".to_string()),
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::Text("stored_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("STORED GENERATED".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("(`id` * 2)".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("virtual_value".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("YES".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("VIRTUAL GENERATED".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text("3".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Text("(`id` + 1)".to_string()),
+                ],
+            ],
+        ))
+        .expect("metadata parses");
+
+        let collated = column_from_metadata(&parsed[0]);
+        assert_eq!(collated.character_set_name.as_deref(), Some("utf8mb4"));
+        assert_eq!(collated.collation_name.as_deref(), Some("utf8mb4_bin"));
+        assert_eq!(collated.generation_expression, None);
+
+        let stored = column_from_metadata(&parsed[1]);
+        assert_eq!(stored.generation_kind, Some(ColumnGenerationKind::Stored));
+        assert_eq!(stored.generation_expression.as_deref(), Some("(`id` * 2)"));
+
+        let virtual_column = column_from_metadata(&parsed[2]);
+        assert_eq!(
+            virtual_column.generation_kind,
+            Some(ColumnGenerationKind::Virtual)
+        );
+        assert_eq!(
+            virtual_column.generation_expression.as_deref(),
+            Some("(`id` + 1)")
+        );
+    }
+
+    #[test]
+    fn metadata_parser_marks_invisible_columns_hidden_and_read_only() {
+        let parsed = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![vec![
+                QueryValue::Text("hidden_value".to_string()),
+                QueryValue::Text("varchar(20)".to_string()),
+                QueryValue::Text("YES".to_string()),
+                QueryValue::Null,
+                QueryValue::Text("INVISIBLE".to_string()),
+                QueryValue::Null,
+                QueryValue::Text("1".to_string()),
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+                QueryValue::Null,
+            ]],
+        ))
+        .expect("metadata parses");
+
+        let column = column_from_metadata(&parsed[0]);
+
+        assert!(column.is_hidden());
+        assert!(column.is_read_only());
+    }
+
+    #[test]
+    fn preview_metadata_preserves_character_set() {
+        let parsed = parse_preview_columns_for_table(
+            &result(
+                PREVIEW_COLUMN_METADATA_RESULT_COLUMNS,
+                vec![
+                    vec![
+                        QueryValue::Text("binary_char".to_string()),
+                        QueryValue::Text("char(4)".to_string()),
+                        QueryValue::Text("NO".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text(String::new()),
+                        QueryValue::Null,
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text("1".to_string()),
+                        QueryValue::Text("binary".to_string()),
+                    ],
+                    vec![
+                        QueryValue::Text("normal_text".to_string()),
+                        QueryValue::Text("varchar(4)".to_string()),
+                        QueryValue::Text("NO".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text(String::new()),
+                        QueryValue::Null,
+                        QueryValue::Text("2".to_string()),
+                        QueryValue::Null,
+                        QueryValue::Text("utf8mb4".to_string()),
+                    ],
+                ],
+            ),
+            "app",
+            "items",
+        )
+        .expect("preview metadata parses");
+
+        let columns = parsed.iter().map(column_from_metadata).collect::<Vec<_>>();
+
+        assert_eq!(columns[0].character_set_name.as_deref(), Some("binary"));
+        assert_eq!(columns[1].character_set_name.as_deref(), Some("utf8mb4"));
+    }
+
+    #[test]
+    fn empty_columns_result_maps_to_missing_table() {
+        let result = result(COLUMN_METADATA_RESULT_COLUMNS, Vec::new());
+
+        let error = parse_columns_for_table(&result, "app", "missing").unwrap_err();
+        assert!(matches!(error, DbOperationError::ObjectMissing(_)));
+    }
+
+    #[test]
+    fn single_column_unique_metadata_sets_only_matching_column_attribute() {
+        let columns = parse_column_metadata(&result(
+            COLUMN_METADATA_RESULT_COLUMNS,
+            vec![
+                vec![
+                    QueryValue::Text("id".to_string()),
+                    QueryValue::Text("int".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                ],
+                vec![
+                    QueryValue::Text("email".to_string()),
+                    QueryValue::Text("varchar(255)".to_string()),
+                    QueryValue::Text("NO".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Text(String::new()),
+                    QueryValue::Null,
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                    QueryValue::Null,
+                ],
+            ],
+        ))
+        .unwrap();
+        let unique_columns = parse_unique_column_metadata(&result(
+            UNIQUE_COLUMN_RESULT_COLUMNS,
+            vec![vec![QueryValue::Text("email".to_string())]],
+        ))
+        .unwrap();
+        let mut columns = columns;
+
+        mark_single_column_unique(&mut columns, &unique_columns);
+
+        assert!(!column_from_metadata(&columns[0]).is_unique());
+        assert!(column_from_metadata(&columns[1]).is_unique());
+    }
+
+    #[test]
+    fn groups_foreign_keys_by_name_and_orders_columns_by_sequence() {
+        let result = result(
+            &[
+                "CONSTRAINT_NAME",
+                "TABLE_SCHEMA",
+                "TABLE_NAME",
+                "COLUMN_NAME",
+                "REFERENCED_TABLE_SCHEMA",
+                "REFERENCED_TABLE_NAME",
+                "REFERENCED_COLUMN_NAME",
+                "ORDINAL_POSITION",
+                "UPDATE_RULE",
+                "DELETE_RULE",
+            ],
+            vec![
+                vec![
+                    QueryValue::Text("fk_child_parent".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("parent_second".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("parent".to_string()),
+                    QueryValue::Text("second_key".to_string()),
+                    QueryValue::Text("2".to_string()),
+                    QueryValue::Text("CASCADE".to_string()),
+                    QueryValue::Text("SET NULL".to_string()),
+                ],
+                vec![
+                    QueryValue::Text("fk_child_parent".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("child".to_string()),
+                    QueryValue::Text("parent_first".to_string()),
+                    QueryValue::Text("sabiql_test".to_string()),
+                    QueryValue::Text("parent".to_string()),
+                    QueryValue::Text("first_key".to_string()),
+                    QueryValue::Text("1".to_string()),
+                    QueryValue::Text("CASCADE".to_string()),
+                    QueryValue::Text("SET NULL".to_string()),
+                ],
+            ],
+        );
+
+        let foreign_keys = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "sabiql_test",
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(foreign_keys.len(), 1);
+        assert_eq!(
+            foreign_keys[0].from_columns,
+            ["parent_first", "parent_second"]
+        );
+        assert_eq!(foreign_keys[0].to_columns, ["first_key", "second_key"]);
+        assert_eq!(foreign_keys[0].on_update, FkAction::Cascade);
+        assert_eq!(foreign_keys[0].on_delete, FkAction::SetNull);
+        assert!(foreign_keys[0].is_reference_resolved());
+
+        let unresolved = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "SABIQL_TEST",
+            0,
+        )
+        .unwrap();
+        assert!(!unresolved[0].is_reference_resolved());
+
+        let case_insensitive = foreign_keys_from_metadata(
+            parse_foreign_key_metadata(&result).unwrap(),
+            "SABIQL_TEST",
+            1,
+        )
+        .unwrap();
+        assert!(case_insensitive[0].is_reference_resolved());
+
+        let mut unicode_raw = parse_foreign_key_metadata(&result).unwrap();
+        for column in &mut unicode_raw {
+            column.to_schema = "ÄPP".to_string();
+        }
+        let unicode_case_insensitive = foreign_keys_from_metadata(unicode_raw, "äpp", 1).unwrap();
+        assert!(unicode_case_insensitive[0].is_reference_resolved());
+    }
+}

@@ -2,7 +2,7 @@ mod cell_detail;
 mod connections;
 mod editors;
 mod interaction;
-mod jsonb;
+mod json;
 mod normal;
 mod overlays;
 mod pickers;
@@ -28,7 +28,7 @@ pub fn handle_event(event: InputEvent, state: &AppState) -> Action {
 
 fn handle_paste_event(text: String, state: &AppState) -> Action {
     let action = Action::Paste(text);
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if !feature_policy.is_enabled(action.feature_requirement_for_state(state)) {
         return Action::None;
     }
@@ -41,15 +41,15 @@ fn handle_paste_event(text: String, state: &AppState) -> Action {
         | InputMode::ConnectionSetup
         | InputMode::SqlModal
         | InputMode::QueryHistoryPicker
-        | InputMode::JsonbEdit
-        | InputMode::JsonbDetail
+        | InputMode::JsonEdit
+        | InputMode::JsonDetail
         | InputMode::CellDetail => action,
         _ => Action::None,
     }
 }
 
 fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
-    let feature_policy = FeaturePolicy::new(state.session.active_engine_feature_profile());
+    let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     let interaction = resolve_input_interaction(state);
     match interaction {
         InputInteraction::FormEditing(target) => {
@@ -99,13 +99,13 @@ fn handle_key_event(combo: KeyCombo, state: &AppState) -> Action {
         InputMode::ConnectionSelector => connections::handle_connection_selector_keys(combo),
         InputMode::ErTablePicker => pickers::handle_er_table_picker_keys(combo, state),
         InputMode::QueryHistoryPicker => pickers::handle_query_history_picker_keys(combo),
-        InputMode::JsonbDetail => jsonb::handle_jsonb_detail_keys_with_policy(
+        InputMode::JsonDetail => json::handle_json_detail_keys_with_policy(
             combo,
             interaction,
             state.ui.key_sequence().pending_prefix(),
             &feature_policy,
         ),
-        InputMode::JsonbEdit => jsonb::handle_jsonb_edit_keys_with_policy(combo, &feature_policy),
+        InputMode::JsonEdit => json::handle_json_edit_keys_with_policy(combo, &feature_policy),
         InputMode::CellDetail => {
             let is_searching = state.cell_detail.search().is_active();
             cell_detail::handle_cell_detail_keys(combo, is_searching)
@@ -243,7 +243,7 @@ mod tests {
         ConnectionSetup,
         SqlModalHighRisk,
         SqlModalAnalyzeHighRisk,
-        JsonbSearch,
+        JsonSearch,
         HelpFilter,
     }
 
@@ -302,10 +302,10 @@ mod tests {
                 );
                 InputTarget::SqlModalAnalyzeHighRisk
             }
-            FormSurface::JsonbSearch => {
-                state.modal.set_mode(InputMode::JsonbDetail);
-                state.jsonb_detail.enter_search();
-                InputTarget::JsonbSearch
+            FormSurface::JsonSearch => {
+                state.modal.set_mode(InputMode::JsonDetail);
+                state.json_detail.enter_search();
+                InputTarget::JsonSearch
             }
             FormSurface::HelpFilter => {
                 state.modal.set_mode(InputMode::Help);
@@ -326,7 +326,7 @@ mod tests {
     #[case(FormSurface::ConnectionSetup)]
     #[case(FormSurface::SqlModalHighRisk)]
     #[case(FormSurface::SqlModalAnalyzeHighRisk)]
-    #[case(FormSurface::JsonbSearch)]
+    #[case(FormSurface::JsonSearch)]
     #[case(FormSurface::HelpFilter)]
     fn form_editing_surfaces_prioritize_readline(#[case] surface: FormSurface) {
         let (state, target) = form_editing_state(surface);
@@ -351,7 +351,7 @@ mod tests {
     #[case(InputTarget::ConnectionSetup)]
     #[case(InputTarget::SqlModalHighRisk)]
     #[case(InputTarget::SqlModalAnalyzeHighRisk)]
-    #[case(InputTarget::JsonbSearch)]
+    #[case(InputTarget::JsonSearch)]
     #[case(InputTarget::HelpFilter)]
     fn readline_leaves_ctrl_n_and_ctrl_p_for_existing_handlers(#[case] target: InputTarget) {
         for key in ['n', 'p'] {
@@ -361,7 +361,7 @@ mod tests {
 
     #[rstest]
     #[case(InputMode::SqlModal)]
-    #[case(InputMode::JsonbEdit)]
+    #[case(InputMode::JsonEdit)]
     fn document_editors_do_not_intercept_readline_shortcuts(#[case] mode: InputMode) {
         let mut state = AppState::new("test".to_string());
         state.modal.set_mode(mode);
@@ -483,8 +483,8 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_ignores_jsonb_edit_paste() {
-            let mut state = make_state(InputMode::JsonbEdit);
+        fn sqlite_ignores_json_edit_paste() {
+            let mut state = make_state(InputMode::JsonEdit);
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
 
             let result = handle_paste_event("{}".to_string(), &state);

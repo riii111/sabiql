@@ -1,0 +1,986 @@
+#[cfg(windows)]
+use std::fs::File;
+use std::fs::{self, OpenOptions};
+#[cfg(windows)]
+use std::io;
+use std::io::Write;
+use std::path::PathBuf;
+
+use uuid::Uuid;
+
+use crate::app::ports::outbound::DbOperationError;
+use crate::domain::connection::MySqlTransport;
+
+use super::dsn::{
+    MySqlDsn, validate_mysql_tls_config, validate_mysql_transport, validate_mysql_values,
+};
+
+pub(super) struct MySqlOptionFile {
+    pub(super) path: PathBuf,
+}
+
+impl MySqlOptionFile {
+    pub(super) fn create(target: &MySqlDsn) -> Result<Self, DbOperationError> {
+        validate_mysql_values(target)?;
+        validate_mysql_transport(target)?;
+        validate_mysql_tls_files(target)?;
+        validate_mysql_server_public_key(target)?;
+        let mut path = std::env::temp_dir();
+        path.push(format!("sabiql-mysql-{}.cnf", Uuid::new_v4()));
+        if !path.is_absolute() {
+            path = std::env::current_dir()
+                .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))?
+                .join(path);
+        }
+
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        #[cfg(windows)]
+        std::os::windows::fs::OpenOptionsExt::access_mode(
+            &mut options,
+            windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE
+                | windows_sys::Win32::Storage::FileSystem::WRITE_DAC,
+        );
+        let mut file = options.open(&path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
+                "Unable to create MySQL option file: {error}"
+            ))
+        })?;
+        #[cfg(windows)]
+        if let Err(error) = set_file_permissions(&file) {
+            drop(file);
+            let _ = fs::remove_file(&path);
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "Unable to secure MySQL option file: {error}"
+            )));
+        }
+        let contents = serialize_option_file(target);
+        if let Err(error) = file.write_all(contents.as_bytes()) {
+            let _ = fs::remove_file(&path);
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "Unable to write MySQL option file: {error}"
+            )));
+        }
+        Ok(Self { path })
+    }
+}
+
+fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    validate_mysql_tls_config(target)?;
+
+    let ca_path = target
+        .ssl_mode
+        .uses_ca()
+        .then_some(target.ssl_ca.as_deref())
+        .flatten();
+    for (kind, path) in [
+        ("CA", ca_path),
+        ("client certificate", target.ssl_cert.as_deref()),
+        ("client key", target.ssl_key.as_deref()),
+    ] {
+        let Some(path) = path else { continue };
+        let metadata = fs::metadata(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path cannot be accessed: {error}"
+            ))
+        })?;
+        if !metadata.is_file() {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} path is not a regular file"
+            )));
+        }
+        let contents = fs::read(path).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!("MySQL {kind} cannot be read: {error}"))
+        })?;
+        let text = String::from_utf8_lossy(&contents);
+        if matches!(kind, "CA" | "client certificate") && !text.contains("BEGIN CERTIFICATE") {
+            return Err(DbOperationError::ConnectionFailed(format!(
+                "MySQL {kind} is not a PEM certificate"
+            )));
+        }
+        if kind == "client key" {
+            if text.contains("BEGIN ENCRYPTED PRIVATE KEY")
+                || text
+                    .lines()
+                    .any(|line| line.trim().eq_ignore_ascii_case("Proc-Type: 4,ENCRYPTED"))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "Encrypted MySQL client keys are not supported".to_string(),
+                ));
+            }
+            if ![
+                "BEGIN PRIVATE KEY",
+                "BEGIN RSA PRIVATE KEY",
+                "BEGIN EC PRIVATE KEY",
+            ]
+            .iter()
+            .any(|marker| text.contains(marker))
+            {
+                return Err(DbOperationError::ConnectionFailed(
+                    "MySQL client key is not a PEM private key".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_mysql_server_public_key(target: &MySqlDsn) -> Result<(), DbOperationError> {
+    let Some(path) = target.server_public_key_path.as_deref() else {
+        return Ok(());
+    };
+    let metadata = fs::metadata(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key path cannot be accessed: {error}"
+        ))
+    })?;
+    if !metadata.is_file() {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key path is not a regular file".to_string(),
+        ));
+    }
+    let contents = fs::read(path).map_err(|error| {
+        DbOperationError::ConnectionFailed(format!(
+            "MySQL server public key cannot be read: {error}"
+        ))
+    })?;
+    let contents = String::from_utf8(contents).map_err(|_| {
+        DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        )
+    })?;
+    let contents = contents.trim_end_matches('\0');
+    if !is_valid_pem_public_key(contents) {
+        return Err(DbOperationError::ConnectionFailed(
+            "MySQL server public key is not a valid PEM public key".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_valid_pem_public_key(contents: &str) -> bool {
+    ["PUBLIC KEY", "RSA PUBLIC KEY"].iter().any(|label| {
+        let begin = format!("-----BEGIN {label}-----");
+        let end = format!("-----END {label}-----");
+        let Some(begin_offset) = contents.find(&begin) else {
+            return false;
+        };
+        if !contents[..begin_offset].chars().all(char::is_whitespace) {
+            return false;
+        }
+        let body_start = begin_offset + begin.len();
+        let Some(end_offset) = contents[body_start..].find(&end) else {
+            return false;
+        };
+        let body_end = body_start + end_offset;
+        let encoded: Vec<u8> = contents[body_start..body_end]
+            .bytes()
+            .filter(|byte| !byte.is_ascii_whitespace())
+            .collect();
+        let Some(decoded) = decode_base64(&encoded) else {
+            return false;
+        };
+        if !contents[body_end + end.len()..]
+            .chars()
+            .all(char::is_whitespace)
+        {
+            return false;
+        }
+        match *label {
+            "PUBLIC KEY" => is_valid_subject_public_key_info(&decoded),
+            "RSA PUBLIC KEY" => is_valid_rsa_public_key(&decoded),
+            _ => false,
+        }
+    })
+}
+
+fn decode_base64(encoded: &[u8]) -> Option<Vec<u8>> {
+    if encoded.is_empty() || !encoded.len().is_multiple_of(4) {
+        return None;
+    }
+    let mut decoded = Vec::with_capacity(encoded.len() / 4 * 3);
+    for (chunk_index, chunk) in encoded.chunks_exact(4).enumerate() {
+        let last_chunk = chunk_index + 1 == encoded.len() / 4;
+        let first = base64_value(chunk[0])?;
+        let second = base64_value(chunk[1])?;
+        let third = match chunk[2] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        let fourth = match chunk[3] {
+            b'=' if last_chunk => None,
+            byte => Some(base64_value(byte)?),
+        };
+        if third.is_none() && fourth.is_some() {
+            return None;
+        }
+        if third.is_none() && second & 0x0f != 0 {
+            return None;
+        }
+        if fourth.is_none() && third.is_some_and(|value| value & 0x03 != 0) {
+            return None;
+        }
+        decoded.push((first << 2) | (second >> 4));
+        if let Some(third) = third {
+            decoded.push((second << 4) | (third >> 2));
+            if let Some(fourth) = fourth {
+                decoded.push((third << 6) | fourth);
+            }
+        }
+    }
+    Some(decoded)
+}
+
+fn base64_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'a'..=b'z' => Some(byte - b'a' + 26),
+        b'0'..=b'9' => Some(byte - b'0' + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+fn is_valid_subject_public_key_info(der: &[u8]) -> bool {
+    let Some((subject_public_key_info, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
+        return false;
+    }
+    let Some((algorithm, remainder)) = der_element(subject_public_key_info, 0x30) else {
+        return false;
+    };
+    let Some((algorithm_oid, algorithm_remainder)) = der_element(algorithm, 0x06) else {
+        return false;
+    };
+    if algorithm_oid != [0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01] {
+        return false;
+    }
+    let Some((parameters, parameters_remainder)) = der_element(algorithm_remainder, 0x05) else {
+        return false;
+    };
+    if !parameters.is_empty() || !parameters_remainder.is_empty() {
+        return false;
+    }
+    let Some((bit_string, remainder)) = der_element(remainder, 0x03) else {
+        return false;
+    };
+    bit_string.first() == Some(&0)
+        && is_valid_rsa_public_key(&bit_string[1..])
+        && remainder.is_empty()
+}
+
+fn is_valid_rsa_public_key(der: &[u8]) -> bool {
+    let Some((sequence, remainder)) = der_element(der, 0x30) else {
+        return false;
+    };
+    if !remainder.is_empty() {
+        return false;
+    }
+    let Some((modulus, remainder)) = der_element(sequence, 0x02) else {
+        return false;
+    };
+    let Some((exponent, remainder)) = der_element(remainder, 0x02) else {
+        return false;
+    };
+    remainder.is_empty() && is_valid_positive_integer(modulus) && is_valid_exponent(exponent)
+}
+
+fn is_valid_positive_integer(value: &[u8]) -> bool {
+    if value.is_empty() || value[0] & 0x80 != 0 {
+        return false;
+    }
+    if value.first() == Some(&0) && (value.get(1).is_none() || value[1] & 0x80 == 0) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    !value.is_empty() && value.iter().any(|byte| *byte != 0)
+}
+
+fn is_valid_exponent(value: &[u8]) -> bool {
+    if !is_valid_positive_integer(value) {
+        return false;
+    }
+    let value = value.strip_prefix(&[0]).unwrap_or(value);
+    value != [1]
+        && value.last().is_some_and(|byte| byte & 1 == 1)
+        && value.iter().any(|byte| *byte != 0)
+}
+
+fn der_element(input: &[u8], expected_tag: u8) -> Option<(&[u8], &[u8])> {
+    let (&tag, remainder) = input.split_first()?;
+    if tag != expected_tag {
+        return None;
+    }
+    let (&length_byte, remainder) = remainder.split_first()?;
+    let (length, remainder) = if length_byte & 0x80 == 0 {
+        (usize::from(length_byte), remainder)
+    } else {
+        let length_bytes = usize::from(length_byte & 0x7f);
+        if length_bytes == 0 || length_bytes > std::mem::size_of::<usize>() {
+            return None;
+        }
+        let (encoded_length, remainder) = remainder.split_at_checked(length_bytes)?;
+        if encoded_length.first() == Some(&0) {
+            return None;
+        }
+        let length = encoded_length.iter().try_fold(0usize, |length, byte| {
+            length.checked_mul(256)?.checked_add(usize::from(*byte))
+        })?;
+        if length < 128 {
+            return None;
+        }
+        (length, remainder)
+    };
+    let (value, remainder) = remainder.split_at_checked(length)?;
+    Some((value, remainder))
+}
+
+#[cfg(windows)]
+fn set_file_permissions(file: &File) -> io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use std::ptr::{null, null_mut};
+
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, HANDLE, LocalFree};
+    use windows_sys::Win32::Security::Authorization::{
+        EXPLICIT_ACCESS_W, GRANT_ACCESS, SetEntriesInAclW, SetSecurityInfo, TRUSTEE_IS_SID,
+        TRUSTEE_IS_USER, TRUSTEE_W,
+    };
+    use windows_sys::Win32::Security::{
+        DACL_SECURITY_INFORMATION, NO_INHERITANCE, PROTECTED_DACL_SECURITY_INFORMATION, TOKEN_QUERY,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    let mut token: HANDLE = null_mut();
+    let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) };
+    if opened == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let sid_result = current_user_sid(token);
+    unsafe {
+        CloseHandle(token);
+    }
+    let mut sid = sid_result?;
+
+    let trustee = TRUSTEE_W {
+        pMultipleTrustee: null_mut(),
+        MultipleTrusteeOperation: 0,
+        TrusteeForm: TRUSTEE_IS_SID,
+        TrusteeType: TRUSTEE_IS_USER,
+        ptstrName: sid.as_mut_ptr().cast(),
+    };
+    let access = EXPLICIT_ACCESS_W {
+        grfAccessPermissions: FILE_GENERIC_READ | FILE_GENERIC_WRITE,
+        grfAccessMode: GRANT_ACCESS,
+        grfInheritance: NO_INHERITANCE,
+        Trustee: trustee,
+    };
+    let mut acl = null_mut();
+    let status = unsafe { SetEntriesInAclW(1, &raw const access, null(), &raw mut acl) };
+    if status != ERROR_SUCCESS {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+
+    let status = unsafe {
+        SetSecurityInfo(
+            file.as_raw_handle(),
+            windows_sys::Win32::Security::Authorization::SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            acl,
+            null(),
+        )
+    };
+    unsafe {
+        LocalFree(acl.cast());
+    }
+    if status != ERROR_SUCCESS {
+        return Err(io::Error::from_raw_os_error(status as i32));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn current_user_sid(token: windows_sys::Win32::Foundation::HANDLE) -> io::Result<Vec<u8>> {
+    use std::ptr::null_mut;
+
+    use windows_sys::Win32::Security::{
+        CopySid, GetLengthSid, GetTokenInformation, TOKEN_USER, TokenUser,
+    };
+
+    let mut required_size = 0;
+    unsafe {
+        GetTokenInformation(token, TokenUser, null_mut(), 0, &raw mut required_size);
+    }
+    if required_size == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let word_count = (required_size as usize).div_ceil(size_of::<u64>());
+    let mut buffer = vec![0_u64; word_count];
+    let success = unsafe {
+        GetTokenInformation(
+            token,
+            TokenUser,
+            buffer.as_mut_ptr().cast(),
+            required_size,
+            &raw mut required_size,
+        )
+    };
+    if success == 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let token_user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+    let sid_length = unsafe { GetLengthSid(token_user.User.Sid) };
+    if sid_length == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut sid = vec![0_u8; sid_length as usize];
+    if unsafe { CopySid(sid_length, sid.as_mut_ptr().cast(), token_user.User.Sid) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(sid)
+}
+
+impl Drop for MySqlOptionFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn serialize_option_file(target: &MySqlDsn) -> String {
+    let mut contents = String::from("[client]\n");
+    match target.transport {
+        MySqlTransport::Tcp => {
+            push_option(&mut contents, "host", &target.host);
+            push_option(&mut contents, "port", &target.port.to_string());
+            push_option(&mut contents, "protocol", target.transport.protocol());
+        }
+        MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
+            push_option(&mut contents, "protocol", target.transport.protocol());
+            if let Some(path) = target.transport_path.as_deref() {
+                push_option(&mut contents, "socket", path);
+            }
+        }
+    }
+    push_option(&mut contents, "user", &target.username);
+    push_option(&mut contents, "password", &target.password);
+    if let Some(database) = target.database.as_deref() {
+        push_option(&mut contents, "database", database);
+    }
+    push_option(&mut contents, "ssl-mode", &target.ssl_mode.to_string());
+    if target.enable_cleartext_plugin {
+        push_option(&mut contents, "enable-cleartext-plugin", "true");
+    }
+    if target.ssl_mode.uses_ca()
+        && let Some(path) = target.ssl_ca.as_deref()
+    {
+        push_option(&mut contents, "ssl-ca", path);
+    }
+    if let Some(path) = target.ssl_cert.as_deref() {
+        push_option(&mut contents, "ssl-cert", path);
+    }
+    if let Some(path) = target.ssl_key.as_deref() {
+        push_option(&mut contents, "ssl-key", path);
+    }
+    if let Some(path) = target.server_public_key_path.as_deref() {
+        push_option(&mut contents, "server-public-key-path", path);
+    }
+    contents
+}
+
+fn push_option(contents: &mut String, key: &str, value: &str) {
+    contents.push_str(key);
+    contents.push_str(" = ");
+    contents.push_str(&quote_option_value(value));
+    contents.push('\n');
+}
+
+fn quote_option_value(value: &str) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            _ => escaped.push(character),
+        }
+    }
+    format!("\"{escaped}\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::sync::{Arc, Barrier};
+
+    use crate::domain::connection::MySqlSslMode;
+
+    use super::*;
+
+    const VALID_PUBLIC_KEY_PEM: &str = "-----BEGIN PUBLIC KEY-----\n\
+        MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMFq4IBzAF/EE08SN5Bo3KKt/CRaKoGi\n\
+        CT442dzvVfjkV0ZyuztDm2mNd06SHguqWYDc7nDaY9qgEDrlNHnp2QkCAwEAAQ==\n\
+        -----END PUBLIC KEY-----\n";
+    const VALID_RSA_PUBLIC_KEY_PEM: &str = "-----BEGIN RSA PUBLIC KEY-----\n\
+        MEgCQQCkUPNQeEgyJX6XS2qlrU20cleKptQX/Llyrm6tzLzVI8JF3wcCiQ0R4KgX\n\
+        x/4oCDpO8lWDRl+SFkUlLz4xJ4zdAgMBAAE=\n\
+        -----END RSA PUBLIC KEY-----\n";
+
+    fn target() -> MySqlDsn {
+        MySqlDsn {
+            transport: MySqlTransport::Tcp,
+            transport_path: None,
+            host: "localhost".to_string(),
+            port: 3306,
+            database: None,
+            username: "user".to_string(),
+            password: "secret".to_string(),
+            ssl_mode: MySqlSslMode::Disabled,
+            ssl_ca: None,
+            ssl_cert: None,
+            ssl_key: None,
+            server_public_key_path: None,
+            enable_cleartext_plugin: false,
+        }
+    }
+
+    #[test]
+    fn option_file_quotes_syntax_characters_and_windows_paths() {
+        let target = MySqlDsn {
+            password: "p a#ss;=\"\\word".to_string(),
+            database: Some("app".to_string()),
+            ..target()
+        };
+        let contents = serialize_option_file(&target);
+
+        assert!(contents.contains("password = \"p a#ss;=\\\"\\\\word\""));
+        let mut certificate = String::new();
+        push_option(&mut certificate, "ssl-ca", r"C:\certs\server.pem");
+        assert_eq!(certificate, "ssl-ca = \"C:\\\\certs\\\\server.pem\"\n");
+        assert_eq!(
+            quote_option_value(r"C:\certs\server.pem"),
+            r#""C:\\certs\\server.pem""#
+        );
+    }
+
+    #[test]
+    fn ipv6_host_serializes_without_url_brackets() {
+        let target = MySqlDsn {
+            host: "::1".to_string(),
+            ..target()
+        };
+
+        assert!(serialize_option_file(&target).contains("host = \"::1\"\n"));
+    }
+
+    #[test]
+    fn server_database_listing_option_file_omits_selected_database() {
+        let mut target =
+            super::super::dsn::parse_mysql_dsn("mysql://user:password@localhost:3306/app").unwrap();
+        target.database = None;
+
+        let contents = serialize_option_file(&target);
+
+        assert!(!contents.contains("database ="));
+    }
+
+    #[test]
+    fn option_file_serializes_tls_paths_without_option_syntax_confusion() {
+        let ca_path = r#" C:\certs\ca #1;= "quoted".pem "#;
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca_path.to_string()),
+            ssl_cert: Some(r"C:\certs\client.pem".to_string()),
+            ssl_key: Some(r"C:\certs\client-key.pem".to_string()),
+            ..target()
+        };
+
+        let contents = serialize_option_file(&target);
+
+        assert!(contents.contains("ssl-mode = \"VERIFY_CA\"\n"));
+        assert!(contents.contains(&format!("ssl-ca = {}\n", quote_option_value(ca_path))));
+        assert!(contents.contains("ssl-cert = \"C:\\\\certs\\\\client.pem\"\n"));
+        assert!(contents.contains("ssl-key = \"C:\\\\certs\\\\client-key.pem\"\n"));
+    }
+
+    #[test]
+    fn option_file_serializes_server_public_key_path() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, format!("{VALID_PUBLIC_KEY_PEM}\0")).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains(&format!(
+            "server-public-key-path = {}\n",
+            quote_option_value(&key.display().to_string())
+        )));
+    }
+
+    #[test]
+    fn option_file_serializes_cleartext_auth_plugin() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::Required,
+            enable_cleartext_plugin: true,
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert!(contents.contains("ssl-mode = \"REQUIRED\"\n"));
+        assert!(contents.contains("enable-cleartext-plugin = \"true\"\n"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn option_file_serializes_unix_socket_without_tcp_fields() {
+        let target = MySqlDsn {
+            transport: MySqlTransport::UnixSocket,
+            transport_path: Some("/run/mysqld/mysqld.sock".to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert_eq!(
+            contents,
+            "[client]\n\
+protocol = \"SOCKET\"\n\
+socket = \"/run/mysqld/mysqld.sock\"\n\
+user = \"user\"\n\
+password = \"secret\"\n\
+ssl-mode = \"DISABLED\"\n"
+        );
+        assert!(!contents.contains("host ="));
+        assert!(!contents.contains("port ="));
+    }
+
+    #[test]
+    fn accepts_rsa_public_key_pem_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(&key, VALID_RSA_PUBLIC_KEY_PEM).unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        assert!(option_file.path.exists());
+    }
+
+    #[test]
+    fn rejects_base64_that_is_not_an_rsa_public_key_before_creating_option_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("server-key.pem");
+        fs::write(
+            &key,
+            "-----BEGIN PUBLIC KEY-----\nAQID\n-----END PUBLIC KEY-----\n",
+        )
+        .unwrap();
+        let target = MySqlDsn {
+            server_public_key_path: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "MySQL server public key is not a valid PEM public key"
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_server_public_key_before_connecting() {
+        let target = MySqlDsn {
+            server_public_key_path: Some("/missing/server-key.pem".to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details.starts_with("MySQL server public key path cannot be accessed:")
+        ));
+    }
+
+    #[test]
+    fn option_file_omits_non_verification_ca_without_validating_its_path() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::Required,
+            ssl_ca: Some("/missing/ca.pem".to_string()),
+            ..target()
+        };
+
+        let option_file = MySqlOptionFile::create(&target).unwrap();
+        let contents = fs::read_to_string(&option_file.path).unwrap();
+
+        assert_eq!(
+            contents,
+            "[client]\n\
+host = \"localhost\"\n\
+port = \"3306\"\n\
+protocol = \"TCP\"\n\
+user = \"user\"\n\
+password = \"secret\"\n\
+ssl-mode = \"REQUIRED\"\n"
+        );
+    }
+
+    #[test]
+    fn rejects_encrypted_client_keys_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "-----BEGIN ENCRYPTED PRIVATE KEY-----\nsecret\n").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "Encrypted MySQL client keys are not supported"
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_certificates_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        fs::write(&ca, "not a certificate").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details == "MySQL CA is not a PEM certificate"
+        ));
+    }
+
+    #[test]
+    fn rejects_missing_files_at_option_file_creation() {
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some("/missing/ca.pem".to_string()),
+            ..target()
+        };
+
+        assert!(matches!(
+            MySqlOptionFile::create(&target),
+            Err(DbOperationError::ConnectionFailed(details))
+                if details.starts_with("MySQL CA path cannot be accessed:")
+        ));
+    }
+
+    #[test]
+    fn rejects_traditional_encrypted_client_keys_at_option_file_creation() {
+        let directory = tempfile::tempdir().unwrap();
+        let ca = directory.path().join("ca.pem");
+        let cert = directory.path().join("client.pem");
+        let key = directory.path().join("client-key.pem");
+        fs::write(&ca, "-----BEGIN CERTIFICATE-----\nca\n").unwrap();
+        fs::write(&cert, "-----BEGIN CERTIFICATE-----\ncert\n").unwrap();
+        fs::write(&key, "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-256-CBC,x\n").unwrap();
+        let target = MySqlDsn {
+            ssl_mode: MySqlSslMode::VerifyCa,
+            ssl_ca: Some(ca.display().to_string()),
+            ssl_cert: Some(cert.display().to_string()),
+            ssl_key: Some(key.display().to_string()),
+            ..target()
+        };
+
+        assert!(MySqlOptionFile::create(&target).is_err());
+    }
+
+    #[test]
+    fn option_file_is_owner_only_and_removed_on_drop() {
+        let option_file = MySqlOptionFile::create(&target()).unwrap();
+        assert!(option_file.path.is_absolute());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&option_file.path)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
+        #[cfg(windows)]
+        assert_owner_only_acl(&option_file.path);
+        let path = option_file.path.clone();
+        drop(option_file);
+        assert!(!path.exists());
+    }
+
+    #[cfg(windows)]
+    fn assert_owner_only_acl(path: &std::path::Path) {
+        use std::os::windows::ffi::OsStrExt;
+        use std::ptr::null_mut;
+
+        use windows_sys::Win32::Foundation::{CloseHandle, ERROR_SUCCESS, LocalFree};
+        use windows_sys::Win32::Security::Authorization::GetNamedSecurityInfoW;
+        use windows_sys::Win32::Security::{
+            ACCESS_ALLOWED_ACE, AclSizeInformation, DACL_SECURITY_INFORMATION, EqualSid, GetAce,
+            GetAclInformation, GetSecurityDescriptorControl, GetSecurityDescriptorDacl,
+            PSECURITY_DESCRIPTOR, SE_DACL_PROTECTED, TOKEN_QUERY,
+        };
+        use windows_sys::Win32::Storage::FileSystem::{FILE_GENERIC_READ, FILE_GENERIC_WRITE};
+        use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+        let path = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let mut dacl = null_mut();
+        let mut security_descriptor: PSECURITY_DESCRIPTOR = null_mut();
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                path.as_ptr(),
+                windows_sys::Win32::Security::Authorization::SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                &raw mut dacl,
+                null_mut(),
+                &raw mut security_descriptor,
+            )
+        };
+        assert_eq!(status, ERROR_SUCCESS);
+
+        let mut control = 0;
+        let mut revision = 0;
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorControl(
+                    security_descriptor,
+                    &raw mut control,
+                    &raw mut revision,
+                )
+            },
+            0
+        );
+        assert_ne!(control & SE_DACL_PROTECTED, 0);
+
+        let mut dacl_present = 0;
+        let mut dacl_defaulted = 0;
+        assert_ne!(
+            unsafe {
+                GetSecurityDescriptorDacl(
+                    security_descriptor,
+                    &raw mut dacl_present,
+                    &raw mut dacl,
+                    &raw mut dacl_defaulted,
+                )
+            },
+            0
+        );
+        assert_ne!(dacl_present, 0);
+        assert!(!dacl.is_null());
+
+        let mut acl_info = windows_sys::Win32::Security::ACL_SIZE_INFORMATION::default();
+        assert_ne!(
+            unsafe {
+                GetAclInformation(
+                    dacl,
+                    (&raw mut acl_info).cast::<std::ffi::c_void>(),
+                    std::mem::size_of_val(&acl_info) as u32,
+                    AclSizeInformation,
+                )
+            },
+            0
+        );
+        assert_eq!(acl_info.AceCount, 1);
+
+        let mut ace = null_mut();
+        assert_ne!(unsafe { GetAce(dacl, 0, &raw mut ace) }, 0);
+        let allowed_ace = unsafe { &*ace.cast::<ACCESS_ALLOWED_ACE>() };
+        assert_eq!(allowed_ace.Header.AceType, 0);
+        assert_eq!(allowed_ace.Header.AceFlags, 0);
+        assert_eq!(
+            allowed_ace.Mask & (FILE_GENERIC_READ | FILE_GENERIC_WRITE),
+            FILE_GENERIC_READ | FILE_GENERIC_WRITE
+        );
+        let ace_sid = std::ptr::addr_of!(allowed_ace.SidStart).cast_mut().cast();
+        let mut token = null_mut();
+        assert_ne!(
+            unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut token) },
+            0
+        );
+        let current_sid = current_user_sid(token).unwrap();
+        unsafe {
+            CloseHandle(token);
+        }
+        assert_ne!(
+            unsafe { EqualSid(current_sid.as_ptr().cast_mut().cast(), ace_sid) },
+            0
+        );
+
+        unsafe {
+            LocalFree(security_descriptor.cast());
+        }
+    }
+
+    #[test]
+    fn option_file_names_are_unique_uuid_v4_paths_under_concurrency() {
+        let barrier = Arc::new(Barrier::new(16));
+        let mut handles = Vec::with_capacity(16);
+        for _ in 0..16 {
+            let barrier = Arc::clone(&barrier);
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                MySqlOptionFile::create(&target()).unwrap()
+            }));
+        }
+        let files = handles
+            .into_iter()
+            .map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>();
+        let paths = files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<Vec<_>>();
+        let unique_paths = paths.iter().collect::<HashSet<_>>();
+
+        assert_eq!(unique_paths.len(), paths.len());
+        for path in &paths {
+            let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap();
+            let uuid = stem.strip_prefix("sabiql-mysql-").unwrap();
+            assert_eq!(Uuid::parse_str(uuid).unwrap().get_version_num(), 4);
+        }
+
+        drop(files);
+        assert!(paths.iter().all(|path| !path.exists()));
+    }
+}

@@ -31,13 +31,15 @@ dotenvy = "0.15"
 futures = "0.3"
 insta = "1"
 lru = "0.18"
+libc = "0.2"
 mockall = "0.13"
 nucleo-matcher = "0.3"
+quick-xml = { version = "0.38", features = ["async-tokio"] }
 ratatui = "0.30"
 rstest = "0.19"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-self_update = { version = "0.42", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2", "rustls"] }
+self_update = { version = "0.44", default-features = false, features = ["archive-tar", "archive-zip", "compression-flate2", "ureq", "rustls"] }
 tempfile = "3"
 thiserror = "2"
 tokio = { version = "1", features = ["sync", "time", "io-util", "process", "rt-multi-thread", "macros", "fs"] }
@@ -47,19 +49,27 @@ unicode-casefold = "0.2"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 urlencoding = "2"
+url = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+] }
 
 [package]
 name = "sabiql"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "A fast, driver-less TUI for browsing and editing PostgreSQL and SQLite databases"
+description = "A fast, driver-less TUI for browsing and editing PostgreSQL, MySQL, and SQLite databases"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/riii111/sabiql"
 readme = "README.md"
-keywords = ["postgresql", "sqlite", "tui", "database", "sql"]
+keywords = ["postgresql", "mysql", "sqlite", "tui", "database"]
 categories = ["command-line-utilities", "database"]
 
 [dependencies]
@@ -81,6 +91,7 @@ self-update = ["dep:self_update"]
 [dev-dependencies]
 sabiql-domain.workspace = true
 sabiql-app = { workspace = true, features = ["test-support"] }
+sabiql-infra = { workspace = true, features = ["test-support"] }
 sabiql-ui = { workspace = true, features = ["test-support"] }
 ratatui.workspace = true
 insta.workspace = true

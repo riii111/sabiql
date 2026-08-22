@@ -2,21 +2,30 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::app::policy::sql::lexer::{SqlLexer, TokenKind};
+use crate::domain::DatabaseType;
 use crate::theme::ThemePalette;
 
-pub fn highlight_sql(text: &str, theme: &ThemePalette) -> Vec<Line<'static>> {
-    highlight_sql_spans(text, theme)
+pub fn highlight_sql(
+    text: &str,
+    database_type: DatabaseType,
+    theme: &ThemePalette,
+) -> Vec<Line<'static>> {
+    highlight_sql_spans(text, database_type, theme)
         .into_iter()
         .map(Line::from)
         .collect()
 }
 
-pub fn highlight_sql_spans(text: &str, theme: &ThemePalette) -> Vec<Vec<Span<'static>>> {
+pub fn highlight_sql_spans(
+    text: &str,
+    database_type: DatabaseType,
+    theme: &ThemePalette,
+) -> Vec<Vec<Span<'static>>> {
     if text.is_empty() {
         return vec![];
     }
 
-    let lexer = SqlLexer::new();
+    let lexer = SqlLexer::new(database_type);
     let tokens = lexer.tokenize(text, text.chars().count());
     let mut lines: Vec<Vec<Span<'static>>> = vec![Vec::new()];
 
@@ -65,6 +74,7 @@ fn token_style(kind: &TokenKind, theme: &ThemePalette) -> Style {
         TokenKind::Comment => Style::default().fg(theme.component.syntax.sql_comment),
         TokenKind::Operator(_) => Style::default().fg(theme.component.syntax.sql_operator),
         TokenKind::Identifier(_)
+        | TokenKind::BacktickIdentifier(_)
         | TokenKind::Punctuation(_)
         | TokenKind::Whitespace
         | TokenKind::Unknown => Style::default().fg(theme.component.syntax.sql_text),
@@ -92,7 +102,7 @@ mod tests {
         cursor_col: usize,
         kind: CursorKind,
     ) -> Vec<Span<'static>> {
-        let mut lines = highlight_sql_spans(text, &DEFAULT_THEME);
+        let mut lines = highlight_sql_spans(text, DatabaseType::PostgreSQL, &DEFAULT_THEME);
         let line = lines
             .get_mut(cursor_row)
             .expect("cursor test should target an existing line");
@@ -102,7 +112,11 @@ mod tests {
 
     #[test]
     fn highlight_sql_splits_multiline_comment_across_lines() {
-        let lines = highlight_sql("SELECT 1 /* hello\nworld */", &DEFAULT_THEME);
+        let lines = highlight_sql(
+            "SELECT 1 /* hello\nworld */",
+            DatabaseType::PostgreSQL,
+            &DEFAULT_THEME,
+        );
 
         assert_eq!(lines.len(), 2);
         assert_eq!(line_text(&lines[0]), "SELECT 1 /* hello");
@@ -123,7 +137,11 @@ mod tests {
 
     #[test]
     fn highlight_sql_marks_token_types_with_expected_colors() {
-        let lines = highlight_sql("SELECT 'x', 42 -- note", &DEFAULT_THEME);
+        let lines = highlight_sql(
+            "SELECT 'x', 42 -- note",
+            DatabaseType::PostgreSQL,
+            &DEFAULT_THEME,
+        );
         let spans = &lines[0].spans;
 
         assert_eq!(
@@ -188,7 +206,11 @@ mod tests {
 
     #[test]
     fn highlight_sql_with_cursor_on_empty_middle_line_adds_cursor_cell() {
-        let lines = highlight_sql("SELECT 1\n\nFROM users", &DEFAULT_THEME);
+        let lines = highlight_sql(
+            "SELECT 1\n\nFROM users",
+            DatabaseType::PostgreSQL,
+            &DEFAULT_THEME,
+        );
         let spans = line_spans_with_cursor("SELECT 1\n\nFROM users", 1, 0, CursorKind::Block);
 
         assert_eq!(lines.len(), 3);
@@ -270,7 +292,7 @@ mod tests {
             ..DEFAULT_THEME
         };
 
-        let highlighted = highlight_sql("SELECT", &custom_theme);
+        let highlighted = highlight_sql("SELECT", DatabaseType::PostgreSQL, &custom_theme);
 
         assert_eq!(
             highlighted[0].spans[0].style.fg,
@@ -291,7 +313,7 @@ mod tests {
             ..DEFAULT_THEME
         };
 
-        let mut lines = highlight_sql_spans("SELECT", &custom_theme);
+        let mut lines = highlight_sql_spans("SELECT", DatabaseType::PostgreSQL, &custom_theme);
         let spans = std::mem::take(
             lines
                 .get_mut(0)
@@ -303,6 +325,112 @@ mod tests {
         assert_eq!(
             highlighted_with_cursor[0].style.fg,
             Some(custom_theme.component.syntax.sql_keyword)
+        );
+    }
+
+    #[test]
+    fn highlight_sql_uses_mysql_comments_and_keywords() {
+        let lines = highlight_sql(
+            "DESCRIBE users # MySQL comment",
+            DatabaseType::MySQL,
+            &DEFAULT_THEME,
+        );
+        let spans = &lines[0].spans;
+
+        assert_eq!(
+            spans[0].style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
+        assert_eq!(
+            spans
+                .iter()
+                .find(|span| span.content.as_ref().starts_with('#'))
+                .expect("MySQL hash comment should be highlighted")
+                .style
+                .fg,
+            Some(DEFAULT_THEME.component.syntax.sql_comment)
+        );
+
+        let backtick_lines = highlight_sql("SELECT `select`", DatabaseType::MySQL, &DEFAULT_THEME);
+        let backtick_span = backtick_lines[0]
+            .spans
+            .iter()
+            .find(|span| span.content.as_ref() == "`select`")
+            .expect("MySQL backtick identifier should remain one span");
+        assert_eq!(
+            backtick_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_text)
+        );
+        assert!(!backtick_span.style.add_modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn highlight_sql_keeps_mysql_backslash_string_and_non_comment_dash_dashes() {
+        let lines = highlight_sql(
+            r"SELECT 'it\'s' AS label, 1--1 FROM users",
+            DatabaseType::MySQL,
+            &DEFAULT_THEME,
+        );
+        let spans = &lines[0].spans;
+
+        let string_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "'it\\'s'")
+            .expect("MySQL backslash-escaped string should remain one span");
+        assert_eq!(
+            string_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
+        let from_span = spans
+            .iter()
+            .find(|span| span.content.as_ref() == "FROM")
+            .expect("FROM after non-comment -- should remain visible");
+        assert_eq!(
+            from_span.style.fg,
+            Some(DEFAULT_THEME.component.syntax.sql_keyword)
+        );
+        assert!(!spans.iter().any(|span| {
+            span.content.as_ref().contains("FROM")
+                && span.style.fg == Some(DEFAULT_THEME.component.syntax.sql_comment)
+        }));
+    }
+
+    #[test]
+    fn highlight_sql_preserves_postgresql_quotes() {
+        let lines = highlight_sql(
+            r#"SELECT "user" AS name, $$body$$"#,
+            DatabaseType::PostgreSQL,
+            &DEFAULT_THEME,
+        );
+        let spans = &lines[0].spans;
+
+        assert_eq!(
+            spans
+                .iter()
+                .find(|span| span.content.as_ref() == "$$body$$")
+                .expect("dollar quote should be highlighted")
+                .style
+                .fg,
+            Some(DEFAULT_THEME.component.syntax.sql_string)
+        );
+        assert_eq!(
+            spans
+                .iter()
+                .find(|span| span.content.as_ref() == "\"user\"")
+                .expect("double-quoted identifier should remain present")
+                .style
+                .fg,
+            Some(DEFAULT_THEME.component.syntax.sql_text)
+        );
+    }
+
+    #[test]
+    fn highlight_sql_keeps_sqlite_display_compatible_with_postgresql() {
+        let text = r#"SELECT "user" FROM users -- comment"#;
+
+        assert_eq!(
+            highlight_sql_spans(text, DatabaseType::SQLite, &DEFAULT_THEME),
+            highlight_sql_spans(text, DatabaseType::PostgreSQL, &DEFAULT_THEME)
         );
     }
 }

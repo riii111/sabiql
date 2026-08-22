@@ -2,15 +2,18 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::domain::RefreshScope;
 use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
+pub const MYSQL_CONNECT_TIMEOUT_ERRNOS: &[&str] = &["(60)", "(110)", "(10060)"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseCli {
     Psql,
     Sqlite3,
+    MySql,
 }
 
 impl DatabaseCli {
@@ -18,6 +21,7 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Database CLI not found",
             Self::Sqlite3 => "sqlite3 not found",
+            Self::MySql => "mysql not found",
         }
     }
 
@@ -25,8 +29,25 @@ impl DatabaseCli {
         match self {
             Self::Psql => "Install the database client and add it to PATH",
             Self::Sqlite3 => "Install sqlite3 and add it to PATH",
+            Self::MySql => "Install the Oracle MySQL 8.4 client and add it to PATH",
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedOperationKind {
+    ClientVersion,
+    ServerVersion,
+    SessionMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectionFailureKind {
+    TlsHandshake,
+    TlsCaVerification,
+    TlsHostnameVerification,
+    TlsClientCertificateRejected,
+    TlsCertificateVerification,
 }
 
 #[derive(Clone, thiserror::Error)]
@@ -48,8 +69,26 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("Preview exceeded its byte budget")]
+    PreviewSizeExceeded(String),
+    #[error("Query failed after a change")]
+    QueryFailedAfterChange {
+        #[source]
+        source: Arc<Self>,
+        refresh_scope: RefreshScope,
+    },
     #[error("Unsupported operation")]
     UnsupportedOperation(String),
+    #[error("Unsupported operation")]
+    UnsupportedOperationWithKind {
+        kind: UnsupportedOperationKind,
+        details: String,
+    },
+    #[error("Connection failed")]
+    ConnectionFailedWithKind {
+        kind: ConnectionFailureKind,
+        details: String,
+    },
     #[error("Metadata parse failed")]
     MetadataParseFailed(String),
     #[error("Invalid JSON")]
@@ -82,7 +121,27 @@ impl DbOperationError {
             Self::LockTimeout(_) => "Operation blocked by lock or timeout",
             Self::ObjectMissing(_) => "Database object not found",
             Self::QueryFailed(_) => "Query failed",
+            Self::PreviewSizeExceeded(_) => "Preview exceeded its byte budget",
+            Self::QueryFailedAfterChange { source, .. } => source.summary(),
             Self::UnsupportedOperation(_) => "Unsupported operation",
+            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
+                UnsupportedOperationKind::ClientVersion => "Unsupported MySQL CLI version",
+                UnsupportedOperationKind::ServerVersion => "Unsupported MySQL server version",
+                UnsupportedOperationKind::SessionMode => "Unsupported MySQL sql_mode",
+            },
+            Self::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCertificateVerification => "MySQL TLS handshake failed",
+                ConnectionFailureKind::TlsCaVerification => {
+                    "MySQL server certificate could not be verified"
+                }
+                ConnectionFailureKind::TlsHostnameVerification => {
+                    "MySQL server hostname could not be verified"
+                }
+                ConnectionFailureKind::TlsClientCertificateRejected => {
+                    "MySQL client certificate was rejected"
+                }
+            },
             Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
             Self::InvalidJson(_) => "Failed to parse database JSON output",
             Self::EmptyResponse(_) => "Database returned an empty response",
@@ -108,7 +167,31 @@ impl DbOperationError {
             }
             Self::ObjectMissing(_) => "Check the table, column, or connected database",
             Self::QueryFailed(_) => "Review the database error details and SQL",
+            Self::PreviewSizeExceeded(_) => "Reduce the preview value size and retry",
+            Self::QueryFailedAfterChange { source, .. } => source.hint(),
             Self::UnsupportedOperation(_) => "Use a supported operation for this database",
+            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
+                UnsupportedOperationKind::ClientVersion => "Install the Oracle MySQL 8.4 client",
+                UnsupportedOperationKind::ServerVersion => "Connect to an Oracle MySQL 8.4 server",
+                UnsupportedOperationKind::SessionMode => {
+                    "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
+                }
+            },
+            Self::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCertificateVerification => {
+                    "Check that the server and client support the selected TLS settings"
+                }
+                ConnectionFailureKind::TlsCaVerification => {
+                    "Check the CA certificate path and server certificate"
+                }
+                ConnectionFailureKind::TlsHostnameVerification => {
+                    "Use the hostname covered by the server certificate"
+                }
+                ConnectionFailureKind::TlsClientCertificateRejected => {
+                    "Check the client certificate, key, and server account requirements"
+                }
+            },
             Self::MetadataParseFailed(_) => {
                 "Check whether the metadata output format changed unexpectedly"
             }
@@ -122,6 +205,52 @@ impl DbOperationError {
         }
     }
 
+    pub fn masked_details(&self) -> String {
+        mask_password(self.raw_details().as_ref())
+    }
+
+    pub fn user_message(&self) -> String {
+        let summary = self.summary();
+        let hint = self.hint();
+        let details = self.masked_details();
+
+        let message = match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}: {details}"),
+            (false, false) => format!("{summary}: {details}. {hint}."),
+        };
+
+        if matches!(self, Self::QueryFailedAfterChange { .. }) {
+            format!(
+                "{message} Some changes may have been committed; refresh the database state before retrying."
+            )
+        } else {
+            message
+        }
+    }
+
+    pub fn result_message(&self) -> String {
+        let summary = self.summary();
+        let hint = self.hint();
+        let details = self.masked_details();
+
+        let message = match (details.trim().is_empty(), hint.is_empty()) {
+            (true, true) => summary.to_string(),
+            (true, false) => format!("{summary}. {hint}."),
+            (false, true) => format!("{summary}\n\nDetails:\n{details}"),
+            (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
+        };
+
+        if matches!(self, Self::QueryFailedAfterChange { .. }) {
+            format!(
+                "{message}\n\nSome changes may have been committed; refresh the database state before retrying."
+            )
+        } else {
+            message
+        }
+    }
+
     pub(crate) fn raw_details(&self) -> Cow<'_, str> {
         match self {
             Self::ConnectionFailed(details)
@@ -132,7 +261,10 @@ impl DbOperationError {
             | Self::LockTimeout(details)
             | Self::ObjectMissing(details)
             | Self::QueryFailed(details)
+            | Self::PreviewSizeExceeded(details)
             | Self::UnsupportedOperation(details)
+            | Self::UnsupportedOperationWithKind { details, .. }
+            | Self::ConnectionFailedWithKind { details, .. }
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
             | Self::CommandTagParseFailed(details)
@@ -141,36 +273,7 @@ impl DbOperationError {
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
-        }
-    }
-
-    pub fn masked_details(&self) -> String {
-        mask_password(self.raw_details().as_ref())
-    }
-
-    pub fn user_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
-        let details = self.masked_details();
-
-        match (details.trim().is_empty(), hint.is_empty()) {
-            (true, true) => summary.to_string(),
-            (true, false) => format!("{summary}. {hint}."),
-            (false, true) => format!("{summary}: {details}"),
-            (false, false) => format!("{summary}: {details}. {hint}."),
-        }
-    }
-
-    pub fn result_message(&self) -> String {
-        let summary = self.summary();
-        let hint = self.hint();
-        let details = self.masked_details();
-
-        match (details.trim().is_empty(), hint.is_empty()) {
-            (true, true) => summary.to_string(),
-            (true, false) => format!("{summary}. {hint}."),
-            (false, true) => format!("{summary}\n\nDetails:\n{details}"),
-            (false, false) => format!("{summary}. {hint}.\n\nDetails:\n{details}"),
+            Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
         }
     }
 }
@@ -219,6 +322,14 @@ mod tests {
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
+        #[case(DbOperationError::UnsupportedOperationWithKind {
+            kind: UnsupportedOperationKind::ClientVersion,
+            details: "boom".to_string(),
+        })]
+        #[case(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::TlsHandshake,
+            details: "boom".to_string(),
+        })]
         #[case(DbOperationError::MetadataParseFailed("boom".to_string()))]
         #[case(DbOperationError::InvalidJson(Arc::new(serde_json::from_str::<i32>("x").unwrap_err())))]
         #[case(DbOperationError::EmptyResponse("boom".to_string()))]
@@ -289,6 +400,24 @@ mod tests {
         }
 
         #[test]
+        fn mysql_cli_not_found_has_oracle_mysql_guidance() {
+            let error = DbOperationError::CommandNotFound {
+                command: DatabaseCli::MySql,
+                details: "mysql: command not found".to_string(),
+            };
+
+            assert_eq!(error.summary(), "mysql not found");
+            assert_eq!(
+                error.hint(),
+                "Install the Oracle MySQL 8.4 client and add it to PATH"
+            );
+            assert_eq!(
+                error.user_message(),
+                "mysql not found: mysql: command not found. Install the Oracle MySQL 8.4 client and add it to PATH."
+            );
+        }
+
+        #[test]
         fn actionable_message_uses_summary_and_hint() {
             let error = DbOperationError::PermissionDenied("permission denied".to_string());
 
@@ -306,6 +435,58 @@ mod tests {
                 error.user_message(),
                 "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
             );
+        }
+
+        #[test]
+        fn change_failure_warns_about_possible_commits() {
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::QueryFailed("syntax error".to_string())),
+                refresh_scope: RefreshScope::Metadata,
+            };
+
+            assert_eq!(error.summary(), "Query failed");
+            assert_eq!(error.hint(), "Review the database error details and SQL");
+            assert_eq!(error.masked_details(), "syntax error");
+            assert!(
+                error
+                    .user_message()
+                    .contains("Some changes may have been committed")
+            );
+        }
+
+        #[rstest]
+        #[case(DbOperationError::PermissionDenied("permission denied".to_string()))]
+        #[case(DbOperationError::UniqueViolation("duplicate entry".to_string()))]
+        #[case(DbOperationError::ForeignKeyViolation("foreign key failed".to_string()))]
+        #[case(DbOperationError::LockTimeout("lock wait timeout".to_string()))]
+        fn change_failure_preserves_classification(#[case] source: DbOperationError) {
+            let expected_summary = source.summary();
+            let expected_hint = source.hint();
+            let expected_details = source.masked_details();
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(source),
+                refresh_scope: RefreshScope::Data,
+            };
+
+            assert_eq!(error.summary(), expected_summary);
+            assert_eq!(error.hint(), expected_hint);
+            assert_eq!(error.masked_details(), expected_details);
+            assert!(error.user_message().contains(expected_summary));
+            assert!(error.user_message().contains(expected_hint));
+        }
+
+        #[test]
+        fn change_failure_masks_nested_source_details() {
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::PermissionDenied(
+                    "password=secret".to_string(),
+                )),
+                refresh_scope: RefreshScope::Data,
+            };
+
+            assert_eq!(error.masked_details(), "password=****");
+            assert!(!error.user_message().contains("secret"));
+            assert!(!format!("{error:?}").contains("secret"));
         }
 
         #[test]

@@ -7,6 +7,9 @@ description = "Infrastructure layer for sabiql"
 license.workspace = true
 repository.workspace = true
 
+[features]
+test-support = []
+
 [lib]
 path = "lib.rs"
 
@@ -20,8 +23,17 @@ thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 urlencoding.workspace = true
+url.workspace = true
+quick-xml.workspace = true
+uuid.workspace = true
 sabiql-app.workspace = true
 sabiql-domain.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard.workspace = true

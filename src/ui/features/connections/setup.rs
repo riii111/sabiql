@@ -9,9 +9,9 @@ use crate::app::model::connection::setup::{
 use crate::app::policy::mask_password;
 use crate::app::services::AppServices;
 use crate::app::update::input::keybindings::{connection_setup, connection_setup_save};
-#[cfg(test)]
-use crate::domain::connection::ConnectionConfig;
-use crate::domain::connection::{ConnectionId, ConnectionProfile, DatabaseType, SslMode};
+use crate::domain::connection::{
+    ConnectionId, ConnectionProfile, DatabaseType, MySqlSslMode, MySqlTransport, SslMode,
+};
 use crate::primitives::atoms::text_cursor_spans;
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::{take_within_width, truncate_to_width_with};
@@ -24,6 +24,7 @@ const FIELD_HEIGHT: u16 = 1;
 const MODAL_VERTICAL_CHROME: u16 = 6;
 const MODAL_HORIZONTAL_CHROME: u16 = 6;
 const MIN_PREVIEW_LINES: usize = 2;
+const CLEARTEXT_AUTH_OPTIONS: &[&str] = &["disabled", "enabled"];
 
 fn bracketed_input(content: &str, border_style: Style, theme: &ThemePalette) -> Line<'static> {
     Line::from(vec![
@@ -51,17 +52,25 @@ impl ConnectionSetup {
         let modal_width = LABEL_WIDTH + INPUT_WIDTH + ERROR_WIDTH + 8;
         let preview = preview_text(form_state, services);
         let preview_width = modal_width.saturating_sub(MODAL_HORIZONTAL_CHROME) as usize;
+        let notice_height = if form_state.cleartext_auth_plugin_enabled() {
+            3
+        } else {
+            1
+        };
         let max_preview_lines = frame
             .area()
             .height
-            .saturating_sub(MODAL_VERTICAL_CHROME + visible_fields.len() as u16 + 2)
+            .saturating_sub(MODAL_VERTICAL_CHROME + visible_fields.len() as u16 + 1 + notice_height)
             .max(MIN_PREVIEW_LINES as u16) as usize;
         let preview_lines = preview
             .as_deref()
             .map(|preview| preview_lines(preview, preview_width, max_preview_lines))
             .unwrap_or_default();
-        let modal_height =
-            visible_fields.len() as u16 + preview_lines.len() as u16 + MODAL_VERTICAL_CHROME;
+        let modal_height = visible_fields.len() as u16
+            + preview_lines.len() as u16
+            + MODAL_VERTICAL_CHROME
+            + notice_height
+            - 1;
 
         let (title, submit_desc) = if form_state.is_edit_mode() {
             (" Edit Connection ", "Save")
@@ -90,7 +99,7 @@ impl ConnectionSetup {
         if !preview_lines.is_empty() {
             constraints.push(Constraint::Length(preview_lines.len() as u16));
         }
-        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(notice_height));
         let chunks = Layout::vertical(constraints).split(inner);
 
         for (idx, field) in visible_fields.iter().enumerate() {
@@ -101,14 +110,34 @@ impl ConnectionSetup {
                     field.label(),
                     &form_state.database_type().to_string(),
                     form_state.focused_field() == ConnectionField::DatabaseType,
+                    None,
+                    theme,
+                ),
+                ConnectionField::Transport => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    &form_state.mysql_transport().to_string(),
+                    form_state.focused_field() == ConnectionField::Transport,
+                    form_state.validation_error(ConnectionField::Transport),
                     theme,
                 ),
                 ConnectionField::SslMode => Self::render_dropdown_field(
                     frame,
                     chunks[idx],
                     field.label(),
-                    ssl_mode_label(form_state.ssl_mode()),
+                    &ssl_mode_label(form_state),
                     form_state.focused_field() == ConnectionField::SslMode,
+                    form_state.validation_error(ConnectionField::SslMode),
+                    theme,
+                ),
+                ConnectionField::CleartextAuth => Self::render_dropdown_field(
+                    frame,
+                    chunks[idx],
+                    field.label(),
+                    cleartext_auth_label(form_state),
+                    form_state.focused_field() == ConnectionField::CleartextAuth,
+                    form_state.validation_error(ConnectionField::CleartextAuth),
                     theme,
                 ),
                 field => Self::render_text_field(
@@ -126,7 +155,17 @@ impl ConnectionSetup {
             Self::render_dsn_preview(frame, chunks[field_count + 1], &preview_lines, theme);
         }
 
-        let notice = "Note: Connection info is stored locally in plain text";
+        let notice = if form_state.cleartext_auth_plugin_enabled() {
+            vec![
+                Line::from("Note: password is sent via mysql_clear_password"),
+                Line::from("TLS required: REQUIRED, VERIFY_CA, or VERIFY_IDENTITY"),
+                Line::from("Note: Connection info is stored locally in plain text"),
+            ]
+        } else {
+            vec![Line::from(
+                "Note: Connection info is stored locally in plain text",
+            )]
+        };
         let notice_para =
             Paragraph::new(notice).style(Style::default().fg(theme.component.feedback.note_text));
         let notice_index = field_count + 1 + usize::from(!preview_lines.is_empty());
@@ -135,7 +174,7 @@ impl ConnectionSetup {
         if form_state.database_type_dropdown().is_open()
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
-                visible_fields,
+                &visible_fields,
                 ConnectionField::DatabaseType,
             )
         {
@@ -148,22 +187,64 @@ impl ConnectionSetup {
                 form_state.database_type_dropdown().selected_index(),
                 theme,
             );
-        } else if form_state.ssl_dropdown().is_open()
+        } else if form_state.transport_dropdown().is_open()
             && let Some(field_area) = Self::open_dropdown_field_area(
                 chunks.as_ref(),
-                visible_fields,
-                ConnectionField::SslMode,
+                visible_fields.as_slice(),
+                ConnectionField::Transport,
             )
         {
             Self::render_dropdown_list(
                 frame,
                 field_area,
-                SslMode::all_variants()
+                MySqlTransport::all_variants()
                     .iter()
-                    .map(|ssl_mode| ssl_mode_label(*ssl_mode)),
-                form_state.ssl_dropdown().selected_index(),
+                    .map(|transport| transport.as_str()),
+                form_state.transport_dropdown().selected_index(),
                 theme,
             );
+        } else if form_state.ssl_dropdown().is_open()
+            && let Some(field_area) = Self::open_dropdown_field_area(
+                chunks.as_ref(),
+                &visible_fields,
+                if form_state.focused_field() == ConnectionField::CleartextAuth {
+                    ConnectionField::CleartextAuth
+                } else {
+                    ConnectionField::SslMode
+                },
+            )
+        {
+            if form_state.database_type() == DatabaseType::MySQL {
+                if form_state.focused_field() == ConnectionField::CleartextAuth {
+                    Self::render_dropdown_list(
+                        frame,
+                        field_area,
+                        CLEARTEXT_AUTH_OPTIONS.iter().copied(),
+                        form_state.ssl_dropdown().selected_index(),
+                        theme,
+                    );
+                } else {
+                    Self::render_dropdown_list(
+                        frame,
+                        field_area,
+                        MySqlSslMode::all_variants()
+                            .iter()
+                            .map(MySqlSslMode::as_str),
+                        form_state.ssl_dropdown().selected_index(),
+                        theme,
+                    );
+                }
+            } else {
+                Self::render_dropdown_list(
+                    frame,
+                    field_area,
+                    SslMode::all_variants()
+                        .iter()
+                        .map(|ssl_mode| ssl_mode_label_text(*ssl_mode)),
+                    form_state.ssl_dropdown().selected_index(),
+                    theme,
+                );
+            }
         }
     }
 
@@ -188,7 +269,10 @@ impl ConnectionSetup {
     ) -> Vec<(&'static str, &'static str)> {
         if matches!(
             form_state.focused_field(),
-            ConnectionField::DatabaseType | ConnectionField::SslMode
+            ConnectionField::DatabaseType
+                | ConnectionField::Transport
+                | ConnectionField::SslMode
+                | ConnectionField::CleartextAuth
         ) {
             vec![
                 connection_setup::ENTER_DROPDOWN.as_hint(),
@@ -239,7 +323,7 @@ impl ConnectionSetup {
 
         let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
-        let placeholder = field.placeholder();
+        let placeholder = field.placeholder_for(state.database_type());
         let show_placeholder = value.is_empty() && !placeholder.is_empty();
 
         let input_line = if is_focused {
@@ -316,6 +400,7 @@ impl ConnectionSetup {
         label: &str,
         value: &str,
         is_focused: bool,
+        error: Option<&str>,
         theme: &ThemePalette,
     ) {
         let chunks = Layout::horizontal([
@@ -336,10 +421,16 @@ impl ConnectionSetup {
         let content_width = CONNECTION_INPUT_VISIBLE_WIDTH;
         let display_content = format!("{:<1$} ▼", value, content_width - 2);
 
-        let border_style = theme.modal_input_border_style(is_focused, false);
+        let border_style = theme.modal_input_border_style(is_focused, error.is_some());
 
         let input_para = Paragraph::new(bracketed_input(&display_content, border_style, theme));
         frame.render_widget(input_para, chunks[1]);
+
+        if let Some(error) = error {
+            let error_para = Paragraph::new(format!(" {error}"))
+                .style(Style::default().fg(theme.semantic.status.error));
+            frame.render_widget(error_para, chunks[2]);
+        }
     }
 
     fn render_dropdown_list(
@@ -422,7 +513,7 @@ impl ConnectionSetup {
     }
 }
 
-fn ssl_mode_label(mode: SslMode) -> &'static str {
+fn ssl_mode_label_text(mode: SslMode) -> &'static str {
     match mode {
         SslMode::Disable => "disable",
         SslMode::Allow => "allow",
@@ -430,6 +521,23 @@ fn ssl_mode_label(mode: SslMode) -> &'static str {
         SslMode::Require => "require",
         SslMode::VerifyCa => "verify-ca",
         SslMode::VerifyFull => "verify-full",
+    }
+}
+
+fn ssl_mode_label(state: &ConnectionSetupState) -> String {
+    match state.database_type() {
+        DatabaseType::MySQL => state.mysql_ssl_mode().to_string(),
+        DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+            ssl_mode_label_text(state.ssl_mode()).to_string()
+        }
+    }
+}
+
+fn cleartext_auth_label(state: &ConnectionSetupState) -> &'static str {
+    if state.cleartext_auth_plugin_enabled() {
+        "enabled"
+    } else {
+        "disabled"
     }
 }
 
@@ -462,31 +570,27 @@ fn focused_placeholder_spans(
     spans
 }
 
-fn preview_profile(state: &ConnectionSetupState) -> ConnectionProfile {
-    let port = state
-        .field_value(ConnectionField::Port)
-        .trim()
-        .parse()
-        .unwrap_or(5432);
-    ConnectionProfile::with_id_postgres(
-        ConnectionId::from_string("preview"),
-        "preview",
-        state.field_value(ConnectionField::Host).trim(),
-        port,
-        state.field_value(ConnectionField::Database).trim(),
-        state.field_value(ConnectionField::User).trim(),
-        state.field_value(ConnectionField::Password),
-        state.ssl_mode(),
-    )
-    .expect("static preview connection name is valid")
+fn preview_profile(state: &ConnectionSetupState) -> Option<ConnectionProfile> {
+    let uses_hidden_tcp_values = state.database_type() == DatabaseType::MySQL
+        && state.mysql_transport() != MySqlTransport::Tcp;
+    if !uses_hidden_tcp_values {
+        state
+            .field_value(ConnectionField::Port)
+            .trim()
+            .parse::<u16>()
+            .ok()?;
+    }
+    let config = state.to_connection_config().ok()?;
+    ConnectionProfile::with_id_and_config(ConnectionId::from_string("preview"), "preview", config)
+        .ok()
 }
 
 fn preview_text(form_state: &ConnectionSetupState, services: &AppServices) -> Option<String> {
-    if form_state.database_type() != DatabaseType::PostgreSQL {
+    if form_state.database_type() == DatabaseType::SQLite {
         return None;
     }
 
-    let profile = preview_profile(form_state);
+    let profile = preview_profile(form_state)?;
     Some(mask_password(&services.dsn_builder.build_dsn(&profile)))
 }
 
@@ -539,6 +643,7 @@ fn preview_prefix(prefix: &'static str, width: usize) -> &'static str {
 mod tests {
     use super::*;
     use crate::app::model::shared::settings::KeymapPreset;
+    use crate::domain::connection::ConnectionConfig;
 
     fn focus_field(state: &mut ConnectionSetupState, field: ConnectionField) {
         while state.focused_field() != field {
@@ -614,7 +719,7 @@ mod tests {
             .unwrap()
             .set_content("  pass  ".to_string());
 
-        let profile = preview_profile(&form_state);
+        let profile = preview_profile(&form_state).unwrap();
 
         let ConnectionConfig::PostgreSQL(config) = profile.config else {
             panic!("preview profile must be PostgreSQL");
@@ -623,6 +728,73 @@ mod tests {
         assert_eq!(config.database, "app_db");
         assert_eq!(config.username, "postgres");
         assert_eq!(config.password, "  pass  ");
+    }
+
+    #[test]
+    fn invalid_mysql_host_does_not_panic_during_preview() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state.set_database_type(DatabaseType::MySQL);
+        form_state
+            .input_mut(ConnectionField::Host)
+            .unwrap()
+            .set_content("db example".to_string());
+
+        assert!(preview_profile(&form_state).is_none());
+    }
+
+    #[test]
+    fn invalid_port_does_not_panic_during_preview() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state
+            .input_mut(ConnectionField::Port)
+            .unwrap()
+            .set_content("invalid".to_string());
+
+        assert!(preview_profile(&form_state).is_none());
+    }
+
+    #[test]
+    fn mysql_preview_profile_includes_saved_tls_paths() {
+        let mut form_state = ConnectionSetupState::default();
+        form_state.set_database_type(DatabaseType::MySQL);
+        while form_state.focused_field() != ConnectionField::SslMode {
+            form_state.focus_next_field();
+        }
+        form_state.toggle_focused_dropdown();
+        for _ in 0..4 {
+            form_state.dropdown_next();
+        }
+        form_state.confirm_dropdown();
+        form_state
+            .input_mut(ConnectionField::SslCa)
+            .unwrap()
+            .set_content("/etc/mysql/ca.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::SslCert)
+            .unwrap()
+            .set_content("/etc/mysql/client.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::SslKey)
+            .unwrap()
+            .set_content("/etc/mysql/client-key.pem".to_string());
+        form_state
+            .input_mut(ConnectionField::ServerPublicKeyPath)
+            .unwrap()
+            .set_content("/etc/mysql/server-public.pem".to_string());
+
+        let profile = preview_profile(&form_state).unwrap();
+
+        let ConnectionConfig::MySQL(config) = profile.config else {
+            panic!("preview profile must be MySQL");
+        };
+        assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
+        assert_eq!(config.ssl_ca.as_deref(), Some("/etc/mysql/ca.pem"));
+        assert_eq!(config.ssl_cert.as_deref(), Some("/etc/mysql/client.pem"));
+        assert_eq!(config.ssl_key.as_deref(), Some("/etc/mysql/client-key.pem"));
+        assert_eq!(
+            config.server_public_key_path.as_deref(),
+            Some("/etc/mysql/server-public.pem")
+        );
     }
 
     #[test]

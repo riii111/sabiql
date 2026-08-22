@@ -14,7 +14,8 @@ impl DdlGenerator for PostgresAdapter {
             quote_ident(&table.name)
         );
 
-        for (i, col) in table.columns.iter().enumerate() {
+        let mut elements = Vec::with_capacity(table.columns.len() + 1);
+        for col in &table.columns {
             let nullable = if col.is_nullable() { "" } else { " NOT NULL" };
             let default = col
                 .default
@@ -22,26 +23,24 @@ impl DdlGenerator for PostgresAdapter {
                 .map(|d| format!(" DEFAULT {d}"))
                 .unwrap_or_default();
 
-            let _ = write!(
-                ddl,
+            elements.push(format!(
                 "  {} {}{}{}",
                 quote_ident(&col.name),
                 col.data_type,
                 nullable,
                 default
-            );
-
-            if i + 1 < table.columns.len() {
-                ddl.push(',');
-            }
-            ddl.push('\n');
+            ));
         }
 
         if let Some(pk) = &table.primary_key {
             let quoted_cols: Vec<String> = pk.iter().map(|c| quote_ident(c)).collect();
-            let _ = writeln!(ddl, "  PRIMARY KEY ({})", quoted_cols.join(", "));
+            elements.push(format!("  PRIMARY KEY ({})", quoted_cols.join(", ")));
         }
 
+        if !elements.is_empty() {
+            ddl.push_str(&elements.join(",\n"));
+            ddl.push('\n');
+        }
         ddl.push_str(");");
 
         let qualified = format!(
@@ -91,6 +90,10 @@ mod tests {
             attributes: ColumnAttributes::from_parts(nullable, false, false),
             comment: None,
             ordinal_position: 0,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
         }
     }
 
@@ -108,7 +111,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn table_with_pk_returns_valid_ddl() {
+        fn table_with_single_primary_key_returns_valid_ddl() {
             let adapter = PostgresAdapter::new();
             let table = make_table(
                 vec![
@@ -120,10 +123,58 @@ mod tests {
 
             let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
 
-            assert!(ddl.contains("CREATE TABLE \"public\".\"test_table\""));
-            assert!(ddl.contains("\"id\" integer NOT NULL"));
-            assert!(ddl.contains("\"name\" text"));
-            assert!(ddl.contains("PRIMARY KEY (\"id\")"));
+            assert_eq!(
+                ddl,
+                "CREATE TABLE \"public\".\"test_table\" (\n  \"id\" integer NOT NULL,\n  \"name\" text,\n  PRIMARY KEY (\"id\")\n);"
+            );
+        }
+
+        #[test]
+        fn table_with_composite_primary_key_returns_valid_ddl() {
+            let adapter = PostgresAdapter::new();
+            let table = make_table(
+                vec![
+                    make_column("tenant_id", "integer", false),
+                    make_column("id", "integer", false),
+                ],
+                Some(vec!["tenant_id".to_string(), "id".to_string()]),
+            );
+
+            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+
+            assert_eq!(
+                ddl,
+                "CREATE TABLE \"public\".\"test_table\" (\n  \"tenant_id\" integer NOT NULL,\n  \"id\" integer NOT NULL,\n  PRIMARY KEY (\"tenant_id\", \"id\")\n);"
+            );
+        }
+
+        #[test]
+        fn table_without_primary_key_returns_valid_ddl() {
+            let adapter = PostgresAdapter::new();
+            let table = make_table(
+                vec![
+                    make_column("id", "integer", false),
+                    make_column("name", "text", true),
+                ],
+                None,
+            );
+
+            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+
+            assert_eq!(
+                ddl,
+                "CREATE TABLE \"public\".\"test_table\" (\n  \"id\" integer NOT NULL,\n  \"name\" text\n);"
+            );
+        }
+
+        #[test]
+        fn empty_table_returns_valid_ddl() {
+            let adapter = PostgresAdapter::new();
+            let table = make_table(Vec::new(), None);
+
+            let ddl = adapter.generate_ddl(DatabaseType::PostgreSQL, &table);
+
+            assert_eq!(ddl, "CREATE TABLE \"public\".\"test_table\" (\n);");
         }
 
         #[test]

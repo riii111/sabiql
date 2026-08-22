@@ -14,13 +14,6 @@ pub enum VisibleResultKind {
     Empty,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QueryStatus {
-    #[default]
-    Idle,
-    Running,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
     current_page: usize,
@@ -124,6 +117,10 @@ impl PaginationState {
         self.reached_end = false;
     }
 
+    pub fn mark_reached_end(&mut self) {
+        self.reached_end = true;
+    }
+
     pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
         self.total_rows_estimate = estimate;
     }
@@ -157,15 +154,29 @@ pub struct DeleteRefreshTarget {
     pub expected_delete_count: usize,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PendingPreview {
+    result: Arc<QueryResult>,
+    generation: u64,
+    target_page: Option<usize>,
+    highlight: bool,
+}
+
+impl PendingPreview {
+    pub(crate) fn into_parts(self) -> (Arc<QueryResult>, Option<usize>, bool) {
+        (self.result, self.target_page, self.highlight)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
-    status: QueryStatus,
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
     result_history: ResultHistory,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
+    pending_preview: Option<PendingPreview>,
     pending_delete_refresh_target: Option<DeleteRefreshTarget>,
     post_delete_row_selection: PostDeleteRowSelection,
     run: AsyncRun,
@@ -176,29 +187,29 @@ impl QueryExecution {
 
     #[must_use]
     pub fn begin_running(&mut self, now: Instant) -> u64 {
-        self.status = QueryStatus::Running;
         self.start_time = Some(now);
+        self.pending_preview = None;
         self.run.begin()
     }
 
     pub fn mark_idle(&mut self) {
-        self.status = QueryStatus::Idle;
         self.start_time = None;
         self.run.clear_active();
     }
 
     pub fn reset_for_context_change(&mut self) {
         self.mark_idle();
+        self.pending_preview = None;
         self.clear_delete_refresh_target();
         self.post_delete_row_selection = PostDeleteRowSelection::Keep;
     }
 
-    pub fn is_current_run(&self, run_id: u64) -> bool {
-        self.run.is_current(run_id)
+    pub fn restore_pagination(&mut self, pagination: PaginationState) {
+        self.pagination = pagination;
     }
 
-    pub fn status(&self) -> QueryStatus {
-        self.status
+    pub fn is_current_run(&self, run_id: u64) -> bool {
+        self.run.is_current(run_id)
     }
 
     pub fn start_time(&self) -> Option<Instant> {
@@ -206,7 +217,7 @@ impl QueryExecution {
     }
 
     pub fn is_running(&self) -> bool {
-        self.status == QueryStatus::Running
+        self.start_time.is_some()
     }
 
     // ── Current result ──────────────────────────────────────────────
@@ -219,6 +230,35 @@ impl QueryExecution {
     pub fn clear_current_result(&mut self) {
         self.current_result = None;
         self.result_generation += 1;
+    }
+
+    pub(crate) fn defer_preview(
+        &mut self,
+        result: Arc<QueryResult>,
+        generation: u64,
+        target_page: Option<usize>,
+        highlight: bool,
+    ) {
+        self.pending_preview = Some(PendingPreview {
+            result,
+            generation,
+            target_page,
+            highlight,
+        });
+    }
+
+    pub(crate) fn has_pending_preview(&self, generation: u64) -> bool {
+        self.pending_preview
+            .as_ref()
+            .is_some_and(|pending| pending.generation == generation)
+    }
+
+    pub(crate) fn take_pending_preview(&mut self, generation: u64) -> Option<PendingPreview> {
+        if self.has_pending_preview(generation) {
+            self.pending_preview.take()
+        } else {
+            None
+        }
     }
 
     pub fn push_history(&mut self, result: Arc<QueryResult>) {
@@ -455,7 +495,7 @@ mod tests {
     fn default_creates_idle_state() {
         let execution = QueryExecution::default();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(execution.start_time().is_none());
         assert!(execution.current_result().is_none());
         assert_eq!(execution.result_generation(), 0);
@@ -509,22 +549,19 @@ mod tests {
     }
 
     #[test]
-    fn query_status_default_is_idle() {
-        assert_eq!(QueryStatus::default(), QueryStatus::Idle);
-    }
-
-    #[test]
     fn context_reset_clears_query_owned_write_state() {
         let mut execution = QueryExecution::default();
         let run_id = execution.begin_running(Instant::now());
         execution.set_delete_refresh_target(2, Some(3), 1);
         execution.set_post_delete_selection(PostDeleteRowSelection::Select(4));
+        execution.defer_preview(make_result(QuerySource::Preview), 1, Some(0), true);
 
         execution.reset_for_context_change();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(!execution.is_current_run(run_id));
         assert!(execution.pending_delete_refresh_target().is_none());
+        assert!(!execution.has_pending_preview(1));
         assert_eq!(
             execution.post_delete_row_selection(),
             PostDeleteRowSelection::Keep
@@ -685,6 +722,19 @@ mod tests {
 
             assert_eq!(p.current_page(), 3);
             assert!(!p.reached_end());
+        }
+
+        #[test]
+        fn mark_reached_end_only_sets_that_flag() {
+            let mut p = PaginationState {
+                current_page: 3,
+                ..Default::default()
+            };
+
+            p.mark_reached_end();
+
+            assert_eq!(p.current_page(), 3);
+            assert!(p.reached_end());
         }
     }
 }

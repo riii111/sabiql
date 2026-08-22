@@ -1,20 +1,24 @@
 use super::handling::PreviewCellTextDiffHandling;
 
-fn normalize_jsonb_for_diff(value: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(value)
-        .and_then(|v| serde_json::to_string(&v))
-        .unwrap_or_else(|_| value.to_string())
+fn normalize_json_for_diff(value: &str) -> String {
+    normalize_structured_json_for_write(value)
+        .ok()
+        .unwrap_or_else(|| value.to_string())
+}
+
+pub fn normalize_structured_json_for_write(value: &str) -> Result<String, serde_json::Error> {
+    serde_json::from_str::<serde_json::Value>(value).and_then(|value| serde_json::to_string(&value))
 }
 
 pub fn normalize_for_write_diff(value: &str, handling: PreviewCellTextDiffHandling) -> String {
     match handling {
-        PreviewCellTextDiffHandling::PostgreSqlJsonb => normalize_jsonb_for_diff(value),
+        PreviewCellTextDiffHandling::StructuredJson => normalize_json_for_diff(value),
         PreviewCellTextDiffHandling::RawText => value.to_string(),
     }
 }
 
 pub fn uses_structured_json_diff(handling: PreviewCellTextDiffHandling) -> bool {
-    handling == PreviewCellTextDiffHandling::PostgreSqlJsonb
+    handling == PreviewCellTextDiffHandling::StructuredJson
 }
 
 #[cfg(test)]
@@ -25,7 +29,7 @@ mod tests {
     use super::super::handling::CellPresentationPolicy;
 
     #[test]
-    fn jsonb_column_normalizes_key_order() {
+    fn json_column_normalizes_key_order() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;
@@ -34,6 +38,19 @@ mod tests {
             normalize_for_write_diff(pg_style, handling),
             normalize_for_write_diff(serde_style, handling)
         );
+    }
+
+    #[test]
+    fn mysql_json_column_normalizes_key_order() {
+        let handling = CellPresentationPolicy::new(DatabaseType::MySQL, "json", "").diff_handling();
+        let spaced = r#"{"a": 1, "b": 2}"#;
+        let compact = r#"{"b":2,"a":1}"#;
+
+        assert_eq!(
+            normalize_for_write_diff(spaced, handling),
+            normalize_for_write_diff(compact, handling)
+        );
+        assert!(uses_structured_json_diff(handling));
     }
 
     #[test]
@@ -58,7 +75,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_jsonb_declared_type_stays_raw() {
+    fn sqlite_json_declared_type_stays_raw() {
         let handling =
             CellPresentationPolicy::new(DatabaseType::SQLite, "jsonb", "").diff_handling();
         let pg_style = r#"{"industries": ["tech"], "company_size": "enterprise"}"#;

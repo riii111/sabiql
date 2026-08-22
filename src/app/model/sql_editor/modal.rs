@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-use crate::domain::CommandTag;
+use crate::domain::{CommandTag, MySqlDiagnostic};
 use crate::model::shared::async_run::AsyncRun;
 use crate::model::shared::multi_line_input::MultiLineInputState;
 use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -42,11 +42,12 @@ pub struct FailedPrefetchEntry {
     pub retry_count: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdhocSuccessSnapshot {
     pub command_tag: Option<CommandTag>,
     pub row_count: usize,
     pub execution_time_ms: u64,
+    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -75,37 +76,26 @@ pub enum SqlModalStatus {
         reason: AcknowledgeReason,
     },
     Running,
-    Success,
-    Error,
+    Success(AdhocSuccessSnapshot),
+    Error(String),
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct SqlModalContext {
     pub(crate) editor: MultiLineInputState,
     pub(crate) status: SqlModalStatus,
-    pub(crate) last_adhoc_success: Option<AdhocSuccessSnapshot>,
-    pub(crate) last_adhoc_error: Option<String>,
     pub(crate) completion: CompletionState,
     pub(crate) completion_debounce: Option<Instant>,
     prefetch_queue: VecDeque<String>,
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
     pub(crate) prefetch_started: bool,
+    prefetch_tracks_er: bool,
     pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
 }
 
 impl SqlModalContext {
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
-        self.status = status;
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
-        &mut self.completion
-    }
-
     pub fn editor(&self) -> &MultiLineInputState {
         &self.editor
     }
@@ -121,20 +111,39 @@ impl SqlModalContext {
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
+        self.prefetch_tracks_er = false;
         self.prefetch_run.clear_active();
     }
 
-    // Preserves `prefetching_tables` so in-flight requests drain naturally.
     #[must_use]
     pub fn begin_prefetch(&mut self) -> u64 {
+        if self.prefetch_run.active_id().is_some() && !self.prefetch_tracks_er {
+            // Responses from the replaced completion run are stale and will be discarded.
+            self.prefetching_tables.clear();
+        }
         self.prefetch_started = true;
+        self.prefetch_tracks_er = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
         self.prefetch_run.begin()
     }
 
+    #[must_use]
+    pub fn begin_completion_prefetch(&mut self) -> u64 {
+        self.prefetch_started = true;
+        self.prefetch_tracks_er = false;
+        self.prefetch_queue.clear();
+        self.failed_prefetch_tables.clear();
+        self.prefetch_run.begin()
+    }
+
+    pub fn prefetch_tracks_er(&self) -> bool {
+        self.prefetch_tracks_er
+    }
+
     pub fn invalidate_prefetch(&mut self) {
         self.prefetch_started = false;
+        self.prefetch_tracks_er = false;
         self.prefetching_tables.clear();
         self.prefetch_run.clear_active();
     }
@@ -221,15 +230,11 @@ impl SqlModalContext {
     }
 
     pub fn finish_adhoc_error(&mut self, error: String) {
-        self.status = SqlModalStatus::Error;
-        self.last_adhoc_error = Some(error);
-        self.last_adhoc_success = None;
+        self.status = SqlModalStatus::Error(error);
     }
 
     pub fn finish_adhoc_success(&mut self, snapshot: AdhocSuccessSnapshot) {
-        self.status = SqlModalStatus::Success;
-        self.last_adhoc_success = Some(snapshot);
-        self.last_adhoc_error = None;
+        self.status = SqlModalStatus::Success(snapshot);
     }
 
     pub fn begin_confirming_high(&mut self, decision: AdhocRiskDecision, target_name: String) {
@@ -279,11 +284,17 @@ impl SqlModalContext {
     }
 
     pub fn last_adhoc_error(&self) -> Option<&str> {
-        self.last_adhoc_error.as_deref()
+        match &self.status {
+            SqlModalStatus::Error(error) => Some(error),
+            _ => None,
+        }
     }
 
     pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
-        self.last_adhoc_success.as_ref()
+        match &self.status {
+            SqlModalStatus::Success(snapshot) => Some(snapshot),
+            _ => None,
+        }
     }
 
     pub fn active_tab(&self) -> SqlModalTab {
@@ -442,12 +453,20 @@ impl SqlModalContext {
     }
 }
 
-impl SqlModalContext {
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn clear_content(&mut self) {
-        self.editor.clear();
-        self.reset_completion();
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support {
+    use super::{CompletionState, SqlModalContext, SqlModalStatus};
+
+    impl SqlModalContext {
+        #[doc(hidden)]
+        pub fn set_status_for_test(&mut self, status: SqlModalStatus) {
+            self.status = status;
+        }
+
+        #[doc(hidden)]
+        pub fn completion_mut_for_test(&mut self) -> &mut CompletionState {
+            &mut self.completion
+        }
     }
 }
 
@@ -461,6 +480,14 @@ mod tests {
             text: text.to_string(),
             kind: CompletionKind::Keyword,
             score: 1,
+        }
+    }
+
+    impl SqlModalContext {
+        #[doc(hidden)]
+        pub(crate) fn clear_content(&mut self) {
+            self.editor.clear();
+            self.reset_completion();
         }
     }
 
@@ -715,27 +742,63 @@ mod tests {
                 Some((7, "users".to_string()))
             );
         }
+
+        #[test]
+        fn accepting_quoted_identifier_updates_cursor_after_replacement() {
+            let mut ctx = SqlModalContext::default();
+            ctx.editor.set_content("SELECT * FROM order".to_string());
+            ctx.apply_completion_update(
+                &[CompletionCandidate {
+                    text: "`order``items`".to_string(),
+                    kind: CompletionKind::Table,
+                    score: 1,
+                }],
+                14,
+                true,
+            );
+
+            ctx.accept_selected_completion(10);
+
+            assert_eq!(ctx.editor.content(), "SELECT * FROM `order``items`");
+            assert_eq!(ctx.editor.cursor(), 28);
+        }
     }
 
     mod adhoc_status {
         use super::*;
 
         #[test]
-        fn finish_statuses_clear_opposite_snapshot() {
+        fn finish_statuses_store_payload_and_reset() {
             let mut ctx = SqlModalContext::default();
 
-            ctx.finish_adhoc_success(AdhocSuccessSnapshot {
+            let snapshot = AdhocSuccessSnapshot {
                 command_tag: None,
                 row_count: 1,
                 execution_time_ms: 10,
-            });
+                mysql_diagnostics: Vec::new(),
+            };
+            ctx.finish_adhoc_success(snapshot.clone());
+            assert!(matches!(
+                &ctx.status,
+                SqlModalStatus::Success(payload) if payload == &snapshot
+            ));
             assert!(ctx.last_adhoc_success().is_some());
             assert!(ctx.last_adhoc_error().is_none());
 
             ctx.finish_adhoc_error("syntax error".to_string());
 
+            assert!(matches!(
+                &ctx.status,
+                SqlModalStatus::Error(error) if error == "syntax error"
+            ));
             assert!(ctx.last_adhoc_success().is_none());
             assert_eq!(ctx.last_adhoc_error(), Some("syntax error"));
+
+            ctx.enter_normal();
+
+            assert_eq!(ctx.status, SqlModalStatus::Normal);
+            assert!(ctx.last_adhoc_success().is_none());
+            assert!(ctx.last_adhoc_error().is_none());
         }
     }
 

@@ -2,22 +2,24 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::app::ports::outbound::{
-    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, QueryExecutor,
-    SqlDialect, SqliteDiagnosticsProvider,
+    AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
+    MySqlConnectionProbeResult, QueryExecutor, SqlDialect, SqliteDiagnosticsProvider,
 };
 use crate::domain::connection::{ConnectionProfile, DatabaseType};
 use crate::domain::{
     DatabaseMetadata, DiagnosticField, QueryResult, QueryValue, SqliteDiagnosticsSnapshot, Table,
-    TableSignature, WriteExecutionResult,
+    TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
 
+use super::mysql::MySqlAdapter;
 use super::postgres::PostgresAdapter;
 use super::sqlite::SqliteAdapter;
 
 pub struct DbAdapterRegistry {
     postgres: Arc<PostgresAdapter>,
     sqlite: Arc<SqliteAdapter>,
+    mysql: Arc<MySqlAdapter>,
 }
 
 impl DbAdapterRegistry {
@@ -25,12 +27,16 @@ impl DbAdapterRegistry {
         Self {
             postgres,
             sqlite: Arc::new(SqliteAdapter::new()),
+            mysql: Arc::new(MySqlAdapter::new()),
         }
     }
 
     fn db_type_from_dsn(dsn: &str) -> Result<DatabaseType, DbOperationError> {
         if dsn.starts_with("sqlite://") {
             return Ok(DatabaseType::SQLite);
+        }
+        if dsn.starts_with("mysql://") {
+            return Ok(DatabaseType::MySQL);
         }
         if dsn.starts_with("postgres://") || is_postgres_conninfo_dsn(dsn) {
             return Ok(DatabaseType::PostgreSQL);
@@ -62,6 +68,7 @@ impl DsnBuilder for DbAdapterRegistry {
                     .path();
                 format!("sqlite://{path}")
             }
+            DatabaseType::MySQL => self.mysql.build_dsn(profile),
         }
     }
 }
@@ -72,6 +79,15 @@ impl MetadataProvider for DbAdapterRegistry {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_metadata(dsn).await,
             DatabaseType::SQLite => self.sqlite.fetch_metadata(dsn).await,
+            DatabaseType::MySQL => self.mysql.fetch_metadata(dsn).await,
+        }
+    }
+
+    async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => self.postgres.fetch_effective_user(dsn).await,
+            DatabaseType::SQLite => self.sqlite.fetch_effective_user(dsn).await,
+            DatabaseType::MySQL => self.mysql.fetch_effective_user(dsn).await,
         }
     }
 
@@ -84,6 +100,7 @@ impl MetadataProvider for DbAdapterRegistry {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_detail(dsn, schema, table).await,
             DatabaseType::SQLite => self.sqlite.fetch_table_detail(dsn, schema, table).await,
+            DatabaseType::MySQL => self.mysql.fetch_table_detail(dsn, schema, table).await,
         }
     }
 
@@ -104,16 +121,22 @@ impl MetadataProvider for DbAdapterRegistry {
                     .fetch_table_columns_and_fks(dsn, schema, table)
                     .await
             }
+            DatabaseType::MySQL => {
+                self.mysql
+                    .fetch_table_columns_and_fks(dsn, schema, table)
+                    .await
+            }
         }
     }
 
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
-    ) -> Result<Vec<TableSignature>, DbOperationError> {
+    ) -> Result<TableSignatureSnapshot, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
             DatabaseType::PostgreSQL => self.postgres.fetch_table_signatures(dsn).await,
             DatabaseType::SQLite => self.sqlite.fetch_table_signatures(dsn).await,
+            DatabaseType::MySQL => self.mysql.fetch_table_signatures(dsn).await,
         }
     }
 }
@@ -145,6 +168,11 @@ impl QueryExecutor for DbAdapterRegistry {
                 )
                 .await
             }
+            DatabaseType::MySQL => {
+                self.mysql
+                    .execute_preview(dsn, schema, table, limit, offset)
+                    .await
+            }
         }
     }
 
@@ -159,6 +187,7 @@ impl QueryExecutor for DbAdapterRegistry {
             DatabaseType::SQLite => {
                 QueryExecutor::execute_adhoc(self.sqlite.as_ref(), dsn, query, access_mode).await
             }
+            DatabaseType::MySQL => self.mysql.execute_adhoc(dsn, query, access_mode).await,
         }
     }
 
@@ -173,6 +202,7 @@ impl QueryExecutor for DbAdapterRegistry {
             DatabaseType::SQLite => {
                 QueryExecutor::execute_write(self.sqlite.as_ref(), dsn, query, access_mode).await
             }
+            DatabaseType::MySQL => self.mysql.execute_write(dsn, query, access_mode).await,
         }
     }
 
@@ -182,6 +212,7 @@ impl QueryExecutor for DbAdapterRegistry {
             DatabaseType::SQLite => {
                 QueryExecutor::count_query_rows(self.sqlite.as_ref(), dsn, query).await
             }
+            DatabaseType::MySQL => self.mysql.count_query_rows(dsn, query).await,
         }
     }
 
@@ -196,6 +227,7 @@ impl QueryExecutor for DbAdapterRegistry {
             DatabaseType::SQLite => {
                 QueryExecutor::export_to_csv(self.sqlite.as_ref(), dsn, query, file_name).await
             }
+            DatabaseType::MySQL => self.mysql.export_to_csv(dsn, query, file_name).await,
         }
     }
 }
@@ -205,6 +237,7 @@ impl DdlGenerator for DbAdapterRegistry {
         match database_type {
             DatabaseType::PostgreSQL => self.postgres.generate_ddl(database_type, table),
             DatabaseType::SQLite => self.sqlite.generate_ddl(database_type, table),
+            DatabaseType::MySQL => self.mysql.generate_ddl(database_type, table),
         }
     }
 }
@@ -214,6 +247,7 @@ impl SqlDialect for DbAdapterRegistry {
         match database_type {
             DatabaseType::PostgreSQL => self.postgres.build_explain_sql(database_type, query),
             DatabaseType::SQLite => self.sqlite.build_explain_sql(database_type, query),
+            DatabaseType::MySQL => self.mysql.build_explain_sql(database_type, query),
         }
     }
 
@@ -227,6 +261,7 @@ impl SqlDialect for DbAdapterRegistry {
                 .postgres
                 .build_explain_analyze_sql(database_type, query),
             DatabaseType::SQLite => self.sqlite.build_explain_analyze_sql(database_type, query),
+            DatabaseType::MySQL => self.mysql.build_explain_analyze_sql(database_type, query),
         }
     }
 
@@ -256,6 +291,14 @@ impl SqlDialect for DbAdapterRegistry {
                 new_value,
                 pk_pairs,
             ),
+            DatabaseType::MySQL => self.mysql.build_update_sql(
+                database_type,
+                schema,
+                table,
+                column,
+                new_value,
+                pk_pairs,
+            ),
         }
     }
 
@@ -275,6 +318,50 @@ impl SqlDialect for DbAdapterRegistry {
                 self.sqlite
                     .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
             }
+            DatabaseType::MySQL => {
+                self.mysql
+                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl MySqlConnectionProbe for DbAdapterRegistry {
+    async fn probe(&self, dsn: &str) -> Result<MySqlConnectionProbeResult, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::MySQL => self.mysql.probe(dsn).await,
+            DatabaseType::PostgreSQL | DatabaseType::SQLite => {
+                Err(DbOperationError::UnsupportedOperation(
+                    "Connection probing is only implemented for MySQL".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl SqliteDiagnosticsProvider for DbAdapterRegistry {
+    async fn fetch_diagnostics_core(
+        &self,
+        dsn: &str,
+    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL | DatabaseType::MySQL => {
+                Err(DbOperationError::ConnectionFailed(
+                    "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
+                ))
+            }
+            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
+        }
+    }
+
+    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
+        match Self::db_type_from_dsn(dsn) {
+            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
+            Ok(DatabaseType::PostgreSQL | DatabaseType::MySQL) | Err(_) => DiagnosticField::err(
+                "SQLite diagnostics are unavailable for non-SQLite connections",
+            ),
         }
     }
 }
@@ -298,6 +385,10 @@ mod tests {
                 attributes: ColumnAttributes::from_parts(false, true, false),
                 comment: None,
                 ordinal_position: 1,
+                character_set_name: None,
+                collation_name: None,
+                generation_expression: None,
+                generation_kind: None,
             }],
             primary_key: Some(vec!["id".to_string()]),
             ..test_support::minimal_table("", "")
@@ -420,12 +511,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_dsn_scheme_is_rejected() {
+    async fn mysql_dsn_requires_a_selected_database_for_metadata() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
 
-        let result = registry.fetch_metadata("mysql://localhost/db").await;
+        let result = registry.fetch_metadata("mysql://localhost").await;
 
-        assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
+        assert!(matches!(
+            result,
+            Err(DbOperationError::UnsupportedOperation(_))
+        ));
+    }
+
+    #[test]
+    fn mysql_dsn_scheme_is_recognized() {
+        assert_eq!(
+            DbAdapterRegistry::db_type_from_dsn("mysql://localhost/db").unwrap(),
+            DatabaseType::MySQL
+        );
     }
 
     #[tokio::test]
@@ -440,6 +542,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
+        let (_dir, dsn) =
+            test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
+
+        assert_eq!(effective_user, None);
+    }
+
+    #[tokio::test]
+    async fn mysql_effective_user_dispatch_does_not_expose_password_on_validation_failure() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+
+        let error = registry
+            .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, DbOperationError::ConnectionFailed(details) if !details.contains("header-secret"))
+        );
+    }
+
+    #[tokio::test]
     async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
@@ -447,7 +574,7 @@ mod tests {
 
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
 
-        assert_eq!(signatures[0].qualified_name(), "main.users");
+        assert_eq!(signatures.signatures[0].qualified_name(), "main.users");
     }
 
     #[tokio::test]
@@ -494,35 +621,6 @@ mod tests {
         assert_eq!(detail.schema, "main");
         assert_eq!(detail.name, "users");
     }
-}
-
-#[async_trait]
-impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_diagnostics_core(
-        &self,
-        dsn: &str,
-    ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Err(DbOperationError::ConnectionFailed(
-                "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
-            )),
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
-        }
-    }
-
-    async fn fetch_quick_check(&self, dsn: &str) -> DiagnosticField {
-        match Self::db_type_from_dsn(dsn) {
-            Ok(DatabaseType::SQLite) => self.sqlite.fetch_quick_check(dsn).await,
-            Ok(DatabaseType::PostgreSQL) | Err(_) => DiagnosticField::err(
-                "SQLite diagnostics are unavailable for non-SQLite connections",
-            ),
-        }
-    }
-}
-
-#[cfg(test)]
-mod sqlite_diagnostics_registry {
-    use super::*;
 
     #[tokio::test]
     async fn postgres_dsn_is_rejected() {

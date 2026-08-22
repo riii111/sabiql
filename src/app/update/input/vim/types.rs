@@ -65,7 +65,7 @@ pub enum StagedDeleteState {
 pub enum VimSurfaceContext {
     Browse(BrowseVimContext),
     SqlModal(SqlModalVimContext),
-    JsonbDetail(JsonbDetailVimContext),
+    JsonDetail(JsonDetailVimContext),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,7 +140,7 @@ pub enum SqlModalVimContext {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JsonbDetailVimContext {
+pub enum JsonDetailVimContext {
     Viewing,
     Editing,
     Searching,

@@ -60,30 +60,6 @@ impl ErPreparationState {
             .collect()
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn pending_tables(&self) -> &HashSet<String> {
-        &self.pending_tables
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn fetching_tables(&self) -> &HashSet<String> {
-        &self.fetching_tables
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn failed_tables(&self) -> &HashMap<String, String> {
-        &self.failed_tables
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn total_tables(&self) -> usize {
-        self.total_tables
-    }
-
     pub fn target_tables(&self) -> &[String] {
         &self.target_tables
     }
@@ -171,12 +147,6 @@ impl ErPreparationState {
         self.status = ErStatus::Idle;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
-    #[doc(hidden)]
-    pub fn mark_waiting_for_test(&mut self) {
-        self.status = ErStatus::Waiting;
-    }
-
     pub fn is_current_run(&self, run_id: u64) -> bool {
         self.run.is_current(run_id)
     }
@@ -246,14 +216,6 @@ impl ErPreparationState {
         self.total_tables = total_tables;
     }
 
-    pub fn scoped_fallback_tables(&self, total_table_count: usize) -> Option<Vec<String>> {
-        if !self.target_tables.is_empty() && self.target_tables.len() < total_table_count {
-            Some(self.target_tables.clone())
-        } else {
-            None
-        }
-    }
-
     fn clear_table_tracking(&mut self) {
         self.pending_tables.clear();
         self.fetching_tables.clear();
@@ -266,6 +228,40 @@ impl ErPreparationState {
         self.fetching_tables.remove(&table);
         self.failed_tables.remove(&table);
         self.pending_tables.insert(table)
+    }
+}
+
+#[cfg(test)]
+pub mod test_support {
+    use std::collections::{HashMap, HashSet};
+
+    use super::{ErPreparationState, ErStatus};
+
+    impl ErPreparationState {
+        #[doc(hidden)]
+        pub fn pending_tables(&self) -> &HashSet<String> {
+            &self.pending_tables
+        }
+
+        #[doc(hidden)]
+        pub fn fetching_tables(&self) -> &HashSet<String> {
+            &self.fetching_tables
+        }
+
+        #[doc(hidden)]
+        pub fn failed_tables(&self) -> &HashMap<String, String> {
+            &self.failed_tables
+        }
+
+        #[doc(hidden)]
+        pub fn total_tables(&self) -> usize {
+            self.total_tables
+        }
+
+        #[doc(hidden)]
+        pub fn mark_waiting_for_test(&mut self) {
+            self.status = ErStatus::Waiting;
+        }
     }
 }
 

@@ -51,7 +51,7 @@ pub(super) fn render_editor(
 
     let is_normal = matches!(
         state.sql_modal.status(),
-        SqlModalStatus::Normal | SqlModalStatus::Success | SqlModalStatus::Error
+        SqlModalStatus::Normal | SqlModalStatus::Success(_) | SqlModalStatus::Error(_)
     );
 
     let (cursor_row, cursor_col) = state.sql_modal.editor().cursor_to_position();
@@ -74,7 +74,11 @@ pub(super) fn render_editor(
         base_style: Style::default(),
         current_line_style: Style::default().bg(theme.component.editor.current_line_bg),
     };
-    let line_spans = highlight_sql_spans(content, theme);
+    let line_spans = highlight_sql_spans(
+        content,
+        state.session.active_database_type_or_default(),
+        theme,
+    );
     let mut lines = build_modal_text_surface_lines(surface, line_spans, theme);
 
     let flash_active = state.flash_timers.is_active(FlashId::SqlModal, now);
