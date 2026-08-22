@@ -14,13 +14,6 @@ pub enum VisibleResultKind {
     Empty,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QueryStatus {
-    #[default]
-    Idle,
-    Running,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
     current_page: usize,
@@ -177,7 +170,6 @@ impl PendingPreview {
 
 #[derive(Debug, Clone, Default)]
 pub struct QueryExecution {
-    status: QueryStatus,
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
     result_history: ResultHistory,
@@ -195,14 +187,12 @@ impl QueryExecution {
 
     #[must_use]
     pub fn begin_running(&mut self, now: Instant) -> u64 {
-        self.status = QueryStatus::Running;
         self.start_time = Some(now);
         self.pending_preview = None;
         self.run.begin()
     }
 
     pub fn mark_idle(&mut self) {
-        self.status = QueryStatus::Idle;
         self.start_time = None;
         self.run.clear_active();
     }
@@ -222,16 +212,12 @@ impl QueryExecution {
         self.run.is_current(run_id)
     }
 
-    pub fn status(&self) -> QueryStatus {
-        self.status
-    }
-
     pub fn start_time(&self) -> Option<Instant> {
         self.start_time
     }
 
     pub fn is_running(&self) -> bool {
-        self.status == QueryStatus::Running
+        self.start_time.is_some()
     }
 
     // ── Current result ──────────────────────────────────────────────
@@ -509,7 +495,7 @@ mod tests {
     fn default_creates_idle_state() {
         let execution = QueryExecution::default();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(execution.start_time().is_none());
         assert!(execution.current_result().is_none());
         assert_eq!(execution.result_generation(), 0);
@@ -563,11 +549,6 @@ mod tests {
     }
 
     #[test]
-    fn query_status_default_is_idle() {
-        assert_eq!(QueryStatus::default(), QueryStatus::Idle);
-    }
-
-    #[test]
     fn context_reset_clears_query_owned_write_state() {
         let mut execution = QueryExecution::default();
         let run_id = execution.begin_running(Instant::now());
@@ -577,7 +558,7 @@ mod tests {
 
         execution.reset_for_context_change();
 
-        assert_eq!(execution.status(), QueryStatus::Idle);
+        assert!(!execution.is_running());
         assert!(!execution.is_current_run(run_id));
         assert!(execution.pending_delete_refresh_target().is_none());
         assert!(!execution.has_pending_preview(1));
