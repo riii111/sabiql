@@ -33,13 +33,6 @@ pub(super) fn effective_start(tokens: &[Token]) -> usize {
     cte_body_start(tokens).unwrap_or(0)
 }
 
-pub(super) fn target_is_selected_database(
-    statement: &MySqlStatement,
-    selected_database: Option<&str>,
-) -> bool {
-    target_is_selected_database_with_lower_case_table_names(statement, selected_database, 0)
-}
-
 pub(super) fn target_is_selected_database_with_lower_case_table_names(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
