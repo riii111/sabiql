@@ -294,6 +294,20 @@ pub struct ConnectionTarget {
     pub database: Option<String>,
 }
 
+impl ConnectionTarget {
+    pub fn from_profile(profile: &ConnectionProfile, dsn: String) -> Self {
+        Self {
+            id: profile.id.clone(),
+            dsn,
+            name: profile.display_name().to_string(),
+            database_type: profile.database_type(),
+            database: profile
+                .mysql_config()
+                .and_then(|config| config.database.clone()),
+        }
+    }
+}
+
 impl fmt::Debug for ConnectionTarget {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -932,7 +946,29 @@ impl Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::connection::MySqlSslMode;
     use rstest::rstest;
+
+    #[test]
+    fn connection_target_from_profile_preserves_profile_mapping() {
+        let profile = ConnectionProfile::new_mysql(
+            "MySQL",
+            "localhost",
+            3306,
+            Some("app".to_string()),
+            "user",
+            "password",
+            MySqlSslMode::Required,
+        )
+        .unwrap();
+        let target = ConnectionTarget::from_profile(&profile, "mysql://dsn".to_string());
+
+        assert_eq!(target.id, profile.id);
+        assert_eq!(target.dsn, "mysql://dsn");
+        assert_eq!(target.name, profile.display_name());
+        assert_eq!(target.database_type, profile.database_type());
+        assert_eq!(target.database.as_deref(), Some("app"));
+    }
 
     #[test]
     fn connection_target_debug_masks_mysql_password() {
