@@ -101,22 +101,28 @@ mod tests {
     }
 
     #[test]
-    fn resize_expand_preserves_entries() {
+    fn resize_expand_sets_requested_capacity() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
         cache.insert("b", 2);
 
         cache.resize(5);
+
+        assert!(cache.contains(&"a"));
+        assert!(cache.contains(&"b"));
+
         cache.insert("c", 3);
         cache.insert("d", 4);
         cache.insert("e", 5);
+        cache.insert("f", 6);
 
-        assert!(cache.contains(&"a"));
+        assert_eq!(cache.iter().count(), 5);
+        assert!(!cache.contains(&"a"));
         assert!(cache.contains(&"b"));
         assert!(cache.contains(&"c"));
         assert!(cache.contains(&"d"));
         assert!(cache.contains(&"e"));
-        assert_eq!(cache.iter().count(), 5);
+        assert!(cache.contains(&"f"));
     }
 
     #[test]
@@ -152,5 +158,12 @@ mod tests {
         assert!(!cache.contains(&"a"));
         assert!(cache.contains(&"b"));
         assert!(cache.contains(&"c"));
+
+        cache.insert("d", 4);
+
+        assert_eq!(cache.iter().count(), 2);
+        assert!(!cache.contains(&"b"));
+        assert!(cache.contains(&"c"));
+        assert!(cache.contains(&"d"));
     }
 }
