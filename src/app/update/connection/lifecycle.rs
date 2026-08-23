@@ -1049,7 +1049,7 @@ mod tests {
 
         fn valid_mysql_cache(dsn: &str, database: &str) -> ConnectionCache {
             let mut pagination = PaginationState::default();
-            pagination.reset_for_table_with_estimate("app", "users", Some(1200));
+            pagination.reset_for_table("app", "users");
             pagination.set_page_result(2, false);
             ConnectionCache {
                 connection_dsn: Some(dsn.to_string()),
@@ -1141,7 +1141,6 @@ mod tests {
             assert_eq!(state.query.pagination.schema(), "app");
             assert_eq!(state.query.pagination.table(), "users");
             assert_eq!(state.query.pagination.current_page(), 2);
-            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
             assert_eq!(state.ui.explorer_selected(), 42);
             assert_eq!(state.ui.inspector_tab(), InspectorTab::ForeignKeys);
 
@@ -1339,7 +1338,7 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             let target_id = ConnectionId::new();
             let mut pagination = PaginationState::default();
-            pagination.reset_for_table_with_estimate("main", "items", Some(900));
+            pagination.reset_for_table("main", "items");
             pagination.set_page_result(1, true);
             state.ui.set_explorer_selected_raw(7);
             state.connection_caches.save(
@@ -1399,10 +1398,7 @@ mod tests {
             let _ = state
                 .session
                 .select_table("public", "users", &mut state.query);
-            state
-                .query
-                .pagination
-                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.reset_for_table("public", "users");
             state.query.pagination.set_page_result(2, false);
             state
                 .query
@@ -1415,7 +1411,7 @@ mod tests {
                 )));
 
             let mut pagination_b = PaginationState::default();
-            pagination_b.reset_for_table_with_estimate("main", "orders", Some(2600));
+            pagination_b.reset_for_table("main", "orders");
             pagination_b.set_page_result(5, false);
             state.connection_caches.save(
                 &connection_b,

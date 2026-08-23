@@ -16,7 +16,6 @@ pub enum VisibleResultKind {
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
     current_page: usize,
-    total_rows_estimate: Option<i64>,
     reached_end: bool,
     schema: String,
     table: String,
@@ -25,10 +24,6 @@ pub struct PaginationState {
 impl PaginationState {
     pub fn current_page(&self) -> usize {
         self.current_page
-    }
-
-    pub fn total_rows_estimate(&self) -> Option<i64> {
-        self.total_rows_estimate
     }
 
     pub fn reached_end(&self) -> bool {
@@ -73,13 +68,6 @@ impl PaginationState {
         self.current_page.saturating_sub(1)
     }
 
-    pub fn total_pages_estimate(&self) -> Option<usize> {
-        self.total_rows_estimate.map(|total| {
-            let total = total.max(0) as usize;
-            total.div_ceil(PREVIEW_PAGE_SIZE).max(1)
-        })
-    }
-
     pub fn can_next(&self) -> bool {
         !self.reached_end
     }
@@ -90,7 +78,6 @@ impl PaginationState {
 
     pub fn reset(&mut self) {
         self.current_page = 0;
-        self.total_rows_estimate = None;
         self.reached_end = false;
         self.schema.clear();
         self.table.clear();
@@ -102,26 +89,12 @@ impl PaginationState {
         self.table = table.to_string();
     }
 
-    pub fn reset_for_table_with_estimate(
-        &mut self,
-        schema: &str,
-        table: &str,
-        estimate: Option<i64>,
-    ) {
-        self.reset_for_table(schema, table);
-        self.total_rows_estimate = estimate;
-    }
-
     pub fn clear_reached_end(&mut self) {
         self.reached_end = false;
     }
 
     pub fn mark_reached_end(&mut self) {
         self.reached_end = true;
-    }
-
-    pub fn set_total_rows_estimate(&mut self, estimate: Option<i64>) {
-        self.total_rows_estimate = estimate;
     }
 
     // Use when navigation changes only the page index and must preserve the
@@ -539,53 +512,6 @@ mod tests {
         }
 
         #[test]
-        fn total_pages_estimate_rounds_up() {
-            let p = PaginationState {
-                total_rows_estimate: Some(1001),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(3));
-        }
-
-        #[test]
-        fn total_pages_estimate_exact_division() {
-            let p = PaginationState {
-                total_rows_estimate: Some(1000),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(2));
-        }
-
-        #[test]
-        fn total_pages_estimate_none_when_unknown() {
-            let p = PaginationState::default();
-
-            assert_eq!(p.total_pages_estimate(), None);
-        }
-
-        #[test]
-        fn total_pages_estimate_clamps_zero_to_one() {
-            let p = PaginationState {
-                total_rows_estimate: Some(0),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(1));
-        }
-
-        #[test]
-        fn total_pages_estimate_clamps_negative_to_one() {
-            let p = PaginationState {
-                total_rows_estimate: Some(-1),
-                ..Default::default()
-            };
-
-            assert_eq!(p.total_pages_estimate(), Some(1));
-        }
-
-        #[test]
         fn can_next_false_when_reached_end() {
             let p = PaginationState {
                 reached_end: true,
@@ -596,7 +522,7 @@ mod tests {
         }
 
         #[test]
-        fn can_next_true_when_estimate_unknown() {
+        fn can_next_true_before_end_of_data() {
             let p = PaginationState::default();
 
             assert!(p.can_next());
@@ -623,7 +549,6 @@ mod tests {
         fn reset_clears_state() {
             let mut p = PaginationState {
                 current_page: 5,
-                total_rows_estimate: Some(10000),
                 reached_end: true,
                 schema: "public".to_string(),
                 table: "users".to_string(),
@@ -632,26 +557,23 @@ mod tests {
             p.reset();
 
             assert_eq!(p.current_page, 0);
-            assert_eq!(p.total_rows_estimate, None);
             assert!(!p.reached_end);
             assert!(p.schema.is_empty());
             assert!(p.table.is_empty());
         }
 
         #[test]
-        fn reset_for_table_with_estimate_sets_target_and_resets_page_state() {
+        fn reset_for_table_sets_target_and_resets_page_state() {
             let mut p = PaginationState {
                 current_page: 5,
-                total_rows_estimate: Some(1),
                 reached_end: true,
                 schema: "old".to_string(),
                 table: "old".to_string(),
             };
 
-            p.reset_for_table_with_estimate("public", "users", Some(1200));
+            p.reset_for_table("public", "users");
 
             assert_eq!(p.current_page(), 0);
-            assert_eq!(p.total_rows_estimate(), Some(1200));
             assert!(!p.reached_end());
             assert_eq!(p.schema(), "public");
             assert_eq!(p.table(), "users");

@@ -3215,7 +3215,6 @@ mod tests {
 
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
-            assert_eq!(state.query.pagination.total_rows_estimate(), Some(1200));
             assert_eq!(state.query.pagination.current_page(), 0);
             assert!(!state.query.pagination.reached_end());
         }
