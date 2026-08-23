@@ -139,22 +139,15 @@ pub(crate) async fn run(
                         return Ok(());
                     }
                 };
-                let id = profile.id.clone();
                 let dsn = connection.dsn_builder.build_dsn(&profile);
-                let name = profile.name.as_str().to_string();
-                let database_type = profile.database_type();
+                let target = ConnectionTarget::from_profile(&profile, dsn);
+                let database_type = target.database_type;
 
                 tokio::task::spawn_blocking(move || {
                     match claim_and_save(&run_guard, run_id, || store.save(&profile)) {
                         Some(Ok(())) => {
                             tx.blocking_send(Action::ConnectionSaveCompleted {
-                                target: ConnectionTarget {
-                                    id,
-                                    dsn,
-                                    name,
-                                    database_type,
-                                    database: None,
-                                },
+                                target,
                                 run_id,
                                 mysql_lower_case_table_names: None,
                             })
@@ -174,22 +167,11 @@ pub(crate) async fn run(
                 return Ok(());
             }
 
-            let id = profile.id.clone();
             let dsn = connection.dsn_builder.build_dsn(&profile);
-            let name = profile.name.as_str().to_string();
             let database_type = profile.database_type();
 
             if database_type == DatabaseType::MySQL {
-                let database = profile
-                    .mysql_config()
-                    .and_then(|config| config.database.clone());
-                let target = ConnectionTarget {
-                    id,
-                    dsn,
-                    name,
-                    database_type,
-                    database,
-                };
+                let target = ConnectionTarget::from_profile(&profile, dsn);
                 let probe = Arc::clone(&connection.mysql_connection_probe);
                 mysql_connection_probe_task
                     .spawn(async move {
@@ -242,8 +224,10 @@ pub(crate) async fn run(
                 return Ok(());
             }
 
-            let provider = Arc::clone(metadata_provider);
+            let target = ConnectionTarget::from_profile(&profile, dsn);
             let cache = metadata_cache.clone();
+            let provider = Arc::clone(metadata_provider);
+            let dsn = target.dsn.clone();
             tokio::spawn(async move {
                 match provider.fetch_metadata(&dsn).await {
                     Ok(metadata) => {
@@ -256,13 +240,7 @@ pub(crate) async fn run(
                         match save_result {
                             Some(Ok(())) => {
                                 tx.send(Action::ConnectionSaveCompleted {
-                                    target: ConnectionTarget {
-                                        id,
-                                        dsn: dsn.clone(),
-                                        name,
-                                        database_type,
-                                        database: None,
-                                    },
+                                    target,
                                     run_id,
                                     mysql_lower_case_table_names: None,
                                 })
@@ -393,19 +371,10 @@ pub(crate) async fn run(
         Effect::SwitchConnection { connection_index } => {
             if let Some(profile) = state.connections().get(connection_index) {
                 let dsn = connection.dsn_builder.build_dsn(profile);
-                let name = profile.display_name().to_string();
-                let id = profile.id.clone();
-                let database_type = profile.database_type();
                 action_tx
-                    .send(Action::SwitchConnection(ConnectionTarget {
-                        id,
-                        dsn,
-                        name,
-                        database_type,
-                        database: profile
-                            .mysql_config()
-                            .and_then(|config| config.database.clone()),
-                    }))
+                    .send(Action::SwitchConnection(ConnectionTarget::from_profile(
+                        profile, dsn,
+                    )))
                     .await
                     .ok();
             }
