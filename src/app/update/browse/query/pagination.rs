@@ -44,14 +44,11 @@ fn dispatch_cached_csv_export(
     file_name: String,
     columns: Vec<String>,
     values: Vec<Vec<QueryValue>>,
-    row_count: Option<usize>,
+    row_count: usize,
 ) -> DispatchResult {
-    let needs_confirm = row_count.is_some_and(|count| count > LARGE_EXPORT_THRESHOLD);
+    let needs_confirm = row_count > LARGE_EXPORT_THRESHOLD;
     if needs_confirm {
-        let msg = match row_count {
-            Some(n) => format!("Export {n} rows to CSV? This may take a while."),
-            None => "Export to CSV?".to_string(),
-        };
+        let msg = format!("Export {row_count} rows to CSV? This may take a while.");
         state.confirm_dialog.open(
             "Confirm CSV Export",
             msg,
@@ -59,7 +56,7 @@ fn dispatch_cached_csv_export(
                 dsn,
                 run_id,
                 file_name,
-                row_count,
+                row_count: Some(row_count),
                 snapshot: CsvExportCacheSnapshot { columns, values },
             },
         );
@@ -72,7 +69,7 @@ fn dispatch_cached_csv_export(
             file_name,
             columns,
             values,
-            row_count,
+            row_count: Some(row_count),
         }])
     }
 }
@@ -206,13 +203,7 @@ pub fn reduce_pagination(
                         let values = result.values().to_vec();
                         let run_id = state.query.begin_running(now);
                         return dispatch_cached_csv_export(
-                            state,
-                            dsn,
-                            run_id,
-                            file_name,
-                            columns,
-                            values,
-                            Some(row_count),
+                            state, dsn, run_id, file_name, columns, values, row_count,
                         );
                     }
                 }
@@ -224,13 +215,7 @@ pub fn reduce_pagination(
                     let values = result.values().to_vec();
                     let run_id = state.query.begin_running(now);
                     return dispatch_cached_csv_export(
-                        state,
-                        dsn,
-                        run_id,
-                        file_name,
-                        columns,
-                        values,
-                        Some(row_count),
+                        state, dsn, run_id, file_name, columns, values, row_count,
                     );
                 }
 
