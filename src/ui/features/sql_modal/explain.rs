@@ -113,7 +113,7 @@ pub fn render(
             && state.session.active_database_type_or_default() == DatabaseType::MySQL
         {
             lines.push(Line::from(Span::styled(
-                format_actual_metrics(state.explain.current_plan()),
+                format!("  {}", format_actual_metrics(state.explain.current_plan())),
                 Style::default().fg(theme.semantic.text.muted),
             )));
         }
@@ -146,9 +146,9 @@ pub fn render(
     }
 }
 
-fn format_actual_metrics(plan: Option<&ExplainPlan>) -> String {
+pub(super) fn format_actual_metrics(plan: Option<&ExplainPlan>) -> String {
     let Some(plan) = plan else {
-        return "  Actual: unavailable".to_string();
+        return "Actual: unavailable".to_string();
     };
     let (Some(start), Some(end), Some(rows), Some(loops)) = (
         plan.actual_start_ms,
@@ -156,10 +156,10 @@ fn format_actual_metrics(plan: Option<&ExplainPlan>) -> String {
         plan.actual_rows,
         plan.loops,
     ) else {
-        return "  Actual: unavailable".to_string();
+        return "Actual: unavailable".to_string();
     };
 
-    format!("  Actual: time={start:.3}..{end:.3} ms rows={rows} loops={loops}")
+    format!("Actual: time={start:.3}..{end:.3} ms rows={rows} loops={loops}")
 }
 
 fn render_scrolled(frame: &mut Frame, area: Rect, lines: Vec<Line>, scroll_offset: usize) {

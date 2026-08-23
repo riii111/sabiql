@@ -11,7 +11,7 @@ use crate::app::model::explain_context::CompareSlot;
 use crate::app::model::shared::flash_timer::FlashId;
 use crate::app::update::input::keybindings::sql_modal_compare_explain;
 use crate::domain::DatabaseType;
-use crate::domain::explain_plan::{self, ComparisonVerdict, ExplainPlan};
+use crate::domain::explain_plan::{self, ComparisonVerdict};
 use crate::primitives::atoms::apply_yank_flash_masked;
 use crate::primitives::utils::text_utils::truncate_to_width_with;
 use crate::theme::ThemePalette;
@@ -382,26 +382,16 @@ fn slot_detail_text(slot: Option<&CompareSlot>) -> String {
             let time_secs = s.plan.execution_secs();
             let summary = format!(" {}  ({:.2}s)", mode_label(s.plan.is_analyze), time_secs);
             if s.database_type == DatabaseType::MySQL && s.plan.is_analyze {
-                format!("{summary}  {}", actual_metrics_text(&s.plan))
+                format!(
+                    "{summary}  {}",
+                    super::explain::format_actual_metrics(Some(&s.plan))
+                )
             } else {
                 summary
             }
         }
         None => " Run EXPLAIN again".to_string(),
     }
-}
-
-fn actual_metrics_text(plan: &ExplainPlan) -> String {
-    let (Some(start), Some(end), Some(rows), Some(loops)) = (
-        plan.actual_start_ms,
-        plan.actual_end_ms,
-        plan.actual_rows,
-        plan.loops,
-    ) else {
-        return "Actual: unavailable".to_string();
-    };
-
-    format!("Actual: time={start:.3}..{end:.3} ms rows={rows} loops={loops}")
 }
 
 fn mode_label(is_analyze: bool) -> &'static str {
@@ -422,6 +412,7 @@ pub(super) fn pad_or_truncate(s: &str, width: usize) -> String {
 mod tests {
     use super::*;
     use crate::app::model::explain_context::SlotSource;
+    use crate::domain::explain_plan::ExplainPlan;
     use crate::theme::DEFAULT_THEME;
 
     mod pad_or_truncate_tests {
