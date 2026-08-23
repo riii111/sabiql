@@ -35,20 +35,10 @@ enum ConnectionFeature {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ComparisonSupport {
-    #[allow(
-        dead_code,
-        reason = "Retain comparison state for profiles without plan comparison"
-    )]
-    Unsupported,
-    Supported,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExplainProfile {
     Unsupported,
     QueryPlanOnly,
-    QueryPlanAndAnalyze { comparison: ComparisonSupport },
+    QueryPlanAndAnalyze,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,9 +187,7 @@ impl EngineFeatureProfile {
     pub fn postgres_like() -> Self {
         Self::new(
             POSTGRESQL_INSPECTOR,
-            ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Supported,
-            },
+            ExplainProfile::QueryPlanAndAnalyze,
             POSTGRESQL_FEATURES,
         )
     }
@@ -215,9 +203,7 @@ impl EngineFeatureProfile {
     pub fn mysql_like() -> Self {
         Self::new(
             MYSQL_INSPECTOR,
-            ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Supported,
-            },
+            ExplainProfile::QueryPlanAndAnalyze,
             MYSQL_FEATURES,
         )
     }
@@ -235,7 +221,7 @@ impl EngineFeatureProfile {
     }
 
     pub fn supports_explain_analyze(&self) -> bool {
-        matches!(self.explain, ExplainProfile::QueryPlanAndAnalyze { .. })
+        matches!(self.explain, ExplainProfile::QueryPlanAndAnalyze)
     }
 
     pub fn supports_er_diagram(&self) -> bool {
@@ -243,12 +229,7 @@ impl EngineFeatureProfile {
     }
 
     pub fn supports_plan_comparison(&self) -> bool {
-        matches!(
-            self.explain,
-            ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Supported,
-            }
-        )
+        matches!(self.explain, ExplainProfile::QueryPlanAndAnalyze)
     }
 
     pub fn supports_json_document_detail(&self) -> bool {
@@ -278,13 +259,10 @@ impl EngineFeatureProfile {
     pub fn supported_sql_modal_tabs(&self) -> &'static [SqlModalTab] {
         match self.explain {
             ExplainProfile::Unsupported => &[SqlModalTab::Sql],
-            ExplainProfile::QueryPlanOnly
-            | ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Unsupported,
-            } => &[SqlModalTab::Sql, SqlModalTab::Plan],
-            ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Supported,
-            } => &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare],
+            ExplainProfile::QueryPlanOnly => &[SqlModalTab::Sql, SqlModalTab::Plan],
+            ExplainProfile::QueryPlanAndAnalyze => {
+                &[SqlModalTab::Sql, SqlModalTab::Plan, SqlModalTab::Compare]
+            }
         }
     }
 
@@ -546,14 +524,12 @@ mod tests {
     }
 
     #[test]
-    fn compare_support_is_nested_under_explain_support() {
+    fn query_plan_and_analyze_enables_plan_comparison() {
         let profile = EngineFeatureProfile::postgres_like();
 
         assert!(matches!(
             profile.explain,
-            ExplainProfile::QueryPlanAndAnalyze {
-                comparison: ComparisonSupport::Supported,
-            }
+            ExplainProfile::QueryPlanAndAnalyze
         ));
     }
 }
