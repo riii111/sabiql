@@ -199,14 +199,13 @@ async fn fetch_table_detail_with_session(
     )?;
     let source_ddl = parse_source_ddl(
         &session
-            .execute_with_expected_columns(
+            .execute_show_create_with_completion_marker(
                 &show_create_query(table, table_metadata.kind),
                 show_create_result_columns(table_metadata.kind),
             )
             .await?,
         table_metadata.kind,
     )?;
-    session.finish().await?;
 
     let mut detail = table_from_columns_and_foreign_keys(table_metadata, columns, foreign_keys);
     detail.indexes = indexes;
@@ -508,6 +507,14 @@ while IFS= read -r line; do
     fi
     continue
   fi
+  if printf '%s\n' "$line" | grep -q '__sabiql_inspector_completion'; then
+    marker=$(printf '%s\n' "$line" | sed "s/.*SELECT '\([^']*\)'.*/\1/")
+    if [ "$mode" = "completion-marker-failure" ]; then
+      marker=wrong-marker
+    fi
+    printf '%s\n' '<resultset><row><field name="__sabiql_inspector_completion">'"$marker"'</field></row></resultset>'
+    continue
+  fi
   case "$line" in
     *"SET SESSION TRANSACTION READ ONLY")
       ;;
@@ -665,6 +672,7 @@ done
                     "REFERENTIAL_CONSTRAINTS",
                     "INFORMATION_SCHEMA.TRIGGERS",
                     "SHOW CREATE VIEW",
+                    "__sabiql_inspector_completion",
                 ]
             } else {
                 [
@@ -679,6 +687,7 @@ done
                     "REFERENTIAL_CONSTRAINTS",
                     "INFORMATION_SCHEMA.TRIGGERS",
                     "SHOW CREATE TABLE",
+                    "__sabiql_inspector_completion",
                 ]
             };
             let positions = labels
@@ -689,6 +698,26 @@ done
             assert_process_stopped(&transcript);
             assert_option_file_removed(&transcript);
         }
+    }
+
+    #[tokio::test]
+    async fn inspector_detail_rejects_a_mismatched_completion_marker() {
+        let (_directory, program, transcript) = fake_metadata_cli("completion-marker-failure");
+        let error = fetch_table_detail_in_session_with_program(
+            "mysql://user:password@localhost:3306/app",
+            "app",
+            "items",
+            OsStr::new(&program),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            matches!(error, DbOperationError::QueryFailed(details) if details.contains("completion marker"))
+        );
+        assert_process_stopped(&transcript);
+        assert_option_file_removed(&transcript);
     }
 
     #[tokio::test]

@@ -20,6 +20,7 @@ pub(in crate::adapters::mysql) struct MySqlMetadataSession {
 }
 
 const MYSQL_PREVIEW_COMPLETION_MARKER_COLUMN: &str = "__sabiql_preview_completion";
+const MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN: &str = "__sabiql_inspector_completion";
 
 impl MySqlMetadataSession {
     pub(in crate::adapters::mysql) fn spawn_with_program(
@@ -89,6 +90,42 @@ impl MySqlMetadataSession {
                 .collect();
         }
         Ok(result)
+    }
+
+    pub(in crate::adapters::mysql) async fn execute_show_create_with_completion_marker(
+        &mut self,
+        query: &str,
+        expected_columns: &[&str],
+    ) -> Result<MySqlResultSet, DbOperationError> {
+        let marker = Uuid::new_v4().simple().to_string();
+        let marker_query =
+            format!("SELECT '{marker}' AS {MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN}");
+
+        write_mysql_statement(&mut self.process, query).await?;
+        write_mysql_statement(&mut self.process, &marker_query).await?;
+
+        let source_xml = read_one_mysql_resultset(&mut self.process).await?;
+        let mut source_result = parse_mysql_xml(&source_xml)?;
+        if source_result.columns.is_empty() && source_result.values.is_empty() {
+            source_result.columns = expected_columns
+                .iter()
+                .map(|column| (*column).to_string())
+                .collect();
+        }
+        let marker_xml = read_one_mysql_resultset(&mut self.process).await?;
+        let marker_result = parse_mysql_xml(&marker_xml)?;
+        if marker_result.columns != [MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN]
+            || marker_result.values.len() != 1
+            || marker_result.values[0].len() != 1
+            || marker_result.values[0][0].as_str() != Some(marker.as_str())
+        {
+            return Err(DbOperationError::QueryFailed(
+                "mysql inspector completion marker did not match".to_string(),
+            ));
+        }
+        let result = finish_mysql_session_after_preview_frame(&mut self.process).await?;
+        validate_mysql_session_exit(&result, self.process.client_packet_limit_bytes)?;
+        Ok(source_result)
     }
 
     pub(in crate::adapters::mysql) async fn finish(&mut self) -> Result<(), DbOperationError> {
