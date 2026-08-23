@@ -701,24 +701,27 @@ fn query_history_picker_with_entries() {
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
     state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM users WHERE id = 1".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "INSERT INTO orders (user_id, total) VALUES (1, 100)".to_string(),
             "2026-03-13T11:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             Some(1),
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT count(*) FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Failed,
             None,
         ),
@@ -748,17 +751,19 @@ fn query_history_picker_filter_mode() {
 
     state.modal.set_mode(InputMode::QueryHistoryPicker);
     state.query_history_picker.replace_entries(&[
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM users".to_string(),
             "2026-03-13T10:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             "SELECT * FROM orders".to_string(),
             "2026-03-13T11:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         ),

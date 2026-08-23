@@ -61,23 +61,6 @@ pub struct QueryHistoryEntry {
 }
 
 impl QueryHistoryEntry {
-    pub fn new(
-        query: String,
-        executed_at: String,
-        connection_id: ConnectionId,
-        result_status: QueryResultStatus,
-        affected_rows: Option<u64>,
-    ) -> Self {
-        Self::new_with_database(
-            query,
-            executed_at,
-            connection_id,
-            None,
-            result_status,
-            affected_rows,
-        )
-    }
-
     pub fn new_with_database(
         query: String,
         executed_at: String,
@@ -103,10 +86,11 @@ mod tests {
 
     #[test]
     fn serde_round_trip() {
-        let entry = QueryHistoryEntry::new(
+        let entry = QueryHistoryEntry::new_with_database(
             "SELECT * FROM users".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-uuid"),
+            None,
             QueryResultStatus::Success,
             None,
         );
@@ -119,10 +103,11 @@ mod tests {
 
     #[test]
     fn serde_round_trip_with_affected_rows() {
-        let entry = QueryHistoryEntry::new(
+        let entry = QueryHistoryEntry::new_with_database(
             "UPDATE users SET name = 'x'".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-uuid"),
+            None,
             QueryResultStatus::Success,
             Some(5),
         );
@@ -137,10 +122,11 @@ mod tests {
 
     #[test]
     fn serde_json_format() {
-        let entry = QueryHistoryEntry::new(
+        let entry = QueryHistoryEntry::new_with_database(
             "SELECT 1".to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("abc-123"),
+            None,
             QueryResultStatus::Success,
             None,
         );

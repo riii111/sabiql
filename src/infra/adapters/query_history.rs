@@ -132,10 +132,11 @@ mod tests {
     }
 
     fn make_entry(query: &str) -> QueryHistoryEntry {
-        QueryHistoryEntry::new(
+        QueryHistoryEntry::new_with_database(
             query.to_string(),
             "2026-03-13T12:00:00Z".to_string(),
             ConnectionId::from_string("test-conn"),
+            None,
             QueryResultStatus::Success,
             None,
         )
