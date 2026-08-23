@@ -1115,10 +1115,11 @@ mod tests {
         use crate::ports::outbound::query_history::QueryHistoryError;
 
         fn make_entry(query: &str, conn_id: &ConnectionId) -> QueryHistoryEntry {
-            QueryHistoryEntry::new(
+            QueryHistoryEntry::new_with_database(
                 query.to_string(),
                 "2026-03-13T12:00:00Z".to_string(),
                 conn_id.clone(),
+                None,
                 QueryResultStatus::Success,
                 None,
             )
