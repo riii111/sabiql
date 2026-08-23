@@ -63,11 +63,6 @@ impl TomlConnectionStore {
 }
 
 impl ConnectionStore for TomlConnectionStore {
-    fn load(&self) -> Result<Option<ConnectionProfile>, ConnectionStoreError> {
-        let profiles = self.load_all()?;
-        Ok(profiles.into_iter().next())
-    }
-
     fn load_all(&self) -> Result<Vec<ConnectionProfile>, ConnectionStoreError> {
         let Some(config) = self.load_config_file()? else {
             return Ok(vec![]);
@@ -423,34 +418,6 @@ ssl_mode = "prefer"
 
     mod roundtrip {
         use super::*;
-
-        #[test]
-        fn save_and_load_preserves_data() {
-            let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
-            let profile = make_test_profile("Test Connection");
-
-            store.save(&profile).unwrap();
-            let loaded = store.load().unwrap();
-
-            assert!(loaded.is_some());
-            let loaded = loaded.unwrap();
-            assert_eq!(loaded.name.as_str(), profile.name.as_str());
-            assert_eq!(loaded.config, profile.config);
-        }
-
-        #[test]
-        fn save_and_load_preserves_sqlite_data() {
-            let temp_dir = TempDir::new().unwrap();
-            let store = TomlConnectionStore::with_config_dir(temp_dir.path().to_path_buf());
-            let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
-
-            store.save(&profile).unwrap();
-            let loaded = store.load().unwrap().unwrap();
-
-            assert_eq!(loaded.database_type(), DatabaseType::SQLite);
-            assert_eq!(loaded.sqlite_config().unwrap().path(), "/tmp/app.db");
-        }
 
         #[test]
         fn empty_sqlite_path_returns_invalid_profile() {

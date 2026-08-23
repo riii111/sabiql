@@ -41,8 +41,6 @@ impl From<toml::de::Error> for ConnectionStoreError {
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ConnectionStore: Send + Sync {
-    fn load(&self) -> Result<Option<ConnectionProfile>, ConnectionStoreError>;
-
     fn save(&self, profile: &ConnectionProfile) -> Result<(), ConnectionStoreError>;
 
     fn storage_path(&self) -> PathBuf;
