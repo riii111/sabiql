@@ -3,7 +3,6 @@ use std::time::Instant;
 use ratatui::prelude::*;
 use ratatui::widgets::{Paragraph, Wrap};
 
-use crate::domain::DatabaseType;
 use crate::theme::ThemePalette;
 
 use crate::app::model::app_state::AppState;
@@ -169,21 +168,12 @@ impl ConnectionError {
         theme: &ThemePalette,
     ) {
         let error_state = &state.connection_error;
-        let can_retry = state
-            .session
-            .active_database_type()
-            .is_some_and(|database_type| database_type == DatabaseType::MySQL)
-            && error_state.can_retry();
         let mut spans = vec![Span::styled(
             "Actions: ",
             Style::default().fg(theme.semantic.text.muted),
         )];
 
-        if !error_state.is_save_and_connect_failure()
-            && (state.session.has_pending_connection_switch()
-                || !state.session.can_reenter_connection_setup()
-                || can_retry)
-        {
+        if state.can_retry_connection_error() {
             spans.push(key_chip("r", theme));
             spans.push(Span::raw(" Retry  "));
         } else {
