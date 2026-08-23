@@ -247,7 +247,7 @@ impl PostgresAdapter {
         let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
         if !output.status.success() {
-            return Err(Self::classify_psql_error(&output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
 
         Ok(output.stdout)
@@ -290,7 +290,7 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            return Err(Self::classify_psql_error(&output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
 
         let stdout_trimmed = output.stdout.trim();
@@ -335,7 +335,7 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            return Err(Self::classify_psql_error(&output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
 
         let segments = split_marker_segments(&output.stdout, &marker);
@@ -424,7 +424,7 @@ impl PostgresAdapter {
         let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
-            return Err(Self::classify_psql_error(&output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
 
         let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
@@ -448,7 +448,7 @@ impl PostgresAdapter {
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
         if !output.status.success() {
-            return Err(Self::classify_psql_error(&output.stderr));
+            return Err(classify_query_error(&output.stderr));
         }
         output.stdout.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
@@ -482,7 +482,7 @@ impl PostgresAdapter {
         let (status, stderr) = result;
         if !status.success() {
             let _ = tokio::fs::remove_file(path).await;
-            return Err(Self::classify_psql_error(&stderr));
+            return Err(classify_query_error(&stderr));
         }
 
         Ok(())
@@ -511,10 +511,6 @@ impl PostgresAdapter {
             .ok_or_else(|| ParseCommandTagError::Invalid {
                 input: format!("{tag:?}"),
             })
-    }
-
-    fn classify_psql_error(stderr: &str) -> DbOperationError {
-        classify_query_error(stderr)
     }
 }
 
