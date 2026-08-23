@@ -7,7 +7,6 @@ use crate::domain::{
     ConnectionId, DatabaseMetadata, DatabaseType, MetadataState, QueryResult, Table, TableSummary,
 };
 use crate::model::browse::query_execution::{PaginationState, QueryExecution};
-use crate::model::browse::result_history::ResultHistory;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::connection::origin::ConnectionOrigin;
 use crate::model::connection::state::ConnectionState;
@@ -613,7 +612,6 @@ impl BrowseSession {
         explorer_selected: usize,
         inspector_tab: InspectorTab,
         query_result: Option<Arc<QueryResult>>,
-        result_history: ResultHistory,
         pagination: PaginationState,
     ) -> ConnectionCache {
         ConnectionCache {
@@ -625,7 +623,6 @@ impl BrowseSession {
             table_detail: self.table_detail().cloned(),
             selected_table_key: self.selected_table_key.clone(),
             query_result,
-            result_history,
             pagination,
             explorer_selected,
             inspector_tab,
@@ -655,7 +652,6 @@ impl BrowseSession {
             Some(r) => query.set_current_result(r.clone()),
             None => query.clear_current_result(),
         }
-        query.restore_history(cache.result_history.clone());
     }
 
     pub fn restore_from_cache_for_connection(
@@ -690,7 +686,6 @@ impl BrowseSession {
         self.is_reloading = false;
         query.pagination.reset();
         query.clear_current_result();
-        query.restore_history(ResultHistory::default());
     }
 
     // ── Getters ──────────────────────────────────────────────────────
@@ -1528,8 +1523,6 @@ mod tests {
             let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
 
             let result = make_query_result();
-            let mut history = ResultHistory::default();
-            history.push(result.clone());
             query
                 .pagination
                 .reset_for_table_with_estimate("public", "users", Some(1200));
@@ -1539,7 +1532,6 @@ mod tests {
                 5,
                 InspectorTab::Indexes,
                 Some(result),
-                history,
                 query.pagination.clone(),
             );
 
@@ -1556,7 +1548,6 @@ mod tests {
             assert!(new_session.connection_state().is_connected());
             assert_eq!(new_session.metadata_state(), &MetadataState::Loaded);
             assert!(query.current_result().is_some());
-            assert_eq!(query.result_history().len(), 1);
             assert_eq!(query.pagination.schema(), "public");
             assert_eq!(query.pagination.table(), "users");
             assert_eq!(query.pagination.current_page(), 2);
@@ -1575,13 +1566,7 @@ mod tests {
             let _ = session.begin_reload();
             assert!(session.selection_generation() > 0);
 
-            let cache = session.to_cache(
-                0,
-                InspectorTab::Info,
-                None,
-                ResultHistory::default(),
-                PaginationState::default(),
-            );
+            let cache = session.to_cache(0, InspectorTab::Info, None, PaginationState::default());
 
             let mut new_session = BrowseSession::default();
             new_session.set_selection_generation(42);
@@ -1600,13 +1585,7 @@ mod tests {
             let mut query = QueryExecution::default();
             let _ = session.select_table("public", "users", &mut query);
 
-            let cache = session.to_cache(
-                0,
-                InspectorTab::Info,
-                None,
-                ResultHistory::default(),
-                PaginationState::default(),
-            );
+            let cache = session.to_cache(0, InspectorTab::Info, None, PaginationState::default());
 
             let mut restored = BrowseSession::default();
             let mut query = QueryExecution::default();
@@ -1632,7 +1611,6 @@ mod tests {
                 3,
                 InspectorTab::Columns,
                 Some(make_query_result()),
-                ResultHistory::default(),
                 PaginationState::default(),
             );
 
@@ -1745,13 +1723,7 @@ mod tests {
             let mut session = BrowseSession::default();
             session.mark_connected(make_metadata("cached_db"));
 
-            let cache = session.to_cache(
-                0,
-                InspectorTab::Info,
-                None,
-                ResultHistory::default(),
-                PaginationState::default(),
-            );
+            let cache = session.to_cache(0, InspectorTab::Info, None, PaginationState::default());
 
             let mut new_session = BrowseSession::default();
             let mut query = QueryExecution::default();

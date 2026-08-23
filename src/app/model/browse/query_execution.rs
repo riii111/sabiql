@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::domain::{QueryResult, QuerySource, Table};
-use crate::model::browse::result_history::ResultHistory;
 use crate::model::shared::async_run::AsyncRun;
 
 pub const PREVIEW_PAGE_SIZE: usize = 500;
@@ -172,7 +171,6 @@ impl PendingPreview {
 pub struct QueryExecution {
     start_time: Option<Instant>,
     current_result: Option<Arc<QueryResult>>,
-    result_history: ResultHistory,
     result_generation: u64,
     result_highlight_until: Option<Instant>,
     pub pagination: PaginationState,
@@ -261,22 +259,8 @@ impl QueryExecution {
         }
     }
 
-    pub fn push_history(&mut self, result: Arc<QueryResult>) {
-        self.result_history.push(result);
-        self.result_generation += 1;
-    }
-
     pub fn result_generation(&self) -> u64 {
         self.result_generation
-    }
-
-    pub fn result_history(&self) -> &ResultHistory {
-        &self.result_history
-    }
-
-    pub fn restore_history(&mut self, history: ResultHistory) {
-        self.result_history = history;
-        self.result_generation += 1;
     }
 
     pub fn current_result(&self) -> Option<&Arc<QueryResult>> {
@@ -378,7 +362,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn empty_when_no_result_and_no_history() {
+        fn empty_when_no_result() {
             let qe = QueryExecution::default();
 
             assert_eq!(qe.visible_result_kind(), VisibleResultKind::Empty);
@@ -420,26 +404,8 @@ mod tests {
         }
 
         #[test]
-        fn history_does_not_replace_current_result() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
-            qe.current_result = Some(make_result(QuerySource::Preview));
-
-            assert!(qe.visible_result().is_some());
-            assert_eq!(qe.visible_result().unwrap().source, QuerySource::Preview);
-        }
-
-        #[test]
         fn empty_query_execution_returns_none() {
             let qe = QueryExecution::default();
-
-            assert!(qe.visible_result().is_none());
-        }
-
-        #[test]
-        fn history_without_live_result_returns_none() {
-            let mut qe = QueryExecution::default();
-            qe.result_history.push(make_result(QuerySource::Adhoc));
 
             assert!(qe.visible_result().is_none());
         }
@@ -523,15 +489,6 @@ mod tests {
 
             qe.clear_current_result();
             assert_eq!(qe.result_generation(), 2);
-        }
-
-        #[test]
-        fn increments_on_push_history() {
-            let mut qe = QueryExecution::default();
-
-            qe.push_history(make_result(QuerySource::Adhoc));
-            assert_eq!(qe.result_generation(), 1);
-            assert_eq!(qe.result_history.len(), 1);
         }
 
         #[test]
