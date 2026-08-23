@@ -472,10 +472,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state
-                .query
-                .pagination
-                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.reset_for_table("public", "users");
             let now = Instant::now();
 
             let effects = dispatch_query(
@@ -583,10 +580,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state
-                .query
-                .pagination
-                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.reset_for_table("public", "users");
             state.result_interaction.activate_cell(3, 1);
             state.result_interaction.stage_row(3);
 
@@ -687,10 +681,7 @@ mod tests {
             state
                 .query
                 .set_current_result(preview_result(PREVIEW_PAGE_SIZE));
-            state
-                .query
-                .pagination
-                .reset_for_table_with_estimate("public", "users", Some(1500));
+            state.query.pagination.reset_for_table("public", "users");
             state.query.pagination.set_page_result(2, false);
             let now = Instant::now();
 
@@ -775,7 +766,6 @@ mod tests {
             let mut state = export_test_state();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
-            state.query.pagination.set_total_rows_estimate(Some(100));
 
             let effects = dispatch_query(
                 &mut state,

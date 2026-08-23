@@ -232,23 +232,7 @@ pub fn reduce_execution(
                 return DispatchResult::handled();
             }
 
-            let row_estimate = state
-                .session
-                .table_detail()
-                .and_then(|d| d.row_count_estimate)
-                .or_else(|| {
-                    state.tables().iter().find_map(|t| {
-                        if t.schema == *schema && t.name == *table {
-                            t.row_count_estimate
-                        } else {
-                            None
-                        }
-                    })
-                });
-            state
-                .query
-                .pagination
-                .reset_for_table_with_estimate(schema, table, row_estimate);
+            state.query.pagination.reset_for_table(schema, table);
 
             // Keep the generation captured at selection time, not the current
             // one: the selection may have been cleared between dispatch and
@@ -768,11 +752,10 @@ mod tests {
         #[test]
         fn resets_pagination() {
             let mut state = create_test_state();
-            state.query.pagination.reset_for_table_with_estimate(
-                "old_schema",
-                "old_table",
-                Some(10000),
-            );
+            state
+                .query
+                .pagination
+                .reset_for_table("old_schema", "old_table");
             state.query.pagination.set_page_result(5, true);
             let now = Instant::now();
 

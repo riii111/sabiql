@@ -983,13 +983,11 @@ mod tests {
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
             query.pagination.reset_for_table("old", "old");
-            query.pagination.set_total_rows_estimate(Some(10000));
             query.pagination.set_page_result(5, true);
 
             let _ = session.select_table("public", "users", &mut query);
 
             assert_eq!(query.pagination.current_page(), 0);
-            assert_eq!(query.pagination.total_rows_estimate(), None);
             assert!(!query.pagination.reached_end());
             assert_eq!(query.pagination.schema(), "public");
             assert_eq!(query.pagination.table(), "users");
@@ -1523,9 +1521,7 @@ mod tests {
             let _ = session.set_table_detail(make_table_detail(), session.selection_generation());
 
             let result = make_query_result();
-            query
-                .pagination
-                .reset_for_table_with_estimate("public", "users", Some(1200));
+            query.pagination.reset_for_table("public", "users");
             query.pagination.set_page_result(2, false);
 
             let cache = session.to_cache(
@@ -1551,7 +1547,6 @@ mod tests {
             assert_eq!(query.pagination.schema(), "public");
             assert_eq!(query.pagination.table(), "users");
             assert_eq!(query.pagination.current_page(), 2);
-            assert_eq!(query.pagination.total_rows_estimate(), Some(1200));
             assert!(!query.pagination.reached_end());
             assert!(!query.is_running());
             assert!(!query.is_current_run(stale_run_id));
@@ -1647,7 +1642,6 @@ mod tests {
             let stale_run_id = query.begin_running(std::time::Instant::now());
             query.set_current_result(make_query_result());
             query.pagination.reset_for_table("public", "users");
-            query.pagination.set_total_rows_estimate(Some(1000));
             query.pagination.set_page_result(3, true);
             session.reset(&mut query);
 
@@ -1745,7 +1739,6 @@ mod tests {
             assert_eq!(query.pagination.current_page(), 0);
             assert!(query.pagination.schema().is_empty());
             assert!(query.pagination.table().is_empty());
-            assert!(query.pagination.total_rows_estimate().is_none());
             assert!(!query.pagination.reached_end());
         }
     }
