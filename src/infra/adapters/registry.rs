@@ -441,6 +441,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn mysql_registry_dispatches_ddl_and_dialect_to_mysql_adapter() {
+        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let source_ddl = "CREATE TABLE `users` (`id` INT)".to_string();
+        let mut table = make_table();
+        table.source_ddl = Some(source_ddl.clone());
+
+        assert_eq!(
+            registry.generate_ddl(DatabaseType::MySQL, &table),
+            source_ddl
+        );
+        assert_eq!(
+            registry.build_explain_sql(DatabaseType::MySQL, "SELECT 1"),
+            Some("EXPLAIN FORMAT=TREE SELECT 1".to_string())
+        );
+        assert_eq!(
+            registry.build_explain_analyze_sql(DatabaseType::MySQL, "SELECT 1"),
+            Some("EXPLAIN ANALYZE FORMAT=TREE SELECT 1".to_string())
+        );
+    }
+
     #[tokio::test]
     async fn mysql_dsn_requires_a_selected_database_for_metadata() {
         let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
