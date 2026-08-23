@@ -137,18 +137,6 @@ impl ConnectionProfile {
         })
     }
 
-    pub fn with_id_sqlite(
-        id: ConnectionId,
-        name: impl Into<String>,
-        path: impl Into<String>,
-    ) -> Result<Self, ConnectionProfileError> {
-        Ok(Self {
-            id,
-            name: ConnectionName::new(name)?,
-            config: ConnectionConfig::SQLite(SqliteConnectionConfig::new(path)?),
-        })
-    }
-
     pub fn with_id_and_config(
         id: ConnectionId,
         name: impl Into<String>,
