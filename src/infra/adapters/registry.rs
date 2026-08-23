@@ -61,6 +61,22 @@ impl DbAdapterRegistry {
             DatabaseType::MySQL => Ok(self.mysql.as_ref()),
         }
     }
+
+    fn ddl_generator(&self, database_type: DatabaseType) -> &dyn DdlGenerator {
+        match database_type {
+            DatabaseType::PostgreSQL => self.postgres.as_ref(),
+            DatabaseType::SQLite => self.sqlite.as_ref(),
+            DatabaseType::MySQL => self.mysql.as_ref(),
+        }
+    }
+
+    fn sql_dialect(&self, database_type: DatabaseType) -> &dyn SqlDialect {
+        match database_type {
+            DatabaseType::PostgreSQL => self.postgres.as_ref(),
+            DatabaseType::SQLite => self.sqlite.as_ref(),
+            DatabaseType::MySQL => self.mysql.as_ref(),
+        }
+    }
 }
 
 fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
@@ -186,21 +202,15 @@ impl QueryExecutor for DbAdapterRegistry {
 
 impl DdlGenerator for DbAdapterRegistry {
     fn generate_ddl(&self, database_type: DatabaseType, table: &Table) -> String {
-        match database_type {
-            DatabaseType::PostgreSQL => self.postgres.generate_ddl(database_type, table),
-            DatabaseType::SQLite => self.sqlite.generate_ddl(database_type, table),
-            DatabaseType::MySQL => self.mysql.generate_ddl(database_type, table),
-        }
+        self.ddl_generator(database_type)
+            .generate_ddl(database_type, table)
     }
 }
 
 impl SqlDialect for DbAdapterRegistry {
     fn build_explain_sql(&self, database_type: DatabaseType, query: &str) -> Option<String> {
-        match database_type {
-            DatabaseType::PostgreSQL => self.postgres.build_explain_sql(database_type, query),
-            DatabaseType::SQLite => self.sqlite.build_explain_sql(database_type, query),
-            DatabaseType::MySQL => self.mysql.build_explain_sql(database_type, query),
-        }
+        self.sql_dialect(database_type)
+            .build_explain_sql(database_type, query)
     }
 
     fn build_explain_analyze_sql(
@@ -208,13 +218,8 @@ impl SqlDialect for DbAdapterRegistry {
         database_type: DatabaseType,
         query: &str,
     ) -> Option<String> {
-        match database_type {
-            DatabaseType::PostgreSQL => self
-                .postgres
-                .build_explain_analyze_sql(database_type, query),
-            DatabaseType::SQLite => self.sqlite.build_explain_analyze_sql(database_type, query),
-            DatabaseType::MySQL => self.mysql.build_explain_analyze_sql(database_type, query),
-        }
+        self.sql_dialect(database_type)
+            .build_explain_analyze_sql(database_type, query)
     }
 
     fn build_update_sql(
@@ -226,32 +231,14 @@ impl SqlDialect for DbAdapterRegistry {
         new_value: &QueryValue,
         pk_pairs: &[(String, QueryValue)],
     ) -> String {
-        match database_type {
-            DatabaseType::PostgreSQL => self.postgres.build_update_sql(
-                database_type,
-                schema,
-                table,
-                column,
-                new_value,
-                pk_pairs,
-            ),
-            DatabaseType::SQLite => self.sqlite.build_update_sql(
-                database_type,
-                schema,
-                table,
-                column,
-                new_value,
-                pk_pairs,
-            ),
-            DatabaseType::MySQL => self.mysql.build_update_sql(
-                database_type,
-                schema,
-                table,
-                column,
-                new_value,
-                pk_pairs,
-            ),
-        }
+        self.sql_dialect(database_type).build_update_sql(
+            database_type,
+            schema,
+            table,
+            column,
+            new_value,
+            pk_pairs,
+        )
     }
 
     fn build_bulk_delete_sql(
@@ -261,20 +248,12 @@ impl SqlDialect for DbAdapterRegistry {
         table: &str,
         pk_pairs_per_row: &[Vec<(String, QueryValue)>],
     ) -> String {
-        match database_type {
-            DatabaseType::PostgreSQL => {
-                self.postgres
-                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
-            }
-            DatabaseType::SQLite => {
-                self.sqlite
-                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
-            }
-            DatabaseType::MySQL => {
-                self.mysql
-                    .build_bulk_delete_sql(database_type, schema, table, pk_pairs_per_row)
-            }
-        }
+        self.sql_dialect(database_type).build_bulk_delete_sql(
+            database_type,
+            schema,
+            table,
+            pk_pairs_per_row,
+        )
     }
 }
 
