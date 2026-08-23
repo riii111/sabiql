@@ -45,6 +45,22 @@ impl DbAdapterRegistry {
             "Unsupported database DSN scheme: {dsn}"
         )))
     }
+
+    fn metadata_provider(&self, dsn: &str) -> Result<&dyn MetadataProvider, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Ok(self.postgres.as_ref()),
+            DatabaseType::SQLite => Ok(self.sqlite.as_ref()),
+            DatabaseType::MySQL => Ok(self.mysql.as_ref()),
+        }
+    }
+
+    fn query_executor(&self, dsn: &str) -> Result<&dyn QueryExecutor, DbOperationError> {
+        match Self::db_type_from_dsn(dsn)? {
+            DatabaseType::PostgreSQL => Ok(self.postgres.as_ref()),
+            DatabaseType::SQLite => Ok(self.sqlite.as_ref()),
+            DatabaseType::MySQL => Ok(self.mysql.as_ref()),
+        }
+    }
 }
 
 fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
@@ -76,19 +92,11 @@ impl DsnBuilder for DbAdapterRegistry {
 #[async_trait]
 impl MetadataProvider for DbAdapterRegistry {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.fetch_metadata(dsn).await,
-            DatabaseType::SQLite => self.sqlite.fetch_metadata(dsn).await,
-            DatabaseType::MySQL => self.mysql.fetch_metadata(dsn).await,
-        }
+        self.metadata_provider(dsn)?.fetch_metadata(dsn).await
     }
 
     async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.fetch_effective_user(dsn).await,
-            DatabaseType::SQLite => self.sqlite.fetch_effective_user(dsn).await,
-            DatabaseType::MySQL => self.mysql.fetch_effective_user(dsn).await,
-        }
+        self.metadata_provider(dsn)?.fetch_effective_user(dsn).await
     }
 
     async fn fetch_table_detail(
@@ -97,11 +105,9 @@ impl MetadataProvider for DbAdapterRegistry {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.fetch_table_detail(dsn, schema, table).await,
-            DatabaseType::SQLite => self.sqlite.fetch_table_detail(dsn, schema, table).await,
-            DatabaseType::MySQL => self.mysql.fetch_table_detail(dsn, schema, table).await,
-        }
+        self.metadata_provider(dsn)?
+            .fetch_table_detail(dsn, schema, table)
+            .await
     }
 
     async fn fetch_table_columns_and_fks(
@@ -110,34 +116,18 @@ impl MetadataProvider for DbAdapterRegistry {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => {
-                self.postgres
-                    .fetch_table_columns_and_fks(dsn, schema, table)
-                    .await
-            }
-            DatabaseType::SQLite => {
-                self.sqlite
-                    .fetch_table_columns_and_fks(dsn, schema, table)
-                    .await
-            }
-            DatabaseType::MySQL => {
-                self.mysql
-                    .fetch_table_columns_and_fks(dsn, schema, table)
-                    .await
-            }
-        }
+        self.metadata_provider(dsn)?
+            .fetch_table_columns_and_fks(dsn, schema, table)
+            .await
     }
 
     async fn fetch_table_signatures(
         &self,
         dsn: &str,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.fetch_table_signatures(dsn).await,
-            DatabaseType::SQLite => self.sqlite.fetch_table_signatures(dsn).await,
-            DatabaseType::MySQL => self.mysql.fetch_table_signatures(dsn).await,
-        }
+        self.metadata_provider(dsn)?
+            .fetch_table_signatures(dsn)
+            .await
     }
 }
 
@@ -151,29 +141,9 @@ impl QueryExecutor for DbAdapterRegistry {
         limit: usize,
         offset: usize,
     ) -> Result<QueryResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => {
-                self.postgres
-                    .execute_preview(dsn, schema, table, limit, offset)
-                    .await
-            }
-            DatabaseType::SQLite => {
-                QueryExecutor::execute_preview(
-                    self.sqlite.as_ref(),
-                    dsn,
-                    schema,
-                    table,
-                    limit,
-                    offset,
-                )
-                .await
-            }
-            DatabaseType::MySQL => {
-                self.mysql
-                    .execute_preview(dsn, schema, table, limit, offset)
-                    .await
-            }
-        }
+        self.query_executor(dsn)?
+            .execute_preview(dsn, schema, table, limit, offset)
+            .await
     }
 
     async fn execute_adhoc(
@@ -182,13 +152,9 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<QueryResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.execute_adhoc(dsn, query, access_mode).await,
-            DatabaseType::SQLite => {
-                QueryExecutor::execute_adhoc(self.sqlite.as_ref(), dsn, query, access_mode).await
-            }
-            DatabaseType::MySQL => self.mysql.execute_adhoc(dsn, query, access_mode).await,
-        }
+        self.query_executor(dsn)?
+            .execute_adhoc(dsn, query, access_mode)
+            .await
     }
 
     async fn execute_write(
@@ -197,23 +163,13 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         access_mode: AccessMode,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.execute_write(dsn, query, access_mode).await,
-            DatabaseType::SQLite => {
-                QueryExecutor::execute_write(self.sqlite.as_ref(), dsn, query, access_mode).await
-            }
-            DatabaseType::MySQL => self.mysql.execute_write(dsn, query, access_mode).await,
-        }
+        self.query_executor(dsn)?
+            .execute_write(dsn, query, access_mode)
+            .await
     }
 
     async fn count_query_rows(&self, dsn: &str, query: &str) -> Result<usize, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.count_query_rows(dsn, query).await,
-            DatabaseType::SQLite => {
-                QueryExecutor::count_query_rows(self.sqlite.as_ref(), dsn, query).await
-            }
-            DatabaseType::MySQL => self.mysql.count_query_rows(dsn, query).await,
-        }
+        self.query_executor(dsn)?.count_query_rows(dsn, query).await
     }
 
     async fn export_to_csv(
@@ -222,13 +178,9 @@ impl QueryExecutor for DbAdapterRegistry {
         query: &str,
         file_name: &str,
     ) -> Result<PathBuf, DbOperationError> {
-        match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => self.postgres.export_to_csv(dsn, query, file_name).await,
-            DatabaseType::SQLite => {
-                QueryExecutor::export_to_csv(self.sqlite.as_ref(), dsn, query, file_name).await
-            }
-            DatabaseType::MySQL => self.mysql.export_to_csv(dsn, query, file_name).await,
-        }
+        self.query_executor(dsn)?
+            .export_to_csv(dsn, query, file_name)
+            .await
     }
 }
 
