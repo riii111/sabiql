@@ -170,13 +170,12 @@ pub(super) fn reduce_connection_error(
 mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
-    use crate::model::connection::error::ConnectionErrorInfo;
+    use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::model::connection::state::ConnectionState;
     use crate::update::test_fixtures;
 
     mod scroll_down {
         use super::*;
-        use crate::model::connection::error::ConnectionErrorKind;
 
         fn scroll_down_action() -> Action {
             Action::Scroll {
@@ -288,6 +287,33 @@ mod tests {
                 .any(|effect| matches!(effect, Effect::FetchMetadata { .. }))
         );
         assert!(state.session.connection_state().is_connecting());
+    }
+
+    #[test]
+    fn retry_mysql_ignores_non_retryable_error() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_target(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            Some("app"),
+        );
+        state
+            .connection_error
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Unknown,
+                "connection failed",
+            ));
+        state.session.set_connection_state(ConnectionState::Failed);
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let effects = reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
+            .into_effects()
+            .expect("retry action handled");
+
+        assert!(effects.is_empty());
+        assert_eq!(state.input_mode(), InputMode::ConnectionError);
     }
 
     #[test]

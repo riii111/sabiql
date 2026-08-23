@@ -355,6 +355,14 @@ impl AppState {
         self.ui.toggle_focus()
     }
 
+    pub fn can_retry_connection_error(&self) -> bool {
+        !self.connection_error.is_save_and_connect_failure()
+            && (self.session.has_pending_connection_switch()
+                || !self.session.can_reenter_connection_setup()
+                || (self.session.active_database_type() == Some(DatabaseType::MySQL)
+                    && self.connection_error.can_retry()))
+    }
+
     pub fn can_request_csv_export(&self) -> bool {
         let Some(result) = self.query.visible_result() else {
             return false;
@@ -476,6 +484,7 @@ mod tests {
     };
     use crate::model::browse::inspector_view_model::{InspectorEmptyState, InspectorLoadState};
     use crate::model::browse::row_detail::RowDetailState;
+    use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::model::er_state::ErStatus;
     use crate::model::shared::focused_pane::FocusedPane;
     use crate::model::shared::render_output::{
@@ -521,6 +530,81 @@ mod tests {
             schema: "public".to_string(),
             name: "users".to_string(),
             ..test_support::table::minimal("", "")
+        }
+    }
+
+    mod connection_error_retry {
+        use super::*;
+
+        fn active_connection_state(database_type: DatabaseType, dsn: &str) -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "database",
+                database_type,
+                dsn,
+            );
+            state
+        }
+
+        fn retryable_error() -> ConnectionErrorInfo {
+            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out")
+        }
+
+        #[test]
+        fn allows_retry_for_active_mysql_retryable_error() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            );
+            state.connection_error.set_error(retryable_error());
+
+            assert!(state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn hides_retry_for_non_mysql_retryable_error() {
+            let mut state =
+                active_connection_state(DatabaseType::PostgreSQL, "postgres://localhost/app");
+            state.connection_error.set_error(retryable_error());
+
+            assert!(!state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn hides_retry_for_save_and_connect_failure() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+            );
+            state
+                .connection_error
+                .set_save_and_connect_error(retryable_error(), DatabaseType::MySQL);
+
+            assert!(!state.can_retry_connection_error());
+        }
+
+        #[test]
+        fn keeps_retry_for_pending_connection_switch() {
+            let mut state = active_connection_state(
+                DatabaseType::MySQL,
+                "mysql://user@localhost:3306/old?ssl-mode=PREFERRED",
+            );
+            let target_id = ConnectionId::from_string("mysql-new");
+            let _ = state.session.begin_mysql_connection_probe(
+                &target_id,
+                "mysql-new",
+                "mysql://user@localhost:3306/new?ssl-mode=PREFERRED",
+                Some("new"),
+            );
+            state
+                .connection_error
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::Unknown,
+                    "connection failed",
+                ));
+
+            assert!(state.can_retry_connection_error());
         }
     }
 

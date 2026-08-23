@@ -465,6 +465,40 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
 }
 
 #[test]
+fn connection_error_save_failure_hides_retry_in_modal_and_footer() {
+    let output = render_service_error_without_service_file_hint(true);
+
+    assert!(output.contains("Actions:  e  Re-enter"));
+    assert!(output.contains("e:Edit"));
+    assert!(!output.contains("Retry"));
+}
+
+#[test]
+fn non_mysql_retryable_error_hides_retry_in_modal_and_footer() {
+    let mut state = create_test_state();
+    let mut terminal = create_test_terminal();
+    state.session.activate_connection_with_dsn(
+        &sabiql_domain::ConnectionId::from_string("postgres-test"),
+        "postgres",
+        DatabaseType::PostgreSQL,
+        "postgres://localhost:5432/app",
+    );
+    state.modal.set_mode(InputMode::ConnectionError);
+    state
+        .connection_error
+        .set_error(ConnectionErrorInfo::with_kind(
+            ConnectionErrorKind::Timeout,
+            "connection timed out",
+        ));
+
+    let output = render_to_string(&mut terminal, &mut state);
+
+    assert!(output.contains("Actions:  e  Re-enter"));
+    assert!(output.contains("e:Edit"));
+    assert!(!output.contains("Retry"));
+}
+
+#[test]
 fn connection_error_omits_service_file_hint_for_mysql_save() {
     let output = render_service_error_without_service_file_hint(true);
 

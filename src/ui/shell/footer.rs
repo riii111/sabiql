@@ -22,7 +22,6 @@ use crate::app::update::input::keybindings::{
     overlay, query_history, query_history_picker, read_only, result_active, settings, sql_modal,
     sql_modal_confirming, sqlite_diagnostics, table_picker, table_picker as table_picker_key,
 };
-use crate::domain::DatabaseType;
 use crate::features::settings::hints::settings_hints;
 use crate::primitives::atoms::key_text;
 use crate::primitives::atoms::spinner_char;
@@ -295,15 +294,7 @@ impl Footer {
                 hints
             }
             InputMode::ConnectionError => {
-                let can_retry = state
-                    .session
-                    .active_database_type()
-                    .is_some_and(|database_type| database_type == DatabaseType::MySQL)
-                    && state.connection_error.can_retry();
-                let first = if state.session.has_pending_connection_switch()
-                    || !state.session.can_reenter_connection_setup()
-                    || can_retry
-                {
+                let first = if state.can_retry_connection_error() {
                     connection_error::RETRY.as_hint()
                 } else {
                     connection_error::EDIT.as_hint()
@@ -461,6 +452,7 @@ mod tests {
     use super::Footer;
     use crate::app::domain::{ConnectionId, DatabaseType};
     use crate::app::model::app_state::AppState;
+    use crate::app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::app::model::connection::setup::ConnectionField;
     use crate::app::model::shared::focused_pane::FocusedPane;
     use crate::app::model::shared::input_mode::InputMode;
@@ -468,7 +460,8 @@ mod tests {
     use crate::app::model::shared::ui_state::FocusMode;
     use crate::app::model::sql_editor::modal::SqlModalStatus;
     use crate::app::update::input::keybindings::{
-        connection_setup, global, help, json_detail, json_edit, result_active, row_detail,
+        connection_error, connection_setup, global, help, json_detail, json_edit, result_active,
+        row_detail,
     };
     use rstest::rstest;
 
@@ -710,5 +703,25 @@ mod tests {
         assert!(hints.contains(&connection_setup::ENTER_DROPDOWN.as_hint()));
         assert!(hints.contains(&connection_setup::SAVE.as_hint()));
         assert!(!hints.contains(&("Enter", "Connect")));
+    }
+
+    #[test]
+    fn connection_error_footer_hides_retry_for_save_and_connect_failure() {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "mysql",
+            DatabaseType::MySQL,
+            "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
+        );
+        state.connection_error.set_save_and_connect_error(
+            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out"),
+            DatabaseType::MySQL,
+        );
+        state.modal.set_mode(InputMode::ConnectionError);
+
+        let hints = Footer::get_context_hints(&state);
+
+        assert_eq!(hints[0], connection_error::EDIT.as_hint());
     }
 }
