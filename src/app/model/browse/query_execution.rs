@@ -38,10 +38,6 @@ impl PaginationState {
         &self.table
     }
 
-    pub fn has_table(&self) -> bool {
-        !self.table.is_empty()
-    }
-
     pub fn matches_table(&self, table: &Table) -> bool {
         let schema_matches = table.schema == self.schema;
         let name_matches = table.name == self.table;
@@ -54,10 +50,6 @@ impl PaginationState {
         } else {
             format!("{}.{}", self.schema, self.table)
         }
-    }
-
-    pub fn offset(&self) -> usize {
-        self.current_page * PREVIEW_PAGE_SIZE
     }
 
     pub fn next_page(&self) -> usize {
@@ -500,16 +492,6 @@ mod tests {
 
     mod pagination {
         use super::*;
-
-        #[test]
-        fn offset_returns_correct_value() {
-            let p = PaginationState {
-                current_page: 3,
-                ..Default::default()
-            };
-
-            assert_eq!(p.offset(), 3 * PREVIEW_PAGE_SIZE);
-        }
 
         #[test]
         fn can_next_false_when_reached_end() {
