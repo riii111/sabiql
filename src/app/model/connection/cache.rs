@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, Table};
 use crate::model::browse::query_execution::PaginationState;
-use crate::model::browse::result_history::ResultHistory;
 use crate::model::shared::inspector_tab::InspectorTab;
 
 #[derive(Debug, Clone, Default)]
@@ -16,7 +15,6 @@ pub struct ConnectionCache {
     pub table_detail: Option<Table>,
     pub selected_table_key: Option<String>,
     pub query_result: Option<Arc<QueryResult>>,
-    pub result_history: ResultHistory,
     pub pagination: PaginationState,
     pub explorer_selected: usize,
     pub inspector_tab: InspectorTab,

@@ -81,7 +81,6 @@ pub fn reduce_execution(
                         execution_time_ms: result.execution_time_ms,
                         mysql_diagnostics: result.mysql_diagnostics.clone(),
                     });
-                    state.query.push_history(Arc::clone(result));
                     state.query.set_current_result(Arc::clone(result));
                 }
                 // Preview errors arrive as error results and are shown in the
@@ -1180,7 +1179,7 @@ mod tests {
         }
 
         #[test]
-        fn adhoc_success_writes_current_result_and_records_history() {
+        fn adhoc_success_writes_current_result_and_resets_view_state() {
             let mut state = create_test_state();
             state.result_interaction.set_scroll_offset(50);
             state.result_interaction.set_horizontal_offset(10);
@@ -1192,7 +1191,6 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert_eq!(state.query.result_history().len(), 1);
             assert!(state.query.current_result().is_some());
             assert_eq!(
                 state.query.current_result().unwrap().source,
@@ -1216,7 +1214,6 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert!(state.query.result_history().is_empty());
             assert_eq!(
                 state.query.current_result().unwrap().source,
                 QuerySource::Preview,
