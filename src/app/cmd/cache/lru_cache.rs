@@ -27,10 +27,6 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.peek(key).is_some()
     }
 
-    pub fn get(&mut self, key: &K) -> Option<&V> {
-        self.inner.get(key)
-    }
-
     pub fn peek<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
@@ -47,14 +43,6 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         self.inner.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
     pub fn clear(&mut self) {
         self.inner.clear();
     }
@@ -63,25 +51,11 @@ impl<K: Eq + Hash, V> BoundedLruCache<K, V> {
         let cap = NonZeroUsize::new(new_capacity).expect("capacity must be > 0");
         self.inner.resize(cap);
     }
-
-    pub fn cap(&self) -> usize {
-        self.inner.cap().get()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn get_returns_inserted_value() {
-        let mut cache = BoundedLruCache::new(2);
-        cache.insert("a", 1);
-        cache.insert("b", 2);
-
-        assert_eq!(cache.get(&"a"), Some(&1));
-        assert_eq!(cache.get(&"b"), Some(&2));
-    }
 
     #[test]
     fn contains_returns_true_for_existing_key() {
@@ -105,21 +79,6 @@ mod tests {
     }
 
     #[test]
-    fn get_updates_lru_order_preventing_eviction() {
-        let mut cache = BoundedLruCache::new(2);
-        cache.insert("a", 1);
-        cache.insert("b", 2);
-
-        // Access "a" so "b" becomes LRU
-        cache.get(&"a");
-        cache.insert("c", 3);
-
-        assert!(cache.contains(&"a"));
-        assert!(!cache.contains(&"b"));
-        assert!(cache.contains(&"c"));
-    }
-
-    #[test]
     fn clear_removes_all_entries() {
         let mut cache = BoundedLruCache::new(2);
         cache.insert("a", 1);
@@ -127,7 +86,7 @@ mod tests {
 
         cache.clear();
 
-        assert_eq!(cache.len(), 0);
+        assert_eq!(cache.iter().count(), 0);
         assert!(!cache.contains(&"a"));
     }
 
@@ -148,11 +107,16 @@ mod tests {
         cache.insert("b", 2);
 
         cache.resize(5);
+        cache.insert("c", 3);
+        cache.insert("d", 4);
+        cache.insert("e", 5);
 
-        assert_eq!(cache.cap(), 5);
         assert!(cache.contains(&"a"));
         assert!(cache.contains(&"b"));
-        assert_eq!(cache.len(), 2);
+        assert!(cache.contains(&"c"));
+        assert!(cache.contains(&"d"));
+        assert!(cache.contains(&"e"));
+        assert_eq!(cache.iter().count(), 5);
     }
 
     #[test]
@@ -163,7 +127,7 @@ mod tests {
 
         assert_eq!(cache.pop(&"a"), Some(1));
         assert!(!cache.contains(&"a"));
-        assert_eq!(cache.len(), 1);
+        assert!(cache.contains(&"b"));
     }
 
     #[test]
@@ -172,7 +136,7 @@ mod tests {
         cache.insert("a", 1);
 
         assert_eq!(cache.pop(&"z"), None);
-        assert_eq!(cache.len(), 1);
+        assert!(cache.contains(&"a"));
     }
 
     #[test]
@@ -184,9 +148,7 @@ mod tests {
 
         cache.resize(2);
 
-        assert_eq!(cache.cap(), 2);
-        assert_eq!(cache.len(), 2);
-        // "a" is LRU and should be evicted
+        assert_eq!(cache.iter().count(), 2);
         assert!(!cache.contains(&"a"));
         assert!(cache.contains(&"b"));
         assert!(cache.contains(&"c"));
