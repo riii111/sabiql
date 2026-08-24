@@ -246,11 +246,6 @@ impl BrowseSession {
         self.table_detail_run.is_current(run_id)
     }
 
-    pub fn is_current_table_selection(&self, schema: &str, table: &str, generation: u64) -> bool {
-        generation == self.selection_generation
-            && self.selected_table_key.as_deref() == Some(&format!("{schema}.{table}"))
-    }
-
     pub fn mark_table_detail_failed(&mut self, generation: u64, error: String) -> bool {
         if generation == self.selection_generation && self.selected_table_key.is_some() {
             self.table_detail_state = TableDetailState::Error(error);
