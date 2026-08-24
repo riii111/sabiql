@@ -2823,8 +2823,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
- "unicode-segmentation",
- "unicode-width",
  "url",
  "uuid",
 ]
@@ -2868,6 +2866,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "unicode-casefold",
+ "unicode-segmentation",
  "unicode-width",
 ]
 

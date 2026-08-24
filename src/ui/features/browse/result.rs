@@ -6,6 +6,8 @@ use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Cell, Paragraph, Row, Table, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::primitives::atoms::{panel_block_highlight, text_cursor_spans};
 
@@ -17,7 +19,7 @@ use crate::app::model::shared::viewport::{
     ColumnWidthConfig, ColumnWidthsCache, MAX_COL_WIDTH, SelectionContext, ViewportPlan,
     select_viewport_columns, widths_fingerprint,
 };
-use crate::domain::{QueryResult, QuerySource};
+use crate::domain::{QueryResult, QuerySource, QueryValue};
 use crate::primitives::utils::text_utils::{
     MIN_COL_WIDTH, PADDING, calculate_header_min_widths, truncate_to_width,
 };
@@ -124,7 +126,7 @@ impl ResultPane {
                     format!(
                         " [3] {} ({}, {}ms) ",
                         name,
-                        r.row_count_display(),
+                        format_row_count(r.row_count()),
                         r.execution_time_ms,
                     )
                 }
@@ -319,9 +321,13 @@ impl ResultPane {
                                 );
                             }
                         } else {
-                            let display = result
-                                .display_value_at_width(abs_row_idx, orig_idx, col_width as usize)
-                                .unwrap_or_default();
+                            let display = display_value_at_width(
+                                result,
+                                abs_row_idx,
+                                orig_idx,
+                                col_width as usize,
+                            )
+                            .unwrap_or_default();
                             cell = Cell::from(display);
                         }
                         if !is_editing_cell {
@@ -400,8 +406,157 @@ fn calculate_result_ideal_widths(result: &QueryResult) -> Vec<u16> {
     calculate_ideal_widths_with(
         &result.columns,
         result.data_row_count(),
-        |row_idx, col_idx| result.display_width_at(row_idx, col_idx),
+        |row_idx, col_idx| display_width_at(result, row_idx, col_idx),
     )
+}
+
+const BLOB_PREVIEW_BYTES: usize = 8;
+
+fn format_row_count(row_count: usize) -> String {
+    if row_count == 1 {
+        "1 row".to_string()
+    } else {
+        format!("{row_count} rows")
+    }
+}
+
+fn display_value_at_width(
+    result: &QueryResult,
+    row: usize,
+    col: usize,
+    max_width: usize,
+) -> Option<String> {
+    if result.has_typed_values() {
+        result
+            .value_at(row, col)
+            .map(|value| query_value_display_at_width(value, max_width))
+    } else {
+        result
+            .display_value_ref_at(row, col)
+            .map(|value| truncate_display_text(value.as_ref(), false, max_width))
+    }
+}
+
+fn query_value_display_at_width(value: &QueryValue, max_width: usize) -> String {
+    match value {
+        QueryValue::Null => truncate_display_text("NULL", false, max_width),
+        QueryValue::Text(value) | QueryValue::SqlLiteral(value) => {
+            truncate_display_text(value, true, max_width)
+        }
+        QueryValue::Blob(_) => blob_display_value_at_width(value, max_width),
+    }
+}
+
+fn display_width_at(result: &QueryResult, row: usize, col: usize) -> Option<usize> {
+    if result.has_typed_values() {
+        result.value_at(row, col).map(query_value_display_width)
+    } else {
+        result
+            .display_value_ref_at(row, col)
+            .map(|value| display_width_of_first_line(value.as_ref(), false))
+    }
+}
+
+fn query_value_display_width(value: &QueryValue) -> usize {
+    match value {
+        QueryValue::Null => UnicodeWidthStr::width("NULL"),
+        QueryValue::Text(value) | QueryValue::SqlLiteral(value) => {
+            display_width_of_first_line(value, true)
+        }
+        QueryValue::Blob(bytes) => blob_display_width(bytes),
+    }
+}
+
+fn display_width_of_first_line(value: &str, escape_nul: bool) -> usize {
+    let first_line = value.split('\n').next().unwrap_or(value);
+    if escape_nul {
+        first_line
+            .split('\0')
+            .map(UnicodeWidthStr::width)
+            .sum::<usize>()
+            + first_line.matches('\0').count() * 2
+    } else {
+        UnicodeWidthStr::width(first_line)
+    }
+}
+
+fn truncate_display_text(value: &str, escape_nul: bool, max_width: usize) -> String {
+    let first_line = value.split('\n').next().unwrap_or(value);
+    let budget = max_width.saturating_sub(3);
+    let mut display = String::new();
+    let mut truncated = String::new();
+    let mut display_width = 0usize;
+    let mut truncated_width = 0usize;
+
+    for grapheme in first_line.graphemes(true) {
+        let (width, is_nul) = if escape_nul && grapheme == "\0" {
+            (2, true)
+        } else {
+            (UnicodeWidthStr::width(grapheme), false)
+        };
+
+        if display_width.saturating_add(width) > max_width {
+            if max_width < 3 {
+                return ".".repeat(max_width);
+            }
+            truncated.push_str("...");
+            return truncated;
+        }
+
+        if is_nul {
+            display.push_str("\\0");
+            if truncated_width.saturating_add(width) <= budget {
+                truncated.push_str("\\0");
+                truncated_width += width;
+            }
+        } else {
+            display.push_str(grapheme);
+            if truncated_width.saturating_add(width) <= budget {
+                truncated.push_str(grapheme);
+                truncated_width += width;
+            }
+        }
+        display_width += width;
+    }
+
+    display
+}
+
+fn blob_display_value_at_width(value: &QueryValue, max_width: usize) -> String {
+    let mut display = value.display_value();
+    if UnicodeWidthStr::width(display.as_str()) <= max_width {
+        return display;
+    }
+    if max_width < 3 {
+        return ".".repeat(max_width);
+    }
+
+    display.truncate(max_width - 3);
+    display.push_str("...");
+    display
+}
+
+fn blob_display_width(bytes: &[u8]) -> usize {
+    let mut width = UnicodeWidthStr::width("BLOB (")
+        + decimal_display_width(bytes.len())
+        + UnicodeWidthStr::width(" bytes)");
+    let preview_bytes = bytes.len().min(BLOB_PREVIEW_BYTES);
+    if preview_bytes > 0 {
+        width += 1 + preview_bytes * 2 + preview_bytes.saturating_sub(1);
+        if bytes.len() > BLOB_PREVIEW_BYTES {
+            width += UnicodeWidthStr::width(" ...");
+        }
+    }
+    width
+}
+
+fn decimal_display_width(mut value: usize) -> usize {
+    let mut width = 1;
+    while value >= 10 {
+        value /= 10;
+        width += 1;
+    }
+    width
 }
 
 fn calculate_ideal_widths_with(
@@ -409,8 +564,6 @@ fn calculate_ideal_widths_with(
     row_count: usize,
     mut cell_width: impl FnMut(usize, usize) -> Option<usize>,
 ) -> Vec<u16> {
-    use unicode_width::UnicodeWidthStr;
-
     const SAMPLE_ROWS: usize = 50;
 
     headers
@@ -471,9 +624,7 @@ fn truncate_cell(s: &str, max_width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::QueryValue;
     use rstest::rstest;
-    use unicode_width::UnicodeWidthStr;
 
     fn calculate_ideal_widths(headers: &[String], rows: &[Vec<String>]) -> Vec<u16> {
         calculate_ideal_widths_with(headers, rows.len(), |row_idx, col_idx| {
@@ -481,6 +632,54 @@ mod tests {
                 .and_then(|row| row.get(col_idx))
                 .map(|cell| UnicodeWidthStr::width(cell.lines().next().unwrap_or(cell)))
         })
+    }
+
+    mod row_count_display {
+        use super::*;
+
+        #[rstest]
+        #[case(0, "0 rows")]
+        #[case(1, "1 row")]
+        #[case(5, "5 rows")]
+        fn formats_row_count(#[case] count: usize, #[case] expected: &str) {
+            assert_eq!(format_row_count(count), expected);
+        }
+    }
+
+    mod display_values {
+        use super::*;
+
+        #[test]
+        fn width_limited_display_avoids_materializing_the_full_nul_text() {
+            let value = QueryValue::text("a\0bcdef");
+
+            assert_eq!(query_value_display_at_width(&value, 6), "a\\0...");
+        }
+
+        #[test]
+        fn display_width_handles_large_nul_text_and_blob_without_display_materialization() {
+            const SIZE: usize = 1024 * 1024;
+            let text = format!("{}\0tail", "a".repeat(SIZE));
+            let blob = vec![0xAB; SIZE];
+            let result = QueryResult::success_with_values(
+                "SELECT body, payload".to_string(),
+                vec!["body".to_string(), "payload".to_string()],
+                vec![vec![QueryValue::text(text), QueryValue::Blob(blob)]],
+                0,
+                QuerySource::Adhoc,
+            );
+
+            assert_eq!(display_width_at(&result, 0, 0), Some(SIZE + 6));
+            assert_eq!(
+                display_width_at(&result, 0, 1),
+                Some("BLOB (1048576 bytes) AB AB AB AB AB AB AB AB ...".len())
+            );
+        }
+
+        #[test]
+        fn display_width_counts_zwj_emoji_as_one_sequence() {
+            assert_eq!(query_value_display_width(&QueryValue::text("👨‍👩‍👧‍👦")), 2);
+        }
     }
 
     mod calculate_ideal_widths_tests {
