@@ -219,17 +219,6 @@ pub struct ConnectionErrorInfo {
 }
 
 impl ConnectionErrorInfo {
-    pub fn new(raw_stderr: impl Into<String>) -> Self {
-        let raw_details = raw_stderr.into();
-        let kind = ConnectionErrorKind::classify(&raw_details);
-        let masked_details = mask_password(&raw_details);
-
-        Self {
-            kind,
-            masked_details,
-        }
-    }
-
     pub fn with_kind(kind: ConnectionErrorKind, raw_stderr: impl Into<String>) -> Self {
         let raw_details = raw_stderr.into();
         let masked_details = mask_password(&raw_details);
@@ -321,25 +310,8 @@ impl ConnectionErrorInfo {
         Self::with_kind(kind, raw_details)
     }
 
-    pub fn summary(&self) -> &'static str {
-        self.kind.summary()
-    }
-
-    pub fn hint(&self) -> &'static str {
-        self.kind.hint()
-    }
-
     pub fn masked_details(&self) -> &str {
         &self.masked_details
-    }
-
-    pub fn user_message(&self) -> String {
-        let details = self.masked_details.trim();
-        if details.is_empty() {
-            format!("{}. {}.", self.summary(), self.hint())
-        } else {
-            format!("{}: {}. {}.", self.summary(), details, self.hint())
-        }
     }
 
     pub const fn is_retryable(&self) -> bool {
@@ -528,12 +500,6 @@ mod tests {
         use super::*;
 
         #[test]
-        fn new_auto_classifies() {
-            let info = ConnectionErrorInfo::new("psql: command not found");
-            assert_eq!(info.kind, ConnectionErrorKind::CliNotFound);
-        }
-
-        #[test]
         fn with_kind_uses_provided_kind() {
             let info = ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "error");
             assert_eq!(info.kind, ConnectionErrorKind::Timeout);
@@ -592,7 +558,7 @@ mod tests {
                 ));
 
             assert_eq!(info.kind, ConnectionErrorKind::PermissionDenied);
-            assert_eq!(info.hint(), "Check the connected user's privileges");
+            assert_eq!(info.kind.hint(), "Check the connected user's privileges");
         }
 
         #[test]
@@ -603,7 +569,7 @@ mod tests {
                 ));
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteFileNotFound);
-            assert_eq!(info.summary(), "SQLite database file not found");
+            assert_eq!(info.kind.summary(), "SQLite database file not found");
         }
 
         #[test]
@@ -615,8 +581,8 @@ mod tests {
                 });
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteCliNotFound);
-            assert_eq!(info.summary(), "sqlite3 not found");
-            assert_eq!(info.hint(), "Install sqlite3 and add it to PATH");
+            assert_eq!(info.kind.summary(), "sqlite3 not found");
+            assert_eq!(info.kind.hint(), "Install sqlite3 and add it to PATH");
         }
 
         #[rstest]
@@ -637,7 +603,7 @@ mod tests {
                 });
 
             assert_eq!(info.kind, expected_kind);
-            assert_eq!(info.summary(), expected_summary);
+            assert_eq!(info.kind.summary(), expected_summary);
         }
 
         #[rstest]
@@ -664,12 +630,8 @@ mod tests {
                 },
             );
 
-            assert_eq!(info.summary(), expected_kind.summary());
-            assert_eq!(info.hint(), expected_kind.hint());
-            assert_eq!(
-                info.user_message(),
-                format!("{}: provider details. {}.", info.summary(), info.hint())
-            );
+            assert_eq!(info.kind.summary(), expected_kind.summary());
+            assert_eq!(info.kind.hint(), expected_kind.hint());
             assert!(!info.is_retryable());
             assert_eq!(info.kind, expected_kind);
         }
@@ -703,12 +665,8 @@ mod tests {
             );
 
             assert_eq!(info.kind, expected_kind);
-            assert_eq!(info.summary(), expected_kind.summary());
-            assert_eq!(info.hint(), expected_kind.hint());
-            assert_eq!(
-                info.user_message(),
-                format!("{}: tls details. {}.", info.summary(), info.hint())
-            );
+            assert_eq!(info.kind.summary(), expected_kind.summary());
+            assert_eq!(info.kind.hint(), expected_kind.hint());
             assert!(!info.is_retryable());
         }
 
@@ -721,7 +679,6 @@ mod tests {
 
             assert_eq!(info.kind, ConnectionErrorKind::Unknown);
             assert!(!info.masked_details().contains("secret"));
-            assert!(!info.user_message().contains("secret"));
             assert!(!info.is_retryable());
         }
 
@@ -770,7 +727,7 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
-            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
         }
 
         #[test]
@@ -782,18 +739,8 @@ mod tests {
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
-            assert_eq!(info.summary(), "SQLite 3.41.1 or later required");
-            assert_eq!(info.hint(), "Upgrade sqlite3 to use SQLite safely");
-        }
-
-        #[test]
-        fn delegates_summary_and_hint() {
-            let info = ConnectionErrorInfo::new("psql: command not found");
-            assert_eq!(info.summary(), "Database CLI not found");
-            assert_eq!(
-                info.hint(),
-                "Install the database CLI (e.g. psql) and add it to PATH"
-            );
+            assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(info.kind.hint(), "Upgrade sqlite3 to use SQLite safely");
         }
     }
 
@@ -833,7 +780,10 @@ mod tests {
 
         #[test]
         fn info_keeps_only_masked_details() {
-            let info = ConnectionErrorInfo::new("postgres://user:secret@host");
+            let info = ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Unknown,
+                "postgres://user:secret@host",
+            );
             assert!(!info.masked_details().contains("secret"));
             assert_eq!(info.masked_details(), "postgres://user:****@host");
         }

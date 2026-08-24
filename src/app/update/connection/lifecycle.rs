@@ -392,7 +392,10 @@ mod tests {
             state.session.set_connection_state(ConnectionState::Failed);
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::new("connection refused"));
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::ConnectionRefused,
+                    "connection refused",
+                ));
 
             let retry_effects = reduce_connection_error(
                 &mut state,

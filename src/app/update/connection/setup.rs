@@ -814,7 +814,7 @@ mod tests {
                 let error_info = state.connection_error.error_info().unwrap();
                 assert_eq!(error_info.kind, expected);
                 if expected == ConnectionErrorKind::PermissionDenied {
-                    assert!(!error_info.hint().contains("password"));
+                    assert!(!error_info.kind.hint().contains("password"));
                 }
             }
         }
