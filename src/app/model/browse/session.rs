@@ -693,8 +693,8 @@ impl BrowseSession {
         &self.metadata_state
     }
 
-    pub fn metadata(&self) -> Option<&Arc<DatabaseMetadata>> {
-        self.metadata.as_ref()
+    pub fn metadata(&self) -> Option<&DatabaseMetadata> {
+        self.metadata.as_deref()
     }
 
     pub fn database_name(&self) -> Option<&str> {
