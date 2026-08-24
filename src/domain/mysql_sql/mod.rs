@@ -1,5 +1,3 @@
-use std::fmt;
-
 mod classifier;
 mod export;
 mod lexer;
@@ -67,14 +65,9 @@ impl MySqlStatement {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
 pub struct MySqlLexError(pub String);
-
-impl fmt::Display for MySqlLexError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
 
 pub fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexError> {
     lexer::split_mysql_statements(sql)
