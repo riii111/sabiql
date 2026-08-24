@@ -9,14 +9,6 @@ fn make_qualified_name(schema: &str, name: &str) -> String {
     format!("{schema}.{name}")
 }
 
-fn make_display_name(schema: &str, name: &str, omit_public: bool) -> String {
-    if omit_public && schema == "public" {
-        name.to_string()
-    } else {
-        make_qualified_name(schema, name)
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Table {
     pub schema: String,
@@ -46,10 +38,6 @@ pub struct TableStorageAttributes {
 impl Table {
     pub fn qualified_name(&self) -> String {
         make_qualified_name(&self.schema, &self.name)
-    }
-
-    pub fn display_name(&self, omit_public: bool) -> String {
-        make_display_name(&self.schema, &self.name, omit_public)
     }
 
     pub fn source_ddl(&self) -> Option<&str> {
@@ -124,10 +112,6 @@ impl TableSummary {
     pub fn qualified_name_lower(&self) -> &str {
         &self.qualified_name_lower
     }
-
-    pub fn display_name(&self, omit_public: bool) -> String {
-        make_display_name(&self.schema, &self.name, omit_public)
-    }
 }
 
 #[cfg(test)]
@@ -168,24 +152,6 @@ mod tests {
         }
     }
 
-    mod display_name {
-        use super::*;
-
-        #[test]
-        fn omit_public_true_returns_name_only() {
-            let table = make_table("public", "users");
-
-            assert_eq!(table.display_name(true), "users");
-        }
-
-        #[test]
-        fn omit_public_false_returns_qualified() {
-            let table = make_table("public", "users");
-
-            assert_eq!(table.display_name(false), "public.users");
-        }
-    }
-
     mod primary_key {
         use super::*;
 
@@ -208,20 +174,6 @@ mod tests {
 
     mod summary {
         use super::*;
-
-        #[test]
-        fn display_name_omits_public() {
-            let summary = make_summary("public", "orders");
-
-            assert_eq!(summary.display_name(true), "orders");
-        }
-
-        #[test]
-        fn display_name_keeps_non_public_schema() {
-            let summary = make_summary("audit", "logs");
-
-            assert_eq!(summary.display_name(true), "audit.logs");
-        }
 
         #[test]
         fn qualified_name_lower_returns_lowercased() {
