@@ -699,8 +699,7 @@ mod tests {
             .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
     }
 
-    #[test]
-    fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
+    fn sqlite_numeric_edit_state() -> AppState {
         let mut state = make_state();
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -755,11 +754,10 @@ mod tests {
         }));
         state.result_interaction.activate_cell(0, 1);
 
-        assert!(state.can_edit_selected_cell());
+        state
     }
 
-    #[test]
-    fn can_edit_selected_cell_rejects_blob_cell() {
+    fn blob_cell_state() -> AppState {
         let mut state = make_state();
         state
             .query
@@ -805,11 +803,10 @@ mod tests {
         }));
         state.result_interaction.activate_cell(0, 1);
 
-        assert!(!state.can_edit_selected_cell());
+        state
     }
 
-    #[test]
-    fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
+    fn mysql_hidden_primary_key_state() -> AppState {
         let mut state = make_state();
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -870,12 +867,10 @@ mod tests {
         }));
         state.result_interaction.activate_cell(0, 0);
 
-        assert!(state.can_edit_selected_cell());
+        state
     }
 
-    #[test]
-    fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
-     {
+    fn mysql_hidden_primary_key_between_columns_state() -> AppState {
         let mut state = make_state();
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
@@ -947,6 +942,35 @@ mod tests {
             ..test_support::table::minimal("", "")
         }));
         state.result_interaction.activate_cell(0, 1);
+
+        state
+    }
+
+    #[test]
+    fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
+        let state = sqlite_numeric_edit_state();
+
+        assert!(state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_rejects_blob_cell() {
+        let state = blob_cell_state();
+
+        assert!(!state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
+        let state = mysql_hidden_primary_key_state();
+
+        assert!(state.can_edit_selected_cell());
+    }
+
+    #[test]
+    fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
+     {
+        let state = mysql_hidden_primary_key_between_columns_state();
 
         assert!(state.can_edit_selected_cell());
     }
