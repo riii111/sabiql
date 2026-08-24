@@ -18,6 +18,17 @@ use super::cli::{
 use super::dsn::parse_and_validate_mysql_dsn;
 use super::option_file::MySqlOptionFile;
 
+#[cfg(test)]
+pub(in crate::adapters::mysql) mod query_assertions {
+    pub(in crate::adapters::mysql) fn assert_queries_in_order(log: &str, queries: &[&str]) {
+        let positions = queries
+            .iter()
+            .map(|query| log.find(*query).expect("query in transcript"))
+            .collect::<Vec<_>>();
+        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+    }
+}
+
 #[cfg(unix)]
 use super::cli::MYSQL_QUERY_TIMEOUT;
 #[cfg(unix)]

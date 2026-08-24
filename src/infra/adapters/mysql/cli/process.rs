@@ -628,6 +628,7 @@ mod tests {
     use super::single::test_support::run_mysql_single_statement_process;
     use super::*;
     use crate::adapters::csv_export::export_to_path;
+    use crate::adapters::mysql::test_support::query_assertions::assert_queries_in_order;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
     use crate::domain::{
         CommandTag, DatabaseDiagnostic, DiagnosticLevel, QueryValue, RefreshScope,
@@ -1108,16 +1109,15 @@ done
             assert_eq!(result.columns, vec!["value"]);
             assert_eq!(result.values[0][0].as_str(), Some("ok"));
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            let positions = [
-                MYSQL_SESSION_SETTINGS,
-                MYSQL_SESSION_MARKER_COLUMN,
-                "__sabiql_sql_mode",
-                "SELECT 123",
-            ]
-            .into_iter()
-            .map(|query| log.find(query).expect("query in transcript"))
-            .collect::<Vec<_>>();
-            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+            assert_queries_in_order(
+                &log,
+                &[
+                    MYSQL_SESSION_SETTINGS,
+                    MYSQL_SESSION_MARKER_COLUMN,
+                    "__sabiql_sql_mode",
+                    "SELECT 123",
+                ],
+            );
             assert!(!log.contains(MYSQL_READ_ONLY_STATEMENT));
         }
 
@@ -1397,23 +1397,22 @@ done
             let argv = log.lines().find(|line| line.starts_with("argv=")).unwrap();
             assert!(!argv.contains("--quick"), "{argv}");
             assert!(!argv.contains("--max-allowed-packet="), "{argv}");
-            let positions = [
-                MYSQL_SESSION_SETTINGS,
-                MYSQL_READ_ONLY_STATEMENT,
-                MYSQL_SESSION_MARKER_COLUMN,
-                "__sabiql_sql_mode",
-                "__sabiql_probe",
-                "SELECT TABLES",
-                "SELECT COLUMNS",
-                "SELECT INDEXES",
-                "SELECT FOREIGN_KEYS",
-                "SELECT TRIGGERS",
-                "SHOW CREATE TABLE items",
-            ]
-            .into_iter()
-            .map(|query| log.find(query).expect("query in transcript"))
-            .collect::<Vec<_>>();
-            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+            assert_queries_in_order(
+                &log,
+                &[
+                    MYSQL_SESSION_SETTINGS,
+                    MYSQL_READ_ONLY_STATEMENT,
+                    MYSQL_SESSION_MARKER_COLUMN,
+                    "__sabiql_sql_mode",
+                    "__sabiql_probe",
+                    "SELECT TABLES",
+                    "SELECT COLUMNS",
+                    "SELECT INDEXES",
+                    "SELECT FOREIGN_KEYS",
+                    "SELECT TRIGGERS",
+                    "SHOW CREATE TABLE items",
+                ],
+            );
         }
 
         #[tokio::test]
@@ -1434,17 +1433,16 @@ done
 
             assert_eq!(columns, ["Database"]);
             let log = fs::read_to_string(format!("{}.log", option_file.display())).unwrap();
-            let positions = [
-                MYSQL_SESSION_SETTINGS,
-                MYSQL_READ_ONLY_STATEMENT,
-                MYSQL_SESSION_MARKER_COLUMN,
-                "__sabiql_sql_mode",
-                "SHOW DATABASES",
-            ]
-            .into_iter()
-            .map(|query| log.find(query).expect("query in transcript"))
-            .collect::<Vec<_>>();
-            assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+            assert_queries_in_order(
+                &log,
+                &[
+                    MYSQL_SESSION_SETTINGS,
+                    MYSQL_READ_ONLY_STATEMENT,
+                    MYSQL_SESSION_MARKER_COLUMN,
+                    "__sabiql_sql_mode",
+                    "SHOW DATABASES",
+                ],
+            );
         }
 
         #[tokio::test]

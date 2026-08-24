@@ -391,6 +391,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::adapters::mysql::test_support::query_assertions::assert_queries_in_order;
     use crate::domain::ColumnAttributes;
 
     fn convert_preview_values(
@@ -575,20 +576,19 @@ done
             1,
             "{argv}"
         );
-        let positions = [
-            "SET SESSION autocommit=1, completion_type=NO_CHAIN",
-            "SET SESSION TRANSACTION READ ONLY",
-            "__sabiql_session_marker",
-            "__sabiql_sql_mode",
-            "__sabiql_probe",
-            "INFORMATION_SCHEMA.COLUMNS",
-            "LIMIT 2 OFFSET 1",
-            "__sabiql_preview_completion",
-        ]
-        .into_iter()
-        .map(|query| log.find(query).expect("query in transcript"))
-        .collect::<Vec<_>>();
-        assert!(positions.windows(2).all(|pair| pair[0] < pair[1]), "{log}");
+        assert_queries_in_order(
+            &log,
+            &[
+                "SET SESSION autocommit=1, completion_type=NO_CHAIN",
+                "SET SESSION TRANSACTION READ ONLY",
+                "__sabiql_session_marker",
+                "__sabiql_sql_mode",
+                "__sabiql_probe",
+                "INFORMATION_SCHEMA.COLUMNS",
+                "LIMIT 2 OFFSET 1",
+                "__sabiql_preview_completion",
+            ],
+        );
         assert!(!log.contains("INFORMATION_SCHEMA.STATISTICS"), "{log}");
         assert_option_file_removed(&log_path);
     }
