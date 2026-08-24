@@ -58,6 +58,7 @@ pub fn spawn_er_diagram_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::test_fixtures::recv_action_with_timeout;
     use crate::ports::outbound::ErExportResult;
     use std::path::Path;
     use std::time::Duration;
@@ -107,13 +108,6 @@ mod tests {
             }
         }
 
-        async fn receive_action(rx: &mut mpsc::Receiver<Action>) -> Action {
-            tokio::time::timeout(Duration::from_secs(1), rx.recv())
-                .await
-                .expect("timeout")
-                .expect("channel closed")
-        }
-
         #[tokio::test]
         async fn success_sends_opened_action() {
             let temp_dir = tempfile::tempdir().unwrap();
@@ -134,7 +128,7 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
                 Action::ErDiagramOpened(ErDiagramInfo {
                     run_id,
@@ -168,7 +162,7 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
                 Action::ErDiagramFailed { run_id, error } => {
                     assert!(error.contains("export failed"));
@@ -195,7 +189,7 @@ mod tests {
                 None,
             );
 
-            let action = receive_action(&mut rx).await;
+            let action = recv_action_with_timeout(&mut rx, Duration::from_secs(1)).await;
             match action {
                 Action::ErDiagramFailed { run_id, error } => {
                     assert!(error.contains("Task panicked"));

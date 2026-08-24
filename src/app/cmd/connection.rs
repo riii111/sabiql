@@ -434,7 +434,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
@@ -553,10 +553,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .unwrap()
-                .unwrap();
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(matches!(
                 action,
                 Action::ConnectionSaveCompleted {
@@ -618,10 +616,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .unwrap()
-                .unwrap();
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
@@ -768,10 +764,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -828,10 +822,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -882,10 +874,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
@@ -926,10 +916,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(action, Action::ConnectionDeleteFailed(_)),
                 "expected ConnectionDeleteFailed, got {action:?}"
@@ -978,10 +966,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
@@ -1041,10 +1027,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
