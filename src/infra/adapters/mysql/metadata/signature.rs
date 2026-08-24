@@ -355,15 +355,9 @@ fn parse_signature_unique_column_metadata(
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
     use crate::domain::{Column, ColumnAttributes, ForeignKey, QueryValue, TableStorageAttributes};
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     fn signature_table() -> Table {
         Table {

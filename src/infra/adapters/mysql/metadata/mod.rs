@@ -13,6 +13,20 @@ mod preview;
 mod signature;
 mod table_detail;
 
+#[cfg(test)]
+mod test_support {
+    use crate::domain::QueryValue;
+
+    use super::MySqlResultSet;
+
+    pub(super) fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
+        MySqlResultSet {
+            columns: columns.iter().map(|value| (*value).to_string()).collect(),
+            values,
+        }
+    }
+}
+
 pub(super) use preview::{convert_preview_values_with_binary_charset, execute_preview};
 
 #[async_trait]
