@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
@@ -12,7 +11,7 @@ pub(crate) async fn run(
     action_tx: &mpsc::Sender<Action>,
     clipboard: &Arc<dyn ClipboardWriter>,
     folder_opener: &Arc<dyn FolderOpener>,
-) -> Result<()> {
+) {
     match effect {
         Effect::CopyToClipboard {
             content,
@@ -43,7 +42,6 @@ pub(crate) async fn run(
         }
         _ => unreachable!("utility::run called with non-utility effect"),
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -114,8 +112,7 @@ mod tests {
                 &clipboard,
                 &folder_opener,
             )
-            .await
-            .unwrap();
+            .await;
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -142,8 +139,7 @@ mod tests {
                 &clipboard,
                 &folder_opener,
             )
-            .await
-            .unwrap();
+            .await;
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -170,8 +166,7 @@ mod tests {
                 &clipboard,
                 &folder_opener,
             )
-            .await
-            .unwrap();
+            .await;
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await
@@ -202,8 +197,7 @@ mod tests {
                 &clipboard,
                 &folder_opener,
             )
-            .await
-            .unwrap();
+            .await;
 
             let opened = opener.opened.lock().unwrap();
             assert_eq!(opened.len(), 1);
@@ -225,8 +219,7 @@ mod tests {
                 &clipboard,
                 &folder_opener,
             )
-            .await
-            .unwrap();
+            .await;
 
             let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
                 .await

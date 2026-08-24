@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::completion_engine::{CompletionDatabaseScope, CompletionEngine};
@@ -14,7 +13,7 @@ pub async fn run(
     action_tx: &mpsc::Sender<Action>,
     state: &AppState,
     completion_engine: &RefCell<CompletionEngine>,
-) -> Result<()> {
+) {
     match effect {
         Effect::CacheTableInCompletionEngine {
             qualified_name,
@@ -23,22 +22,18 @@ pub async fn run(
             completion_engine
                 .borrow_mut()
                 .cache_table_detail(qualified_name, *table);
-            Ok(())
         }
 
         Effect::EvictTablesFromCompletionCache { tables } => {
             completion_engine.borrow_mut().evict_tables(&tables);
-            Ok(())
         }
 
         Effect::ClearCompletionEngineCache => {
             completion_engine.borrow_mut().clear_table_cache();
-            Ok(())
         }
 
         Effect::ResizeCompletionCache { capacity } => {
             completion_engine.borrow_mut().resize_cache(capacity);
-            Ok(())
         }
 
         Effect::TriggerCompletion => {
@@ -104,7 +99,6 @@ pub async fn run(
                 })
                 .await
                 .ok();
-            Ok(())
         }
 
         _ => unreachable!("completion::run called with non-completion effect"),
@@ -142,8 +136,7 @@ mod tests {
             &state,
             &RefCell::new(CompletionEngine::new()),
         )
-        .await
-        .expect("completion should run");
+        .await;
 
         assert!(matches!(
             action_rx.recv().await,

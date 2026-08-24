@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
@@ -25,7 +24,7 @@ pub async fn run(
     table_detail_tasks: &TableDetailTaskRegistry,
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     completion_engine: &RefCell<CompletionEngine>,
-) -> Result<()> {
+) {
     match effect {
         Effect::FetchMetadata { dsn, run_id } => {
             fetch_metadata(
@@ -37,11 +36,10 @@ pub async fn run(
                 dsn,
                 run_id,
             )
-            .await
+            .await;
         }
         Effect::FetchEffectiveUser { dsn, run_id } => {
             fetch_effective_user(action_tx, metadata_provider, metadata_tasks, dsn, run_id);
-            Ok(())
         }
         Effect::FetchTableDetail {
             dsn,
@@ -60,7 +58,6 @@ pub async fn run(
                 run_id,
                 table_detail_tasks,
             );
-            Ok(())
         }
         Effect::PrefetchTableDetail {
             dsn,
@@ -78,14 +75,13 @@ pub async fn run(
                 schema,
                 table,
             )
-            .await
+            .await;
         }
         Effect::ProcessPrefetchQueue { run_id } => {
             action_tx
                 .send(Action::ProcessPrefetchQueue { run_id })
                 .await
                 .ok();
-            Ok(())
         }
         Effect::DelayedProcessPrefetchQueue { run_id, delay_secs } => {
             let tx = action_tx.clone();
@@ -93,11 +89,9 @@ pub async fn run(
                 tokio::time::sleep(tokio::time::Duration::from_secs(delay_secs)).await;
                 tx.send(Action::ProcessPrefetchQueue { run_id }).await.ok();
             });
-            Ok(())
         }
         Effect::CacheInvalidate { dsn } => {
             metadata_cache.invalidate(&dsn).await;
-            Ok(())
         }
 
         _ => unreachable!("metadata::run called with non-metadata effect"),
@@ -112,7 +106,7 @@ async fn fetch_metadata(
     metadata_tasks: &Arc<MetadataTaskRegistry>,
     dsn: String,
     run_id: u64,
-) -> Result<()> {
+) {
     if let Some(path) = sqlite_path_from_dsn(&dsn)
         && let Err(error) =
             validate_sqlite_database_path(sqlite_path_validator, path.to_string()).await
@@ -125,7 +119,7 @@ async fn fetch_metadata(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     if let Some(cached) = metadata_cache.get(&dsn).await {
@@ -137,7 +131,7 @@ async fn fetch_metadata(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     let provider = Arc::clone(metadata_provider);
@@ -168,8 +162,6 @@ async fn fetch_metadata(
             }
         }
     });
-
-    Ok(())
 }
 
 fn fetch_effective_user(
@@ -242,7 +234,7 @@ async fn prefetch_table_detail(
     run_id: u64,
     schema: String,
     table: String,
-) -> Result<()> {
+) {
     let qualified_name = format!("{schema}.{table}");
     let already_cached = completion_engine.borrow().has_cached_table(&qualified_name);
 
@@ -256,7 +248,7 @@ async fn prefetch_table_detail(
             })
             .await
             .ok();
-        return Ok(());
+        return;
     }
 
     let provider = Arc::clone(metadata_provider);
@@ -304,8 +296,6 @@ async fn prefetch_table_detail(
             }
         }
     });
-
-    Ok(())
 }
 
 #[cfg(test)]

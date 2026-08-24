@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
@@ -70,11 +69,7 @@ fn save_query_history(
     });
 }
 
-#[allow(
-    clippy::unused_async,
-    reason = "consistent async interface for effect runner dispatch"
-)]
-pub async fn run(
+pub fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
@@ -82,7 +77,7 @@ pub async fn run(
     cached_result_exporter: &Arc<dyn CachedResultExporter>,
     query_tasks: &QueryTaskRegistry,
     state: &AppState,
-) -> Result<()> {
+) {
     match effect {
         Effect::ExecutePreview {
             dsn,
@@ -127,7 +122,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::ExecuteExplain {
@@ -181,7 +175,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::ExecuteAdhoc {
@@ -245,7 +238,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::ExecuteWrite {
@@ -304,7 +296,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::CountRowsForExport {
@@ -329,7 +320,6 @@ pub async fn run(
                 .await
                 .ok();
             });
-            Ok(())
         }
 
         Effect::ExportCsv {
@@ -369,7 +359,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::ExportCsvFromCache {
@@ -406,7 +395,6 @@ pub async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         _ => unreachable!("query::run called with non-query effect"),

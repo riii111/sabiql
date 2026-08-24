@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -90,7 +89,7 @@ pub(crate) async fn run(
     metadata_provider: &Arc<dyn MetadataProvider>,
     metadata_cache: &TtlCache<String, Arc<DatabaseMetadata>>,
     state: &AppState,
-) -> Result<()> {
+) {
     match effect {
         Effect::SaveAndConnect {
             id,
@@ -113,7 +112,7 @@ pub(crate) async fn run(
                         })
                         .await
                         .ok();
-                    return Ok(());
+                    return;
                 }
             };
             let store = Arc::clone(&connection.connection_store);
@@ -136,7 +135,7 @@ pub(crate) async fn run(
                             })
                             .await
                             .ok();
-                        return Ok(());
+                        return;
                     }
                 };
                 let dsn = connection.dsn_builder.build_dsn(&profile);
@@ -164,7 +163,7 @@ pub(crate) async fn run(
                         None => {}
                     }
                 });
-                return Ok(());
+                return;
             }
 
             let dsn = connection.dsn_builder.build_dsn(&profile);
@@ -221,7 +220,7 @@ pub(crate) async fn run(
                         }
                     })
                     .await;
-                return Ok(());
+                return;
             }
 
             let target = ConnectionTarget::from_profile(&profile, dsn);
@@ -271,7 +270,6 @@ pub(crate) async fn run(
                     }
                 }
             });
-            Ok(())
         }
 
         Effect::ProbeMySqlConnection { target, run_id } => {
@@ -299,7 +297,6 @@ pub(crate) async fn run(
                     };
                 })
                 .await;
-            Ok(())
         }
 
         Effect::LoadConnectionForEdit { id } => {
@@ -321,7 +318,6 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionEditLoadFailed(e)).ok();
                 }
             });
-            Ok(())
         }
 
         Effect::LoadConnections => {
@@ -350,7 +346,6 @@ pub(crate) async fn run(
                 }))
                 .ok();
             });
-            Ok(())
         }
 
         Effect::DeleteConnection { id } => {
@@ -365,7 +360,6 @@ pub(crate) async fn run(
                     tx.blocking_send(Action::ConnectionDeleteFailed(e)).ok();
                 }
             });
-            Ok(())
         }
 
         Effect::SwitchConnection { connection_index } => {
@@ -378,7 +372,6 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
         }
 
         Effect::SwitchToService { service_index } => {
@@ -397,7 +390,6 @@ pub(crate) async fn run(
                     .await
                     .ok();
             }
-            Ok(())
         }
 
         _ => unreachable!("connection::run called with non-connection effect"),
