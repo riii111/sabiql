@@ -14,16 +14,8 @@ use super::ssl_mode::SslMode;
 pub enum ConnectionProfileError {
     #[error("{0}")]
     Name(#[from] ConnectionNameError),
-    #[error("SQLite database path is required")]
-    EmptySqlitePath,
-    #[error("SQLite database path contains unsupported characters")]
-    InvalidSqlitePath,
-    #[error(
-        "SQLite in-memory databases are not supported because sabiql starts sqlite3 per operation and cannot retain their contents; use a temporary database file"
-    )]
-    UnsupportedSqliteInMemoryDatabase,
-    #[error("SQLite URI filenames are not supported; use a regular file path")]
-    UnsupportedSqliteUriFilename,
+    #[error(transparent)]
+    SqliteConfig(#[from] SqliteConnectionConfigError),
     #[error("PostgreSQL connection field `{0}` is required")]
     MissingPostgresField(&'static str),
     #[error("MySQL connection field `{0}` is required")]
@@ -46,21 +38,6 @@ pub enum ConnectionProfileError {
     MySqlCleartextAuthRequiresTls,
     #[error("{0}")]
     SqlitePath(#[from] SqlitePathError),
-}
-
-impl From<SqliteConnectionConfigError> for ConnectionProfileError {
-    fn from(error: SqliteConnectionConfigError) -> Self {
-        match error {
-            SqliteConnectionConfigError::EmptyPath => Self::EmptySqlitePath,
-            SqliteConnectionConfigError::UnsupportedPath => Self::InvalidSqlitePath,
-            SqliteConnectionConfigError::UnsupportedInMemoryDatabase => {
-                Self::UnsupportedSqliteInMemoryDatabase
-            }
-            SqliteConnectionConfigError::UnsupportedUriFilename => {
-                Self::UnsupportedSqliteUriFilename
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -381,7 +358,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::EmptySqlitePath)
+                Err(ConnectionProfileError::SqliteConfig(
+                    SqliteConnectionConfigError::EmptyPath
+                ))
             ));
         }
 
@@ -391,7 +370,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::InvalidSqlitePath)
+                Err(ConnectionProfileError::SqliteConfig(
+                    SqliteConnectionConfigError::UnsupportedPath
+                ))
             ));
         }
 
@@ -401,7 +382,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::UnsupportedSqliteInMemoryDatabase)
+                Err(ConnectionProfileError::SqliteConfig(
+                    SqliteConnectionConfigError::UnsupportedInMemoryDatabase
+                ))
             ));
         }
 
@@ -411,7 +394,9 @@ mod tests {
 
             assert!(matches!(
                 result,
-                Err(ConnectionProfileError::UnsupportedSqliteUriFilename)
+                Err(ConnectionProfileError::SqliteConfig(
+                    SqliteConnectionConfigError::UnsupportedUriFilename
+                ))
             ));
         }
     }
