@@ -24,8 +24,7 @@ pub(super) fn reduce_connection_error(
                 state.session.clear_mysql_connection_probe();
                 state.connection_error.clear();
             } else {
-                state.connection_error.details_expanded = false;
-                state.connection_error.scroll_offset = 0;
+                state.connection_error.reset_view();
                 state.connection_error.clear_copied_feedback();
             }
             state.modal.set_mode(InputMode::Normal);
@@ -200,10 +199,10 @@ mod tests {
 
             reduce_connection_error(&mut state, &action, now);
             reduce_connection_error(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
 
             reduce_connection_error(&mut state, &action, now);
-            assert_eq!(state.connection_error.scroll_offset, 2);
+            assert_eq!(state.connection_error.scroll_offset(), 2);
         }
     }
 

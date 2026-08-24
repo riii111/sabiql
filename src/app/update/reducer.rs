@@ -109,7 +109,7 @@ fn reduce_inner(
                     return select_table(state, &table, now);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
-                if state.connection_error.error_info.is_some() {
+                if state.connection_error.has_error() {
                     state.modal.replace_mode(InputMode::ConnectionError);
                     return vec![];
                 }
@@ -1345,7 +1345,7 @@ mod tests {
                 MetadataState::Error(_)
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
         }
 
@@ -1388,8 +1388,8 @@ mod tests {
         #[test]
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
-            state.connection_error.details_expanded = true;
-            state.connection_error.scroll_offset = 5;
+            state.connection_error.expand_details();
+            state.connection_error.scroll_down(usize::MAX);
             let now = Instant::now();
 
             reduce(
@@ -1400,11 +1400,11 @@ mod tests {
             );
 
             // error_info is kept so Enter can re-open modal
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
             assert_eq!(state.input_mode(), InputMode::Normal);
             // UI state is reset
-            assert!(!state.connection_error.details_expanded);
-            assert_eq!(state.connection_error.scroll_offset, 0);
+            assert!(!state.connection_error.details_expanded());
+            assert_eq!(state.connection_error.scroll_offset(), 0);
         }
 
         #[test]
@@ -1451,14 +1451,14 @@ mod tests {
                 &AppServices::stub(),
             );
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
-            assert!(state.connection_error.error_info.is_some());
+            assert!(state.connection_error.has_error());
         }
 
         #[test]
         fn toggle_details_flips_expanded_state() {
             let mut state = state_with_error();
             let now = Instant::now();
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -1466,7 +1466,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(state.connection_error.details_expanded);
+            assert!(state.connection_error.details_expanded());
 
             reduce(
                 &mut state,
@@ -1474,7 +1474,7 @@ mod tests {
                 now,
                 &AppServices::stub(),
             );
-            assert!(!state.connection_error.details_expanded);
+            assert!(!state.connection_error.details_expanded());
         }
 
         #[test]
