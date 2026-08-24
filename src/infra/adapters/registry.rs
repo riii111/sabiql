@@ -1,6 +1,3 @@
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use crate::app::ports::outbound::{
     AccessMode, DbOperationError, DdlGenerator, DsnBuilder, MetadataProvider, MySqlConnectionProbe,
     MySqlConnectionProbeResult, QueryExecutor, SqlDialect, SqliteDiagnosticsProvider,
@@ -11,23 +8,24 @@ use crate::domain::{
     TableSignatureSnapshot, WriteExecutionResult,
 };
 use async_trait::async_trait;
+use std::path::PathBuf;
 
 use super::mysql::MySqlAdapter;
 use super::postgres::PostgresAdapter;
 use super::sqlite::SqliteAdapter;
 
 pub struct DbAdapterRegistry {
-    postgres: Arc<PostgresAdapter>,
-    sqlite: Arc<SqliteAdapter>,
-    mysql: Arc<MySqlAdapter>,
+    postgres: PostgresAdapter,
+    sqlite: SqliteAdapter,
+    mysql: MySqlAdapter,
 }
 
 impl DbAdapterRegistry {
-    pub fn new(postgres: Arc<PostgresAdapter>) -> Self {
+    pub fn new() -> Self {
         Self {
-            postgres,
-            sqlite: Arc::new(SqliteAdapter::new()),
-            mysql: Arc::new(MySqlAdapter::new()),
+            postgres: PostgresAdapter::new(),
+            sqlite: SqliteAdapter::new(),
+            mysql: MySqlAdapter::new(),
         }
     }
 
@@ -48,33 +46,33 @@ impl DbAdapterRegistry {
 
     fn metadata_provider(&self, dsn: &str) -> Result<&dyn MetadataProvider, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Ok(self.postgres.as_ref()),
-            DatabaseType::SQLite => Ok(self.sqlite.as_ref()),
-            DatabaseType::MySQL => Ok(self.mysql.as_ref()),
+            DatabaseType::PostgreSQL => Ok(&self.postgres),
+            DatabaseType::SQLite => Ok(&self.sqlite),
+            DatabaseType::MySQL => Ok(&self.mysql),
         }
     }
 
     fn query_executor(&self, dsn: &str) -> Result<&dyn QueryExecutor, DbOperationError> {
         match Self::db_type_from_dsn(dsn)? {
-            DatabaseType::PostgreSQL => Ok(self.postgres.as_ref()),
-            DatabaseType::SQLite => Ok(self.sqlite.as_ref()),
-            DatabaseType::MySQL => Ok(self.mysql.as_ref()),
+            DatabaseType::PostgreSQL => Ok(&self.postgres),
+            DatabaseType::SQLite => Ok(&self.sqlite),
+            DatabaseType::MySQL => Ok(&self.mysql),
         }
     }
 
     fn ddl_generator(&self, database_type: DatabaseType) -> &dyn DdlGenerator {
         match database_type {
-            DatabaseType::PostgreSQL => self.postgres.as_ref(),
-            DatabaseType::SQLite => self.sqlite.as_ref(),
-            DatabaseType::MySQL => self.mysql.as_ref(),
+            DatabaseType::PostgreSQL => &self.postgres,
+            DatabaseType::SQLite => &self.sqlite,
+            DatabaseType::MySQL => &self.mysql,
         }
     }
 
     fn sql_dialect(&self, database_type: DatabaseType) -> &dyn SqlDialect {
         match database_type {
-            DatabaseType::PostgreSQL => self.postgres.as_ref(),
-            DatabaseType::SQLite => self.sqlite.as_ref(),
-            DatabaseType::MySQL => self.mysql.as_ref(),
+            DatabaseType::PostgreSQL => &self.postgres,
+            DatabaseType::SQLite => &self.sqlite,
+            DatabaseType::MySQL => &self.mysql,
         }
     }
 }
@@ -328,7 +326,7 @@ mod tests {
 
     #[test]
     fn builds_postgres_dsn_from_postgres_profile() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
         let profile = ConnectionProfile::new_postgres(
             "Test",
             "localhost",
@@ -347,7 +345,7 @@ mod tests {
 
     #[test]
     fn builds_sqlite_dsn_from_sqlite_profile() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
         let profile = ConnectionProfile::new_sqlite("Local", "/tmp/app.db").unwrap();
 
         let dsn = registry.build_dsn(&profile);
@@ -357,7 +355,7 @@ mod tests {
 
     #[test]
     fn postgres_sql_generation_keeps_schema_qualified_sql() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
         let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
 
         let update_sql = registry.build_update_sql(
@@ -385,7 +383,7 @@ mod tests {
 
     #[test]
     fn sqlite_sql_generation_omits_schema_qualification() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
         let rows = vec![vec![("id".to_string(), QueryValue::text("1"))]];
 
         let update_sql = registry.build_update_sql(
@@ -411,7 +409,7 @@ mod tests {
 
     #[test]
     fn postgres_explain_generation_uses_postgres_dialect() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         assert_eq!(
             registry.build_explain_sql(DatabaseType::PostgreSQL, "SELECT 1"),
@@ -425,7 +423,7 @@ mod tests {
 
     #[test]
     fn sqlite_explain_generation_uses_query_plan() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         assert_eq!(
             registry.build_explain_sql(DatabaseType::SQLite, "SELECT 1"),
@@ -443,7 +441,7 @@ mod tests {
 
     #[test]
     fn mysql_registry_dispatches_ddl_and_dialect_to_mysql_adapter() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
         let source_ddl = "CREATE TABLE `users` (`id` INT)".to_string();
         let mut table = make_table();
         table.source_ddl = Some(source_ddl.clone());
@@ -464,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn mysql_dsn_requires_a_selected_database_for_metadata() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let result = registry.fetch_metadata("mysql://localhost").await;
 
@@ -486,7 +484,7 @@ mod tests {
     async fn sqlite_metadata_is_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let metadata = registry.fetch_metadata(&dsn).await.unwrap();
 
@@ -497,7 +495,7 @@ mod tests {
     async fn sqlite_effective_user_dispatch_preserves_unknown_user() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let effective_user = registry.fetch_effective_user(&dsn).await.unwrap();
 
@@ -506,7 +504,7 @@ mod tests {
 
     #[tokio::test]
     async fn mysql_effective_user_dispatch_does_not_expose_password_on_validation_failure() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let error = registry
             .fetch_effective_user("mysql://app:header-secret%01@localhost/app")
@@ -522,7 +520,7 @@ mod tests {
     async fn sqlite_table_signatures_are_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let signatures = registry.fetch_table_signatures(&dsn).await.unwrap();
 
@@ -533,7 +531,7 @@ mod tests {
     async fn sqlite_table_detail_is_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let detail = registry
             .fetch_table_detail(&dsn, "main", "users")
@@ -548,7 +546,7 @@ mod tests {
     async fn sqlite_query_execution_is_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let result = registry
             .execute_adhoc(&dsn, "SELECT 1 AS value", AccessMode::ReadOnly)
@@ -563,7 +561,7 @@ mod tests {
     async fn sqlite_columns_request_is_dispatched_to_sqlite_adapter() {
         let (_dir, dsn) =
             test_support::make_sqlite_db("CREATE TABLE users(id INTEGER PRIMARY KEY);");
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let detail = registry
             .fetch_table_columns_and_fks(&dsn, "main", "users")
@@ -576,7 +574,7 @@ mod tests {
 
     #[tokio::test]
     async fn postgres_dsn_is_rejected() {
-        let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+        let registry = DbAdapterRegistry::new();
 
         let result = registry
             .fetch_diagnostics_core("postgres://localhost/db")
