@@ -278,29 +278,6 @@ pub fn reduce_pagination(
             )
         }
 
-        Action::ExecuteCsvExport {
-            dsn,
-            run_id,
-            export_query,
-            file_name,
-            row_count,
-        } => {
-            if reject_pending_mysql_connection_probe(state, now) {
-                return DispatchResult::handled();
-            }
-            if state.is_stale_query_run(dsn, *run_id) {
-                return DispatchResult::handled();
-            }
-
-            DispatchResult::handled_with(vec![Effect::ExportCsv {
-                dsn: dsn.clone(),
-                run_id: *run_id,
-                query: export_query.clone(),
-                file_name: file_name.clone(),
-                row_count: *row_count,
-            }])
-        }
-
         Action::CsvExportSucceeded {
             dsn,
             run_id,
