@@ -118,7 +118,7 @@ mod tests {
         #[test]
         fn active_prefetch_run_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
@@ -176,7 +176,7 @@ mod tests {
         #[test]
         fn no_metadata_returns_error() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
 
             let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
                 .into_effects()
@@ -356,7 +356,7 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
             )));
         }
 
@@ -385,7 +385,7 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
             )));
         }
 
@@ -443,7 +443,7 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchScoped { .. }))
+                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchScoped { .. }))
             )));
         }
 
@@ -617,7 +617,7 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchAll))
             )));
         }
 
@@ -750,7 +750,7 @@ mod tests {
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|a| matches!(a, Action::StartPrefetchAll))
+                    if actions.iter().any(|a| matches!(a, Action::StartErPrefetchAll))
             )));
         }
     }

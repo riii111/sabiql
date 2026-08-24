@@ -1762,7 +1762,7 @@ mod tests {
             state
                 .session
                 .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .er_preparation
                 .queue_pending_table("public.users".to_string());
@@ -1783,7 +1783,7 @@ mod tests {
             state
                 .session
                 .set_metadata(Some(Arc::new(DatabaseMetadata::new("test".to_string()))));
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1813,7 +1813,7 @@ mod tests {
         fn no_metadata_returns_error() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
@@ -1859,7 +1859,7 @@ mod tests {
         fn emits_cache_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .start_table_prefetch("public.users".to_string());
@@ -1890,7 +1890,7 @@ mod tests {
         fn with_queue_returns_process_effect() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.orders".to_string());
@@ -2997,7 +2997,7 @@ mod tests {
         fn target_tables_survive_er_open() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .er_preparation
                 .set_targets(vec!["public.users".to_string()]);
@@ -3036,12 +3036,12 @@ mod tests {
             assert!(effects.iter().any(|effect| matches!(
                 effect,
                 Effect::DispatchActions(actions)
-                    if actions.iter().any(|action| matches!(action, Action::StartPrefetchAll))
+                    if actions.iter().any(|action| matches!(action, Action::StartErPrefetchAll))
             )));
 
             reduce(
                 &mut state,
-                Action::StartPrefetchAll,
+                Action::StartErPrefetchAll,
                 Instant::now(),
                 &AppServices::stub(),
             );
@@ -3055,7 +3055,7 @@ mod tests {
         fn prefetch_complete_dispatches_er_generate() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
@@ -3086,7 +3086,7 @@ mod tests {
         fn prefetch_complete_with_failures_does_not_auto_open() {
             let mut state = state_with_metadata();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation

@@ -2458,7 +2458,7 @@ mod tests {
             state
                 .connection_caches
                 .save(&target_id, ConnectionCache::default());
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());
@@ -2474,7 +2474,7 @@ mod tests {
         fn switch_without_cache_resets_sql_prefetch() {
             let mut state = AppState::new("test".to_string());
             let new_id = ConnectionId::new();
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());

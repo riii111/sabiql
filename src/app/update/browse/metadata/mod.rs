@@ -200,8 +200,8 @@ mod tests {
         #[test]
         fn stale_prefetch_run_does_not_advance_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let old_run_id = state.sql_modal.begin_prefetch();
-            let _ = state.sql_modal.begin_prefetch();
+            let old_run_id = state.sql_modal.begin_er_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());
@@ -341,7 +341,7 @@ mod tests {
         #[test]
         fn backoff_table_requeued_at_tail_with_process_effect() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             let queued = "public.orders".to_string();
             state.sql_modal.queue_table_prefetch(queued.clone());
@@ -381,7 +381,7 @@ mod tests {
         #[test]
         fn backoff_uses_injected_now() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             let failed_at = Instant::now();
             let now = failed_at.checked_add(Duration::from_secs(1)).unwrap();
@@ -416,7 +416,7 @@ mod tests {
         #[test]
         fn process_queue_does_not_reprocess_requeued_backoff_table() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.sql_modal.fail_table_prefetch(
                 qualified.clone(),
@@ -449,7 +449,7 @@ mod tests {
         #[test]
         fn no_dsn_requeues_without_marking_in_flight() {
             let mut state = AppState::new("test".to_string());
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.er_preparation.queue_pending_table(qualified.clone());
 
@@ -474,7 +474,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_gives_up_and_calls_on_table_failed() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.er_preparation.queue_pending_table(qualified.clone());
             state.sql_modal.fail_table_prefetch(
@@ -509,7 +509,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_as_last_table_triggers_er_completion() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
@@ -546,7 +546,7 @@ mod tests {
         #[test]
         fn retry_limit_exceeded_with_queue_remaining_redrives_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let failed = "public.users".to_string();
@@ -586,7 +586,7 @@ mod tests {
         #[test]
         fn expired_backoff_proceeds_normally() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             // Failed 10 seconds ago with retry_count=1 (backoff = 2s, already expired)
             state.sql_modal.fail_table_prefetch(
@@ -625,7 +625,7 @@ mod tests {
         #[test]
         fn increments_retry_count() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.sql_modal.fail_table_prefetch(
                 qualified.clone(),
@@ -664,7 +664,7 @@ mod tests {
         #[test]
         fn first_failure_sets_retry_count_1() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.sql_modal.start_table_prefetch(qualified.clone());
 
@@ -688,7 +688,7 @@ mod tests {
         #[test]
         fn failure_requeues_table_for_retry_with_delayed_process() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let qualified = "public.users".to_string();
             state.sql_modal.start_table_prefetch(qualified.clone());
             state.er_preparation.start_fetching(&qualified);
@@ -730,7 +730,7 @@ mod tests {
         #[test]
         fn failure_continues_existing_queue_before_retry_delay() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             let failed = "public.users".to_string();
             let queued = "public.posts".to_string();
             state.sql_modal.start_table_prefetch(failed.clone());
@@ -765,7 +765,7 @@ mod tests {
         #[test]
         fn transient_failure_then_success_clears_er_failure_state() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let qualified = "public.users".to_string();
@@ -957,9 +957,10 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(530)));
 
-            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects =
+                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
 
             assert!(
                 effects
@@ -973,9 +974,10 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(50)));
 
-            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects =
+                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
 
             assert!(
                 effects
@@ -989,9 +991,10 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(10_001)));
 
-            let effects = dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects =
+                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
+                    .into_effects()
+                    .expect("reducer should handle action");
 
             assert!(
                 effects
@@ -1005,7 +1008,7 @@ mod tests {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(10)));
 
-            dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+            dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now());
 
             assert!(state.er_preparation.fk_expanded());
         }
@@ -1014,7 +1017,7 @@ mod tests {
         fn process_queue_starts_prefetch_effects_without_action_redispatch() {
             let mut state = state_with_dsn("postgres://localhost/test");
             state.session.set_metadata(Some(make_metadata(2)));
-            dispatch_metadata(&mut state, &Action::StartPrefetchAll, Instant::now());
+            dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now());
             let run_id = state
                 .sql_modal
                 .active_prefetch_run_id()
@@ -1059,14 +1062,14 @@ mod tests {
         #[test]
         fn second_call_while_running_is_ignored() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .er_preparation
                 .queue_pending_table("public.users".to_string());
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::StartPrefetchScoped {
+                &Action::StartErPrefetchScoped {
                     tables: vec!["public.posts".to_string()],
                 },
                 Instant::now(),
@@ -1090,7 +1093,7 @@ mod tests {
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::StartPrefetchScoped {
+                &Action::StartErPrefetchScoped {
                     tables: tables.clone(),
                 },
                 Instant::now(),
@@ -1134,7 +1137,7 @@ mod tests {
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::StartPrefetchScoped { tables },
+                &Action::StartErPrefetchScoped { tables },
                 Instant::now(),
             )
             .into_effects()
@@ -1227,7 +1230,7 @@ mod tests {
 
             let effects = dispatch_metadata(
                 &mut state,
-                &Action::StartPrefetchScoped {
+                &Action::StartErPrefetchScoped {
                     tables: vec!["public.orders".to_string()],
                 },
                 Instant::now(),
@@ -1262,7 +1265,7 @@ mod tests {
         #[test]
         fn complete_not_fk_expanded_dispatches_expand() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_unexpanded();
             // pending and fetching are empty → is_complete() = true
@@ -1294,8 +1297,8 @@ mod tests {
         #[test]
         fn stale_expand_does_not_start_neighbor_extraction() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let stale_run_id = state.sql_modal.begin_prefetch();
-            let current_run_id = state.sql_modal.begin_prefetch();
+            let stale_run_id = state.sql_modal.begin_er_prefetch();
+            let current_run_id = state.sql_modal.begin_er_prefetch();
 
             let effects = dispatch_metadata(
                 &mut state,
@@ -1321,7 +1324,7 @@ mod tests {
         #[test]
         fn empty_neighbors_dispatches_generate() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
@@ -1345,7 +1348,7 @@ mod tests {
         #[test]
         fn non_empty_neighbors_adds_to_queue() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
@@ -1404,8 +1407,8 @@ mod tests {
         #[test]
         fn stale_neighbors_from_previous_run_do_not_mutate_current_run() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let stale_run_id = state.sql_modal.begin_prefetch();
-            let current_run_id = state.sql_modal.begin_prefetch();
+            let stale_run_id = state.sql_modal.begin_er_prefetch();
+            let current_run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
 
             let effects = dispatch_metadata(
@@ -1430,7 +1433,7 @@ mod tests {
         #[test]
         fn duplicate_neighbors_are_not_requeued() {
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state
                 .er_preparation
@@ -1473,7 +1476,7 @@ mod tests {
         fn phase2_table_retry_limit_triggers_completion() {
             // All Phase 2 tables fail → completion must still fire
             let mut state = state_with_dsn("postgres://localhost/test");
-            let run_id = state.sql_modal.begin_prefetch();
+            let run_id = state.sql_modal.begin_er_prefetch();
             state.er_preparation.mark_waiting_for_test();
             state.er_preparation.mark_fk_expanded();
             let neighbor = "public.posts".to_string();

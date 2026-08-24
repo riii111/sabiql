@@ -1646,7 +1646,7 @@ mod tests {
         #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());

@@ -95,12 +95,12 @@ pub(super) fn reduce_prefetch(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::StartPrefetchAll => {
+        Action::StartErPrefetchAll => {
             if (state.sql_modal.active_prefetch_run_id().is_none()
                 || !state.sql_modal.prefetch_tracks_er())
                 && let Some(metadata) = state.session.metadata()
             {
-                let run_id = state.sql_modal.begin_prefetch();
+                let run_id = state.sql_modal.begin_er_prefetch();
                 let qualified_names: Vec<String> = metadata
                     .table_summaries
                     .iter()
@@ -126,13 +126,13 @@ pub(super) fn reduce_prefetch(
             }
         }
 
-        Action::StartPrefetchScoped { tables } => {
+        Action::StartErPrefetchScoped { tables } => {
             if state.sql_modal.active_prefetch_run_id().is_some()
                 && state.sql_modal.prefetch_tracks_er()
             {
                 DispatchResult::handled()
             } else {
-                let run_id = state.sql_modal.begin_prefetch();
+                let run_id = state.sql_modal.begin_er_prefetch();
                 state.er_preparation.begin_scoped_prefetch(tables);
 
                 for qualified_name in tables {
