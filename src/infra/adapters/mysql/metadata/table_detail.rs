@@ -285,11 +285,7 @@ fn parse_trigger_metadata(result: &MySqlResultSet) -> Result<Vec<Trigger>, DbOpe
 }
 
 fn parse_source_ddl(result: &MySqlResultSet, kind: TableKind) -> Result<String, DbOperationError> {
-    let expected_columns = if kind == TableKind::View {
-        ["View", "Create View"]
-    } else {
-        ["Table", "Create Table"]
-    };
+    let expected_columns = show_create_result_columns(kind);
     if result.columns.len() < 2
         || result.columns[0] != expected_columns[0]
         || result.columns[1] != expected_columns[1]
