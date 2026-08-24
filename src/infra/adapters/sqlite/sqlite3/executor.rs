@@ -499,16 +499,10 @@ mod tests {
 
     use crate::adapters::csv_export::export_to_path;
     use crate::adapters::sqlite::SqliteAdapter;
+    use crate::adapters::test_support;
     use crate::app::ports::outbound::{AccessMode, QueryExecutor};
-    use crate::domain::QueryResult;
 
     use super::*;
-
-    fn display_row(result: &QueryResult, row: usize) -> Vec<String> {
-        result
-            .display_row_at(row)
-            .expect("test result should contain the requested row")
-    }
 
     #[test]
     fn windows_csv_newline_normalizer_handles_chunk_boundaries() {
@@ -551,8 +545,6 @@ mod tests {
     }
 
     mod export {
-        use crate::adapters::test_support;
-
         use super::*;
 
         #[tokio::test]
@@ -730,13 +722,12 @@ mod tests {
                 .await;
 
             let result = result.unwrap();
-            assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+            assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
         }
 
         #[cfg(not(windows))]
         mod initialization_isolation {
             use crate::adapters::sqlite::sqlite3::tests::TestCommandContext;
-            use crate::adapters::test_support;
             use crate::app::ports::outbound::{MetadataProvider, SqliteDiagnosticsProvider};
 
             use super::*;
@@ -823,10 +814,16 @@ mod tests {
                 let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
 
                 assert_eq!(write.affected_rows, 1);
-                assert_eq!(display_row(&result, 0), vec!["Grace".to_string()]);
+                assert_eq!(
+                    test_support::display_row(&result, 0),
+                    vec!["Grace".to_string()]
+                );
                 assert_eq!(metadata.table_summaries.len(), 1);
                 assert_eq!(
-                    (display_row(&preview, 0), display_row(&preview, 1)),
+                    (
+                        test_support::display_row(&preview, 0),
+                        test_support::display_row(&preview, 1),
+                    ),
                     (
                         vec!["1".to_string(), "Ada".to_string()],
                         vec!["2".to_string(), "Grace".to_string()]

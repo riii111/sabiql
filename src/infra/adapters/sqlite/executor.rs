@@ -228,6 +228,7 @@ impl SqliteAdapter {
 
 #[cfg(test)]
 mod tests {
+    use crate::adapters::test_support;
     use crate::app::ports::outbound::{AccessMode, SqlDialect};
     use crate::domain::{
         CommandTag, DatabaseType, QueryResult, QuerySource, QueryValue,
@@ -236,15 +237,7 @@ mod tests {
 
     use super::*;
 
-    fn display_row(result: &QueryResult, row: usize) -> Vec<String> {
-        result
-            .display_row_at(row)
-            .expect("test result should contain the requested row")
-    }
-
     mod preview {
-        use crate::adapters::test_support;
-
         use super::*;
 
         #[tokio::test]
@@ -284,7 +277,7 @@ mod tests {
             assert_eq!(result.source, QuerySource::Preview);
             assert_eq!(result.columns, vec!["id", "name"]);
             assert_eq!(
-                display_row(&result, 0),
+                test_support::display_row(&result, 0),
                 vec!["2".to_string(), "b".to_string()]
             );
         }
@@ -306,7 +299,7 @@ mod tests {
 
             assert_eq!(result.columns, vec!["rowid", "message"]);
             assert_eq!(
-                display_row(&result, 0),
+                test_support::display_row(&result, 0),
                 vec!["user-visible".to_string(), "first".to_string()]
             );
         }
@@ -505,7 +498,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["value"]);
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
             }
 
@@ -520,7 +513,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
             }
 
             #[tokio::test]
@@ -642,7 +635,7 @@ mod tests {
                     plan_text.to_ascii_lowercase().contains("users"),
                     "expected users table in plan, got: {plan_text}"
                 );
-                assert_eq!(display_row(&rows, 0), vec!["2".to_string()]);
+                assert_eq!(test_support::display_row(&rows, 0), vec!["2".to_string()]);
             }
 
             fn explain_plan_operation_lines(plan_text: &str) -> Vec<&str> {
@@ -795,7 +788,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["body", "marker"]);
                 assert_eq!(
-                    display_row(&result, 0),
+                    test_support::display_row(&result, 0),
                     vec!["line 1\nline 2".to_string(), "ok".to_string()]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -815,7 +808,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["body", "marker"]);
                 assert_eq!(
-                    display_row(&result, 0),
+                    test_support::display_row(&result, 0),
                     vec!["line 1\nline 2".to_string(), "ok".to_string()]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -837,7 +830,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["c", "d"]);
                 assert_eq!(
-                    display_row(&result, 0),
+                    test_support::display_row(&result, 0),
                     vec!["5".to_string(), "6".to_string()]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Select(1)));
@@ -921,7 +914,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
             }
 
             #[tokio::test]
@@ -934,7 +927,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
             }
 
             #[tokio::test]
@@ -947,7 +940,10 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(display_row(&result, 0), vec!["5000".to_string()]);
+                assert_eq!(
+                    test_support::display_row(&result, 0),
+                    vec!["5000".to_string()]
+                );
             }
 
             #[rstest::rstest]
@@ -1036,7 +1032,7 @@ mod tests {
                     .await
                     .unwrap();
 
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
                 assert_eq!(result.command_tag, None);
             }
 
@@ -1129,7 +1125,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["name"]);
-                assert_eq!(display_row(&result, 0), vec!["x".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["x".to_string()]);
                 assert_eq!(result.command_tag, Some(CommandTag::Update(1)));
             }
 
@@ -1243,7 +1239,11 @@ mod tests {
                             .execute_adhoc(&dsn, read, AccessMode::ReadOnly)
                             .await
                             .unwrap();
-                        assert_eq!(display_row(&value, 0), vec!["0".to_string()], "{write}");
+                        assert_eq!(
+                            test_support::display_row(&value, 0),
+                            vec!["0".to_string()],
+                            "{write}"
+                        );
                     }
                 }
 
@@ -1284,7 +1284,7 @@ mod tests {
                         .await
                         .unwrap();
 
-                    assert_eq!(display_row(&rows, 0), vec!["1".to_string()]);
+                    assert_eq!(test_support::display_row(&rows, 0), vec!["1".to_string()]);
                 }
 
                 #[tokio::test]
@@ -1303,7 +1303,7 @@ mod tests {
                         .await
                         .unwrap();
 
-                    assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                    assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
                 }
             }
 
@@ -1385,7 +1385,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(display_row(&rows, 0), vec!["1".to_string()]);
+                    assert_eq!(test_support::display_row(&rows, 0), vec!["1".to_string()]);
                 }
 
                 #[tokio::test]
@@ -1415,7 +1415,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(display_row(&rows, 0), vec!["1".to_string()]);
+                    assert_eq!(test_support::display_row(&rows, 0), vec!["1".to_string()]);
                 }
 
                 #[tokio::test]
@@ -1445,7 +1445,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(display_row(&rows, 0), vec!["1".to_string()]);
+                    assert_eq!(test_support::display_row(&rows, 0), vec!["1".to_string()]);
                 }
 
                 #[tokio::test]
@@ -1473,7 +1473,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
-                    assert_eq!(display_row(&rows, 0), vec!["3".to_string()]);
+                    assert_eq!(test_support::display_row(&rows, 0), vec!["3".to_string()]);
                 }
 
                 #[tokio::test]
@@ -1629,7 +1629,7 @@ mod tests {
 
                 assert_eq!(result.columns, vec!["id", "name"]);
                 assert_eq!(
-                    display_row(&result, 0),
+                    test_support::display_row(&result, 0),
                     vec!["1".to_string(), "a".to_string()]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
@@ -1652,7 +1652,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(result.columns, vec!["value_empty"]);
-                assert_eq!(display_row(&result, 0), vec!["1".to_string()]);
+                assert_eq!(test_support::display_row(&result, 0), vec!["1".to_string()]);
                 assert_eq!(result.command_tag, Some(CommandTag::Insert(1)));
             }
 
@@ -1699,7 +1699,7 @@ mod tests {
                     .unwrap();
 
                 assert_eq!(
-                    display_row(&result, 0),
+                    test_support::display_row(&result, 0),
                     vec!["1".to_string(), "a".to_string()]
                 );
                 assert_eq!(result.command_tag, Some(CommandTag::Delete(1)));
@@ -1839,8 +1839,6 @@ mod tests {
     }
 
     mod write_execution {
-        use crate::adapters::test_support;
-
         use super::*;
 
         #[tokio::test]
@@ -1870,7 +1868,10 @@ mod tests {
                 result,
                 Err(DbOperationError::ForeignKeyViolation(_))
             ));
-            assert_eq!(display_row(&children, 0), vec!["1".to_string()]);
+            assert_eq!(
+                test_support::display_row(&children, 0),
+                vec!["1".to_string()]
+            );
         }
 
         #[tokio::test]
