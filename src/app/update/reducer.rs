@@ -36,7 +36,7 @@ pub fn reduce(
     // Mark dirty for all state-changing actions (except None and Render)
     let should_mark_dirty = !matches!(action, Action::None | Action::Render);
 
-    let effects = reduce_inner(state, action, now, services);
+    let effects = dispatch_enabled_action(state, action, now, services);
 
     if should_mark_dirty {
         state.mark_dirty();
@@ -45,7 +45,7 @@ pub fn reduce(
     effects
 }
 
-fn reduce_inner(
+fn dispatch_enabled_action(
     state: &mut AppState,
     action: Action,
     now: Instant,
