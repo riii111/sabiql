@@ -132,10 +132,6 @@ fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
         .copied()
 }
 
-struct PsqlOutput {
-    stdout: String,
-}
-
 impl PostgresAdapter {
     const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
@@ -145,7 +141,7 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query: &str,
         read_only: bool,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
         self.run_psql_args(dsn, extra_args, &["-c", query], read_only)
             .await
     }
@@ -156,7 +152,7 @@ impl PostgresAdapter {
         extra_args: &[&str],
         query_args: &[&str],
         read_only: bool,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
         let mut cmd = Self::build_psql_command(dsn, extra_args, query_args, read_only);
 
         Self::collect_output(&mut cmd, self.timeout_secs).await
@@ -199,7 +195,7 @@ impl PostgresAdapter {
     async fn collect_output(
         cmd: &mut Command,
         timeout_secs: u64,
-    ) -> Result<PsqlOutput, DbOperationError> {
+    ) -> Result<String, DbOperationError> {
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -242,7 +238,7 @@ impl PostgresAdapter {
         if !status.success() {
             return Err(classify_query_error(&stderr));
         }
-        Ok(PsqlOutput { stdout })
+        Ok(stdout)
     }
 
     pub(in crate::adapters::postgres) async fn execute_query(
@@ -250,9 +246,7 @@ impl PostgresAdapter {
         dsn: &str,
         query: &str,
     ) -> Result<String, DbOperationError> {
-        let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
-
-        Ok(output.stdout)
+        self.run_psql(dsn, &["-t", "-A"], query, false).await
     }
 
     pub(in crate::adapters::postgres) async fn execute_query_raw(
@@ -291,7 +285,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let stdout_trimmed = output.stdout.trim();
+        let stdout_trimmed = output.trim();
         if stdout_trimmed.is_empty() {
             return Ok(QueryResult::success(
                 query.to_string(),
@@ -332,7 +326,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let segments = split_marker_segments(&output.stdout, &marker);
+        let segments = split_marker_segments(&output, &marker);
         // A mismatch implies a marker collision in data; guessing would
         // reintroduce silent result-set misattribution.
         if segments.len() != statements.len() {
@@ -409,7 +403,7 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         let output = self.run_psql(dsn, &[], query, read_only).await?;
 
-        let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
+        let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
             |error: ParseCommandTagError| {
                 DbOperationError::CommandTagParseFailed(error.to_string())
             },
@@ -428,7 +422,7 @@ impl PostgresAdapter {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
-        output.stdout.trim().parse::<usize>().map_err(|e| {
+        output.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
         })
     }
