@@ -440,7 +440,6 @@ mod tests {
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
     };
     use crate::model::app_state::AppState;
-    use crate::model::browse::session::ConnectionSaveGuard;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::mysql_connection_probe::MockMySqlConnectionProbe;
@@ -492,12 +491,6 @@ mod tests {
             ))
         }
 
-        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
-            let guard = Arc::new(ConnectionSaveGuard::default());
-            guard.start(run_id);
-            guard
-        }
-
         #[tokio::test]
         async fn mysql_profile_is_saved_only_after_probe_success() {
             let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
@@ -539,7 +532,7 @@ mod tests {
                     name: "MySQL".to_string(),
                     config: mysql_config(Some("app")),
                     run_id: 1,
-                    run_guard: active_run_guard(1),
+                    run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
                 RefCell::new(CompletionEngine::new()),
@@ -597,7 +590,7 @@ mod tests {
                     name: "MySQL".to_string(),
                     config: mysql_config(None),
                     run_id: 1,
-                    run_guard: active_run_guard(1),
+                    run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
                 RefCell::new(CompletionEngine::new()),
@@ -621,7 +614,7 @@ mod tests {
         #[tokio::test]
         async fn mysql_profile_is_not_saved_when_run_is_cancelled_after_probe() {
             let dsn = "mysql://user:secret@localhost:3306/app?ssl-mode=REQUIRED";
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
             let guard_for_probe = Arc::clone(&run_guard);
             let mut probe = MockMySqlConnectionProbe::new();
             probe
@@ -677,7 +670,7 @@ mod tests {
 
         #[test]
         fn cancel_after_claim_prevents_save_from_starting() {
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
 
             assert!(run_guard.claim(1));
 
@@ -687,7 +680,7 @@ mod tests {
 
         #[test]
         fn finishing_cancelled_save_does_not_clear_new_run() {
-            let run_guard = active_run_guard(1);
+            let run_guard = test_fixtures::active_connection_save_guard(1);
 
             assert!(run_guard.claim(1));
             assert!(run_guard.start_save(1));
@@ -740,7 +733,7 @@ mod tests {
                         SqliteConnectionConfig::new(input_path).unwrap(),
                     ),
                     run_id: 1,
-                    run_guard: active_run_guard(1),
+                    run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
                 RefCell::new(CompletionEngine::new()),
@@ -793,7 +786,7 @@ mod tests {
                         SqliteConnectionConfig::new(path_str).unwrap(),
                     ),
                     run_id: 1,
-                    run_guard: active_run_guard(1),
+                    run_guard: test_fixtures::active_connection_save_guard(1),
                 },
                 AppState::new("test".to_string()),
                 RefCell::new(CompletionEngine::new()),
