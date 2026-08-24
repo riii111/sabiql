@@ -897,11 +897,6 @@ mod tests {
             .expect("PostgreSQL statement splitting is infallible")
     }
 
-    fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
-        evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
-            .expect("PostgreSQL SQL risk evaluation is supported")
-    }
-
     fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
         evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
     }
@@ -1022,7 +1017,8 @@ mod tests {
                 #[case] sql: &str,
                 #[case] expected_risk: RiskLevel,
             ) {
-                let result = evaluate_sql_risk(&kind, sql);
+                let result = evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &kind, sql)
+                    .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, expected_risk);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
             }
@@ -1047,7 +1043,8 @@ mod tests {
                 #[case] sql: &str,
                 #[case] expected_label: &str,
             ) {
-                let result = evaluate_sql_risk(&kind, sql);
+                let result = evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &kind, sql)
+                    .expect("PostgreSQL SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(matches!(
@@ -1065,7 +1062,12 @@ mod tests {
             #[case::comment_only("-- just a comment")]
             #[case::block_comment_only("/* nothing */")]
             fn empty_or_comment_only_other_returns_immediate(#[case] sql: &str) {
-                let result = evaluate_sql_risk(&StatementKind::Other, sql);
+                let result = evaluate_sql_risk_for_database(
+                    DatabaseType::PostgreSQL,
+                    &StatementKind::Other,
+                    sql,
+                )
+                .expect("PostgreSQL SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
@@ -1079,7 +1081,8 @@ mod tests {
                 #[case] sql: &str,
                 #[case] expected_label: &str,
             ) {
-                let result = evaluate_sql_risk(&kind, sql);
+                let result = evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &kind, sql)
+                    .expect("PostgreSQL SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(matches!(
@@ -1094,7 +1097,9 @@ mod tests {
             #[test]
             fn data_modifying_cte_blocks_read_only() {
                 let sql = "WITH x AS (UPDATE users SET name='a' RETURNING *) SELECT * FROM x";
-                let result = evaluate_sql_risk(&classify(sql), sql);
+                let result =
+                    evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &classify(sql), sql)
+                        .expect("PostgreSQL SQL risk evaluation is supported");
 
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(!result.read_only_allowed);
@@ -1112,7 +1117,8 @@ mod tests {
             #[case::delete_where(StatementKind::Delete { has_where: true }, "DELETE FROM users WHERE id=1")]
             #[case::alter(StatementKind::Alter, "ALTER TABLE users ADD COLUMN x INT")]
             fn medium_risk_returns_immediate(#[case] kind: StatementKind, #[case] sql: &str) {
-                let result = evaluate_sql_risk(&kind, sql);
+                let result = evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &kind, sql)
+                    .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, RiskLevel::Medium);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
             }
@@ -1123,7 +1129,8 @@ mod tests {
             #[case::drop(StatementKind::Drop, "DROP TABLE users")]
             #[case::truncate(StatementKind::Truncate, "TRUNCATE users")]
             fn high_table_name_input(#[case] kind: StatementKind, #[case] sql: &str) {
-                let result = evaluate_sql_risk(&kind, sql);
+                let result = evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, &kind, sql)
+                    .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(matches!(
                     result.confirmation,
@@ -1133,7 +1140,12 @@ mod tests {
 
             #[test]
             fn drop_database_returns_high_table_name_input() {
-                let result = evaluate_sql_risk(&StatementKind::Drop, "DROP DATABASE production");
+                let result = evaluate_sql_risk_for_database(
+                    DatabaseType::PostgreSQL,
+                    &StatementKind::Drop,
+                    "DROP DATABASE production",
+                )
+                .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(matches!(
                     result.confirmation,
@@ -1143,8 +1155,12 @@ mod tests {
 
             #[test]
             fn drop_table_with_leading_comment_returns_high() {
-                let result =
-                    evaluate_sql_risk(&StatementKind::Drop, "-- cleanup\nDROP TABLE production");
+                let result = evaluate_sql_risk_for_database(
+                    DatabaseType::PostgreSQL,
+                    &StatementKind::Drop,
+                    "-- cleanup\nDROP TABLE production",
+                )
+                .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, RiskLevel::High);
                 assert!(matches!(
                     result.confirmation,
@@ -1160,7 +1176,12 @@ mod tests {
             #[case::drop_owned_by("DROP OWNED BY role")]
             #[case::drop_tablespace("DROP TABLESPACE fastdisk")]
             fn non_table_drop_returns_low_immediate(#[case] sql: &str) {
-                let result = evaluate_sql_risk(&StatementKind::Drop, sql);
+                let result = evaluate_sql_risk_for_database(
+                    DatabaseType::PostgreSQL,
+                    &StatementKind::Drop,
+                    sql,
+                )
+                .expect("PostgreSQL SQL risk evaluation is supported");
                 assert_eq!(result.risk_level, RiskLevel::Low);
                 assert!(matches!(result.confirmation, ConfirmationType::Immediate));
             }
