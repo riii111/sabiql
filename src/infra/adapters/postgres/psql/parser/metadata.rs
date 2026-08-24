@@ -641,6 +641,7 @@ mod tests {
     mod json_parse_errors {
         use super::*;
         use crate::domain::IndexType;
+        use rstest::rstest;
 
         #[test]
         fn parse_tables_with_malformed_json_returns_error() {
@@ -781,18 +782,13 @@ mod tests {
             assert!(indexes[5].has_expression());
         }
 
-        #[test]
-        fn parse_empty_string_returns_empty_vec() {
-            assert!(PostgresAdapter::parse_tables("").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_columns("").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_indexes("").unwrap().is_empty());
-        }
-
-        #[test]
-        fn parse_null_string_returns_empty_vec() {
-            assert!(PostgresAdapter::parse_tables("null").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_columns("null").unwrap().is_empty());
-            assert!(PostgresAdapter::parse_indexes("null").unwrap().is_empty());
+        #[rstest]
+        #[case::empty_json("")]
+        #[case::null_json("null")]
+        fn empty_or_null_input_returns_empty_metadata_vecs(#[case] input: &str) {
+            assert!(PostgresAdapter::parse_tables(input).unwrap().is_empty());
+            assert!(PostgresAdapter::parse_columns(input).unwrap().is_empty());
+            assert!(PostgresAdapter::parse_indexes(input).unwrap().is_empty());
         }
     }
 
