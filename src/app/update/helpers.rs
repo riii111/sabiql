@@ -989,18 +989,13 @@ mod tests {
 
         use super::*;
 
-        fn editable_state(database_type: DatabaseType) -> AppState {
+        fn sqlite_editable_state() -> AppState {
             let mut state = AppState::new("test_project".to_string());
-            let dsn = match database_type {
-                DatabaseType::PostgreSQL => "postgres://localhost/test",
-                DatabaseType::SQLite => "sqlite:///tmp/app.db",
-                DatabaseType::MySQL => "mysql://user@localhost/test",
-            };
             state.session.activate_connection_with_dsn(
                 &ConnectionId::from_string("test-connection"),
                 "test",
-                database_type,
-                dsn,
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
             );
             state
                 .query
@@ -1031,7 +1026,7 @@ mod tests {
 
         #[test]
         fn sqlite_database_type_uses_schema_free_delete_preview() {
-            let state = editable_state(DatabaseType::SQLite);
+            let state = sqlite_editable_state();
 
             let result = build_bulk_delete_preview(&state, &AppServices::stub()).unwrap();
 
@@ -1043,7 +1038,7 @@ mod tests {
 
         #[test]
         fn sqlite_table_without_primary_key_cannot_build_delete_preview() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.primary_key = None;
             state.session.set_table_detail_raw(Some(detail));
@@ -1056,7 +1051,7 @@ mod tests {
 
         #[test]
         fn sqlite_without_rowid_table_uses_primary_key_for_delete_preview() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             let mut detail = state.session.table_detail().cloned().expect("table detail");
             detail.kind_info.without_rowid = true;
             state.session.set_table_detail_raw(Some(detail));
@@ -1071,7 +1066,7 @@ mod tests {
 
         #[test]
         fn sqlite_database_type_rejects_null_primary_key_value() {
-            let mut state = editable_state(DatabaseType::SQLite);
+            let mut state = sqlite_editable_state();
             state
                 .query
                 .set_current_result(Arc::new(QueryResult::success_with_values(
