@@ -134,24 +134,8 @@ fn has_mysql_read_only_side_effect_function(tokens: &[lexer::Token], index: usiz
 pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError> {
     let bytes = sql.as_bytes();
     let mut index = 0;
-    let mut quote = None;
 
     while index < bytes.len() {
-        if let Some(delimiter) = quote {
-            if bytes[index] == b'\\' && delimiter != b'`' {
-                index = (index + 2).min(bytes.len());
-            } else if bytes[index] == delimiter {
-                if bytes.get(index + 1) == Some(&delimiter) {
-                    index += 2;
-                } else {
-                    quote = None;
-                    index += 1;
-                }
-            } else {
-                index += 1;
-            }
-            continue;
-        }
         if lexer::is_line_comment_start(bytes, index) {
             index = lexer::skip_line_comment(bytes, index);
             continue;
@@ -164,16 +148,12 @@ pub(super) fn has_mysql_version_comment(sql: &str) -> Result<bool, MySqlLexError
             continue;
         }
         if matches!(bytes[index], b'\'' | b'"' | b'`') {
-            quote = Some(bytes[index]);
+            index = lexer::skip_quoted(bytes, index, bytes[index])?;
+            continue;
         }
         index += 1;
     }
 
-    if quote.is_some() {
-        return Err(MySqlLexError(
-            "unterminated MySQL quoted literal".to_string(),
-        ));
-    }
     Ok(false)
 }
 
