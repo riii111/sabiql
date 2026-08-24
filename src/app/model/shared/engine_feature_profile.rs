@@ -131,17 +131,12 @@ const MYSQL_INSPECTOR: InspectorProfile = InspectorProfile::new(
 );
 
 const NO_CONNECTION_FEATURES: &[ConnectionFeature] = &[];
-const POSTGRESQL_FEATURES: &[ConnectionFeature] = &[
+const SERVER_FEATURES: &[ConnectionFeature] = &[
     ConnectionFeature::ErDiagram,
     ConnectionFeature::JsonDocumentDetail,
     ConnectionFeature::JsonDocumentEdit,
 ];
 const SQLITE_FEATURES: &[ConnectionFeature] = &[ConnectionFeature::SqliteDiagnostics];
-const MYSQL_FEATURES: &[ConnectionFeature] = &[
-    ConnectionFeature::ErDiagram,
-    ConnectionFeature::JsonDocumentDetail,
-    ConnectionFeature::JsonDocumentEdit,
-];
 
 impl EngineFeatureProfile {
     fn new(
@@ -188,7 +183,7 @@ impl EngineFeatureProfile {
         Self::new(
             POSTGRESQL_INSPECTOR,
             ExplainProfile::QueryPlanAndAnalyze,
-            POSTGRESQL_FEATURES,
+            SERVER_FEATURES,
         )
     }
 
@@ -204,7 +199,7 @@ impl EngineFeatureProfile {
         Self::new(
             MYSQL_INSPECTOR,
             ExplainProfile::QueryPlanAndAnalyze,
-            MYSQL_FEATURES,
+            SERVER_FEATURES,
         )
     }
 
