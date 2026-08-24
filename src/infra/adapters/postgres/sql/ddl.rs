@@ -8,11 +8,12 @@ use super::{quote_ident, quote_literal};
 
 impl DdlGenerator for PostgresAdapter {
     fn generate_ddl(&self, _database_type: DatabaseType, table: &Table) -> String {
-        let mut ddl = format!(
-            "CREATE TABLE {}.{} (\n",
+        let qualified = format!(
+            "{}.{}",
             quote_ident(&table.schema),
             quote_ident(&table.name)
         );
+        let mut ddl = format!("CREATE TABLE {qualified} (\n");
 
         let mut elements = Vec::with_capacity(table.columns.len() + 1);
         for col in &table.columns {
@@ -42,12 +43,6 @@ impl DdlGenerator for PostgresAdapter {
             ddl.push('\n');
         }
         ddl.push_str(");");
-
-        let qualified = format!(
-            "{}.{}",
-            quote_ident(&table.schema),
-            quote_ident(&table.name)
-        );
 
         if let Some(comment) = &table.comment {
             let _ = write!(
