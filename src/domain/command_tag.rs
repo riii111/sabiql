@@ -68,32 +68,6 @@ impl CommandTag {
             _ => None,
         }
     }
-
-    pub fn display_message(&self) -> String {
-        match self {
-            Self::Select(n) => row_count_label(*n, "selected"),
-            Self::Insert(n) => row_count_label(*n, "inserted"),
-            Self::Affected(n) => row_count_label(*n, "affected"),
-            Self::Update(n) => row_count_label(*n, "updated"),
-            Self::Delete(n) => row_count_label(*n, "deleted"),
-            Self::Create(obj) => format!("{} created", obj.to_lowercase()),
-            Self::Drop(obj) => format!("{} dropped", obj.to_lowercase()),
-            Self::Alter(obj) => format!("{} altered", obj.to_lowercase()),
-            Self::Truncate => "table truncated".to_string(),
-            Self::Begin => "transaction started".to_string(),
-            Self::Commit => "committed".to_string(),
-            Self::Rollback => "rolled back".to_string(),
-            Self::Other(tag) => tag.to_lowercase(),
-        }
-    }
-}
-
-fn row_count_label(n: u64, verb: &str) -> String {
-    if n == 1 {
-        format!("1 row {verb}")
-    } else {
-        format!("{n} rows {verb}")
-    }
 }
 
 #[cfg(test)]
@@ -121,57 +95,6 @@ mod tests {
         assert_eq!(CommandTag::Begin.affected_rows(), None);
         assert_eq!(CommandTag::Commit.affected_rows(), None);
         assert_eq!(CommandTag::Rollback.affected_rows(), None);
-    }
-
-    #[test]
-    fn display_message_singular_row() {
-        assert_eq!(CommandTag::Insert(1).display_message(), "1 row inserted");
-        assert_eq!(CommandTag::Affected(1).display_message(), "1 row affected");
-        assert_eq!(CommandTag::Delete(1).display_message(), "1 row deleted");
-    }
-
-    #[test]
-    fn display_message_plural_rows() {
-        assert_eq!(CommandTag::Select(5).display_message(), "5 rows selected");
-        assert_eq!(CommandTag::Update(10).display_message(), "10 rows updated");
-    }
-
-    #[test]
-    fn display_message_zero_rows() {
-        assert_eq!(CommandTag::Delete(0).display_message(), "0 rows deleted");
-        assert_eq!(CommandTag::Affected(0).display_message(), "0 rows affected");
-    }
-
-    #[test]
-    fn display_message_ddl() {
-        assert_eq!(
-            CommandTag::Create("TABLE".to_string()).display_message(),
-            "table created"
-        );
-        assert_eq!(
-            CommandTag::Drop("INDEX".to_string()).display_message(),
-            "index dropped"
-        );
-        assert_eq!(
-            CommandTag::Alter("TABLE".to_string()).display_message(),
-            "table altered"
-        );
-    }
-
-    #[test]
-    fn display_message_tcl() {
-        assert_eq!(CommandTag::Truncate.display_message(), "table truncated");
-        assert_eq!(CommandTag::Begin.display_message(), "transaction started");
-        assert_eq!(CommandTag::Commit.display_message(), "committed");
-        assert_eq!(CommandTag::Rollback.display_message(), "rolled back");
-    }
-
-    #[test]
-    fn display_message_other() {
-        assert_eq!(
-            CommandTag::Other("VACUUM".to_string()).display_message(),
-            "vacuum"
-        );
     }
 
     #[test]
