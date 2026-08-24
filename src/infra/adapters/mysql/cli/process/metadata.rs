@@ -15,9 +15,7 @@ use super::super::error::{
     classify_mysql_query_failure, has_mysql_cli_error, is_mysql_batch_diagnostic,
     map_mysql_cli_spawn_error,
 };
-use super::super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, MySqlMetadataFallbackKind, mysql_metadata_select_query,
-};
+use super::super::policy::{MySqlMetadataFallbackKind, mysql_metadata_select_query};
 use super::super::probe::{run_mysql_command_with_timeout, validate_sql_mode};
 use super::super::sanitize_mysql_command_environment;
 use super::{
@@ -280,9 +278,7 @@ async fn run_mysql_metadata_query_with_read_only_session_process(
         .write_statement(super::MYSQL_READ_ONLY_STATEMENT)
         .await?;
     process
-        .write_statement(&format!(
-            "SELECT '{session_marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS __sabiql_sql_mode"
-        ))
+        .write_statement(&super::mysql_session_probe_query(&session_marker))
         .await?;
     let session_output = process.read_until_marker(&session_marker).await?;
     validate_metadata_session_probe(&session_output, &session_marker)?;

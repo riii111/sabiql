@@ -16,6 +16,7 @@ use super::probe::validate_sql_mode;
 use super::xml::MySqlResultSet;
 
 pub(super) const MYSQL_SESSION_MARKER_COLUMN: &str = "__sabiql_session_marker";
+pub(super) const MYSQL_SESSION_SQL_MODE_COLUMN: &str = "__sabiql_sql_mode";
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum MySqlMetadataFallbackKind {
@@ -377,7 +378,7 @@ pub(super) fn validate_mysql_session(
     result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
-    if result.columns != [MYSQL_SESSION_MARKER_COLUMN, "__sabiql_sql_mode"]
+    if result.columns != [MYSQL_SESSION_MARKER_COLUMN, MYSQL_SESSION_SQL_MODE_COLUMN]
         || result.values.len() != 1
         || result.values[0].len() != 2
         || result.values[0][0].as_str() != Some(marker)

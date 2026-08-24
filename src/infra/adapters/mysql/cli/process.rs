@@ -22,7 +22,8 @@ use super::error::{
 #[cfg(not(unix))]
 use super::pipe::read_one_mysql_resultset_from_pipes;
 use super::policy::{
-    MYSQL_SESSION_MARKER_COLUMN, query_failed_after_change, validate_mysql_session,
+    MYSQL_SESSION_MARKER_COLUMN, MYSQL_SESSION_SQL_MODE_COLUMN, query_failed_after_change,
+    validate_mysql_session,
 };
 #[cfg(unix)]
 use super::pty::{
@@ -48,6 +49,12 @@ pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::f
 const MYSQL_PTY_DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
 const MYSQL_SESSION_SETTINGS: &str = "SET SESSION autocommit=1, completion_type=NO_CHAIN";
 const MYSQL_READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
+
+fn mysql_session_probe_query(marker: &str) -> String {
+    format!(
+        "SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS {MYSQL_SESSION_SQL_MODE_COLUMN}"
+    )
+}
 
 pub(in crate::adapters::mysql) struct MySqlProcess {
     pub(super) child: Child,
@@ -352,13 +359,7 @@ pub(super) async fn configure_mysql_session(
     if access_mode.is_read_only() {
         write_mysql_statement(process, MYSQL_READ_ONLY_STATEMENT).await?;
     }
-    write_mysql_statement(
-        process,
-        &format!(
-            "SELECT '{marker}' AS {MYSQL_SESSION_MARKER_COLUMN}, @@SESSION.sql_mode AS __sabiql_sql_mode"
-        ),
-    )
-    .await?;
+    write_mysql_statement(process, &mysql_session_probe_query(&marker)).await?;
     loop {
         let result = read_one_mysql_resultset(process).await?;
         let result = parse_mysql_xml(&result)?;
