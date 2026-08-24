@@ -34,22 +34,6 @@ pub(super) fn equality_predicate(column: &str, value: &QueryValue) -> String {
     }
 }
 
-pub(super) fn rows_predicate(pk_pairs_per_row: &[Vec<(String, QueryValue)>]) -> String {
-    let predicates = pk_pairs_per_row
-        .iter()
-        .map(|pairs| row_predicate(pairs))
-        .collect::<Vec<_>>();
-    if predicates.len() == 1 {
-        predicates[0].clone()
-    } else {
-        predicates
-            .into_iter()
-            .map(|predicate| format!("({predicate})"))
-            .collect::<Vec<_>>()
-            .join(" OR ")
-    }
-}
-
 pub(super) fn encode_preview_column_expr(column: &str) -> String {
     let ident = quote_ident(column);
     format!(
@@ -72,14 +56,6 @@ fn text_sql_literal(value: &str) -> String {
     } else {
         quote_literal(value)
     }
-}
-
-fn row_predicate(pk_pairs: &[(String, QueryValue)]) -> String {
-    pk_pairs
-        .iter()
-        .map(|(col, val)| equality_predicate(col, val))
-        .collect::<Vec<_>>()
-        .join(" AND ")
 }
 
 fn encode_bytes_as_sql_hex(bytes: &[u8]) -> String {

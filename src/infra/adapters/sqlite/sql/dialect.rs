@@ -1,8 +1,10 @@
 use crate::app::ports::outbound::SqlDialect;
 use crate::domain::{DatabaseType, QueryValue, sqlite_sql::build_sqlite_explain_query_plan_sql};
 
+use crate::adapters::bulk_delete::rows_predicate;
+
 use super::super::SqliteAdapter;
-use super::literal::{equality_predicate, quote_ident, rows_predicate, sql_literal};
+use super::literal::{equality_predicate, quote_ident, sql_literal};
 
 impl SqlDialect for SqliteAdapter {
     fn build_explain_sql(&self, _database_type: DatabaseType, query: &str) -> Option<String> {
@@ -53,7 +55,7 @@ impl SqlDialect for SqliteAdapter {
             "pk_pairs_per_row must not be empty"
         );
 
-        let where_clause = rows_predicate(pk_pairs_per_row);
+        let where_clause = rows_predicate(pk_pairs_per_row, equality_predicate);
 
         format!(
             "DELETE FROM {}\nWHERE {};",

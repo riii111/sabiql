@@ -1,5 +1,7 @@
 use crate::domain::QueryValue;
 
+use crate::adapters::bulk_delete::rows_predicate;
+
 use super::literal::{equality_predicate, quote_identifier, sql_literal};
 
 pub(super) fn build_update_sql(
@@ -35,25 +37,7 @@ pub(super) fn build_bulk_delete_sql(
         "pk_pairs_per_row must not be empty"
     );
 
-    let predicates = pk_pairs_per_row
-        .iter()
-        .map(|pairs| {
-            pairs
-                .iter()
-                .map(|(column, value)| equality_predicate(column, value))
-                .collect::<Vec<_>>()
-                .join(" AND ")
-        })
-        .collect::<Vec<_>>();
-    let where_clause = if predicates.len() == 1 {
-        predicates[0].clone()
-    } else {
-        predicates
-            .into_iter()
-            .map(|predicate| format!("({predicate})"))
-            .collect::<Vec<_>>()
-            .join(" OR ")
-    };
+    let where_clause = rows_predicate(pk_pairs_per_row, equality_predicate);
 
     format!(
         "DELETE FROM {}.{}\nWHERE {};",
