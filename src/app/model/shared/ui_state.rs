@@ -301,16 +301,8 @@ impl UiState {
         self.connection_list_scroll_offset
     }
 
-    pub fn connection_list_pane_height(&self) -> u16 {
-        self.connection_list_pane_height
-    }
-
     pub fn set_connection_list_pane_height(&mut self, height: u16) {
         self.connection_list_pane_height = height;
-    }
-
-    pub fn set_connection_list_scroll_offset(&mut self, offset: usize) {
-        self.connection_list_scroll_offset = offset;
     }
 
     pub fn table_picker(&self) -> &PickerState {
@@ -395,10 +387,6 @@ impl UiState {
         self.inspector_pane_height = height;
     }
 
-    pub fn explorer_pane_height(&self) -> u16 {
-        self.explorer_pane_height
-    }
-
     pub fn set_explorer_pane_height(&mut self, height: u16) {
         self.explorer_pane_height = height;
     }
@@ -417,10 +405,6 @@ impl UiState {
 
     pub fn set_result_widths_cache(&mut self, cache: ColumnWidthsCache) {
         self.result_widths_cache = cache;
-    }
-
-    pub fn result_pane_height(&self) -> u16 {
-        self.result_pane_height
     }
 
     pub fn set_result_pane_height(&mut self, height: u16) {
@@ -443,20 +427,8 @@ impl UiState {
         &mut self.help
     }
 
-    pub fn help_scroll_offset(&self) -> usize {
-        self.help.scroll_offset()
-    }
-
-    pub fn set_help_scroll_offset(&mut self, offset: usize) {
-        self.help.set_scroll_offset(offset);
-    }
-
     pub fn terminal_height(&self) -> u16 {
         self.terminal_height
-    }
-
-    pub fn terminal_width(&self) -> u16 {
-        self.terminal_width
     }
 
     pub fn set_terminal_height(&mut self, height: u16) {
@@ -465,11 +437,6 @@ impl UiState {
 
     pub fn set_terminal_width(&mut self, width: u16) {
         self.terminal_width = width;
-    }
-
-    pub fn set_terminal_size(&mut self, width: u16, height: u16) {
-        self.terminal_width = width;
-        self.terminal_height = height;
     }
 
     pub fn key_sequence(&self) -> KeySequenceState {

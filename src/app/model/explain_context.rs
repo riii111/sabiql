@@ -141,10 +141,6 @@ impl ExplainContext {
         self.compare_viewport_height = Some(height);
     }
 
-    pub fn scroll_confirm_to(&mut self, offset: usize) {
-        self.confirm_scroll_offset = offset;
-    }
-
     pub fn scroll_plan_to(&mut self, offset: usize) {
         self.scroll_offset = offset;
     }
