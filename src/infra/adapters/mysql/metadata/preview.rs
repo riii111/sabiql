@@ -391,7 +391,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
-    use crate::adapters::mysql::test_support::query_assertions::assert_queries_in_order;
+    use crate::adapters::mysql::test_query_assertions::assert_queries_in_order;
     use crate::domain::ColumnAttributes;
 
     fn convert_preview_values(

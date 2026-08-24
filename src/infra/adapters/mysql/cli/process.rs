@@ -628,7 +628,7 @@ mod tests {
     use super::single::test_support::run_mysql_single_statement_process;
     use super::*;
     use crate::adapters::csv_export::export_to_path;
-    use crate::adapters::mysql::test_support::query_assertions::assert_queries_in_order;
+    use crate::adapters::mysql::test_query_assertions::assert_queries_in_order;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
     use crate::domain::{
         CommandTag, DatabaseDiagnostic, DiagnosticLevel, QueryValue, RefreshScope,
