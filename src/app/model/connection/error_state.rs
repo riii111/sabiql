@@ -100,10 +100,6 @@ impl ConnectionErrorState {
         self.scroll_offset = 0;
     }
 
-    pub fn expand_details(&mut self) {
-        self.details_expanded = true;
-    }
-
     pub fn clear(&mut self) {
         self.error_info = None;
         self.details_expanded = false;
@@ -136,14 +132,6 @@ impl ConnectionErrorState {
     pub fn is_copied_visible_at(&self, now: Instant) -> bool {
         self.copied_feedback_expires
             .is_some_and(|expires| now < expires)
-    }
-
-    pub fn clear_expired_feedback_at(&mut self, now: Instant) {
-        if let Some(expires) = self.copied_feedback_expires
-            && expires <= now
-        {
-            self.copied_feedback_expires = None;
-        }
     }
 
     pub fn clear_copied_feedback(&mut self) {
@@ -186,7 +174,7 @@ mod tests {
         #[test]
         fn stores_info_and_resets_ui() {
             let mut state = ConnectionErrorState::default();
-            state.expand_details();
+            state.toggle_details();
             scroll_to(&mut state, 5);
 
             state.set_error(sample_error());
@@ -215,7 +203,7 @@ mod tests {
         fn collapses_details_and_resets_scroll_without_clearing_error() {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
-            state.expand_details();
+            state.toggle_details();
             scroll_to(&mut state, 4);
 
             state.reset_view();
@@ -233,7 +221,7 @@ mod tests {
         fn resets_all_fields() {
             let mut state = ConnectionErrorState::default();
             state.set_error(sample_error());
-            state.expand_details();
+            state.toggle_details();
             scroll_to(&mut state, 3);
 
             state.clear();
@@ -261,7 +249,7 @@ mod tests {
         #[test]
         fn resets_scroll_on_collapse() {
             let mut state = ConnectionErrorState::default();
-            state.expand_details();
+            state.toggle_details();
             scroll_to(&mut state, 5);
 
             state.toggle_details();
@@ -334,28 +322,6 @@ mod tests {
             state.mark_copied_at(t);
 
             assert!(!state.is_copied_visible_at(t + Duration::from_secs(4)));
-        }
-
-        #[test]
-        fn clear_expired_removes_when_expired() {
-            let mut state = ConnectionErrorState::default();
-            let t = now();
-            state.mark_copied_at(t);
-
-            state.clear_expired_feedback_at(t + Duration::from_secs(4));
-
-            assert!(!state.is_copied_visible_at(t));
-        }
-
-        #[test]
-        fn clear_expired_keeps_when_not_expired() {
-            let mut state = ConnectionErrorState::default();
-            let t = now();
-            state.mark_copied_at(t);
-
-            state.clear_expired_feedback_at(t + Duration::from_secs(1));
-
-            assert!(state.is_copied_visible_at(t));
         }
     }
 

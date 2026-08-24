@@ -522,7 +522,7 @@ fn connection_error_expanded() {
         ConnectionErrorKind::Timeout,
         "psql: error: connection to server at \"192.168.1.100\", port 5432 failed: timeout expired",
     ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -539,7 +539,7 @@ fn connection_error_expanded_with_tabs() {
         ConnectionErrorKind::Unknown,
         "psql: error: connection to server at \"localhost\" (127.0.0.1), port 5433 failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?",
     ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -563,7 +563,7 @@ fn connection_error_expanded_long_details_capped() {
             ConnectionErrorKind::Unknown,
             &long_details,
         ));
-    state.connection_error.expand_details();
+    state.connection_error.toggle_details();
 
     let output = render_to_string(&mut terminal, &mut state);
 
