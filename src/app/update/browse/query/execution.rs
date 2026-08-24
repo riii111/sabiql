@@ -4,7 +4,9 @@ use std::time::{Duration, Instant};
 use crate::cmd::effect::Effect;
 use crate::domain::{QueryResult, QuerySource, RefreshScope};
 use crate::model::app_state::AppState;
-use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
+use crate::model::browse::query_execution::{
+    PREVIEW_PAGE_SIZE, PendingPreview, PostDeleteRowSelection,
+};
 use crate::model::shared::help::HelpOrigin;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::AdhocSuccessSnapshot;
@@ -179,7 +181,12 @@ pub fn reduce_execution(
             let Some(pending) = state.query.take_pending_preview(*generation) else {
                 return DispatchResult::handled();
             };
-            let (result, target_page, highlight) = pending.into_parts();
+            let PendingPreview {
+                result,
+                generation: _,
+                target_page,
+                highlight,
+            } = pending;
             if result.is_error() && !highlight {
                 state.query.clear_delete_refresh_target();
             }

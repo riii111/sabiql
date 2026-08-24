@@ -120,16 +120,10 @@ pub struct DeleteRefreshTarget {
 
 #[derive(Debug, Clone)]
 pub(crate) struct PendingPreview {
-    result: Arc<QueryResult>,
-    generation: u64,
-    target_page: Option<usize>,
-    highlight: bool,
-}
-
-impl PendingPreview {
-    pub(crate) fn into_parts(self) -> (Arc<QueryResult>, Option<usize>, bool) {
-        (self.result, self.target_page, self.highlight)
-    }
+    pub(crate) result: Arc<QueryResult>,
+    pub(crate) generation: u64,
+    pub(crate) target_page: Option<usize>,
+    pub(crate) highlight: bool,
 }
 
 #[derive(Debug, Clone, Default)]
