@@ -7,7 +7,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use crate::app::ports::outbound::DbOperationError;
 
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
-use super::process::read_all;
+use super::process::read_all_bytes;
 use super::xml::{
     MySqlResultsetFrameScanner,
     take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget,
@@ -261,7 +261,7 @@ async fn finish_mysql_pipe_after_stdout_eof<E>(
 where
     E: AsyncRead + Unpin,
 {
-    let (stderr, status) = tokio::join!(read_all(stderr), child.wait());
+    let (stderr, status) = tokio::join!(read_all_bytes(stderr), child.wait());
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
     pending_stderr.extend_from_slice(&stderr);
