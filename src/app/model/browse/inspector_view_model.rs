@@ -129,7 +129,6 @@ pub enum InspectorRlsRow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InspectorEmptyState {
-    NoTableSelected,
     NoColumns,
     NoIndexes,
     NoForeignKeys,
@@ -157,13 +156,11 @@ impl InspectorViewModel {
             TableDetailState::Error(error) => (InspectorLoadState::Error(error.clone()), None),
         };
         let Some(table) = table else {
-            let empty_state = matches!(&load_state, InspectorLoadState::NoTableSelected)
-                .then_some(InspectorEmptyState::NoTableSelected);
             return Self {
                 active_tab,
                 load_state,
                 section: None,
-                empty_state,
+                empty_state: None,
                 unavailable_reason: None,
                 mysql_trigger_details: false,
             };
@@ -416,7 +413,6 @@ impl InspectorSection {
 impl InspectorEmptyState {
     pub fn message(self) -> &'static str {
         match self {
-            Self::NoTableSelected => "(select a table)",
             Self::NoColumns => "No columns",
             Self::NoIndexes => "No indexes",
             Self::NoForeignKeys => "No foreign keys",
@@ -627,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn no_table_exposes_empty_state_without_display_rows() {
+    fn no_table_exposes_load_state_without_display_rows() {
         let model = InspectorViewModel::build_with_detail_state(
             &EngineFeatureProfile::postgres_like(),
             InspectorTab::Info,
@@ -637,10 +633,8 @@ mod tests {
         );
 
         assert_eq!(model.row_count(), 0);
-        assert_eq!(
-            model.empty_state(),
-            Some(InspectorEmptyState::NoTableSelected)
-        );
+        assert_eq!(model.load_state(), &InspectorLoadState::NoTableSelected);
+        assert_eq!(model.empty_state(), None);
         assert_eq!(model.unavailable_reason(), None);
     }
 
