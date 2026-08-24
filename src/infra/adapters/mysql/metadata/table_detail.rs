@@ -222,7 +222,7 @@ fn table_metadata_from_result(
     lower_case_table_names: u8,
 ) -> Result<MySqlTableMetadata, DbOperationError> {
     metadata_snapshot_from_result(database, Some(schema), result, lower_case_table_names)
-        .and_then(|snapshot| find_table(schema, table, &snapshot.tables, lower_case_table_names))
+        .and_then(|tables| find_table(schema, table, &tables, lower_case_table_names))
 }
 
 fn table_from_columns_and_foreign_keys(
