@@ -895,13 +895,6 @@ fn foreign_key_row_cells(row: &InspectorForeignKeyRow) -> Vec<String> {
 
 fn trigger_row_cells(row: &InspectorTriggerRow, database_type: DatabaseType) -> Vec<String> {
     let mut cells = Vec::new();
-    if database_type == DatabaseType::MySQL {
-        cells.push(
-            row.action_order
-                .map(|order| order.to_string())
-                .unwrap_or_default(),
-        );
-    }
     cells.extend([
         row.name.clone(),
         row.timing.clone(),
