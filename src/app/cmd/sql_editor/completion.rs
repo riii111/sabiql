@@ -50,8 +50,7 @@ pub async fn run(
             let (prep, missing) = {
                 let engine = completion_engine.borrow();
                 let prep = engine.prepare_for_database(content, cursor, database_type);
-                let missing = engine
-                    .missing_tables_prepared(&prep, state.session.metadata().map(AsRef::as_ref));
+                let missing = engine.missing_tables_prepared(&prep, state.session.metadata());
                 (prep, missing)
             };
 
@@ -83,7 +82,7 @@ pub async fn run(
                     content,
                     cursor,
                     &prep,
-                    state.session.metadata().map(AsRef::as_ref),
+                    state.session.metadata(),
                     state.session.table_detail(),
                     &recent_cols,
                     CompletionDatabaseScope {
