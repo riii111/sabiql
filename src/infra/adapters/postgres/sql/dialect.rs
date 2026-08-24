@@ -3,6 +3,8 @@ use std::fmt::Write as _;
 use crate::app::ports::outbound::SqlDialect;
 use crate::domain::{DatabaseType, QueryValue};
 
+use crate::adapters::bulk_delete::rows_predicate;
+
 use super::super::PostgresAdapter;
 use super::{quote_ident, quote_literal};
 
@@ -35,22 +37,6 @@ fn row_predicate(pk_pairs: &[(String, QueryValue)]) -> String {
         .map(|(col, val)| equality_predicate(col, val))
         .collect::<Vec<_>>()
         .join(" AND ")
-}
-
-fn rows_predicate(pk_pairs_per_row: &[Vec<(String, QueryValue)>]) -> String {
-    let predicates = pk_pairs_per_row
-        .iter()
-        .map(|pairs| row_predicate(pairs))
-        .collect::<Vec<_>>();
-    if predicates.len() == 1 {
-        predicates[0].clone()
-    } else {
-        predicates
-            .into_iter()
-            .map(|predicate| format!("({predicate})"))
-            .collect::<Vec<_>>()
-            .join(" OR ")
-    }
 }
 
 impl SqlDialect for PostgresAdapter {
@@ -99,7 +85,7 @@ impl SqlDialect for PostgresAdapter {
             "pk_pairs_per_row must not be empty"
         );
 
-        let where_clause = rows_predicate(pk_pairs_per_row);
+        let where_clause = rows_predicate(pk_pairs_per_row, equality_predicate);
 
         format!(
             "DELETE FROM {}.{}\nWHERE {};",
