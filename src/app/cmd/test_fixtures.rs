@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use tokio::sync::mpsc;
 
@@ -14,15 +15,17 @@ use crate::domain::{
     DatabaseMetadata, DiagnosticField, ErTableInfo, QueryResult, QuerySource, QueryValue,
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
+use crate::model::app_state::AppState;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
     ConfigWriterError, ConnectionStore, DsnBuilder, ErDiagramExporter, ErExportResult, ErLogWriter,
     FolderOpenError, FolderOpener, MetadataProvider, MySqlConnectionProbe,
     MySqlConnectionProbeResult, PgServiceEntryReader, QueryExecutor, QueryHistoryError,
-    QueryHistoryStore, ServiceFileError, SettingsStore, SettingsStoreError,
-    SqliteDiagnosticsProvider, SqlitePathValidator,
+    QueryHistoryStore, RenderOutput, RenderResult, Renderer, ServiceFileError, SettingsStore,
+    SettingsStoreError, SqliteDiagnosticsProvider, SqlitePathValidator,
 };
+use crate::services::AppServices;
 use crate::update::action::Action;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -152,6 +155,18 @@ pub struct NoopFolderOpener;
 impl FolderOpener for NoopFolderOpener {
     fn open(&self, _path: &Path) -> Result<(), FolderOpenError> {
         Ok(())
+    }
+}
+
+pub struct NoopRenderer;
+impl Renderer for NoopRenderer {
+    fn draw(
+        &mut self,
+        _state: &AppState,
+        _services: &AppServices,
+        _now: Instant,
+    ) -> RenderResult<RenderOutput> {
+        Ok(RenderOutput::default())
     }
 }
 

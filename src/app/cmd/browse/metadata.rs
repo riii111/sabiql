@@ -309,29 +309,16 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures;
-    use std::time::Instant;
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
 
     use crate::domain::DatabaseMetadata;
     use crate::model::app_state::AppState;
+    use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
     use crate::update::action::Action;
-
-    struct NoopRenderer;
-    impl Renderer for NoopRenderer {
-        fn draw(
-            &mut self,
-            _state: &AppState,
-            _services: &AppServices,
-            _now: Instant,
-        ) -> RenderResult<RenderOutput> {
-            Ok(RenderOutput::default())
-        }
-    }
 
     mod fetch_metadata {
         use super::*;

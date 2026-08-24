@@ -429,14 +429,12 @@ async fn normalize_sqlite_profile(
 mod tests {
     use std::cell::RefCell;
     use std::sync::Arc;
-    use std::time::Instant;
-
     use tokio::sync::mpsc;
 
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures;
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
@@ -449,24 +447,11 @@ mod tests {
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{
         ConnectionStoreError, DbOperationError, DsnBuilder, MySqlConnectionProbeResult,
-        RenderOutput, RenderResult, Renderer,
     };
     use crate::services::AppServices;
     use crate::update::action::{
         Action, ConnectionSaveError, ConnectionTarget, ConnectionsLoadedPayload,
     };
-
-    struct NoopRenderer;
-    impl Renderer for NoopRenderer {
-        fn draw(
-            &mut self,
-            _state: &AppState,
-            _services: &AppServices,
-            _now: Instant,
-        ) -> RenderResult<RenderOutput> {
-            Ok(RenderOutput::default())
-        }
-    }
 
     mod save_connection {
         use super::*;
