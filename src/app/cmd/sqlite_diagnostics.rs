@@ -7,7 +7,7 @@ use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::ports::outbound::SqliteDiagnosticsProvider;
 use crate::update::action::Action;
 
-pub fn run(
+pub fn spawn_sqlite_diagnostics(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     provider: &Arc<dyn SqliteDiagnosticsProvider>,
@@ -70,7 +70,7 @@ mod tests {
         });
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        run(
+        spawn_sqlite_diagnostics(
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
@@ -98,7 +98,7 @@ mod tests {
             .returning(|_| DiagnosticField::ok("ok"));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        run(
+        spawn_sqlite_diagnostics(
             Effect::FetchSqliteDiagnosticsQuickCheck {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
@@ -126,7 +126,7 @@ mod tests {
             .returning(|_| Err(DbOperationError::QueryFailed("boom".to_string())));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        run(
+        spawn_sqlite_diagnostics(
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
