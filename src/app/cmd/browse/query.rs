@@ -48,7 +48,6 @@ fn utc_now_iso8601() -> String {
 
 fn save_query_history(
     query_history_store: &Arc<dyn QueryHistoryStore>,
-    action_tx: &mpsc::Sender<Action>,
     project_name: &str,
     scope: &QueryHistoryScope,
     query: &str,
@@ -56,7 +55,6 @@ fn save_query_history(
     affected_rows: Option<u64>,
 ) {
     let store = Arc::clone(query_history_store);
-    let tx = action_tx.clone();
     let entry = QueryHistoryEntry::new_with_database(
         query.to_string(),
         utc_now_iso8601(),
@@ -68,9 +66,7 @@ fn save_query_history(
     let project = project_name.to_string();
     let scope = scope.clone();
     tokio::spawn(async move {
-        if let Err(e) = store.append(&project, &scope, &entry).await {
-            let _ = tx.send(Action::QueryHistoryAppendFailed(e)).await;
-        }
+        let _ = store.append(&project, &scope, &entry).await;
     });
 }
 
@@ -197,7 +193,6 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let history_tx = action_tx.clone();
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
@@ -212,7 +207,6 @@ pub async fn run(
                                 .and_then(CommandTag::affected_rows);
                             save_query_history(
                                 &history_store,
-                                &history_tx,
                                 &project,
                                 scope,
                                 &query_for_history,
@@ -233,7 +227,6 @@ pub async fn run(
                         if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
-                                &history_tx,
                                 &project,
                                 scope,
                                 &query_for_history,
@@ -264,7 +257,6 @@ pub async fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
             let history_store = Arc::clone(query_history_store);
-            let history_tx = action_tx.clone();
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
@@ -275,7 +267,6 @@ pub async fn run(
                         if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
-                                &history_tx,
                                 &project,
                                 scope,
                                 &query_for_history,
@@ -296,7 +287,6 @@ pub async fn run(
                         if let Some(scope) = &history_scope {
                             save_query_history(
                                 &history_store,
-                                &history_tx,
                                 &project,
                                 scope,
                                 &query_for_history,
