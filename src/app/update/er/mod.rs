@@ -29,8 +29,7 @@ mod tests {
     use crate::model::app_state::AppState;
     use crate::model::er_state::ErStatus;
     use crate::update::action::{
-        ErDiagramError, ErDiagramFailure, ErDiagramInfo, SmartErRefreshError,
-        SmartErRefreshFetched, SmartErRefreshResult,
+        ErDiagramInfo, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
     };
     use std::sync::Arc;
 
@@ -653,10 +652,10 @@ mod tests {
 
             let effects = reduce_er(
                 &mut state,
-                &Action::ErDiagramFailed(ErDiagramFailure {
+                &Action::ErDiagramFailed {
                     run_id,
-                    error: ErDiagramError::ExportFailed("stale failure".to_string()),
-                }),
+                    error: "stale failure".to_string(),
+                },
                 Instant::now(),
             )
             .unwrap();

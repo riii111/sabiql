@@ -57,31 +57,6 @@ impl fmt::Debug for ConnectionSaveError {
     }
 }
 
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ErDiagramError {
-    #[error("{0}")]
-    NoData(String),
-    #[error("{0}")]
-    ExportFailed(String),
-    #[error("Task panicked: {0}")]
-    TaskPanicked(String),
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-#[error("{error}")]
-pub struct ErDiagramFailure {
-    pub run_id: u64,
-    pub error: ErDiagramError,
-}
-
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum ErLogError {
-    #[error("{0}")]
-    Io(String),
-    #[error("{0}")]
-    Config(String),
-}
-
 pub use crate::model::shared::cursor::CursorMove;
 
 // ---------------------------------------------------------------------------
@@ -742,8 +717,11 @@ pub enum Action {
     SmartErRefreshCompleted(SmartErRefreshResult),
     SmartErRefreshFailed(SmartErRefreshError),
     ErDiagramOpened(ErDiagramInfo),
-    ErDiagramFailed(ErDiagramFailure),
-    ErLogWriteFailed(ErLogError),
+    ErDiagramFailed {
+        run_id: u64,
+        error: String,
+    },
+    ErLogWriteFailed(String),
 }
 
 impl Action {
@@ -773,7 +751,7 @@ impl Action {
             | Self::SmartErRefreshCompleted(_)
             | Self::SmartErRefreshFailed(_)
             | Self::ErDiagramOpened(_)
-            | Self::ErDiagramFailed(_)
+            | Self::ErDiagramFailed { .. }
             | Self::ErLogWriteFailed(_)
             | Self::TextInput {
                 target: InputTarget::ErFilter,
