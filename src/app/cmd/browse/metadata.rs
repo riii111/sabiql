@@ -59,7 +59,7 @@ pub async fn run(
                 table_detail_tasks,
             );
         }
-        Effect::PrefetchTableDetail {
+        Effect::PrefetchTableColumnsAndFks {
             dsn,
             run_id,
             schema,
@@ -703,7 +703,7 @@ mod tests {
 
             let run = test_fixtures::run_one_effect(
                 &runner,
-                Effect::PrefetchTableDetail {
+                Effect::PrefetchTableColumnsAndFks {
                     dsn: "dsn://test".to_string(),
                     run_id: 3,
                     schema: "public".to_string(),

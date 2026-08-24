@@ -234,7 +234,7 @@ impl EffectRunner {
             e @ (Effect::FetchMetadata { .. }
             | Effect::FetchEffectiveUser { .. }
             | Effect::FetchTableDetail { .. }
-            | Effect::PrefetchTableDetail { .. }
+            | Effect::PrefetchTableColumnsAndFks { .. }
             | Effect::ProcessPrefetchQueue { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
             | Effect::CacheInvalidate { .. }) => {
