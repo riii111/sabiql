@@ -65,10 +65,6 @@ impl MySqlStatement {
     pub fn target(&self) -> Option<&str> {
         self.target.as_deref()
     }
-
-    pub fn target_database(&self) -> Option<&str> {
-        self.target_database.as_deref()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -517,7 +513,7 @@ mod tests {
             &MySqlStatementKind::DropTable { temporary: false }
         );
         assert_eq!(statement.target(), Some("users"));
-        assert_eq!(statement.target_database(), None);
+        assert_eq!(statement.target_database.as_deref(), None);
         assert!(validate_mysql_statements(&[statement], Some("app")).is_ok());
     }
 
@@ -1010,7 +1006,7 @@ mod tests {
                     lower_case_table_names,
                 )
                 .unwrap_or_else(|error| panic!("{sql}: {error}"));
-                assert_eq!(statements[0].target_database(), Some("APP"));
+                assert_eq!(statements[0].target_database.as_deref(), Some("APP"));
                 assert_eq!(statements[0].target(), Some("items"));
             }
         }
@@ -1043,7 +1039,7 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(statements[0].target_database(), Some("ÄPP"));
+            assert_eq!(statements[0].target_database.as_deref(), Some("ÄPP"));
             assert_eq!(statements[0].target(), Some("items"));
         }
 
