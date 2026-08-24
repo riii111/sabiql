@@ -216,6 +216,15 @@ pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDispl
     .collect()
 }
 
+pub fn display_field(field: &DiagnosticField) -> String {
+    match field {
+        DiagnosticField::Ok(value) => value.clone(),
+        DiagnosticField::Err(error) => format!("(failed: {error})"),
+        DiagnosticField::Pending => String::new(),
+        DiagnosticField::Unavailable => "(unavailable)".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +239,18 @@ mod tests {
         assert_eq!(first, 1);
         assert_eq!(second, 2);
         assert!(state.is_loading());
+    }
+
+    #[test]
+    fn display_field_formats_each_state() {
+        for (field, expected) in [
+            (DiagnosticField::ok("value"), "value"),
+            (DiagnosticField::err("timeout"), "(failed: timeout)"),
+            (DiagnosticField::Pending, ""),
+            (DiagnosticField::Unavailable, "(unavailable)"),
+        ] {
+            assert_eq!(display_field(&field), expected);
+        }
     }
 
     #[test]

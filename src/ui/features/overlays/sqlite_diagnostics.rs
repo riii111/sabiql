@@ -5,7 +5,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::model::app_state::AppState;
-use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_rows};
+use crate::app::model::sqlite::diagnostics::{DiagnosticFieldKind, display_field, display_rows};
 use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::primitives::molecules::{FooterHintBar, render_modal};
 use crate::primitives::utils::text_utils::wrapped_line_count;
@@ -113,7 +113,7 @@ pub fn build_render_lines(
 
     let mut lines = vec![Line::raw("")];
     for row in display_rows(snapshot) {
-        let field_value = row.field.display();
+        let field_value = display_field(row.field);
         let value = if row.kind == DiagnosticFieldKind::QuickCheck {
             quick_check_override.unwrap_or(&field_value)
         } else {
