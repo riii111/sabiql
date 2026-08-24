@@ -113,7 +113,7 @@ impl EffectRunner {
         self.metadata_tasks.cancel().await;
     }
 
-    async fn cancel_active_tasks(&self) {
+    async fn cancel_tracked_tasks(&self) {
         self.query_tasks.cancel();
         self.table_detail_tasks.cancel();
         self.cancel_metadata_tasks().await;
@@ -255,8 +255,8 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
-            Effect::CancelActiveTasks => {
-                self.cancel_active_tasks().await;
+            Effect::CancelTrackedTasks => {
+                self.cancel_tracked_tasks().await;
                 Ok(vec![])
             }
 
@@ -1212,7 +1212,7 @@ mod tests {
 
             runner
                 .execute_effects(
-                    vec![Effect::CancelActiveTasks],
+                    vec![Effect::CancelTrackedTasks],
                     &mut renderer,
                     &mut state,
                     &completion_engine,
@@ -1285,7 +1285,7 @@ mod tests {
 
             runner
                 .execute_effects(
-                    vec![Effect::CancelActiveTasks],
+                    vec![Effect::CancelTrackedTasks],
                     &mut renderer,
                     &mut state,
                     &completion_engine,

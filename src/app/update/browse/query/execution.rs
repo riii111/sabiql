@@ -202,7 +202,7 @@ pub fn reduce_execution(
             DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
                     state.should_quit = true;
-                    vec![Effect::CancelActiveTasks]
+                    vec![Effect::CancelTrackedTasks]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
                     state.ui.help_mut().open(HelpOrigin::CommandLine);
@@ -621,7 +621,7 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]

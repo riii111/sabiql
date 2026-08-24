@@ -37,7 +37,7 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
                 panic!("expected Sequence, got {effects:?}");
             };
             assert_eq!(seq.len(), 4);
-            assert!(matches!(seq[0], Effect::CancelActiveTasks));
+            assert!(matches!(seq[0], Effect::CancelTrackedTasks));
             assert!(matches!(seq[1], Effect::CacheInvalidate { .. }));
             assert!(matches!(seq[2], Effect::ClearCompletionEngineCache));
             assert!(matches!(seq[3], Effect::FetchMetadata { .. }));
@@ -48,7 +48,7 @@ pub fn assert_connection_save_fetch_effects(effects: &[Effect], database_type: D
                 3,
                 "postgres save should preserve prefetched metadata cache"
             );
-            assert!(matches!(effects[0], Effect::CancelActiveTasks));
+            assert!(matches!(effects[0], Effect::CancelTrackedTasks));
             assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
             assert!(matches!(effects[2], Effect::FetchMetadata { .. }));
         }
