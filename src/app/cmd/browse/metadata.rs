@@ -749,7 +749,7 @@ mod tests {
                 tx,
             );
 
-            let _run = test_fixtures::run_one_effect(
+            let run = test_fixtures::run_one_effect(
                 &runner,
                 Effect::CacheInvalidate {
                     dsn: "dsn://target".to_string(),
@@ -762,6 +762,7 @@ mod tests {
             .await
             .unwrap();
 
+            assert_eq!(run.state.runtime.project_name(), "test");
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
         }
     }

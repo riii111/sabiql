@@ -1046,20 +1046,22 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.set_connections(vec![profile]);
 
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::SwitchConnection {
-                    connection_index: 0,
-                },
-                state,
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                Some(std::time::Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
+            let mut renderer = NoopRenderer;
+            let ce = RefCell::new(CompletionEngine::new());
+            runner
+                .execute_effects(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 0,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
 
-            let action = run.actions.into_iter().next().expect("action dispatched");
+            let action = rx.recv().await.expect("action dispatched");
             match action {
                 Action::SwitchConnection(ConnectionTarget {
                     id,
@@ -1070,7 +1072,7 @@ mod tests {
                 }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
-                    assert_eq!(id, run.state.connections()[0].id);
+                    assert_eq!(id, state.connections()[0].id);
                     assert_eq!(database_type, DatabaseType::PostgreSQL);
                 }
                 other => panic!("expected SwitchConnection, got {other:?}"),
@@ -1082,20 +1084,23 @@ mod tests {
             let (tx, mut rx) = mpsc::channel::<Action>(16);
             let runner = make_runner_with_dsn_builder(tx);
 
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                Effect::SwitchConnection {
-                    connection_index: 99,
-                },
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                None,
-            )
-            .await
-            .unwrap();
+            let mut state = AppState::new("test".to_string());
+            let mut renderer = NoopRenderer;
+            let ce = RefCell::new(CompletionEngine::new());
+            runner
+                .execute_effects(
+                    vec![Effect::SwitchConnection {
+                        connection_index: 99,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &ce,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
 
-            assert!(run.actions.is_empty());
+            assert!(rx.try_recv().is_err());
         }
     }
 }
