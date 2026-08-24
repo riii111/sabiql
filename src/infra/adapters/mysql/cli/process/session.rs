@@ -168,12 +168,8 @@ impl MySqlMetadataSession {
                 "mysql query exceeded the execution timeout".to_string(),
             )),
         };
-        self.cleanup().await;
-        result
-    }
-
-    async fn cleanup(&mut self) {
         cleanup_mysql_process(&mut self.process).await;
+        result
     }
 }
 
