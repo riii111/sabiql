@@ -161,20 +161,24 @@ impl PostgresAdapter {
         query_args: &[&str],
         read_only: bool,
     ) -> Result<PsqlOutput, DbOperationError> {
+        let mut cmd = Self::build_psql_command(dsn, extra_args, query_args, read_only);
+
+        Self::collect_output(&mut cmd, self.timeout_secs).await
+    }
+
+    fn build_psql_command(
+        dsn: &str,
+        extra_args: &[&str],
+        query_args: &[&str],
+        read_only: bool,
+    ) -> Command {
         let mut cmd = Command::new("psql");
         if read_only {
             Self::apply_read_only_pgoptions(&mut cmd);
         }
         Self::apply_psql_base_args(&mut cmd, dsn);
-
-        for arg in extra_args {
-            cmd.arg(arg);
-        }
-        for arg in query_args {
-            cmd.arg(arg);
-        }
-
-        Self::collect_output(&mut cmd, self.timeout_secs).await
+        cmd.args(extra_args).args(query_args);
+        cmd
     }
 
     fn apply_read_only_pgoptions(cmd: &mut Command) {
@@ -450,12 +454,7 @@ impl PostgresAdapter {
         path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = Command::new("psql");
-        if read_only {
-            Self::apply_read_only_pgoptions(&mut cmd);
-        }
-        Self::apply_psql_base_args(&mut cmd, dsn);
-        cmd.arg("--csv").arg("-c").arg(query);
+        let mut cmd = Self::build_psql_command(dsn, &["--csv"], &["-c", query], read_only);
 
         let child = cmd
             .stdout(Stdio::piped())
