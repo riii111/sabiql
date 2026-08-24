@@ -305,6 +305,8 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
 mod tests {
     use crate::adapters::test_support;
 
+    use rstest::rstest;
+
     use super::*;
     use crate::domain::connection::SslMode;
     use crate::domain::{Column, ColumnAttributes};
@@ -478,12 +480,14 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn mysql_dsn_scheme_is_recognized() {
-        assert_eq!(
-            DbAdapterRegistry::db_type_from_dsn("mysql://localhost/db").unwrap(),
-            DatabaseType::MySQL
-        );
+    #[rstest]
+    #[case::sqlite_url("sqlite:///tmp/app.db", Some(DatabaseType::SQLite))]
+    #[case::mysql_url("mysql://localhost/db", Some(DatabaseType::MySQL))]
+    #[case::postgres_url("postgres://localhost/db", Some(DatabaseType::PostgreSQL))]
+    #[case::postgres_conninfo("host='localhost' dbname='db'", Some(DatabaseType::PostgreSQL))]
+    #[case::unsupported_scheme("redis://localhost", None)]
+    fn classifies_named_dsn_inputs(#[case] dsn: &str, #[case] expected: Option<DatabaseType>) {
+        assert_eq!(DbAdapterRegistry::db_type_from_dsn(dsn).ok(), expected);
     }
 
     #[tokio::test]
