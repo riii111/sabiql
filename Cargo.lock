@@ -2868,6 +2868,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "unicode-casefold",
+ "unicode-segmentation",
  "unicode-width",
 ]
 
