@@ -258,10 +258,6 @@ impl AppState {
         )
     }
 
-    pub fn json_detail_editor_visible_rows(&self) -> usize {
-        self.ui.json_detail_editor_visible_rows()
-    }
-
     pub fn row_detail_content_visible_rows(&self) -> usize {
         self.ui.row_detail_content_visible_rows
     }

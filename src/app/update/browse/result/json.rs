@@ -360,7 +360,7 @@ fn update_editor_scroll(state: &mut AppState) {
 }
 
 fn effective_visible_rows(state: &AppState) -> usize {
-    match state.json_detail_editor_visible_rows() {
+    match state.ui.json_detail_editor_visible_rows() {
         0 => DEFAULT_JSON_DETAIL_EDITOR_VISIBLE_ROWS,
         rows => rows,
     }
