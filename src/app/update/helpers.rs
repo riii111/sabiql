@@ -10,6 +10,7 @@ use crate::domain::connection::{
 use crate::domain::{QueryResult, QueryValue};
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::{ConnectionField, ConnectionSetupState};
+use crate::policy::column::column_read_only_reason;
 use crate::policy::write::inline_cell_edit::InlineCellEditError;
 use crate::policy::write::write_guardrails::{
     PreviewWriteability, StableRowIdentity, TargetSummary, WriteOperation, WritePreview,
@@ -198,7 +199,7 @@ pub fn ensure_column_writable(
             .find(|column| column.name == column_name)
     }) && column.is_read_only()
     {
-        let reason = column.read_only_reason().unwrap_or("read-only");
+        let reason = column_read_only_reason(column).unwrap_or("read-only");
         return Err(EditGuardrailError::ReadOnlyColumn(format!(
             "{column_name} ({reason})"
         )));
