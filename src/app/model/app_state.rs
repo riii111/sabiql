@@ -684,7 +684,7 @@ mod tests {
         let services = AppServices::stub();
         let view_model = state.inspector_view_model(services.ddl_generator.as_ref());
 
-        assert_eq!(view_model.load_state(), &InspectorLoadState::Success);
+        assert_eq!(view_model.load_state(), &InspectorLoadState::Loaded);
         assert!(view_model.section().is_some());
     }
 

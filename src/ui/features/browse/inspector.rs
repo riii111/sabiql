@@ -137,7 +137,7 @@ impl Inspector {
                 );
                 return ViewportPlan::default();
             }
-            InspectorLoadState::Success => {}
+            InspectorLoadState::Loaded => {}
         }
 
         if let Some(empty_state) = view_model.empty_state() {
