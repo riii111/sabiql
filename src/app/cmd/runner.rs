@@ -19,7 +19,7 @@ use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
 use crate::cmd::sql_editor::completion as cmd_completion;
-use crate::cmd::sql_editor::query_history as cmd_query_history;
+use crate::cmd::sql_editor::query_history::spawn_query_history_load;
 use crate::cmd::sqlite_diagnostics;
 use crate::cmd::utility as cmd_utility;
 use crate::domain::DatabaseMetadata;
@@ -287,7 +287,7 @@ impl EffectRunner {
             }
 
             e @ Effect::LoadQueryHistory { .. } => {
-                cmd_query_history::run(e, &self.action_tx, &self.query.query_history_store);
+                spawn_query_history_load(e, &self.action_tx, &self.query.query_history_store);
                 Ok(vec![])
             }
 
