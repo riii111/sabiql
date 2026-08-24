@@ -1,7 +1,7 @@
 use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+    SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind, is_mysql_connect_timeout_message,
 };
 use sabiql_domain::connection::MySqlSslMode;
 use url::Url;
@@ -83,7 +83,7 @@ impl ConnectionErrorKind {
             return Self::DatabaseNotFound;
         }
 
-        if is_mysql_connect_timeout_message(&stderr_lower)
+        if is_mysql_connect_timeout_message(stderr)
             || stderr_lower.contains("timeout expired")
             || stderr_lower.contains("timed out")
             || stderr_lower.contains("connection timed out")
@@ -188,13 +188,6 @@ impl ConnectionErrorKind {
             Self::HostUnreachable | Self::ConnectionLost | Self::Timeout | Self::ConnectionRefused
         )
     }
-}
-
-fn is_mysql_connect_timeout_message(value: &str) -> bool {
-    value.contains("can't connect to mysql server")
-        && MYSQL_CONNECT_TIMEOUT_ERRNOS
-            .iter()
-            .any(|errno| value.contains(errno))
 }
 
 fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {

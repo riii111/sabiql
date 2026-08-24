@@ -33,6 +33,7 @@ pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
     SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
+    is_mysql_connect_timeout_message,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
