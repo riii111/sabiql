@@ -73,7 +73,7 @@ impl ConnectionErrorState {
         matches!(self.source, ConnectionErrorSource::SaveAndConnect { .. })
     }
 
-    pub fn target_database_type(&self) -> Option<DatabaseType> {
+    pub fn destination_database_type(&self) -> Option<DatabaseType> {
         match self.source {
             ConnectionErrorSource::ActiveConnection => None,
             ConnectionErrorSource::SaveAndConnect { database_type }

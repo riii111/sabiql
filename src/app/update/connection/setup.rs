@@ -984,7 +984,7 @@ mod tests {
 
             assert!(state.connection_error.is_save_and_connect_failure());
             assert_eq!(
-                state.connection_error.target_database_type(),
+                state.connection_error.destination_database_type(),
                 Some(DatabaseType::MySQL)
             );
             let effects =
