@@ -61,11 +61,9 @@ pub enum InspectorSection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum InspectorInfoRow {
-    Field {
-        field: InspectorInfoField,
-        value: Option<String>,
-    },
+pub struct InspectorInfoRow {
+    pub field: InspectorInfoField,
+    pub value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,7 +179,7 @@ impl InspectorViewModel {
                         .filter_map(|field| {
                             let value = info_value(field, table);
                             (value.is_some() || !field.omit_when_empty())
-                                .then_some(InspectorInfoRow::Field { field, value })
+                                .then_some(InspectorInfoRow { field, value })
                         })
                         .collect(),
                 },
@@ -693,15 +691,15 @@ mod tests {
             Some(InspectorSection::Info { rows }) => assert_eq!(
                 rows,
                 &[
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::Comment,
                         value: Some("Users".to_string()),
                     },
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::RowCount,
                         value: Some("~3".to_string()),
                     },
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::TableName,
                         value: Some("users".to_string()),
                     },
@@ -732,9 +730,7 @@ mod tests {
         match model.section() {
             Some(InspectorSection::Info { rows }) => assert_eq!(
                 rows.iter()
-                    .map(|row| match row {
-                        InspectorInfoRow::Field { field, value } => (*field, value.as_deref()),
-                    })
+                    .map(|row| (row.field, row.value.as_deref()))
                     .collect::<Vec<_>>(),
                 vec![
                     (InspectorInfoField::Comment, Some("Users")),
@@ -843,7 +839,7 @@ mod tests {
             Some(InspectorSection::Info { rows }) => assert!(!rows.iter().any(|row| {
                 matches!(
                     row,
-                    InspectorInfoRow::Field {
+                    InspectorInfoRow {
                         field: InspectorInfoField::Schema,
                         ..
                     }

@@ -267,11 +267,7 @@ impl Inspector {
     ) {
         let lines: Vec<Line> = rows
             .iter()
-            .map(|row| match row {
-                InspectorInfoRow::Field { field, value } => {
-                    Self::render_info_field(*field, value.as_deref(), theme)
-                }
-            })
+            .map(|row| Self::render_info_field(row.field, row.value.as_deref(), theme))
             .collect();
 
         let total_lines = lines.len();
