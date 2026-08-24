@@ -435,7 +435,7 @@ mod tests {
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
-    use crate::domain::{WriteDiagnostic, WriteDiagnosticLevel, WriteExecutionResult};
+    use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
@@ -895,8 +895,8 @@ mod tests {
                     Ok(WriteExecutionResult {
                         affected_rows: 1,
                         execution_time_ms: 0,
-                        diagnostics: vec![WriteDiagnostic {
-                            level: WriteDiagnosticLevel::Warning,
+                        diagnostics: vec![DatabaseDiagnostic {
+                            level: DiagnosticLevel::Warning,
                             code: 1265,
                             message: "Data truncated".to_string(),
                         }],
@@ -922,8 +922,8 @@ mod tests {
                     ..
                 } => assert_eq!(
                     diagnostics,
-                    vec![WriteDiagnostic {
-                        level: WriteDiagnosticLevel::Warning,
+                    vec![DatabaseDiagnostic {
+                        level: DiagnosticLevel::Warning,
                         code: 1265,
                         message: "Data truncated".to_string(),
                     }]

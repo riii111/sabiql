@@ -7,7 +7,7 @@ use sabiql_app::model::shared::settings::KeymapPreset;
 use sabiql_app::model::sql_editor::modal::SqlModalStatus;
 use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
-use sabiql_domain::{ConnectionId, MySqlDiagnostic, MySqlDiagnosticLevel, QueryResult};
+use sabiql_domain::{ConnectionId, DatabaseDiagnostic, DiagnosticLevel, QueryResult};
 
 #[test]
 fn sql_modal_with_completion() {
@@ -341,13 +341,13 @@ fn sql_modal_success_with_mysql_diagnostics() {
         row_count: 1,
         execution_time_ms: 15,
         mysql_diagnostics: vec![
-            MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1062,
                 message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
             },
-            MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Note,
+            DatabaseDiagnostic {
+                level: DiagnosticLevel::Note,
                 code: 1050,
                 message: "Table 'users' already exists".to_string(),
             },
@@ -362,8 +362,8 @@ fn sql_modal_success_with_mysql_diagnostics() {
             QuerySource::Adhoc,
         )
         .with_command_tag(CommandTag::Insert(1))
-        .with_mysql_diagnostics(vec![MySqlDiagnostic {
-            level: MySqlDiagnosticLevel::Warning,
+        .with_mysql_diagnostics(vec![DatabaseDiagnostic {
+            level: DiagnosticLevel::Warning,
             code: 1062,
             message: "Duplicate entry '1' for key 'users.PRIMARY'".to_string(),
         }]),

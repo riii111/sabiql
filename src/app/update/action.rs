@@ -23,7 +23,8 @@ use std::collections::HashMap;
 
 use crate::domain::SqliteDiagnosticsSnapshot;
 use crate::domain::{
-    DatabaseMetadata, DiagnosticField, QueryResult, Table, TableSignatureSnapshot, WriteDiagnostic,
+    DatabaseDiagnostic, DatabaseMetadata, DiagnosticField, QueryResult, Table,
+    TableSignatureSnapshot,
 };
 
 #[derive(Clone, thiserror::Error)]
@@ -632,7 +633,7 @@ pub enum Action {
         dsn: String,
         run_id: u64,
         affected_rows: usize,
-        diagnostics: Vec<WriteDiagnostic>,
+        diagnostics: Vec<DatabaseDiagnostic>,
     },
     ExecuteWriteFailed {
         dsn: String,

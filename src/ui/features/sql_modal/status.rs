@@ -11,7 +11,7 @@ use crate::app::model::sql_editor::modal::{
 };
 use crate::app::policy::write::sql_risk::AcknowledgeReason;
 use crate::app::policy::write::write_guardrails::AdhocRiskDecision;
-use crate::domain::MySqlDiagnostic;
+use crate::domain::DatabaseDiagnostic;
 use crate::primitives::atoms::{spinner_char, text_cursor_spans};
 use crate::primitives::utils::text_utils::{truncate_to_width_with, wrapped_line_count};
 use crate::theme::ThemePalette;
@@ -310,7 +310,7 @@ fn render_success_status_with_diagnostics(
     );
 }
 
-fn diagnostic_status_line(diagnostic: &MySqlDiagnostic) -> String {
+fn diagnostic_status_line(diagnostic: &DatabaseDiagnostic) -> String {
     format!("⚠ {}", diagnostic.display_message())
 }
 
@@ -324,7 +324,7 @@ fn error_status_message(error: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::MySqlDiagnosticLevel;
+    use crate::domain::DiagnosticLevel;
 
     #[test]
     fn diagnostics_height_only_applies_to_success_status() {
@@ -333,8 +333,8 @@ mod tests {
             command_tag: None,
             row_count: 1,
             execution_time_ms: 15,
-            mysql_diagnostics: vec![MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            mysql_diagnostics: vec![DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1265,
                 message: "truncated".to_string(),
             }],

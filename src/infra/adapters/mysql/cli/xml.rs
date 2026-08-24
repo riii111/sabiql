@@ -3,7 +3,7 @@ use quick_xml::escape::unescape;
 use quick_xml::events::{BytesRef, Event};
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::{MySqlDiagnostic, QueryValue};
+use crate::domain::{DatabaseDiagnostic, QueryValue};
 
 use super::diagnostics::parse_mysql_cli_diagnostics;
 use super::error::{
@@ -20,7 +20,7 @@ const MYSQL_RESULTSET_START: &[u8] = b"<resultset";
 
 const MYSQL_RESULTSET_END: &[u8] = b"</resultset>";
 
-type MySqlResultsetFrameWithDiagnostics = (Vec<u8>, Vec<MySqlDiagnostic>);
+type MySqlResultsetFrameWithDiagnostics = (Vec<u8>, Vec<DatabaseDiagnostic>);
 
 pub(super) const MYSQL_PREVIEW_MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 const MYSQL_PREVIEW_MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
@@ -78,7 +78,7 @@ impl MySqlResultsetFrameScanner {
         &mut self,
         buffer: &mut Vec<u8>,
         (start, end): (usize, usize),
-    ) -> (Vec<u8>, Vec<MySqlDiagnostic>) {
+    ) -> (Vec<u8>, Vec<DatabaseDiagnostic>) {
         let frame = buffer[start..end].to_vec();
         let diagnostics = parse_mysql_cli_diagnostics(&buffer[..start]);
         buffer.drain(..end);
@@ -453,7 +453,7 @@ pub(super) fn parse_mysql_field(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::MySqlDiagnosticLevel;
+    use crate::domain::DiagnosticLevel;
 
     impl MySqlResultsetFrameScanner {
         fn take(&mut self, buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
@@ -661,13 +661,13 @@ mod tests {
         assert_eq!(
             diagnostics,
             vec![
-                MySqlDiagnostic {
-                    level: MySqlDiagnosticLevel::Warning,
+                DatabaseDiagnostic {
+                    level: DiagnosticLevel::Warning,
                     code: 1062,
                     message: "duplicate".to_string(),
                 },
-                MySqlDiagnostic {
-                    level: MySqlDiagnosticLevel::Note,
+                DatabaseDiagnostic {
+                    level: DiagnosticLevel::Note,
                     code: 1050,
                     message: "exists".to_string(),
                 },
@@ -695,8 +695,8 @@ mod tests {
         assert_eq!(frame, b"<resultset></resultset>");
         assert_eq!(
             diagnostics,
-            vec![MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            vec![DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1265,
                 message: "truncated".to_string(),
             }]

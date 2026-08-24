@@ -8,7 +8,7 @@ use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::{MySqlDiagnostic, QueryValue};
+use crate::domain::{DatabaseDiagnostic, QueryValue};
 
 use super::super::args::mysql_metadata_args;
 use super::super::error::{
@@ -45,7 +45,7 @@ pub(super) async fn mysql_metadata_columns_with_diagnostics(
     query: &str,
     kind: MySqlMetadataFallbackKind,
     access_mode: AccessMode,
-) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let query = match kind {
         MySqlMetadataFallbackKind::Select | MySqlMetadataFallbackKind::Table => {
             return mysql_metadata_select_columns_with_diagnostics(process, query).await;
@@ -63,7 +63,7 @@ pub(super) async fn mysql_metadata_columns_with_diagnostics(
 async fn mysql_metadata_select_columns_with_diagnostics(
     process: &mut MySqlProcess,
     query: &str,
-) -> Result<(Vec<String>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<String>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let suffix = Uuid::new_v4().simple().to_string();
     let source_alias = format!("__sabiql_metadata_source_{suffix}");
     let marker_alias = format!("__sabiql_metadata_marker_{suffix}");
