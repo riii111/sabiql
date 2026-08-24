@@ -9,13 +9,11 @@ use super::lexer::{sqlite_probe_columns, sqlite_result_probe_columns};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QuotedRecord {
-    offset: usize,
     values: Vec<QueryValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SplitSegment {
-    offset: usize,
     text: String,
 }
 
@@ -39,7 +37,6 @@ fn split_outside_sqlite_quotes(
             }
             byte if byte == delimiter && !in_quote => {
                 segments.push(SplitSegment {
-                    offset: start,
                     text: input[start..i].to_string(),
                 });
                 start = i + 1;
@@ -54,7 +51,6 @@ fn split_outside_sqlite_quotes(
         ));
     }
     segments.push(SplitSegment {
-        offset: start,
         text: input[start..].to_string(),
     });
     Ok(segments)
@@ -64,7 +60,6 @@ fn split_quoted_records(stdout: &str) -> Result<Vec<SplitSegment>, DbOperationEr
     let mut records = split_outside_sqlite_quotes(stdout, b'\n')?
         .into_iter()
         .map(|segment| SplitSegment {
-            offset: segment.offset,
             text: segment.text.trim_end_matches('\r').to_string(),
         })
         .collect::<Vec<_>>();
@@ -294,10 +289,7 @@ fn parse_quoted_records(
                 .into_iter()
                 .map(|field| parse_quoted_value(&field, source, decode_preview_transport))
                 .collect::<Result<Vec<_>, _>>()
-                .map(|values| QuotedRecord {
-                    offset: segment.offset,
-                    values,
-                })
+                .map(|values| QuotedRecord { values })
         })
         .collect()
 }
