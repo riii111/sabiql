@@ -583,7 +583,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn postgres_dsn_is_rejected() {
+    async fn sqlite_diagnostics_rejects_postgres_dsn() {
         let registry = DbAdapterRegistry::new();
 
         let result = registry
