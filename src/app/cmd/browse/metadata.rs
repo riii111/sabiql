@@ -309,7 +309,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
 
     use crate::domain::DatabaseMetadata;
     use crate::model::app_state::AppState;
@@ -363,10 +363,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(200)).await;
             assert!(
                 matches!(
                     action,
@@ -420,10 +418,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(200)).await;
             assert!(
                 matches!(
                     action,
@@ -483,10 +479,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -536,10 +530,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -590,10 +582,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -646,10 +636,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(matches!(
                 action,
                 Action::EffectiveUserLoaded {
@@ -715,10 +703,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -772,10 +758,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(action, Action::TableDetailCached { .. }),
                 "expected TableDetailCached, got {action:?}"

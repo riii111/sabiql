@@ -412,7 +412,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer};
+    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
     use crate::ports::outbound::AccessMode;
@@ -485,7 +485,7 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures::{self, NoopRenderer};
+        use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -549,10 +549,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await;
             let Action::CsvExportSucceeded {
                 path, row_count, ..
             } = action
@@ -598,10 +595,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action = recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await;
             assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
         }
     }
@@ -615,7 +609,7 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures::{self, NoopRenderer};
+        use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
 
         use crate::model::app_state::AppState;
         use crate::ports::outbound::DbOperationError;
@@ -667,10 +661,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(action, Action::QueryCompleted { .. }),
                 "expected QueryCompleted, got {action:?}"
@@ -721,10 +713,8 @@ mod tests {
                 .await
                 .unwrap();
 
-            let action = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed");
+            let action =
+                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
             assert!(
                 matches!(
                     action,
@@ -767,10 +757,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            tokio::time::timeout(Duration::from_millis(500), rx.recv())
-                .await
-                .expect("action timeout")
-                .expect("channel closed")
+            recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await
         }
 
         #[tokio::test]

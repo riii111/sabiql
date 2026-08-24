@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
@@ -168,6 +168,16 @@ impl Renderer for NoopRenderer {
     ) -> RenderResult<RenderOutput> {
         Ok(RenderOutput::default())
     }
+}
+
+pub async fn recv_action_with_timeout(
+    rx: &mut mpsc::Receiver<Action>,
+    timeout: Duration,
+) -> Action {
+    tokio::time::timeout(timeout, rx.recv())
+        .await
+        .expect("action timeout")
+        .expect("channel closed")
 }
 
 pub struct NoopQueryHistoryStore;
