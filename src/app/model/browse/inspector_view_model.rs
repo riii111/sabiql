@@ -24,7 +24,7 @@ pub struct InspectorViewModel {
 pub enum InspectorLoadState {
     NoTableSelected,
     Loading,
-    Success,
+    Loaded,
     Error(String),
 }
 
@@ -152,7 +152,7 @@ impl InspectorViewModel {
         let (load_state, table) = match table_detail_state {
             TableDetailState::NotSelected => (InspectorLoadState::NoTableSelected, None),
             TableDetailState::Loading => (InspectorLoadState::Loading, None),
-            TableDetailState::Loaded(table) => (InspectorLoadState::Success, Some(table.as_ref())),
+            TableDetailState::Loaded(table) => (InspectorLoadState::Loaded, Some(table.as_ref())),
             TableDetailState::Error(error) => (InspectorLoadState::Error(error.clone()), None),
         };
         let Some(table) = table else {
