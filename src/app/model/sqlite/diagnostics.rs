@@ -59,7 +59,7 @@ pub struct SqliteDiagnosticsState {
 }
 
 impl SqliteDiagnosticsState {
-    pub fn begin_fetch(&mut self) -> u64 {
+    pub fn begin_core_fetch(&mut self) -> u64 {
         self.next_run_id = self.next_run_id.wrapping_add(1);
         let run_id = self.next_run_id;
         self.load_state = LoadState::LoadingCore { run_id };
@@ -230,11 +230,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn begin_fetch_assigns_monotonic_run_id() {
+    fn begin_core_fetch_assigns_monotonic_run_id() {
         let mut state = SqliteDiagnosticsState::default();
 
-        let first = state.begin_fetch();
-        let second = state.begin_fetch();
+        let first = state.begin_core_fetch();
+        let second = state.begin_core_fetch();
 
         assert_eq!(first, 1);
         assert_eq!(second, 2);
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn stale_run_does_not_replace_loaded_snapshot() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn core_loaded_leaves_quick_check_idle() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn begin_quick_check_marks_loaded_snapshot_running() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
 
         let quick_check_run_id = state.begin_quick_check();
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn loading_core_cannot_run_quick_check() {
         let mut state = SqliteDiagnosticsState::default();
-        state.begin_fetch();
+        state.begin_core_fetch();
 
         let quick_check_run_id = state.begin_quick_check();
 
@@ -323,7 +323,7 @@ mod tests {
     #[test]
     fn quick_check_loaded_clears_running_flag() {
         let mut state = SqliteDiagnosticsState::default();
-        let run_id = state.begin_fetch();
+        let run_id = state.begin_core_fetch();
         state.set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());
         state.begin_quick_check();
         state.set_quick_check_loaded(run_id, DiagnosticField::ok("ok"));

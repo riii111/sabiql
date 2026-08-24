@@ -811,7 +811,7 @@ mod tests {
                     .execute_preview(&dsn, "main", "users", 10, 0)
                     .await
                     .unwrap();
-                let diagnostics = adapter.fetch_diagnostics_core(&dsn).await.unwrap();
+                let diagnostics = adapter.fetch_core_diagnostics(&dsn).await.unwrap();
 
                 assert_eq!(write.affected_rows, 1);
                 assert_eq!(

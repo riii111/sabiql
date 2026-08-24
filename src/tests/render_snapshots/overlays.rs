@@ -1016,7 +1016,7 @@ fn sqlite_diagnostics_overlay_loading() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    state.sqlite_diagnostics.begin_fetch();
+    state.sqlite_diagnostics.begin_core_fetch();
     state.modal.set_mode(InputMode::SqliteDiagnostics);
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -1031,7 +1031,7 @@ fn sqlite_diagnostics_overlay_loaded() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1062,7 +1062,7 @@ fn sqlite_diagnostics_overlay_partial_failure() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1091,7 +1091,7 @@ fn sqlite_diagnostics_overlay_quick_check_pending() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1123,7 +1123,7 @@ fn sqlite_diagnostics_overlay_quick_check_not_run() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal();
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
@@ -1154,7 +1154,7 @@ fn sqlite_diagnostics_overlay_wrapped_scroll() {
     let mut state = sqlite_connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
-    let run_id = state.sqlite_diagnostics.begin_fetch();
+    let run_id = state.sqlite_diagnostics.begin_core_fetch();
     state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {

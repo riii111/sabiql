@@ -7,7 +7,7 @@ use super::DbOperationError;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait SqliteDiagnosticsProvider: Send + Sync {
-    async fn fetch_diagnostics_core(
+    async fn fetch_core_diagnostics(
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError>;
