@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
-use crate::update::action::{Action, ErDiagramError, ErDiagramFailure, ErDiagramInfo};
+use crate::update::action::{Action, ErDiagramInfo};
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,
@@ -37,18 +37,18 @@ pub fn spawn_er_diagram_task(
             }
             Ok(Err(e)) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                    .send(Action::ErDiagramFailed {
                         run_id,
-                        error: ErDiagramError::ExportFailed(e.to_string()),
-                    }))
+                        error: e.to_string(),
+                    })
                     .await;
             }
             Err(e) => {
                 let _ = tx
-                    .send(Action::ErDiagramFailed(ErDiagramFailure {
+                    .send(Action::ErDiagramFailed {
                         run_id,
-                        error: ErDiagramError::TaskPanicked(e.to_string()),
-                    }))
+                        error: format!("Task panicked: {e}"),
+                    })
                     .await;
             }
         }
@@ -170,9 +170,9 @@ mod tests {
 
             let action = receive_action(&mut rx).await;
             match action {
-                Action::ErDiagramFailed(e) => {
-                    assert!(e.to_string().contains("export failed"));
-                    assert_eq!(e.run_id, 7);
+                Action::ErDiagramFailed { run_id, error } => {
+                    assert!(error.contains("export failed"));
+                    assert_eq!(run_id, 7);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }
@@ -197,9 +197,9 @@ mod tests {
 
             let action = receive_action(&mut rx).await;
             match action {
-                Action::ErDiagramFailed(e) => {
-                    assert!(e.to_string().contains("Task panicked"));
-                    assert_eq!(e.run_id, 11);
+                Action::ErDiagramFailed { run_id, error } => {
+                    assert!(error.contains("Task panicked"));
+                    assert_eq!(run_id, 11);
                 }
                 _ => panic!("expected ErDiagramFailed, got {action:?}"),
             }

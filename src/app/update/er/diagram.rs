@@ -32,16 +32,16 @@ pub(super) fn reduce_diagram_lifecycle(
             );
             DispatchResult::handled()
         }
-        Action::ErDiagramFailed(failure) => {
-            if !state.er_preparation.is_current_run(failure.run_id) {
+        Action::ErDiagramFailed { run_id, error } => {
+            if !state.er_preparation.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             state.er_preparation.mark_idle();
-            state.messages.set_error_at(failure.error.to_string(), now);
+            state.messages.set_error_at(error.clone(), now);
             DispatchResult::handled()
         }
         Action::ErLogWriteFailed(error) => {
-            state.messages.set_error_at(error.to_string(), now);
+            state.messages.set_error_at(error.clone(), now);
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {

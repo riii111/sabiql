@@ -13,8 +13,7 @@ use crate::domain::{DatabaseMetadata, ErTableInfo, TableSignatureSnapshot};
 use crate::model::app_state::AppState;
 use crate::ports::outbound::{ConfigWriter, ErDiagramExporter, ErLogWriter, MetadataProvider};
 use crate::update::action::{
-    Action, ErDiagramError, ErDiagramFailure, ErLogError, SmartErRefreshError,
-    SmartErRefreshFetched, SmartErRefreshResult,
+    Action, SmartErRefreshError, SmartErRefreshFetched, SmartErRefreshResult,
 };
 
 struct GenerateErDiagramRequest {
@@ -114,10 +113,10 @@ async fn handle_generate_diagram(
     let all_tables = collect_cached_er_tables(completion_engine);
     if all_tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramFailure {
+            .send(Action::ErDiagramFailed {
                 run_id,
-                error: ErDiagramError::NoData("No table data loaded yet".to_string()),
-            }))
+                error: "No table data loaded yet".to_string(),
+            })
             .await
             .ok();
         return Ok(());
@@ -133,12 +132,10 @@ async fn handle_generate_diagram(
 
     if tables.is_empty() {
         action_tx
-            .send(Action::ErDiagramFailed(ErDiagramFailure {
+            .send(Action::ErDiagramFailed {
                 run_id,
-                error: ErDiagramError::NoData(
-                    "Selected tables not found in cached data".to_string(),
-                ),
-            }))
+                error: "Selected tables not found in cached data".to_string(),
+            })
             .await
             .ok();
         return Ok(());
@@ -191,14 +188,14 @@ async fn handle_write_failure_log(
             let tx = action_tx.clone();
             tokio::task::spawn_blocking(move || {
                 if let Err(e) = writer.write_er_failure_log(failed_tables, cache_dir) {
-                    tx.blocking_send(Action::ErLogWriteFailed(ErLogError::Io(e.to_string())))
+                    tx.blocking_send(Action::ErLogWriteFailed(e.to_string()))
                         .ok();
                 }
             });
         }
         Err(e) => {
             action_tx
-                .send(Action::ErLogWriteFailed(ErLogError::Config(e.to_string())))
+                .send(Action::ErLogWriteFailed(e.to_string()))
                 .await
                 .ok();
         }
