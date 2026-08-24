@@ -347,10 +347,6 @@ impl AppState {
             list::build_connection_list(self.connections.len(), self.service_entries.len());
     }
 
-    pub fn toggle_focus(&mut self) -> bool {
-        self.ui.toggle_focus()
-    }
-
     pub fn can_retry_connection_error(&self) -> bool {
         !self.connection_error.is_save_and_connect_failure()
             && (self.session.has_pending_connection_switch()
@@ -482,7 +478,6 @@ mod tests {
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::model::er_state::ErStatus;
-    use crate::model::shared::focused_pane::FocusedPane;
     use crate::model::shared::render_output::{
         ConfirmPreviewLayout, InspectorLayout, RowDetailLayout,
     };
@@ -1038,7 +1033,7 @@ mod tests {
                 column_count: 2,
                 ..ViewportPlan::default()
             });
-            state.toggle_focus();
+            state.ui.toggle_focus();
             let output = RenderOutput {
                 browse: BrowseLayout {
                     inspector: InspectorLayout {
@@ -1360,35 +1355,6 @@ mod tests {
                 .set_current_result(make_query_result(QuerySource::Preview));
             state.query.pagination.reset_for_table("public", "logs");
             state
-        }
-
-        #[test]
-        fn toggle_focus_enters_focus_mode() {
-            let mut state = make_state();
-            state.ui.set_focused_pane(FocusedPane::Explorer);
-
-            let result = state.toggle_focus();
-
-            assert!(result);
-            assert!(state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane(), FocusedPane::Result);
-            assert_eq!(
-                state.ui.focus_mode().previous_pane(),
-                Some(FocusedPane::Explorer)
-            );
-        }
-
-        #[test]
-        fn toggle_focus_restores_previous_pane() {
-            let mut state = make_state();
-            state.ui.set_focused_pane(FocusedPane::Inspector);
-            state.toggle_focus();
-
-            let result = state.toggle_focus();
-
-            assert!(result);
-            assert!(!state.ui.is_focus_mode());
-            assert_eq!(state.ui.focused_pane(), FocusedPane::Inspector);
         }
 
         #[test]

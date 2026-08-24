@@ -19,7 +19,7 @@ pub fn reduce_focus(state: &mut AppState, action: &Action) -> DispatchResult {
         }
         Action::ToggleFocus => {
             let was_focus = state.ui.is_focus_mode();
-            state.toggle_focus();
+            state.ui.toggle_focus();
             if was_focus {
                 state.result_interaction.reset_interaction();
             }
