@@ -75,11 +75,7 @@ impl SqlDialect for PostgresAdapter {
         new_value: &QueryValue,
         pk_pairs: &[(String, QueryValue)],
     ) -> String {
-        let where_clause = pk_pairs
-            .iter()
-            .map(|(col, val)| equality_predicate(col, val))
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let where_clause = row_predicate(pk_pairs);
 
         format!(
             "UPDATE {}.{}\nSET {} = {}\nWHERE {};",
