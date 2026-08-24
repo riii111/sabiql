@@ -611,35 +611,21 @@ mod tests {
         const ESCAPED: &str = "'''; DROP TABLE users; --'";
 
         #[rstest]
-        #[case("columns_query", PostgresAdapter::columns_query(HOSTILE, "t"))]
-        #[case(
-            "columns_query_table",
-            PostgresAdapter::columns_query("public", HOSTILE)
-        )]
-        #[case("indexes_query", PostgresAdapter::indexes_query(HOSTILE, "t"))]
-        #[case(
-            "foreign_keys_query",
-            PostgresAdapter::foreign_keys_query(HOSTILE, "t")
-        )]
-        #[case("rls_query", PostgresAdapter::rls_query(HOSTILE, "t"))]
-        #[case("triggers_query", PostgresAdapter::triggers_query(HOSTILE, "t"))]
-        #[case(
-            "table_detail_query",
-            PostgresAdapter::table_detail_query(HOSTILE, "t")
-        )]
-        #[case(
-            "table_detail_query_table",
-            PostgresAdapter::table_detail_query("public", HOSTILE)
-        )]
-        #[case(
-            "table_columns_and_fks_query",
-            PostgresAdapter::table_columns_and_fks_query(HOSTILE, "t")
-        )]
-        #[case(
-            "table_columns_and_fks_query_table",
-            PostgresAdapter::table_columns_and_fks_query("public", HOSTILE)
-        )]
-        fn hostile_input_is_escaped(#[case] _label: &str, #[case] sql: String) {
+        #[case::columns_query(PostgresAdapter::columns_query(HOSTILE, "t"))]
+        #[case::columns_query_table(PostgresAdapter::columns_query("public", HOSTILE))]
+        #[case::indexes_query(PostgresAdapter::indexes_query(HOSTILE, "t"))]
+        #[case::foreign_keys_query(PostgresAdapter::foreign_keys_query(HOSTILE, "t"))]
+        #[case::rls_query(PostgresAdapter::rls_query(HOSTILE, "t"))]
+        #[case::triggers_query(PostgresAdapter::triggers_query(HOSTILE, "t"))]
+        #[case::table_detail_query(PostgresAdapter::table_detail_query(HOSTILE, "t"))]
+        #[case::table_detail_query_table(PostgresAdapter::table_detail_query("public", HOSTILE))]
+        #[case::table_columns_and_fks_query(PostgresAdapter::table_columns_and_fks_query(
+            HOSTILE, "t"
+        ))]
+        #[case::table_columns_and_fks_query_table(PostgresAdapter::table_columns_and_fks_query(
+            "public", HOSTILE
+        ))]
+        fn hostile_input_is_escaped(#[case] sql: String) {
             assert!(
                 sql.contains(ESCAPED),
                 "Hostile input must be quote_literal-escaped in: {sql}"
