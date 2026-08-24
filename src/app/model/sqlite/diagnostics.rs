@@ -44,9 +44,9 @@ impl DiagnosticFieldKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DiagnosticDisplayRow {
+pub struct DiagnosticDisplayRow<'a> {
     pub kind: DiagnosticFieldKind,
-    pub value: String,
+    pub field: &'a DiagnosticField,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -196,44 +196,23 @@ impl SqliteDiagnosticsState {
     }
 }
 
-pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow> {
+pub fn display_rows(snapshot: &SqliteDiagnosticsSnapshot) -> Vec<DiagnosticDisplayRow<'_>> {
     [
-        (DiagnosticFieldKind::DbFile, snapshot.db_file.display()),
-        (
-            DiagnosticFieldKind::SqliteVersion,
-            snapshot.sqlite_version.display(),
-        ),
+        (DiagnosticFieldKind::DbFile, &snapshot.db_file),
+        (DiagnosticFieldKind::SqliteVersion, &snapshot.sqlite_version),
         (
             DiagnosticFieldKind::FeatureSummary,
-            snapshot.feature_summary.display(),
+            &snapshot.feature_summary,
         ),
-        (
-            DiagnosticFieldKind::ForeignKeys,
-            snapshot.foreign_keys.display(),
-        ),
-        (
-            DiagnosticFieldKind::JournalMode,
-            snapshot.journal_mode.display(),
-        ),
-        (
-            DiagnosticFieldKind::QueryOnly,
-            snapshot.query_only.display(),
-        ),
-        (
-            DiagnosticFieldKind::BusyTimeout,
-            snapshot.busy_timeout.display(),
-        ),
-        (
-            DiagnosticFieldKind::DatabaseList,
-            snapshot.database_list.display(),
-        ),
-        (
-            DiagnosticFieldKind::QuickCheck,
-            snapshot.quick_check.display(),
-        ),
+        (DiagnosticFieldKind::ForeignKeys, &snapshot.foreign_keys),
+        (DiagnosticFieldKind::JournalMode, &snapshot.journal_mode),
+        (DiagnosticFieldKind::QueryOnly, &snapshot.query_only),
+        (DiagnosticFieldKind::BusyTimeout, &snapshot.busy_timeout),
+        (DiagnosticFieldKind::DatabaseList, &snapshot.database_list),
+        (DiagnosticFieldKind::QuickCheck, &snapshot.quick_check),
     ]
     .into_iter()
-    .map(|(kind, value)| DiagnosticDisplayRow { kind, value })
+    .map(|(kind, field)| DiagnosticDisplayRow { kind, field })
     .collect()
 }
 
