@@ -279,7 +279,7 @@ impl CompletionEngine {
         let cte_names: HashSet<String> = candidate_context
             .ctes
             .iter()
-            .map(|cte| cte.name.to_lowercase())
+            .map(|cte| cte.to_lowercase())
             .collect();
         PreparedCompletion {
             tokens,
@@ -1250,9 +1250,9 @@ impl CompletionEngine {
 
         // Add CTE names first (higher priority)
         for cte in &sql_context.ctes {
-            if prefix.is_empty() || cte.name.to_lowercase().starts_with(&prefix_lower) {
+            if prefix.is_empty() || cte.to_lowercase().starts_with(&prefix_lower) {
                 candidates.push(CompletionCandidate {
-                    text: cte.name.clone(),
+                    text: cte.clone(),
                     kind: CompletionKind::Table,
                     score: 110, // CTEs slightly above prefix-matched tables
                 });
@@ -3015,7 +3015,6 @@ mod tests {
 
     mod cte_or_table_context {
         use super::*;
-        use crate::policy::sql::lexer::CteDefinition;
 
         #[test]
         fn from_clause_with_cte_returns_cte_or_table() {
@@ -3024,9 +3023,7 @@ mod tests {
             let tokens = SqlLexer::default().tokenize(sql, sql.len());
             let sql_context = SqlContext {
                 tables: vec![],
-                ctes: vec![CteDefinition {
-                    name: "active_users".to_string(),
-                }],
+                ctes: vec!["active_users".to_string()],
                 target_table: None,
             };
 
@@ -3041,9 +3038,7 @@ mod tests {
             let e = engine();
             let sql_context = SqlContext {
                 tables: vec![],
-                ctes: vec![CteDefinition {
-                    name: "active_users".to_string(),
-                }],
+                ctes: vec!["active_users".to_string()],
                 target_table: None,
             };
 
@@ -3068,14 +3063,7 @@ mod tests {
             let e = engine();
             let sql_context = SqlContext {
                 tables: vec![],
-                ctes: vec![
-                    CteDefinition {
-                        name: "active_users".to_string(),
-                    },
-                    CteDefinition {
-                        name: "banned_users".to_string(),
-                    },
-                ],
+                ctes: vec!["active_users".to_string(), "banned_users".to_string()],
                 target_table: None,
             };
 
