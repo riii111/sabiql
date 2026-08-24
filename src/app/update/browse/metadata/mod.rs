@@ -578,7 +578,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
@@ -723,7 +723,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .all(|e| !matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .all(|e| !matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
         }
 
@@ -753,7 +753,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
             assert!(
                 effects
@@ -1125,7 +1125,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
         }
 
@@ -1147,7 +1147,7 @@ mod tests {
                 effects.as_slice(),
                 [
                     Effect::ResizeCompletionCache { capacity: 560 },
-                    Effect::ProcessPrefetchQueue { .. }
+                    Effect::SchedulePrefetchQueueProcessing { .. }
                 ]
             ));
         }
@@ -1173,11 +1173,9 @@ mod tests {
             assert!(state.sql_modal.is_prefetch_queued("public.users"));
             assert!(state.sql_modal.is_prefetch_queued("public.orders"));
             assert!(state.er_preparation.pending_tables().is_empty());
-            assert!(
-                effects
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::ProcessPrefetchQueue { .. }))
-            );
+            assert!(effects.iter().any(|effect| {
+                matches!(effect, Effect::SchedulePrefetchQueueProcessing { .. })
+            }));
             assert!(
                 effects
                     .iter()
@@ -1254,7 +1252,7 @@ mod tests {
             );
             assert!(effects.iter().any(|effect| matches!(
                 effect,
-                Effect::ProcessPrefetchQueue { run_id } if *run_id == er_run_id
+                Effect::SchedulePrefetchQueueProcessing { run_id } if *run_id == er_run_id
             )));
         }
     }
@@ -1379,7 +1377,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
         }
 

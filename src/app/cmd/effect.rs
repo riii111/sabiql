@@ -56,7 +56,7 @@ pub enum Effect {
         schema: String,
         table: String,
     },
-    ProcessPrefetchQueue {
+    SchedulePrefetchQueueProcessing {
         run_id: u64,
     },
     DelayedProcessPrefetchQueue {
