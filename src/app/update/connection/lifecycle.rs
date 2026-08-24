@@ -261,7 +261,7 @@ mod tests {
     use crate::model::shared::inspector_tab::InspectorTab;
     use crate::model::shared::ui_state::ResultNavMode;
     use crate::model::sql_editor::modal::SqlModalStatus;
-    use crate::ports::outbound::DbOperationError;
+    use crate::ports::outbound::{ConnectionFailureKind, DbOperationError};
     use crate::test_support::connection::{
         assert_explain_state_cleared, assert_sqlite_diagnostics_cleared,
     };
@@ -2413,9 +2413,10 @@ mod tests {
                 &Action::MySqlConnectionProbeFailed {
                     target,
                     run_id,
-                    error: DbOperationError::ConnectionFailed(
-                        "ERROR 1045: Access denied for user 'user'".to_string(),
-                    ),
+                    error: DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::Auth,
+                        details: "ERROR 1045: Access denied for user 'user'".to_string(),
+                    },
                 },
             );
 

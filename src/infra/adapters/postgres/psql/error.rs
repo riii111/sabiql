@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
 pub(in crate::adapters::postgres) fn classify_cli_spawn_error(
     error: std::io::Error,
@@ -29,10 +29,9 @@ pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOpe
 fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
     match sqlstate {
         "08003" | "08006" | "08P01" => DbOperationError::ConnectionLost(details.to_string()),
-        "08000" | "08001" | "08004" | "08007" => {
-            DbOperationError::ConnectionFailed(details.to_string())
-        }
-        "28P01" | "3D000" => DbOperationError::ConnectionFailed(details.to_string()),
+        "08000" | "08001" | "08004" | "08007" => classify_connection_failure(details),
+        "28P01" => connection_failed_with_kind(ConnectionFailureKind::Auth, details),
+        "3D000" => connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details),
         "42501" => DbOperationError::PermissionDenied(details.to_string()),
         "23503" => DbOperationError::ForeignKeyViolation(details.to_string()),
         "23505" => DbOperationError::UniqueViolation(details.to_string()),
@@ -43,7 +42,7 @@ fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
             if is_connection_lost_message(&details.to_lowercase()) {
                 DbOperationError::ConnectionLost(details.to_string())
             } else {
-                DbOperationError::ConnectionFailed(details.to_string())
+                classify_connection_failure(details)
             }
         }
         _ => DbOperationError::QueryFailed(details.to_string()),
@@ -57,15 +56,15 @@ fn classify_by_stderr(details: &str) -> DbOperationError {
         return DbOperationError::PermissionDenied(details.to_string());
     }
 
-    if lower.contains("password authentication failed")
-        || lower.contains("authentication failed")
-        || lower.contains("could not translate host name")
-        || lower.contains("name or service not known")
-        || lower.contains("nodename nor servname provided")
-        || is_missing_database_or_role(&lower)
-        || lower.contains("connection refused")
-        || lower.contains("could not connect to server")
-    {
+    if let Some(kind) = connection_failure_kind(&lower) {
+        return connection_failed_with_kind(kind, details);
+    }
+
+    if lower.contains("connection refused") {
+        return connection_failed_with_kind(ConnectionFailureKind::ConnectionRefused, details);
+    }
+
+    if lower.contains("could not connect to server") {
         return DbOperationError::ConnectionFailed(details.to_string());
     }
 
@@ -114,6 +113,45 @@ fn is_missing_database_or_role(lower: &str) -> bool {
     lower.contains("fatal:")
         && lower.contains("does not exist")
         && (lower.contains("database") || lower.contains("role"))
+}
+
+fn classify_connection_failure(details: &str) -> DbOperationError {
+    let lower = details.to_lowercase();
+    if let Some(kind) = connection_failure_kind(&lower) {
+        connection_failed_with_kind(kind, details)
+    } else if lower.contains("timeout expired") || lower.contains("timed out") {
+        DbOperationError::Timeout(details.to_string())
+    } else if lower.contains("connection refused") {
+        connection_failed_with_kind(ConnectionFailureKind::ConnectionRefused, details)
+    } else if is_connection_lost_message(&lower) {
+        DbOperationError::ConnectionLost(details.to_string())
+    } else {
+        DbOperationError::ConnectionFailed(details.to_string())
+    }
+}
+
+fn connection_failure_kind(lower: &str) -> Option<ConnectionFailureKind> {
+    if lower.contains("could not translate host name")
+        || lower.contains("name or service not known")
+        || lower.contains("nodename nor servname provided")
+    {
+        Some(ConnectionFailureKind::HostUnreachable)
+    } else if lower.contains("password authentication failed")
+        || lower.contains("authentication failed")
+    {
+        Some(ConnectionFailureKind::Auth)
+    } else if is_missing_database_or_role(lower) {
+        Some(ConnectionFailureKind::DatabaseNotFound)
+    } else {
+        None
+    }
+}
+
+fn connection_failed_with_kind(kind: ConnectionFailureKind, details: &str) -> DbOperationError {
+    DbOperationError::ConnectionFailedWithKind {
+        kind,
+        details: details.to_string(),
+    }
 }
 
 fn is_missing_object(lower: &str) -> bool {
@@ -220,6 +258,28 @@ mod tests {
     mod classification {
         use super::*;
 
+        fn classification_name(error: DbOperationError) -> &'static str {
+            match error {
+                DbOperationError::PermissionDenied(_) => "PermissionDenied",
+                DbOperationError::ForeignKeyViolation(_) => "ForeignKeyViolation",
+                DbOperationError::UniqueViolation(_) => "UniqueViolation",
+                DbOperationError::LockTimeout(_) => "LockTimeout",
+                DbOperationError::Timeout(_) => "Timeout",
+                DbOperationError::ObjectMissing(_) => "ObjectMissing",
+                DbOperationError::ConnectionLost(_) => "ConnectionLost",
+                DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
+                DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
+                    ConnectionFailureKind::HostUnreachable => "HostUnreachable",
+                    ConnectionFailureKind::Auth => "Auth",
+                    ConnectionFailureKind::DatabaseNotFound => "DatabaseNotFound",
+                    ConnectionFailureKind::ConnectionRefused => "ConnectionRefused",
+                    _ => "TypedConnectionFailure",
+                },
+                DbOperationError::QueryFailed(_) => "QueryFailed",
+                _ => "Other",
+            }
+        }
+
         #[rstest]
         #[case("ERROR:  42501: permission denied for table users", "PermissionDenied")]
         #[case(
@@ -243,21 +303,17 @@ mod tests {
         #[case("ERROR:  08006: connection to server was lost", "ConnectionLost")]
         #[case("ERROR:  08006: could not receive data from server", "ConnectionLost")]
         #[case("ERROR:  08001: could not connect to server", "ConnectionFailed")]
+        #[case("FATAL:  08001: could not translate host name", "HostUnreachable")]
+        #[case("FATAL:  08001: timeout expired", "Timeout")]
+        #[case("FATAL:  08001: connection refused", "ConnectionRefused")]
+        #[case(
+            "FATAL:  08001: server closed the connection unexpectedly",
+            "ConnectionLost"
+        )]
+        #[case("FATAL:  28P01: opaque authentication failure", "Auth")]
+        #[case("FATAL:  3D000: opaque database failure", "DatabaseNotFound")]
         fn classifies_sqlstate_first(#[case] input: &str, #[case] expected: &str) {
-            let error = classify_query_error(input);
-            let actual = match error {
-                DbOperationError::PermissionDenied(_) => "PermissionDenied",
-                DbOperationError::ForeignKeyViolation(_) => "ForeignKeyViolation",
-                DbOperationError::UniqueViolation(_) => "UniqueViolation",
-                DbOperationError::LockTimeout(_) => "LockTimeout",
-                DbOperationError::Timeout(_) => "Timeout",
-                DbOperationError::ObjectMissing(_) => "ObjectMissing",
-                DbOperationError::ConnectionLost(_) => "ConnectionLost",
-                DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
-                _ => "Other",
-            };
-
-            assert_eq!(actual, expected);
+            assert_eq!(classification_name(classify_query_error(input)), expected);
         }
 
         #[rstest]
@@ -269,22 +325,19 @@ mod tests {
         #[case("ERROR: relation \"users\" does not exist", "ObjectMissing")]
         #[case("server closed the connection unexpectedly", "ConnectionLost")]
         #[case("ERROR: canceling statement due to statement timeout", "Timeout")]
-        #[case(r#"FATAL: role "alice" does not exist"#, "ConnectionFailed")]
+        #[case(r#"FATAL: role "alice" does not exist"#, "DatabaseNotFound")]
         #[case(r#"ERROR: role "alice" does not exist"#, "QueryFailed")]
+        #[case(r#"FATAL: password authentication failed for user "alice""#, "Auth")]
+        #[case(
+            r#"psql: error: could not translate host name "host" to address: Name or service not known"#,
+            "HostUnreachable"
+        )]
+        #[case(
+            r#"psql: error: connection to server at "host", port 5432 failed: Connection refused"#,
+            "ConnectionRefused"
+        )]
         fn falls_back_to_stderr_matching(#[case] input: &str, #[case] expected: &str) {
-            let error = classify_query_error(input);
-            let actual = match error {
-                DbOperationError::PermissionDenied(_) => "PermissionDenied",
-                DbOperationError::UniqueViolation(_) => "UniqueViolation",
-                DbOperationError::ObjectMissing(_) => "ObjectMissing",
-                DbOperationError::ConnectionLost(_) => "ConnectionLost",
-                DbOperationError::Timeout(_) => "Timeout",
-                DbOperationError::ConnectionFailed(_) => "ConnectionFailed",
-                DbOperationError::QueryFailed(_) => "QueryFailed",
-                _ => "Other",
-            };
-
-            assert_eq!(actual, expected);
+            assert_eq!(classification_name(classify_query_error(input)), expected);
         }
 
         #[test]

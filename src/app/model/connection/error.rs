@@ -1,8 +1,7 @@
 use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-    SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind, is_mysql_connect_timeout_message,
-    mysql_server_error_code,
+    SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
 };
 use sabiql_domain::connection::MySqlSslMode;
 use url::Url;
@@ -34,72 +33,6 @@ pub enum ConnectionErrorKind {
 }
 
 impl ConnectionErrorKind {
-    pub fn classify(stderr: &str) -> Self {
-        let stderr_lower = stderr.to_lowercase();
-
-        if stderr_lower.contains("command not found")
-            || stderr_lower.contains("not found: psql")
-            || stderr_lower.contains("not found: mysql")
-            || stderr_lower.contains("not recognized")
-        {
-            return Self::CliNotFound;
-        }
-
-        if stderr_lower.contains("could not translate host name")
-            || stderr_lower.contains("name or service not known")
-            || stderr_lower.contains("nodename nor servname provided")
-            || stderr_lower.contains("no such host")
-            || stderr_lower.contains("unknown mysql server host")
-        {
-            return Self::HostUnreachable;
-        }
-
-        if let Some(error_code) = mysql_server_error_code(&stderr_lower) {
-            match error_code {
-                1044 => return Self::PermissionDenied,
-                1045 => return Self::AuthFailed,
-                1049 => return Self::DatabaseNotFound,
-                2003 => {}
-                2006 | 2013 => return Self::ConnectionLost,
-                _ => return Self::Unknown,
-            }
-        }
-
-        if stderr_lower.contains("password authentication failed")
-            || stderr_lower.contains("authentication failed")
-            || stderr_lower.contains("access denied for user")
-            || (stderr_lower.contains("fatal:") && stderr_lower.contains("password"))
-        {
-            return Self::AuthFailed;
-        }
-
-        if stderr_lower.contains("does not exist")
-            && (stderr_lower.contains("database") || stderr_lower.contains("fatal:"))
-        {
-            return Self::DatabaseNotFound;
-        }
-
-        if is_mysql_connect_timeout_message(stderr)
-            || stderr_lower.contains("timeout expired")
-            || stderr_lower.contains("timed out")
-            || stderr_lower.contains("connection timed out")
-        {
-            return Self::Timeout;
-        }
-
-        if stderr_lower.contains("connection refused")
-            || stderr_lower.contains("can't connect to mysql server")
-        {
-            return Self::ConnectionRefused;
-        }
-
-        if is_connection_lost_message(&stderr_lower) {
-            return Self::ConnectionLost;
-        }
-
-        Self::Unknown
-    }
-
     fn presentation(self) -> (&'static str, &'static str) {
         match self {
             Self::CliNotFound => (
@@ -237,12 +170,22 @@ impl ConnectionErrorInfo {
             {
                 ConnectionErrorKind::SqliteVersionTooOld
             }
-            DbOperationError::ConnectionFailedWithKind { kind, .. } => {
-                ConnectionErrorKind::MySqlConnectionFailure(*kind)
-            }
+            DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
+                ConnectionFailureKind::HostUnreachable => ConnectionErrorKind::HostUnreachable,
+                ConnectionFailureKind::Auth => ConnectionErrorKind::AuthFailed,
+                ConnectionFailureKind::DatabaseNotFound => ConnectionErrorKind::DatabaseNotFound,
+                ConnectionFailureKind::ConnectionRefused => ConnectionErrorKind::ConnectionRefused,
+                ConnectionFailureKind::TlsHandshake
+                | ConnectionFailureKind::TlsCaVerification
+                | ConnectionFailureKind::TlsHostnameVerification
+                | ConnectionFailureKind::TlsClientCertificateRejected
+                | ConnectionFailureKind::TlsCertificateVerification => {
+                    ConnectionErrorKind::MySqlConnectionFailure(*kind)
+                }
+            },
             DbOperationError::ConnectionFailed(details) => {
                 classify_sqlite_path_connection_error(details)
-                    .unwrap_or_else(|| ConnectionErrorKind::classify(&raw_details))
+                    .unwrap_or(ConnectionErrorKind::Unknown)
             }
             _ => ConnectionErrorKind::Unknown,
         };
@@ -294,139 +237,10 @@ fn classify_sqlite_path_connection_error(message: &str) -> Option<ConnectionErro
     SqlitePathError::from_display_message(message).map(|error| connection_error_kind(&error))
 }
 
-fn is_connection_lost_message(lower: &str) -> bool {
-    lower.contains("server closed the connection unexpectedly")
-        || lower.contains("connection to server was lost")
-        || lower.contains("terminating connection")
-        || lower.contains("connection not open")
-        || lower.contains("broken pipe")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    mod classify {
-        use super::*;
-
-        #[rstest]
-        #[case("psql: command not found")]
-        #[case("/bin/sh: psql: command not found")]
-        #[case("zsh: command not found: psql")]
-        #[case("not found: mysql")]
-        fn stderr_as_cli_not_found(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::CliNotFound
-            );
-        }
-
-        #[rstest]
-        #[case(r#"psql: error: could not translate host name "host" to address: nodename nor servname provided"#)]
-        #[case(r#"psql: error: could not translate host name "host" to address: Name or service not known"#)]
-        fn stderr_as_host_unreachable(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::HostUnreachable
-            );
-        }
-
-        #[rstest]
-        #[case(r#"FATAL: password authentication failed for user "user""#)]
-        #[case(r"psql: error: FATAL:  password authentication failed")]
-        fn stderr_as_auth_failed(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::AuthFailed
-            );
-        }
-
-        #[rstest]
-        #[case(
-            "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'",
-            ConnectionErrorKind::PermissionDenied
-        )]
-        #[case(
-            "ERROR 1045 (28000): Access denied for user 'user'",
-            ConnectionErrorKind::AuthFailed
-        )]
-        #[case(
-            "ERROR 1049 (42000): Unknown database 'missing'",
-            ConnectionErrorKind::DatabaseNotFound
-        )]
-        fn mysql_server_error_codes_use_specific_connection_guidance(
-            #[case] stderr: &str,
-            #[case] expected: ConnectionErrorKind,
-        ) {
-            assert_eq!(ConnectionErrorKind::classify(stderr), expected);
-        }
-
-        #[test]
-        fn unknown_mysql_server_error_code_fails_closed() {
-            assert_eq!(
-                ConnectionErrorKind::classify("ERROR 9999 (HY000): Access denied for user 'user'"),
-                ConnectionErrorKind::Unknown
-            );
-        }
-
-        #[test]
-        fn stderr_as_database_not_found() {
-            assert_eq!(
-                ConnectionErrorKind::classify(r#"FATAL: database "nonexistent" does not exist"#),
-                ConnectionErrorKind::DatabaseNotFound
-            );
-        }
-
-        #[rstest]
-        #[case("psql: error: timeout expired")]
-        #[case("Connection timed out")]
-        fn stderr_as_timeout(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Timeout
-            );
-        }
-
-        #[rstest]
-        #[case("psql: error: connection to server was lost")]
-        #[case("server closed the connection unexpectedly")]
-        fn stderr_as_connection_lost(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::ConnectionLost
-            );
-        }
-
-        #[rstest]
-        #[case("Some random error")]
-        #[case("")]
-        fn stderr_as_unknown_fallback(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Unknown
-            );
-        }
-
-        #[test]
-        fn stderr_as_connection_refused() {
-            assert_eq!(
-                ConnectionErrorKind::classify("Can't connect to MySQL server on 'localhost' (111)"),
-                ConnectionErrorKind::ConnectionRefused
-            );
-        }
-
-        #[rstest]
-        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (110)")]
-        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (10060)")]
-        #[case("ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (60)")]
-        fn stderr_as_mysql_timeout(#[case] stderr: &str) {
-            assert_eq!(
-                ConnectionErrorKind::classify(stderr),
-                ConnectionErrorKind::Timeout
-            );
-        }
-    }
 
     mod error_kind {
         use super::*;
@@ -485,18 +299,38 @@ mod tests {
             assert_eq!(info.kind, ConnectionErrorKind::Timeout);
         }
 
-        #[test]
-        fn from_db_operation_error_classifies_from_raw_details() {
-            let info =
-                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
-                    r#"FATAL: database "nonexistent" does not exist"#.to_string(),
-                ));
-
-            assert_eq!(info.kind, ConnectionErrorKind::DatabaseNotFound);
-            assert_eq!(
-                info.masked_details(),
-                "FATAL: database \"nonexistent\" does not exist"
+        #[rstest]
+        #[case(
+            ConnectionFailureKind::HostUnreachable,
+            ConnectionErrorKind::HostUnreachable,
+            true
+        )]
+        #[case(ConnectionFailureKind::Auth, ConnectionErrorKind::AuthFailed, false)]
+        #[case(
+            ConnectionFailureKind::DatabaseNotFound,
+            ConnectionErrorKind::DatabaseNotFound,
+            false
+        )]
+        #[case(
+            ConnectionFailureKind::ConnectionRefused,
+            ConnectionErrorKind::ConnectionRefused,
+            true
+        )]
+        fn from_db_operation_error_maps_typed_connection_failures(
+            #[case] kind: ConnectionFailureKind,
+            #[case] expected_kind: ConnectionErrorKind,
+            #[case] expected_retryable: bool,
+        ) {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::ConnectionFailedWithKind {
+                    kind,
+                    details: "password=secret provider details".to_string(),
+                },
             );
+
+            assert_eq!(info.kind, expected_kind);
+            assert!(!info.masked_details().contains("secret"));
+            assert_eq!(info.is_retryable(), expected_retryable);
         }
 
         #[test]

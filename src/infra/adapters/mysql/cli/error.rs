@@ -1,7 +1,8 @@
 use std::io::{self, Write};
 
 use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, is_mysql_connect_timeout_message, mysql_server_error_code,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, is_mysql_connect_timeout_message,
+    mysql_server_error_code,
 };
 
 use super::probe::mysql_tls_failure_kind;
@@ -87,7 +88,7 @@ pub(super) fn classify_mysql_query_failure_with_packet_limit(
     } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
         DbOperationError::ObjectMissing(details)
     } else if lower.contains("access denied") || lower.contains("authentication") {
-        DbOperationError::ConnectionFailed(details)
+        connection_failed_with_kind(ConnectionFailureKind::Auth, details)
     } else if lower.contains("lost connection") || lower.contains("server has gone away") {
         DbOperationError::ConnectionLost(details)
     } else if lower.contains("lock wait timeout") || lower.contains("deadlock found") {
@@ -115,7 +116,11 @@ fn classify_mysql_server_error(
     Some(match error_code {
         1022 | 1062 => error(DbOperationError::UniqueViolation),
         1044 | 1142 | 1143 | 1227 => error(DbOperationError::PermissionDenied),
-        1045 | 1049 => error(DbOperationError::ConnectionFailed),
+        1045 => connection_failed_with_kind(ConnectionFailureKind::Auth, details.to_string()),
+        1049 => connection_failed_with_kind(
+            ConnectionFailureKind::DatabaseNotFound,
+            details.to_string(),
+        ),
         1051 | 1054 | 1109 | 1146 => error(DbOperationError::ObjectMissing),
         1205 | 1213 => error(DbOperationError::LockTimeout),
         1215 | 1216 | 1217 | 1451 | 1452 => error(DbOperationError::ForeignKeyViolation),
@@ -127,10 +132,17 @@ fn classify_mysql_server_error(
         {
             DbOperationError::Timeout(details.to_string())
         }
-        2003 => DbOperationError::ConnectionFailed(details.to_string()),
+        2003 => connection_failed_with_kind(
+            ConnectionFailureKind::ConnectionRefused,
+            details.to_string(),
+        ),
         3024 => error(DbOperationError::Timeout),
         _ => return None,
     })
+}
+
+fn connection_failed_with_kind(kind: ConnectionFailureKind, details: String) -> DbOperationError {
+    DbOperationError::ConnectionFailedWithKind { kind, details }
 }
 
 pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
@@ -145,7 +157,6 @@ pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::ports::outbound::ConnectionFailureKind;
 
     #[test]
     fn classifies_mysql_query_failures_by_server_error() {
@@ -153,7 +164,10 @@ mod tests {
             classify_mysql_query_failure(
                 b"ERROR 1045 (28000): Access denied for user 'app'@'localhost' (using password: YES)"
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::Auth,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(
@@ -165,11 +179,17 @@ mod tests {
             classify_mysql_query_failure(
                 b"ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::ConnectionRefused,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1049 (42000): schema selection failed"),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_query_failure(b"ERROR 1054 (42S22): column lookup failed"),

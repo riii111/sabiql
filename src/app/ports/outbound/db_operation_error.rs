@@ -79,6 +79,10 @@ impl UnsupportedOperationKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionFailureKind {
+    HostUnreachable,
+    Auth,
+    DatabaseNotFound,
+    ConnectionRefused,
     TlsHandshake,
     TlsCaVerification,
     TlsHostnameVerification,
@@ -89,6 +93,13 @@ pub enum ConnectionFailureKind {
 impl ConnectionFailureKind {
     pub(crate) const fn presentation(self) -> (&'static str, &'static str) {
         match self {
+            Self::HostUnreachable
+            | Self::Auth
+            | Self::DatabaseNotFound
+            | Self::ConnectionRefused => (
+                "Connection failed",
+                "Check the connection settings and database availability",
+            ),
             Self::TlsHandshake | Self::TlsCertificateVerification => (
                 "MySQL TLS handshake failed",
                 "Check that the server and client support the selected TLS settings",
@@ -429,6 +440,26 @@ mod tests {
             assert!(!error.summary().is_empty());
             assert!(!error.hint().is_empty());
             assert!(!error.user_message().is_empty());
+        }
+
+        #[rstest]
+        #[case(ConnectionFailureKind::HostUnreachable)]
+        #[case(ConnectionFailureKind::Auth)]
+        #[case(ConnectionFailureKind::DatabaseNotFound)]
+        #[case(ConnectionFailureKind::ConnectionRefused)]
+        fn typed_connection_failures_keep_generic_operation_presentation(
+            #[case] kind: ConnectionFailureKind,
+        ) {
+            let error = DbOperationError::ConnectionFailedWithKind {
+                kind,
+                details: "provider details".to_string(),
+            };
+
+            assert_eq!(error.summary(), "Connection failed");
+            assert_eq!(
+                error.hint(),
+                "Check the connection settings and database availability"
+            );
         }
     }
 
