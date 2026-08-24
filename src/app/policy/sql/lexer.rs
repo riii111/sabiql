@@ -810,6 +810,18 @@ impl SqlLexer {
         }
     }
 
+    fn skip_only_keyword(tokens: &[Token], mut index: usize) -> usize {
+        if index < tokens.len()
+            && matches!(&tokens[index].kind, TokenKind::Keyword(k) if k == "ONLY")
+        {
+            index += 1;
+            while index < tokens.len() && tokens[index].kind == TokenKind::Whitespace {
+                index += 1;
+            }
+        }
+        index
+    }
+
     fn is_mysql_upsert_update(&self, tokens: &[Token], update_index: usize) -> bool {
         if !self.is_mysql() {
             return false;
@@ -874,14 +886,7 @@ impl SqlLexer {
                             i += 1;
                         }
                         // Skip ONLY keyword (PostgreSQL inheritance)
-                        if i < tokens.len()
-                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
-                        {
-                            i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
-                        }
+                        i = Self::skip_only_keyword(tokens, i);
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
                             can_start_straight_join = true;
@@ -971,14 +976,7 @@ impl SqlLexer {
                             i += 1;
                         }
                         // Skip ONLY keyword (PostgreSQL inheritance)
-                        if i < tokens.len()
-                            && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
-                        {
-                            i += 1;
-                            while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                i += 1;
-                            }
-                        }
+                        i = Self::skip_only_keyword(tokens, i);
                         if let Some(table_ref) = self.parse_table_reference(tokens, &mut i) {
                             refs.push(table_ref);
                             can_start_straight_join = true;
@@ -1360,14 +1358,7 @@ impl SqlLexer {
                                 }
                             }
                             // Skip ONLY keyword (PostgreSQL inheritance)
-                            if i < tokens.len()
-                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
-                            {
-                                i += 1;
-                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                    i += 1;
-                                }
-                            }
+                            i = Self::skip_only_keyword(tokens, i);
                             return self.parse_table_reference(tokens, &mut i);
                         }
                         "INSERT" | "REPLACE" => {
@@ -1386,14 +1377,7 @@ impl SqlLexer {
                                 }
                             }
                             // Skip ONLY keyword (PostgreSQL inheritance)
-                            if i < tokens.len()
-                                && matches!(&tokens[i].kind, TokenKind::Keyword(k) if k == "ONLY")
-                            {
-                                i += 1;
-                                while i < tokens.len() && tokens[i].kind == TokenKind::Whitespace {
-                                    i += 1;
-                                }
-                            }
+                            i = Self::skip_only_keyword(tokens, i);
                             return self.parse_table_reference(tokens, &mut i);
                         }
                         _ => {
