@@ -19,6 +19,26 @@ mod test_support {
 
     use super::MySqlResultSet;
 
+    #[cfg(unix)]
+    pub(super) fn assert_process_stopped(transcript: &std::path::Path) {
+        for _ in 0..200 {
+            let pid = std::fs::read_to_string(transcript)
+                .unwrap()
+                .lines()
+                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
+            if let Some(pid) = pid
+                && unsafe { libc::kill(pid, 0) } == -1
+            {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        panic!(
+            "fake mysql process is alive or did not start: {}",
+            std::fs::read_to_string(transcript).unwrap()
+        );
+    }
+
     pub(super) fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
         MySqlResultSet {
             columns: columns.iter().map(|value| (*value).to_string()).collect(),

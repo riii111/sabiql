@@ -454,6 +454,7 @@ mod session_tests {
 
     use tempfile::TempDir;
 
+    use super::super::test_support::assert_process_stopped;
     use super::*;
 
     fn fake_metadata_cli(mode: &str) -> (TempDir, std::path::PathBuf, std::path::PathBuf) {
@@ -553,25 +554,6 @@ done
         permissions.set_mode(0o755);
         std::fs::set_permissions(&program, permissions).unwrap();
         (directory, program, transcript)
-    }
-
-    fn assert_process_stopped(transcript: &std::path::Path) {
-        for _ in 0..200 {
-            let pid = std::fs::read_to_string(transcript)
-                .unwrap()
-                .lines()
-                .find_map(|line| line.strip_prefix("process=")?.parse::<libc::pid_t>().ok());
-            if let Some(pid) = pid
-                && unsafe { libc::kill(pid, 0) } == -1
-            {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        panic!(
-            "fake mysql process is alive or did not start: {}",
-            std::fs::read_to_string(transcript).unwrap()
-        );
     }
 
     fn assert_option_file_removed(transcript: &std::path::Path) {
