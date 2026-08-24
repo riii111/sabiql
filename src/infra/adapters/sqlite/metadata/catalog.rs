@@ -2,7 +2,7 @@ use crate::domain::{DatabaseMetadata, Schema, TableKindInfo, TableSummary};
 
 use super::{
     super::{schema::MAIN_SCHEMA, sqlite3::metadata::RawTable},
-    kind_info::{table_kind_info_from_legacy_sql, table_kind_info_from_pragma},
+    kind_info::{table_kind_info_from_legacy_sql, table_kind_info_from_raw},
 };
 
 pub(super) fn metadata_from_catalog(path: &str, tables: &[RawTable]) -> DatabaseMetadata {
@@ -19,10 +19,10 @@ pub(super) fn metadata_from_catalog(path: &str, tables: &[RawTable]) -> Database
 }
 
 fn kind_info_for_raw_table(table: &RawTable) -> TableKindInfo {
-    if table.r#type.is_empty() {
-        return table_kind_info_from_legacy_sql(table.sql.as_deref());
+    if table.kind.r#type.is_empty() {
+        return table_kind_info_from_legacy_sql(table.kind.sql.as_deref());
     }
-    table_kind_info_from_pragma(&table.r#type, table.wr, table.strict, table.sql.as_deref())
+    table_kind_info_from_raw(&table.kind)
 }
 
 fn database_name(path: &str) -> String {

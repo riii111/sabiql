@@ -9,13 +9,10 @@ use super::kind_info_for_raw_table;
 
 #[test]
 fn legacy_list_row_uses_sql_for_storage() {
-    let table = RawTable {
-        name: "settings".to_string(),
-        sql: Some("CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;".to_string()),
-        r#type: String::new(),
-        wr: 0,
-        strict: 0,
-    };
+    let table: RawTable = serde_json::from_str(
+        r#"{"name":"settings","sql":"CREATE TABLE settings(id INTEGER PRIMARY KEY) WITHOUT ROWID;"}"#,
+    )
+    .unwrap();
 
     let kind_info = kind_info_for_raw_table(&table);
 
