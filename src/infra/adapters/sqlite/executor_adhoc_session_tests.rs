@@ -62,7 +62,7 @@ mod query_results {
     async fn explain_query_plan_returns_readable_detail_lines() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-             CREATE INDEX idx_users_name ON users(name);",
+                 CREATE INDEX idx_users_name ON users(name);",
         );
         let adapter = SqliteAdapter::new();
 
@@ -92,7 +92,7 @@ mod query_results {
     async fn explain_query_plan_for_join_includes_both_scan_targets() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             "CREATE TABLE users(id INTEGER PRIMARY KEY);
-             CREATE TABLE orders(id INTEGER, user_id INTEGER);",
+                 CREATE TABLE orders(id INTEGER, user_id INTEGER);",
         );
         let adapter = SqliteAdapter::new();
 
@@ -126,8 +126,8 @@ mod query_results {
     async fn explain_query_plan_delete_does_not_modify_database() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-             INSERT INTO users(name) VALUES ('alice'), ('bob');
-             CREATE INDEX idx_users_name ON users(name);",
+                 INSERT INTO users(name) VALUES ('alice'), ('bob');
+                 CREATE INDEX idx_users_name ON users(name);",
         );
         let adapter = SqliteAdapter::new();
 
@@ -182,19 +182,19 @@ mod trigger_execution {
     #[tokio::test]
     async fn create_trigger_with_multi_statement_body_preserves_definition() {
         let setup = r"
-        CREATE TABLE agent_messages(
-            id INTEGER PRIMARY KEY,
-            role TEXT NOT NULL,
-            content TEXT NOT NULL
-        );
-        CREATE VIRTUAL TABLE agent_messages_fts USING fts5(role, content);
-        ";
+            CREATE TABLE agent_messages(
+                id INTEGER PRIMARY KEY,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL
+            );
+            CREATE VIRTUAL TABLE agent_messages_fts USING fts5(role, content);
+            ";
         let trigger = r"
-        CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
-            INSERT INTO agent_messages_fts(rowid, role, content)
-            VALUES (new.id, new.role, new.content);
-        END
-        ";
+            CREATE TRIGGER agent_messages_fts_ai AFTER INSERT ON agent_messages BEGIN
+                INSERT INTO agent_messages_fts(rowid, role, content)
+                VALUES (new.id, new.role, new.content);
+            END
+            ";
         let (_dir, dsn) = test_support::make_sqlite_db(setup);
         let adapter = SqliteAdapter::new();
 
@@ -222,25 +222,25 @@ mod trigger_execution {
     #[tokio::test]
     async fn create_trigger_referencing_new_end_preserves_definition() {
         let setup = r"
-        CREATE TABLE events(
-            id INTEGER PRIMARY KEY,
-            end INTEGER NOT NULL
-        );
-        CREATE TABLE counters(
-            id INTEGER PRIMARY KEY,
-            end_value INTEGER
-        );
-        CREATE TABLE audit(
-            event_id INTEGER,
-            end_value INTEGER
-        );
-        ";
+            CREATE TABLE events(
+                id INTEGER PRIMARY KEY,
+                end INTEGER NOT NULL
+            );
+            CREATE TABLE counters(
+                id INTEGER PRIMARY KEY,
+                end_value INTEGER
+            );
+            CREATE TABLE audit(
+                event_id INTEGER,
+                end_value INTEGER
+            );
+            ";
         let trigger = r"
-        CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
-            UPDATE counters SET end_value = new.end WHERE id = new.id;
-            INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
-        END
-        ";
+            CREATE TRIGGER sync_end AFTER UPDATE ON events BEGIN
+                UPDATE counters SET end_value = new.end WHERE id = new.id;
+                INSERT INTO audit(event_id, end_value) VALUES (new.id, new.end);
+            END
+            ";
         let (_dir, dsn) = test_support::make_sqlite_db(setup);
         let adapter = SqliteAdapter::new();
 

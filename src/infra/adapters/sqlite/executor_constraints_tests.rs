@@ -4,14 +4,14 @@ use super::*;
 async fn foreign_key_restrict_rejects_parent_delete_with_child_row() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE orgs(id INTEGER PRIMARY KEY);
-        CREATE TABLE users(
-            id INTEGER PRIMARY KEY,
-            org_id INTEGER REFERENCES orgs(id) ON DELETE RESTRICT
-        );
-        INSERT INTO orgs(id) VALUES (1);
-        INSERT INTO users(id, org_id) VALUES (1, 1);
-        ",
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                org_id INTEGER REFERENCES orgs(id) ON DELETE RESTRICT
+            );
+            INSERT INTO orgs(id) VALUES (1);
+            INSERT INTO users(id, org_id) VALUES (1, 1);
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -77,14 +77,14 @@ async fn syntax_error_stays_query_failed_with_details() {
 async fn foreign_key_cascade_applies_to_parent_delete() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE orgs(id INTEGER PRIMARY KEY);
-        CREATE TABLE users(
-            id INTEGER PRIMARY KEY,
-            org_id INTEGER REFERENCES orgs(id) ON DELETE CASCADE
-        );
-        INSERT INTO orgs(id) VALUES (1);
-        INSERT INTO users(id, org_id) VALUES (1, 1);
-        ",
+            CREATE TABLE orgs(id INTEGER PRIMARY KEY);
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                org_id INTEGER REFERENCES orgs(id) ON DELETE CASCADE
+            );
+            INSERT INTO orgs(id) VALUES (1);
+            INSERT INTO users(id, org_id) VALUES (1, 1);
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -105,9 +105,9 @@ async fn foreign_key_cascade_applies_to_parent_delete() {
 async fn returns_affected_rows() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-        INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            ",
     );
     let adapter = SqliteAdapter::new();
 

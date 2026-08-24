@@ -21,9 +21,9 @@ mod command_tags {
     async fn dml_returns_affected_rows_command_tag() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -44,9 +44,9 @@ mod command_tags {
     async fn replace_into_returns_insert_refresh_tag() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -67,9 +67,9 @@ mod command_tags {
     async fn dml_with_following_select_uses_trailing_changes_result() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -90,9 +90,9 @@ mod command_tags {
     async fn dml_with_following_select_preserves_result_set_and_refresh_tag() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -114,9 +114,9 @@ mod command_tags {
     async fn multi_dml_uses_last_effective_refresh_tag() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -124,8 +124,8 @@ mod command_tags {
             .execute_adhoc(
                 &dsn,
                 "INSERT INTO users(id, name) VALUES (2, 'b'), (3, 'c');
-             UPDATE users SET name = 'z' WHERE id IN (1, 2);
-             DELETE FROM users WHERE id = 3",
+                     UPDATE users SET name = 'z' WHERE id IN (1, 2);
+                     DELETE FROM users WHERE id = 3",
                 AccessMode::ReadWrite,
             )
             .await
@@ -144,7 +144,7 @@ mod command_tags {
             .execute_adhoc(
                 &dsn,
                 "CREATE TABLE users(id INTEGER PRIMARY KEY);
-             INSERT INTO users(id) VALUES (1)",
+                     INSERT INTO users(id) VALUES (1)",
                 AccessMode::ReadWrite,
             )
             .await
@@ -173,8 +173,8 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "CREATE TABLE users(id INTEGER PRIMARY KEY);\
-                 INSERT INTO users(id) VALUES (1);\
-                 INSERT INTO missing(id) VALUES (2)",
+                     INSERT INTO users(id) VALUES (1);\
+                     INSERT INTO missing(id) VALUES (2)",
                     AccessMode::ReadWrite,
                 )
                 .await;
@@ -254,8 +254,8 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "PRAGMA journal_mode = WAL;\
-                 CREATE TABLE users(id INTEGER PRIMARY KEY);\
-                 INSERT INTO users(id) VALUES (1)",
+                     CREATE TABLE users(id INTEGER PRIMARY KEY);\
+                     INSERT INTO users(id) VALUES (1)",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -277,8 +277,8 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "PRAGMA foreign_keys = ON;
-                 CREATE TABLE parent(id INTEGER PRIMARY KEY);
-                 PRAGMA foreign_keys",
+                     CREATE TABLE parent(id INTEGER PRIMARY KEY);
+                     PRAGMA foreign_keys",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -324,10 +324,10 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "BEGIN;
-                 INSERT INTO users(id) VALUES (1);
-                 SAVEPOINT sp;
-                 INSERT INTO users(id) VALUES (2);
-                 ROLLBACK",
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -351,11 +351,11 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "BEGIN;
-                 INSERT INTO users(id) VALUES (1);
-                 SAVEPOINT sp;
-                 INSERT INTO users(id) VALUES (2);
-                 ROLLBACK TO sp;
-                 COMMIT",
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     COMMIT",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -379,13 +379,13 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "BEGIN;
-                 INSERT INTO users(id) VALUES (1);
-                 SAVEPOINT sp;
-                 INSERT INTO users(id) VALUES (2);
-                 ROLLBACK TO sp;
-                 INSERT INTO users(id) VALUES (3);
-                 ROLLBACK TO sp;
-                 COMMIT",
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT sp;
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     INSERT INTO users(id) VALUES (3);
+                     ROLLBACK TO sp;
+                     COMMIT",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -409,13 +409,13 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "BEGIN;
-                 INSERT INTO users(id) VALUES (1);
-                 SAVEPOINT outer_sp;
-                 INSERT INTO users(id) VALUES (2);
-                 SAVEPOINT inner_sp;
-                 INSERT INTO users(id) VALUES (3);
-                 ROLLBACK TO outer_sp;
-                 COMMIT",
+                     INSERT INTO users(id) VALUES (1);
+                     SAVEPOINT outer_sp;
+                     INSERT INTO users(id) VALUES (2);
+                     SAVEPOINT inner_sp;
+                     INSERT INTO users(id) VALUES (3);
+                     ROLLBACK TO outer_sp;
+                     COMMIT",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -439,11 +439,11 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "SAVEPOINT sp;
-                 INSERT INTO users(id) VALUES (1);
-                 INSERT INTO users(id) VALUES (2);
-                 ROLLBACK TO sp;
-                 INSERT INTO users(id) VALUES (3);
-                 RELEASE sp",
+                     INSERT INTO users(id) VALUES (1);
+                     INSERT INTO users(id) VALUES (2);
+                     ROLLBACK TO sp;
+                     INSERT INTO users(id) VALUES (3);
+                     RELEASE sp",
                     AccessMode::ReadWrite,
                 )
                 .await
@@ -534,8 +534,8 @@ mod transaction_execution {
                 .execute_adhoc(
                     &dsn,
                     "WITH payload(id) AS (VALUES (1))
-                 INSERT INTO users(id) SELECT id FROM payload;
-                 INSERT INTO missing(id) VALUES (2)",
+                     INSERT INTO users(id) SELECT id FROM payload;
+                     INSERT INTO missing(id) VALUES (2)",
                     AccessMode::ReadWrite,
                 )
                 .await;
@@ -640,9 +640,9 @@ mod returning_results {
     async fn update_returning_preserves_returned_rows() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -663,9 +663,9 @@ mod returning_results {
     async fn delete_returning_preserves_returned_rows() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -693,9 +693,9 @@ mod dml_command_tags {
     async fn dml_with_trailing_line_comment_returns_affected_rows() {
         let (_dir, dsn) = test_support::make_sqlite_db(
             r"
-    CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-    INSERT INTO users(id, name) VALUES (1, 'a');
-    ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a');
+            ",
         );
         let adapter = SqliteAdapter::new();
 
@@ -722,7 +722,7 @@ mod dml_command_tags {
             .execute_adhoc(
                 &dsn,
                 "WITH payload(id) AS (VALUES (1), (2))
-             INSERT INTO users(id) SELECT id FROM payload",
+                     INSERT INTO users(id) SELECT id FROM payload",
                 AccessMode::ReadWrite,
             )
             .await

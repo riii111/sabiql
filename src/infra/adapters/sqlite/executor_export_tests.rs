@@ -4,9 +4,9 @@ use super::*;
 async fn count_query_rows_parses_count_result() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY);
-        INSERT INTO users(id) VALUES (1), (2), (3);
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY);
+            INSERT INTO users(id) VALUES (1), (2), (3);
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -41,9 +41,9 @@ async fn count_query_rows_rejects_fsdir_before_execution() {
 async fn export_to_csv_writes_rows() {
     let (dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-        INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (1, 'a'), (2, 'b');
+            ",
     );
     let path = dir.path().join("users.csv");
     let adapter = SqliteAdapter::new();
@@ -88,10 +88,10 @@ async fn export_to_csv_runs_sql_larger_than_the_windows_command_line_limit() {
 async fn export_to_csv_preserves_records_with_embedded_newlines() {
     let (dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE logs(id INTEGER PRIMARY KEY, message TEXT);
-        INSERT INTO logs(id, message) VALUES (1, 'hello
+            CREATE TABLE logs(id INTEGER PRIMARY KEY, message TEXT);
+            INSERT INTO logs(id, message) VALUES (1, 'hello
 world'), (2, 'done');
-        ",
+            ",
     );
     let path = dir.path().join("logs.csv");
     let adapter = SqliteAdapter::new();

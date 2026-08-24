@@ -4,10 +4,10 @@ use super::*;
 async fn metadata_and_rows_use_at_most_two_sqlite_processes() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-            CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE, org_id INTEGER);
-            CREATE INDEX idx_users_org_id ON users(org_id);
-            INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 7);
-            ",
+                CREATE TABLE users(id INTEGER PRIMARY KEY, email TEXT UNIQUE, org_id INTEGER);
+                CREATE INDEX idx_users_org_id ON users(org_id);
+                INSERT INTO users(id, email, org_id) VALUES (1, 'a@example.com', 7);
+                ",
     );
     let (adapter, process_counter) = SqliteAdapter::with_process_counter(&dsn);
 
@@ -23,9 +23,9 @@ async fn metadata_and_rows_use_at_most_two_sqlite_processes() {
 async fn returns_columns_rows_and_respects_pagination() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
-        INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES (2, 'b'), (1, 'a'), (3, 'c');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -46,9 +46,9 @@ async fn returns_columns_rows_and_respects_pagination() {
 async fn primary_keyless_preview_exposes_only_user_columns() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE logs(rowid TEXT, message TEXT);
-        INSERT INTO logs(rowid, message) VALUES ('user-visible', 'first');
-        ",
+            CREATE TABLE logs(rowid TEXT, message TEXT);
+            INSERT INTO logs(rowid, message) VALUES ('user-visible', 'first');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -78,9 +78,9 @@ async fn rejects_non_main_schema() {
 async fn preserves_nul_text_primary_key_for_preview_and_delete() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT);
-        INSERT INTO users(id, name) VALUES ('a' || char(0) || 'bc', 'target'), ('only', 'other');
-        ",
+            CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT);
+            INSERT INTO users(id, name) VALUES ('a' || char(0) || 'bc', 'target'), ('only', 'other');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -125,9 +125,9 @@ async fn preserves_nul_text_primary_key_for_preview_and_delete() {
 async fn excludes_hidden_columns_from_preview_select_list() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE VIRTUAL TABLE notes_fts USING fts5(body);
-        INSERT INTO notes_fts(body) VALUES ('hello');
-        ",
+            CREATE VIRTUAL TABLE notes_fts USING fts5(body);
+            INSERT INTO notes_fts(body) VALUES ('hello');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -162,10 +162,10 @@ async fn empty_rowid_table_preview_keeps_all_visible_columns() {
 async fn preserves_distinct_c0_text_values_in_preview() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY, value TEXT);
-        INSERT INTO users(value) VALUES (char(1) || char(1));
-        INSERT INTO users(value) VALUES (char(1) || char(92) || 'u0001');
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, value TEXT);
+            INSERT INTO users(value) VALUES (char(1) || char(1));
+            INSERT INTO users(value) VALUES (char(1) || char(92) || 'u0001');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -188,9 +188,9 @@ async fn preserves_distinct_c0_text_values_in_preview() {
 async fn preserves_sentinel_like_text_without_nul_in_preview() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(id INTEGER PRIMARY KEY, token TEXT);
-        INSERT INTO users(token) VALUES (char(1) || 'SABIQL_HEX:4142');
-        ",
+            CREATE TABLE users(id INTEGER PRIMARY KEY, token TEXT);
+            INSERT INTO users(token) VALUES (char(1) || 'SABIQL_HEX:4142');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
@@ -212,13 +212,13 @@ async fn preserves_sentinel_like_text_without_nul_in_preview() {
 async fn keeps_generated_columns_in_preview_select_list() {
     let (_dir, dsn) = test_support::make_sqlite_db(
         r"
-        CREATE TABLE users(
-            id INTEGER PRIMARY KEY,
-            name TEXT,
-            name_upper TEXT GENERATED ALWAYS AS (upper(name)) STORED
-        );
-        INSERT INTO users(name) VALUES ('alice');
-        ",
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                name_upper TEXT GENERATED ALWAYS AS (upper(name)) STORED
+            );
+            INSERT INTO users(name) VALUES ('alice');
+            ",
     );
     let adapter = SqliteAdapter::new();
 
