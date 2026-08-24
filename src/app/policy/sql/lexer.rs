@@ -29,15 +29,10 @@ pub struct TableReference {
     pub alias: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CteDefinition {
-    pub name: String,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct SqlContext {
     pub tables: Vec<TableReference>,
-    pub ctes: Vec<CteDefinition>,
+    pub ctes: Vec<String>,
     // Target table for UPDATE/DELETE/INSERT statements (for column priority boost)
     pub target_table: Option<TableReference>,
 }
@@ -1148,7 +1143,7 @@ impl SqlLexer {
         )
     }
 
-    pub fn extract_cte_definitions(&self, tokens: &[Token]) -> Vec<CteDefinition> {
+    pub fn extract_cte_definitions(&self, tokens: &[Token]) -> Vec<String> {
         let mut ctes = Vec::new();
         let mut i = 0;
 
@@ -1190,7 +1185,7 @@ impl SqlLexer {
                     {
                         // Don't treat SELECT as a CTE name
                         if name != "SELECT" {
-                            ctes.push(CteDefinition { name: name.clone() });
+                            ctes.push(name.clone());
                         }
                         i += 1;
 
@@ -2106,7 +2101,7 @@ mod tests {
             let ctes = l.extract_cte_definitions(&tokens);
 
             assert_eq!(ctes.len(), 1);
-            assert_eq!(ctes[0].name, "active_users");
+            assert_eq!(ctes[0], "active_users");
         }
 
         #[test]
@@ -2118,7 +2113,7 @@ mod tests {
             let ctes = l.extract_cte_definitions(&tokens);
 
             assert_eq!(ctes.len(), 1);
-            assert_eq!(ctes[0].name, "tree");
+            assert_eq!(ctes[0], "tree");
         }
 
         #[test]
@@ -2130,8 +2125,8 @@ mod tests {
             let ctes = l.extract_cte_definitions(&tokens);
 
             assert_eq!(ctes.len(), 2);
-            assert_eq!(ctes[0].name, "cte1");
-            assert_eq!(ctes[1].name, "cte2");
+            assert_eq!(ctes[0], "cte1");
+            assert_eq!(ctes[1], "cte2");
         }
 
         #[test]
@@ -2171,11 +2166,7 @@ mod tests {
                 let context = lexer.build_context(&tokens, cursor_pos);
 
                 assert_eq!(
-                    context
-                        .ctes
-                        .iter()
-                        .map(|cte| cte.name.as_str())
-                        .collect::<Vec<_>>(),
+                    context.ctes.iter().map(String::as_str).collect::<Vec<_>>(),
                     vec!["current_cte"]
                 );
                 assert_eq!(
