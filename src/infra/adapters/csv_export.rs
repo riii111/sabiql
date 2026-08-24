@@ -63,27 +63,23 @@ fn temporary_export_path(final_path: &Path) -> PathBuf {
 }
 
 struct RemoveOnDropGuard {
-    path: PathBuf,
-    cleanup: bool,
+    path: Option<PathBuf>,
 }
 
 impl RemoveOnDropGuard {
     fn new(path: PathBuf) -> Self {
-        Self {
-            path,
-            cleanup: true,
-        }
+        Self { path: Some(path) }
     }
 
     fn disarm(&mut self) {
-        self.cleanup = false;
+        self.path = None;
     }
 }
 
 impl Drop for RemoveOnDropGuard {
     fn drop(&mut self) {
-        if self.cleanup {
-            let _ = std::fs::remove_file(&self.path);
+        if let Some(path) = &self.path {
+            let _ = std::fs::remove_file(path);
         }
     }
 }
