@@ -19,12 +19,10 @@ use super::super::{
     },
 };
 
-#[derive(Debug, Clone)]
-enum MySqlColumnUnique {
-    None,
-    SingleColumnIndex,
-}
-
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "MySQL catalog flags are independent column attributes"
+)]
 #[derive(Debug, Clone)]
 pub(super) struct MySqlColumnMetadata {
     name: String,
@@ -38,7 +36,7 @@ pub(super) struct MySqlColumnMetadata {
     comment: Option<String>,
     pub(super) ordinal_position: i32,
     primary_key_position: Option<i32>,
-    unique: MySqlColumnUnique,
+    unique: bool,
     invisible: bool,
     generated: bool,
 }
@@ -355,7 +353,7 @@ pub(super) fn parse_column_metadata_row(
         primary_key_position: optional_text(&row[7], "PRIMARY_KEY_POSITION")?
             .map(|value| parse_positive_i32_text(value, "PRIMARY_KEY_POSITION"))
             .transpose()?,
-        unique: MySqlColumnUnique::None,
+        unique: false,
         invisible: extra
             .split_ascii_whitespace()
             .any(|word| word.eq_ignore_ascii_case("INVISIBLE")),
@@ -479,19 +477,17 @@ pub(super) fn foreign_keys_from_metadata(
 
 pub(super) fn column_from_metadata(metadata: &MySqlColumnMetadata) -> Column {
     let primary_key = metadata.primary_key_position.is_some();
-    let attributes = ColumnAttributes::from_parts(
-        metadata.nullable,
-        primary_key,
-        matches!(metadata.unique, MySqlColumnUnique::SingleColumnIndex),
-    ) | if metadata.invisible {
-        ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
-    } else {
-        ColumnAttributes::empty()
-    } | if metadata.generated {
-        ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
-    } else {
-        ColumnAttributes::empty()
-    };
+    let attributes = ColumnAttributes::from_parts(metadata.nullable, primary_key, metadata.unique)
+        | if metadata.invisible {
+            ColumnAttributes::HIDDEN | ColumnAttributes::READ_ONLY
+        } else {
+            ColumnAttributes::empty()
+        }
+        | if metadata.generated {
+            ColumnAttributes::GENERATED | ColumnAttributes::READ_ONLY
+        } else {
+            ColumnAttributes::empty()
+        };
     Column {
         name: metadata.name.clone(),
         data_type: metadata.data_type.clone(),
@@ -527,11 +523,7 @@ pub(super) fn mark_single_column_unique(
     unique_columns: &HashSet<String>,
 ) {
     for column in columns {
-        column.unique = if unique_columns.contains(&column.name) {
-            MySqlColumnUnique::SingleColumnIndex
-        } else {
-            MySqlColumnUnique::None
-        };
+        column.unique = unique_columns.contains(&column.name);
     }
 }
 
