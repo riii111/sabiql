@@ -73,13 +73,6 @@ impl ConnectionField {
         }
     }
 
-    pub fn is_required(self) -> bool {
-        matches!(
-            self,
-            Self::Name | Self::SqlitePath | Self::TransportPath | Self::Port | Self::Database
-        )
-    }
-
     pub fn max_chars(self) -> Option<usize> {
         match self {
             Self::Name => Some(50),
@@ -732,29 +725,6 @@ mod tests {
     mod connection_field {
         use super::*;
 
-        #[rstest]
-        #[case(ConnectionField::DatabaseType, false)]
-        #[case(ConnectionField::Transport, false)]
-        #[case(ConnectionField::Name, true)]
-        #[case(ConnectionField::SqlitePath, true)]
-        #[case(ConnectionField::TransportPath, true)]
-        #[case(ConnectionField::Host, false)]
-        #[case(ConnectionField::Port, true)]
-        #[case(ConnectionField::Database, true)]
-        #[case(ConnectionField::User, false)]
-        #[case(ConnectionField::Password, false)]
-        #[case(ConnectionField::SslMode, false)]
-        #[case(ConnectionField::CleartextAuth, false)]
-        #[case(ConnectionField::SslCa, false)]
-        #[case(ConnectionField::SslCert, false)]
-        #[case(ConnectionField::SslKey, false)]
-        #[case(ConnectionField::ServerPublicKeyPath, false)]
-        fn is_required_returns_correct_value(
-            #[case] field: ConnectionField,
-            #[case] expected: bool,
-        ) {
-            assert_eq!(field.is_required(), expected);
-        }
         #[test]
         fn fields_for_returns_postgres_fields_in_order() {
             let fields = ConnectionField::fields_for(
