@@ -31,7 +31,7 @@ pub(crate) struct MySqlConnectionProbeTaskOwner {
 }
 
 impl MySqlConnectionProbeTaskOwner {
-    pub(crate) async fn spawn<F>(&self, task: F)
+    pub(crate) async fn replace<F>(&self, task: F)
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
@@ -174,7 +174,7 @@ pub(crate) async fn run(
                 let target = ConnectionTarget::from_profile(&profile, dsn);
                 let probe = Arc::clone(&connection.mysql_connection_probe);
                 mysql_connection_probe_task
-                    .spawn(async move {
+                    .replace(async move {
                         match probe.probe(&target.dsn).await {
                             Ok(probe_result) => {
                                 let save_result = tokio::task::spawn_blocking(move || {
@@ -278,7 +278,7 @@ pub(crate) async fn run(
             let probe = Arc::clone(&connection.mysql_connection_probe);
             let tx = action_tx.clone();
             mysql_connection_probe_task
-                .spawn(async move {
+                .replace(async move {
                     match probe.probe(&target.dsn).await {
                         Ok(probe_result) => tx
                             .send(Action::MySqlConnectionProbeCompleted {
