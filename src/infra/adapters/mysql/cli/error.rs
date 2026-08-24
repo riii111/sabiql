@@ -1,7 +1,7 @@
 use std::io::{self, Write};
 
 use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, is_mysql_connect_timeout_message,
+    DatabaseCli, DbOperationError, is_mysql_connect_timeout_message, mysql_server_error_code,
 };
 
 use super::probe::mysql_tls_failure_kind;
@@ -131,16 +131,6 @@ fn classify_mysql_server_error(
         3024 => error(DbOperationError::Timeout),
         _ => return None,
     })
-}
-
-fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
-    let marker = "error ";
-    let start = lowercase_details.find(marker)? + marker.len();
-    let digits = &lowercase_details[start..];
-    let end = digits
-        .find(|character: char| !character.is_ascii_digit())
-        .unwrap_or(digits.len());
-    digits[..end].parse().ok()
 }
 
 pub(super) fn clean_mysql_stderr(stderr: &[u8], fallback: &str) -> String {

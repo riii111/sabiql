@@ -2,6 +2,7 @@ use crate::policy::password_masking::mask_password;
 use crate::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
     SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind, is_mysql_connect_timeout_message,
+    mysql_server_error_code,
 };
 use sabiql_domain::connection::MySqlSslMode;
 use url::Url;
@@ -188,15 +189,6 @@ impl ConnectionErrorKind {
             Self::HostUnreachable | Self::ConnectionLost | Self::Timeout | Self::ConnectionRefused
         )
     }
-}
-
-fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
-    let start = lowercase_details.find("error ")? + "error ".len();
-    let digits = &lowercase_details[start..];
-    let end = digits
-        .find(|character: char| !character.is_ascii_digit())
-        .unwrap_or(digits.len());
-    digits[..end].parse().ok()
 }
 
 fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
