@@ -561,7 +561,7 @@ mod tests {
                 "SELECT * FROM users",
             );
             state.explain.set_error("stale error".to_string());
-            let diagnostics_run_id = state.sqlite_diagnostics.begin_fetch();
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_core_fetch();
             state
                 .sqlite_diagnostics
                 .set_core_loaded(diagnostics_run_id, SqliteDiagnosticsSnapshot::default());

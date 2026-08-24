@@ -260,7 +260,7 @@ impl SettingsStore for NoopSettingsStore {
 pub struct NoopSqliteDiagnosticsProvider;
 #[async_trait::async_trait]
 impl SqliteDiagnosticsProvider for NoopSqliteDiagnosticsProvider {
-    async fn fetch_diagnostics_core(
+    async fn fetch_core_diagnostics(
         &self,
         _dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {

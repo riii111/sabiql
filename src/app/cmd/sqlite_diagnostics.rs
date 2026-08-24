@@ -17,7 +17,7 @@ pub fn run(
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
             tokio::spawn(async move {
-                let action = match provider.fetch_diagnostics_core(&dsn).await {
+                let action = match provider.fetch_core_diagnostics(&dsn).await {
                     Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
                         dsn,
                         run_id,
@@ -62,7 +62,7 @@ mod tests {
     async fn dispatches_core_snapshot_on_success() {
         let (tx, mut rx) = mpsc::channel(1);
         let mut provider = MockSqliteDiagnosticsProvider::new();
-        provider.expect_fetch_diagnostics_core().returning(|_| {
+        provider.expect_fetch_core_diagnostics().returning(|_| {
             Ok(SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("3.45.0"),
                 ..Default::default()
@@ -122,7 +122,7 @@ mod tests {
         let (tx, mut rx) = mpsc::channel(1);
         let mut provider = MockSqliteDiagnosticsProvider::new();
         provider
-            .expect_fetch_diagnostics_core()
+            .expect_fetch_core_diagnostics()
             .returning(|_| Err(DbOperationError::QueryFailed("boom".to_string())));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;

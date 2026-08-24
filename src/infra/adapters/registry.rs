@@ -277,7 +277,7 @@ impl MySqlConnectionProbe for DbAdapterRegistry {
 
 #[async_trait]
 impl SqliteDiagnosticsProvider for DbAdapterRegistry {
-    async fn fetch_diagnostics_core(
+    async fn fetch_core_diagnostics(
         &self,
         dsn: &str,
     ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
@@ -287,7 +287,7 @@ impl SqliteDiagnosticsProvider for DbAdapterRegistry {
                     "SQLite diagnostics are unavailable for non-SQLite connections".to_string(),
                 ))
             }
-            DatabaseType::SQLite => self.sqlite.fetch_diagnostics_core(dsn).await,
+            DatabaseType::SQLite => self.sqlite.fetch_core_diagnostics(dsn).await,
         }
     }
 
@@ -587,7 +587,7 @@ mod tests {
         let registry = DbAdapterRegistry::new();
 
         let result = registry
-            .fetch_diagnostics_core("postgres://localhost/db")
+            .fetch_core_diagnostics("postgres://localhost/db")
             .await;
 
         assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));

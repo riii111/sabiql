@@ -826,7 +826,7 @@ mod tests {
         }
 
         fn seed_sqlite_diagnostics(state: &mut AppState) {
-            let run_id = state.sqlite_diagnostics.begin_fetch();
+            let run_id = state.sqlite_diagnostics.begin_core_fetch();
             state
                 .sqlite_diagnostics
                 .set_core_loaded(run_id, SqliteDiagnosticsSnapshot::default());

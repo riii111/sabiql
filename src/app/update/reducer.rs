@@ -470,7 +470,7 @@ mod tests {
             );
 
             let mut diagnostics_state = postgres_state();
-            let run_id = diagnostics_state.sqlite_diagnostics.begin_fetch();
+            let run_id = diagnostics_state.sqlite_diagnostics.begin_core_fetch();
             assert_unsupported_action_is_a_noop(
                 &mut diagnostics_state,
                 Action::SqliteDiagnosticsCoreLoaded {
