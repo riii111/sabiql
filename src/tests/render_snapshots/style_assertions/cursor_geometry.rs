@@ -6,7 +6,7 @@ fn json_detail_state() -> (AppState, Instant) {
     state
         .session
         .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),
         data_type: "jsonb".to_string(),
@@ -103,7 +103,7 @@ fn sql_modal_normal_and_insert_use_distinct_cursor_styles() {
 
 #[test]
 fn help_uses_block_cursor_while_browsing_and_terminal_cursor_while_filtering() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);

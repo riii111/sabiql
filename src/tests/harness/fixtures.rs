@@ -45,7 +45,7 @@ pub fn sample_metadata() -> DatabaseMetadata {
     metadata
 }
 
-pub fn sample_table_detail() -> Table {
+pub fn sample_postgres_table_detail() -> Table {
     let mut table = minimal_table("public", "users");
     table.owner = Some("postgres".to_string());
     table.columns = vec![

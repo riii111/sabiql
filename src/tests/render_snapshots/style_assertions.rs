@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use super::*;
 use harness::{
-    TEST_HEIGHT, TEST_WIDTH, connected_state, render_and_get_buffer,
+    TEST_HEIGHT, TEST_WIDTH, postgres_connected_state, render_and_get_buffer,
     render_and_get_buffer_at_with_theme, render_and_get_cursor_position, table_detail_loaded_state,
     with_current_result,
 };

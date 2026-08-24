@@ -11,7 +11,7 @@ fn json_detail_state() -> (AppState, std::time::Instant) {
     state
         .session
         .mark_connected(Arc::new(fixtures::sample_metadata()));
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.columns.push(Column {
         name: "settings".to_string(),
         data_type: "jsonb".to_string(),
@@ -120,7 +120,7 @@ fn sqlite_json_text_cell_detail_state() -> (AppState, std::time::Instant) {
         false,
     )];
     state.session.mark_connected(Arc::new(metadata));
-    let mut table = fixtures::sample_table_detail();
+    let mut table = fixtures::sample_postgres_table_detail();
     table.name = "notes".to_string();
     table.columns = vec![
         Column {
