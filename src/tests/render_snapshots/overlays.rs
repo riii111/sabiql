@@ -16,7 +16,7 @@ const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
 
 #[test]
 fn sql_modal_with_completion() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -33,7 +33,7 @@ fn sql_modal_with_completion() {
 
 #[test]
 fn sql_modal_completion_popup_with_scroll() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -109,7 +109,7 @@ fn sql_modal_completion_popup_with_scroll() {
 
 #[test]
 fn sql_modal_unknown_risk_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -131,7 +131,7 @@ fn sql_modal_unknown_risk_acknowledge() {
 
 #[test]
 fn sql_modal_high_risk_without_target_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -153,7 +153,7 @@ fn sql_modal_high_risk_without_target_acknowledge() {
 
 #[test]
 fn sql_modal_non_atomic_transaction_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -175,7 +175,7 @@ fn sql_modal_non_atomic_transaction_acknowledge() {
 
 #[test]
 fn sql_modal_analyze_unknown_risk_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -194,7 +194,7 @@ fn sql_modal_analyze_unknown_risk_acknowledge() {
 
 #[test]
 fn sql_modal_analyze_read_only_acknowledge() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::SqlModal);
@@ -519,7 +519,7 @@ fn sql_modal_confirming_high_unmatched() {
 
 #[test]
 fn help_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -531,7 +531,7 @@ fn help_overlay() {
 
 #[test]
 fn help_overlay_filtered_current_result() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.ui.set_focused_pane(FocusedPane::Result);
@@ -551,7 +551,7 @@ fn help_overlay_filtered_current_result() {
 
 #[test]
 fn help_overlay_long_key_rows() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -564,7 +564,7 @@ fn help_overlay_long_key_rows() {
 
 #[test]
 fn help_overlay_narrow_horizontal_scroll() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal_sized(50, 24);
 
     state.modal.set_mode(InputMode::Help);
@@ -580,7 +580,7 @@ fn help_overlay_narrow_horizontal_scroll() {
 
 #[test]
 fn command_palette_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandPalette);
@@ -592,7 +592,7 @@ fn command_palette_overlay() {
 
 #[test]
 fn settings_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -605,7 +605,7 @@ fn settings_overlay() {
 
 #[test]
 fn settings_overlay_keymap() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -619,7 +619,7 @@ fn settings_overlay_keymap() {
 
 #[test]
 fn settings_overlay_er_diagram() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.settings.open(state.ui.theme_id());
@@ -634,7 +634,7 @@ fn settings_overlay_er_diagram() {
 
 #[test]
 fn settings_overlay_er_diagram_custom_browser() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state
@@ -652,7 +652,7 @@ fn settings_overlay_er_diagram_custom_browser() {
 
 #[test]
 fn table_picker_overlay() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::TablePicker);
@@ -688,7 +688,7 @@ fn mysql_table_picker_shows_table_names_without_database() {
 
 #[test]
 fn command_line_input() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::CommandLine);

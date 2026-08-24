@@ -2,7 +2,7 @@ use crate::tests::harness;
 
 use harness::fixtures;
 use harness::{
-    connected_state, create_test_state, create_test_terminal, create_test_terminal_sized,
+    create_test_state, create_test_terminal, create_test_terminal_sized, postgres_connected_state,
     render_and_get_buffer_at, render_to_string, test_instant,
 };
 

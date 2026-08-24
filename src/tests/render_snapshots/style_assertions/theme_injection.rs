@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn injected_palette_changes_shell_modal_and_picker_styles() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let now = test_instant();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
@@ -72,7 +72,7 @@ mod settings_theme {
 
     #[test]
     fn preview_uses_selected_theme_while_chrome_keeps_current() {
-        let mut state = connected_state();
+        let mut state = postgres_connected_state();
         let mut terminal = create_test_terminal();
 
         state.settings.open(ThemeId::Default);
@@ -162,7 +162,7 @@ fn test_contrast_theme_applies_result_pane_table_colors() {
 
 #[test]
 fn light_theme_applies_shell_and_sql_colors() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let now = test_instant();
     let mut terminal = create_test_terminal();
 

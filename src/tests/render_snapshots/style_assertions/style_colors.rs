@@ -76,7 +76,7 @@ fn staged_delete_row_uses_dark_red_bg() {
 
 #[test]
 fn scrim_applies_dim_modifier() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -131,7 +131,7 @@ fn result_highlight_respects_injected_now() {
 
 #[test]
 fn modal_border_uses_theme_color() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal();
 
     state.modal.set_mode(InputMode::Help);
@@ -196,7 +196,7 @@ fn header_status_uses_success_warning_and_error_colors() {
 
 #[test]
 fn read_only_header_uses_warning_badge_style() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     state.session.activate_connection_with_dsn(
         &ConnectionId::new(),
         "test",
@@ -222,7 +222,7 @@ fn read_only_header_uses_warning_badge_style() {
 
 #[test]
 fn help_overlay_uses_section_header_and_scrollbar_colors() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let now = test_instant();
     let mut terminal = create_test_terminal();
 
@@ -259,7 +259,7 @@ fn help_overlay_uses_section_header_and_scrollbar_colors() {
 
 #[test]
 fn help_overlay_omits_scrollbars_when_content_fits() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let mut terminal = create_test_terminal_sized(180, 300);
 
     state.modal.set_mode(InputMode::Help);
@@ -282,7 +282,7 @@ fn help_overlay_omits_scrollbars_when_content_fits() {
 
 #[test]
 fn test_contrast_theme_applies_help_overlay_navigation_colors() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let now = test_instant();
     let mut terminal = create_test_terminal();
 

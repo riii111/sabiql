@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn sql_completion_popup_uses_injected_theme_styles() {
-    let mut state = connected_state();
+    let mut state = postgres_connected_state();
     let now = test_instant();
     let mut terminal = create_test_terminal();
     let theme = ThemePalette {
