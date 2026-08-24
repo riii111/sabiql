@@ -80,9 +80,9 @@ pub(super) fn reduce_confirm_dialog(
                     if reject_pending_mysql_connection_probe(state, now) {
                         return DispatchResult::handled();
                     }
-                    if state.session.dsn() == Some(dsn.as_str())
-                        && state.query.is_current_run(run_id)
-                    {
+                    if state.is_stale_query_run(&dsn, run_id) {
+                        DispatchResult::handled()
+                    } else {
                         DispatchResult::handled_with(vec![Effect::ExportCsv {
                             dsn,
                             run_id,
@@ -90,8 +90,6 @@ pub(super) fn reduce_confirm_dialog(
                             file_name,
                             row_count,
                         }])
-                    } else {
-                        DispatchResult::handled()
                     }
                 }
                 Some(ConfirmIntent::CsvExportCached {
@@ -104,9 +102,9 @@ pub(super) fn reduce_confirm_dialog(
                     if reject_pending_mysql_connection_probe(state, now) {
                         return DispatchResult::handled();
                     }
-                    if state.session.dsn() == Some(dsn.as_str())
-                        && state.query.is_current_run(run_id)
-                    {
+                    if state.is_stale_query_run(&dsn, run_id) {
+                        DispatchResult::handled()
+                    } else {
                         DispatchResult::handled_with(vec![Effect::ExportCsvFromCache {
                             dsn,
                             run_id,
@@ -115,8 +113,6 @@ pub(super) fn reduce_confirm_dialog(
                             values: snapshot.values,
                             row_count,
                         }])
-                    } else {
-                        DispatchResult::handled()
                     }
                 }
                 None => DispatchResult::handled(),
@@ -128,9 +124,7 @@ pub(super) fn reduce_confirm_dialog(
                 Some(
                     ConfirmIntent::CsvExportRerunnable { dsn, run_id, .. }
                     | ConfirmIntent::CsvExportCached { dsn, run_id, .. },
-                ) => {
-                    state.session.dsn() == Some(dsn.as_str()) && state.query.is_current_run(*run_id)
-                }
+                ) => !state.is_stale_query_run(dsn, *run_id),
                 _ => false,
             };
             state.result_interaction.clear_write_preview();
