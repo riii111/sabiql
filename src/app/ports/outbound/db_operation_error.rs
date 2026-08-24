@@ -119,6 +119,13 @@ pub enum DbOperationError {
 }
 
 impl DbOperationError {
+    pub fn post_change_refresh_scope(&self) -> Option<RefreshScope> {
+        match self {
+            Self::QueryFailedAfterChange { refresh_scope, .. } => Some(*refresh_scope),
+            _ => None,
+        }
+    }
+
     pub fn summary(&self) -> &'static str {
         match self {
             Self::ConnectionFailed(_) => "Connection failed",
@@ -327,6 +334,22 @@ mod tests {
         assert!(!is_mysql_connect_timeout_message(
             "Can't connect to MySQL server (host) (111)"
         ));
+    }
+
+    mod post_change_refresh_scope {
+        use super::*;
+
+        #[test]
+        fn wrapped_none_is_distinct_from_an_unwrapped_error() {
+            let source = DbOperationError::QueryFailed("failed".to_string());
+            let error = DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(source.clone()),
+                refresh_scope: RefreshScope::None,
+            };
+
+            assert_eq!(source.post_change_refresh_scope(), None);
+            assert_eq!(error.post_change_refresh_scope(), Some(RefreshScope::None));
+        }
     }
 
     mod summaries_and_hints {

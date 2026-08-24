@@ -16,7 +16,7 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::ports::outbound::{AccessMode, DbOperationError};
+use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::{
@@ -354,10 +354,9 @@ pub fn reduce_write(
             }
 
             state.query.mark_idle();
-            let refresh_scope = match error {
-                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
-                _ => RefreshScope::None,
-            };
+            let refresh_scope = error
+                .post_change_refresh_scope()
+                .unwrap_or(RefreshScope::None);
             let operation = state.result_interaction.complete_write_failure();
             state.query.clear_delete_refresh_target();
             state.messages.set_error_at(error.user_message(), now);
