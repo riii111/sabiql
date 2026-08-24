@@ -81,7 +81,7 @@ pub fn reduce_connection_lifecycle(
                 DispatchResult::handled_with(termination_effects(&state.query, effects))
             } else {
                 // No cache: reset and fetch metadata
-                reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+                reset_for_new_connection(state, target);
                 let run_id = state.session.begin_connecting(dsn);
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
@@ -135,7 +135,7 @@ pub fn reduce_connection_lifecycle(
             }
 
             state.connection_caches.remove(id);
-            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            reset_for_new_connection(state, target);
             state
                 .session
                 .set_mysql_lower_case_table_names(*lower_case_table_names);

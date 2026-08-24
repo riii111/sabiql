@@ -255,15 +255,14 @@ pub fn reduce_connection_setup(
             let ConnectionTarget {
                 id,
                 dsn,
-                name,
                 database_type,
-                database,
+                ..
             } = target;
             state.connection_setup.set_first_run(false);
             state.modal.set_mode(InputMode::Normal);
             state.connection_caches.remove(id);
 
-            reset_for_new_connection(state, id, dsn, name, *database_type, database.as_deref());
+            reset_for_new_connection(state, target);
             if let Some(lower_case_table_names) = mysql_lower_case_table_names {
                 state
                     .session

@@ -1,5 +1,5 @@
 use crate::cmd::effect::Effect;
-use crate::domain::connection::{ConnectionId, DatabaseType};
+use crate::domain::connection::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::cache::ConnectionCache;
 use crate::model::shared::inspector_tab::InspectorTab;
@@ -27,22 +27,19 @@ fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab)
     state.sql_modal.set_active_tab(sql_modal_tab);
 }
 
-pub(super) fn reset_for_new_connection(
-    state: &mut AppState,
-    id: &ConnectionId,
-    dsn: &str,
-    name: &str,
-    database_type: DatabaseType,
-    database: Option<&str>,
-) {
+pub(super) fn reset_for_new_connection(state: &mut AppState, target: &ConnectionTarget) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
     reset_active_connection_state_inner(state);
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);
-    state
-        .session
-        .activate_connection_with_target(id, name, database_type, dsn, database);
+    state.session.activate_connection_with_target(
+        &target.id,
+        &target.name,
+        target.database_type,
+        &target.dsn,
+        target.database.as_deref(),
+    );
     reconcile_connection_state(state, inspector_tab);
 }
 
