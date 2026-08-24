@@ -41,7 +41,7 @@ use sabiql_app::update::reducer::reduce;
 use sabiql_infra::adapters::{
     ArboardClipboard, CsvCachedResultExporter, DbAdapterRegistry, FileConfigWriter,
     FileQueryHistoryStore, FsErLogWriter, FsSqlitePathValidator, NativeFolderOpener,
-    PgServiceFileReader, PostgresAdapter, TomlConnectionStore, TomlSettingsStore,
+    PgServiceFileReader, TomlConnectionStore, TomlSettingsStore,
 };
 use sabiql_infra::config::project_root::{find_project_root, get_project_name};
 use sabiql_infra::export::DotExporter;
@@ -127,8 +127,7 @@ async fn main() -> Result<()> {
 
     let (action_tx, mut action_rx) = mpsc::channel::<Action>(256);
 
-    let postgres_adapter = Arc::new(PostgresAdapter::new());
-    let adapter_registry = Arc::new(DbAdapterRegistry::new(Arc::clone(&postgres_adapter)));
+    let adapter_registry = Arc::new(DbAdapterRegistry::new());
     let metadata_cache = TtlCache::new(300);
     let completion_engine = RefCell::new(CompletionEngine::new());
     let connection_store = TomlConnectionStore::new()?;

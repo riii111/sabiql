@@ -278,15 +278,13 @@ mod connection {
 
 mod metadata_fetch {
 
-    use std::sync::Arc;
-
     use super::shared::{MYSQL_COMPOSITE_TABLE, MYSQL_VIEW};
     use crate::tests::harness::mysql::{
         MYSQL_FIXTURE_TABLE, mysql_integration_config, with_mysql_test_db,
     };
     use sabiql_app::ports::outbound::{AccessMode, DdlGenerator, MetadataProvider, QueryExecutor};
     use sabiql_domain::{FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming};
-    use sabiql_infra::adapters::{DbAdapterRegistry, PostgresAdapter};
+    use sabiql_infra::adapters::DbAdapterRegistry;
 
     const MYSQL_FK_PARENT: &str = "mysql_metadata_parent";
     const MYSQL_FK_CHILD: &str = "mysql_metadata_child";
@@ -297,7 +295,7 @@ mod metadata_fetch {
     async fn registry_fetches_mysql_effective_user_for_the_connection_header() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
-                let registry = DbAdapterRegistry::new(Arc::new(PostgresAdapter::new()));
+                let registry = DbAdapterRegistry::new();
                 let effective_user = registry
                     .fetch_effective_user(db.dsn())
                     .await
