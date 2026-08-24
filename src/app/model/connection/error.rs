@@ -278,8 +278,8 @@ impl ConnectionErrorInfo {
     }
 
     pub fn from_db_operation_error_with_dsn(error: &DbOperationError, dsn: &str) -> Self {
-        let raw_details = error.raw_details().into_owned();
-        let kind = mysql_ssl_mode_from_dsn(dsn)
+        let mut info = Self::from_db_operation_error(error);
+        info.kind = mysql_ssl_mode_from_dsn(dsn)
             .and_then(|ssl_mode| match (ssl_mode, error) {
                 (
                     MySqlSslMode::VerifyCa,
@@ -297,9 +297,9 @@ impl ConnectionErrorInfo {
                 ) => Some(ConnectionErrorKind::MySqlHostnameVerificationFailed),
                 _ => None,
             })
-            .unwrap_or_else(|| Self::from_db_operation_error(error).kind);
+            .unwrap_or(info.kind);
 
-        Self::with_kind(kind, raw_details)
+        info
     }
 
     pub fn masked_details(&self) -> &str {
