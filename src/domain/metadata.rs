@@ -1,6 +1,5 @@
 use super::schema::Schema;
 use super::table::TableSummary;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct DatabaseMetadata {
@@ -18,14 +17,6 @@ impl DatabaseMetadata {
             table_summaries: Vec::new(),
         }
     }
-
-    pub fn tables_by_schema(&self) -> HashMap<&str, Vec<&TableSummary>> {
-        let mut map: HashMap<&str, Vec<&TableSummary>> = HashMap::new();
-        for table in &self.table_summaries {
-            map.entry(&table.schema).or_default().push(table);
-        }
-        map
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -35,36 +26,4 @@ pub enum MetadataState {
     Loading,
     Loaded,
     Error(String),
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    mod tables_by_schema {
-        use super::*;
-
-        #[test]
-        fn multiple_schemas_groups_correctly() {
-            let mut meta = DatabaseMetadata::new("testdb".to_string());
-            meta.table_summaries = vec![
-                TableSummary::new("public".to_string(), "users".to_string(), None, false),
-                TableSummary::new("public".to_string(), "orders".to_string(), None, false),
-                TableSummary::new("audit".to_string(), "logs".to_string(), None, false),
-            ];
-
-            let grouped = meta.tables_by_schema();
-
-            assert_eq!(grouped.len(), 2);
-            assert_eq!(grouped["public"].len(), 2);
-            assert_eq!(grouped["audit"].len(), 1);
-        }
-
-        #[test]
-        fn empty_tables_returns_empty_map() {
-            let meta = DatabaseMetadata::new("testdb".to_string());
-
-            assert!(meta.tables_by_schema().is_empty());
-        }
-    }
 }
