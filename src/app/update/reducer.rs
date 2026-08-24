@@ -333,6 +333,18 @@ mod tests {
         use crate::model::shared::text_input::TextInputLike;
         use crate::update::action::{ErDiagramInfo, ScrollAmount, ScrollDirection, ScrollTarget};
 
+        fn sqlite_state() -> AppState {
+            let mut state = create_test_state();
+            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+            state
+        }
+
+        fn postgres_state() -> AppState {
+            let mut state = create_test_state();
+            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
+            state
+        }
+
         fn assert_unsupported_action_is_a_noop(state: &mut AppState, action: Action) {
             let now = Instant::now();
             state.clear_dirty();
@@ -359,8 +371,7 @@ mod tests {
 
         #[test]
         fn unsupported_er_completion_is_a_total_noop() {
-            let mut state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut state, "sqlite://test.db");
+            let mut state = sqlite_state();
             state.er_preparation.mark_rendering();
 
             assert_unsupported_action_is_a_noop(
@@ -377,20 +388,17 @@ mod tests {
 
         #[test]
         fn unsupported_json_and_analyze_actions_are_total_noops() {
-            let mut json_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut json_state, "sqlite://test.db");
+            let mut json_state = sqlite_state();
             assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonYankSuccess);
             assert_unsupported_action_is_a_noop(&mut json_state, Action::JsonEnterEdit);
 
-            let mut er_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut er_state, "sqlite://test.db");
+            let mut er_state = sqlite_state();
             er_state.modal.set_mode(InputMode::ErTablePicker);
             er_state.ui.er_picker_mut().insert_filter_str("before");
             assert_unsupported_action_is_a_noop(&mut er_state, Action::Paste("after".to_string()));
             assert_eq!(er_state.ui.er_picker().filter_input().content(), "before");
 
-            let mut json_edit_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut json_edit_state, "sqlite://test.db");
+            let mut json_edit_state = sqlite_state();
             json_edit_state.modal.set_mode(InputMode::JsonEdit);
             json_edit_state
                 .json_detail
@@ -402,8 +410,7 @@ mod tests {
             );
             assert_eq!(json_edit_state.json_detail.editor().content(), "before");
 
-            let mut json_detail_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut json_detail_state, "sqlite://test.db");
+            let mut json_detail_state = sqlite_state();
             json_detail_state.modal.set_mode(InputMode::JsonDetail);
             assert_unsupported_action_is_a_noop(
                 &mut json_detail_state,
@@ -411,8 +418,7 @@ mod tests {
             );
             assert_eq!(json_detail_state.ui.key_sequence(), KeySequenceState::Idle);
 
-            let mut analyze_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut analyze_state, "sqlite://test.db");
+            let mut analyze_state = sqlite_state();
             assert_unsupported_action_is_a_noop(&mut analyze_state, Action::ExplainAnalyzeCancel);
             assert_unsupported_action_is_a_noop(
                 &mut analyze_state,
@@ -422,8 +428,7 @@ mod tests {
                 },
             );
 
-            let mut compare_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut compare_state, "sqlite://test.db");
+            let mut compare_state = sqlite_state();
             assert_unsupported_action_is_a_noop(
                 &mut compare_state,
                 Action::Scroll {
@@ -436,8 +441,7 @@ mod tests {
 
         #[test]
         fn unsupported_completion_actions_are_total_noops() {
-            let mut explain_state = create_test_state();
-            test_fixtures::activate_sqlite_connection(&mut explain_state, "sqlite://test.db");
+            let mut explain_state = sqlite_state();
             let now = Instant::now();
             let _ = explain_state.query.begin_running(now);
             assert_unsupported_action_is_a_noop(
@@ -465,11 +469,7 @@ mod tests {
                 },
             );
 
-            let mut diagnostics_state = create_test_state();
-            test_fixtures::activate_postgres_connection(
-                &mut diagnostics_state,
-                "postgres://localhost/test",
-            );
+            let mut diagnostics_state = postgres_state();
             let run_id = diagnostics_state.sqlite_diagnostics.begin_fetch();
             assert_unsupported_action_is_a_noop(
                 &mut diagnostics_state,
