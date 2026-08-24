@@ -116,11 +116,7 @@ fn reduce_inner(
                 if state.ui.focused_pane() != FocusedPane::Explorer {
                     return vec![];
                 }
-                let table = state
-                    .tables()
-                    .get(state.ui.explorer_selected())
-                    .copied()
-                    .cloned();
+                let table = state.tables().get(state.ui.explorer_selected()).cloned();
                 if let Some(table) = table {
                     return select_table(state, &table, now);
                 }
