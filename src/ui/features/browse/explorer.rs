@@ -42,7 +42,7 @@ impl Explorer {
         let table_names: Vec<String> = if has_cached_data {
             state
                 .tables()
-                .into_iter()
+                .iter()
                 .map(|summary| {
                     explorer_table_label(summary, state.session.active_database_type_or_default())
                 })
