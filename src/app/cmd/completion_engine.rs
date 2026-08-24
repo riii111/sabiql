@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use crate::cmd::cache::BoundedLruCache;
 use crate::domain::{DatabaseMetadata, DatabaseType, Table, TableSummary};
+use crate::model::shared::text_input::char_to_byte_index;
 use crate::model::sql_editor::completion::{CompletionCandidate, CompletionKind};
 use crate::policy::sql::lexer::{SqlContext, SqlLexer, TableReference, Token, TokenKind};
-use crate::update::helpers::char_to_byte_index;
 
 const COMPLETION_MAX_CANDIDATES: usize = 30;
 const TABLE_CACHE_CAPACITY: usize = 500;
