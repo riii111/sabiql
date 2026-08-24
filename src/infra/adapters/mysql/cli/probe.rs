@@ -8,8 +8,8 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
-    ConnectionFailureKind, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    MySqlConnectionProbeResult, UnsupportedOperationKind,
+    ConnectionFailureKind, DbOperationError, MySqlConnectionProbeResult, UnsupportedOperationKind,
+    is_mysql_connect_timeout_message,
 };
 
 use super::args::mysql_connection_args;
@@ -256,14 +256,6 @@ pub(super) fn mysql_tls_failure_kind(lowercase_details: &str) -> Option<Connecti
     }
 
     None
-}
-
-pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    lower.contains("can't connect to mysql server")
-        && MYSQL_CONNECT_TIMEOUT_ERRNOS
-            .iter()
-            .any(|errno| lower.contains(errno))
 }
 
 #[cfg(test)]

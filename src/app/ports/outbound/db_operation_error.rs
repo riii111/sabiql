@@ -9,6 +9,14 @@ pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED"
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
 pub const MYSQL_CONNECT_TIMEOUT_ERRNOS: &[&str] = &["(60)", "(110)", "(10060)"];
 
+pub fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    let lowercase = value.to_ascii_lowercase();
+    lowercase.contains("can't connect to mysql server")
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lowercase.contains(errno))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DatabaseCli {
     Psql,
@@ -308,6 +316,18 @@ impl From<csv::Error> for DbOperationError {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    #[test]
+    fn mysql_connect_timeout_classifier_preserves_errno_and_case_rules() {
+        for errno in MYSQL_CONNECT_TIMEOUT_ERRNOS {
+            assert!(is_mysql_connect_timeout_message(&format!(
+                "Can't connect to MySQL server (host) {errno}"
+            )));
+        }
+        assert!(!is_mysql_connect_timeout_message(
+            "Can't connect to MySQL server (host) (111)"
+        ));
+    }
 
     mod summaries_and_hints {
         use super::*;

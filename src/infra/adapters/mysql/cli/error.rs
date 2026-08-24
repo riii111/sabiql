@@ -1,8 +1,10 @@
 use std::io::{self, Write};
 
-use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
+use crate::app::ports::outbound::{
+    DatabaseCli, DbOperationError, is_mysql_connect_timeout_message,
+};
 
-use super::probe::{is_mysql_connect_timeout_message, mysql_tls_failure_kind};
+use super::probe::mysql_tls_failure_kind;
 
 pub(super) fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
     if error.kind() == io::ErrorKind::NotFound {
