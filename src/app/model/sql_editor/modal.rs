@@ -89,7 +89,6 @@ pub struct SqlModalContext {
     prefetch_queue: VecDeque<String>,
     prefetching_tables: HashSet<String>,
     failed_prefetch_tables: HashMap<String, FailedPrefetchEntry>,
-    pub(crate) prefetch_started: bool,
     prefetch_tracks_er: bool,
     pub(crate) prefetch_run: AsyncRun,
     active_tab: SqlModalTab,
@@ -107,7 +106,6 @@ impl SqlModalContext {
     // ── Prefetch lifecycle ──────────────────────────────────────────
 
     pub fn reset_prefetch(&mut self) {
-        self.prefetch_started = false;
         self.prefetch_queue.clear();
         self.prefetching_tables.clear();
         self.failed_prefetch_tables.clear();
@@ -121,7 +119,6 @@ impl SqlModalContext {
             // Responses from the replaced completion run are stale and will be discarded.
             self.prefetching_tables.clear();
         }
-        self.prefetch_started = true;
         self.prefetch_tracks_er = true;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
@@ -130,7 +127,6 @@ impl SqlModalContext {
 
     #[must_use]
     pub fn begin_completion_prefetch(&mut self) -> u64 {
-        self.prefetch_started = true;
         self.prefetch_tracks_er = false;
         self.prefetch_queue.clear();
         self.failed_prefetch_tables.clear();
@@ -142,14 +138,9 @@ impl SqlModalContext {
     }
 
     pub fn invalidate_prefetch(&mut self) {
-        self.prefetch_started = false;
         self.prefetch_tracks_er = false;
         self.prefetching_tables.clear();
         self.prefetch_run.clear_active();
-    }
-
-    pub fn is_prefetch_started(&self) -> bool {
-        self.prefetch_started
     }
 
     pub fn has_pending_prefetch(&self) -> bool {
@@ -502,7 +493,7 @@ mod tests {
             assert_eq!(ctx.editor.cursor(), 0);
             assert_eq!(ctx.status, SqlModalStatus::Normal);
             assert!(!ctx.completion.visible);
-            assert!(!ctx.is_prefetch_started());
+            assert!(ctx.active_prefetch_run_id().is_none());
         }
 
         #[test]
@@ -545,7 +536,7 @@ mod tests {
 
             ctx.reset_prefetch();
 
-            assert!(!ctx.is_prefetch_started());
+            assert!(ctx.active_prefetch_run_id().is_none());
             assert!(!ctx.has_pending_prefetch());
             assert_eq!(ctx.prefetch_in_flight_count(), 0);
             assert!(ctx.failed_prefetch("public.failed").is_none());

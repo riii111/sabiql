@@ -1760,13 +1760,13 @@ mod tests {
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }
 
         #[test]
-        fn prefetch_started_true_emits_smart_refresh() {
+        fn active_prefetch_run_emits_smart_refresh() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state
@@ -1777,7 +1777,7 @@ mod tests {
 
             let effects = reduce(&mut state, Action::ErOpenDiagram, now, &AppServices::stub());
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
         }

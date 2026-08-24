@@ -1215,7 +1215,7 @@ mod tests {
             let state = make_state();
 
             assert!(!state.sql_modal.has_pending_prefetch());
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
         }
 
         #[test]
@@ -1297,7 +1297,7 @@ mod tests {
 
             dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now());
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
             assert!(state.sql_modal.failed_prefetch("public.failed").is_none());

@@ -96,7 +96,8 @@ pub(super) fn reduce_prefetch(
 ) -> DispatchResult {
     match action {
         Action::StartPrefetchAll => {
-            if (!state.sql_modal.is_prefetch_started() || !state.sql_modal.prefetch_tracks_er())
+            if (state.sql_modal.active_prefetch_run_id().is_none()
+                || !state.sql_modal.prefetch_tracks_er())
                 && let Some(metadata) = state.session.metadata()
             {
                 let run_id = state.sql_modal.begin_prefetch();
@@ -126,7 +127,9 @@ pub(super) fn reduce_prefetch(
         }
 
         Action::StartPrefetchScoped { tables } => {
-            if state.sql_modal.is_prefetch_started() && state.sql_modal.prefetch_tracks_er() {
+            if state.sql_modal.active_prefetch_run_id().is_some()
+                && state.sql_modal.prefetch_tracks_er()
+            {
                 DispatchResult::handled()
             } else {
                 let run_id = state.sql_modal.begin_prefetch();

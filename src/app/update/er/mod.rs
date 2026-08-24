@@ -117,7 +117,7 @@ mod tests {
         }
 
         #[test]
-        fn prefetch_started_true_still_resets_and_emits_smart_refresh() {
+        fn active_prefetch_run_still_resets_and_emits_smart_refresh() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let _ = state.sql_modal.begin_prefetch();
             state.session.set_metadata(Some(make_metadata(0)));
@@ -126,7 +126,7 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));

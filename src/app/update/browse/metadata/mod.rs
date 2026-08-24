@@ -1165,7 +1165,7 @@ mod tests {
             )
             .expect("completion prefetch should be handled");
 
-            assert!(state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_some());
             assert!(!state.sql_modal.prefetch_tracks_er());
             assert!(state.sql_modal.is_prefetch_queued("public.users"));
             assert!(state.sql_modal.is_prefetch_queued("public.orders"));
