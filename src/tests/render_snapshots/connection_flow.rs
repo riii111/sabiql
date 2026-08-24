@@ -450,12 +450,12 @@ fn render_service_error_without_service_file_hint(save_and_connect: bool) -> Str
         .set_service_file_path(Some(std::path::PathBuf::from("/etc/pg_service.conf")));
     if save_and_connect {
         state.connection_error.set_save_and_connect_error(
-            ConnectionErrorInfo::new("mysql save failed"),
+            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Unknown, "mysql save failed"),
             DatabaseType::MySQL,
         );
     } else {
         state.connection_error.set_connection_switch_error(
-            ConnectionErrorInfo::new("mysql switch failed"),
+            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Unknown, "mysql switch failed"),
             DatabaseType::MySQL,
         );
     }

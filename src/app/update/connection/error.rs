@@ -339,7 +339,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::CloseConnectionError, Instant::now());
@@ -371,7 +374,10 @@ mod tests {
             .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         assert!(!state.session.has_pending_connection_switch());
@@ -406,7 +412,10 @@ mod tests {
         );
         state
             .connection_error
-            .set_error(ConnectionErrorInfo::new("connection refused"));
+            .set_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::ConnectionRefused,
+                "connection refused",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());

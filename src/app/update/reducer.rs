@@ -1108,7 +1108,7 @@ mod tests {
     mod response_handlers {
         use super::*;
         use crate::domain::{DatabaseMetadata, MetadataState, QueryResult, QuerySource};
-        use crate::model::connection::error::ConnectionErrorInfo;
+        use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
         use crate::model::connection::state::ConnectionState;
 
         fn metadata_loaded_action(state: &mut AppState, metadata: DatabaseMetadata) -> Action {
@@ -1366,7 +1366,10 @@ mod tests {
             let mut state = create_test_state();
             state
                 .connection_error
-                .set_error(ConnectionErrorInfo::new("error"));
+                .set_error(ConnectionErrorInfo::with_kind(
+                    ConnectionErrorKind::Unknown,
+                    "error",
+                ));
             state.ui.set_focused_pane(FocusedPane::Result); // Any pane works
             let now = Instant::now();
 
