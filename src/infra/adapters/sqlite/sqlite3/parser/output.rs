@@ -5,7 +5,7 @@ use crate::domain::{QueryResult, QuerySource, QueryValue};
 
 use crate::adapters::sqlite::sql;
 
-use super::lexer::{sqlite_probe_columns, sqlite_result_probe_columns};
+use super::statement_plan::{sqlite_probe_columns, sqlite_result_probe_columns};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct QuotedRecord {
