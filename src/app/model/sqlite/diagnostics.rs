@@ -150,16 +150,6 @@ impl SqliteDiagnosticsState {
         }
     }
 
-    pub fn set_loaded(&mut self, run_id: u64, snapshot: SqliteDiagnosticsSnapshot) {
-        if self.is_current_run(run_id) || matches!(self.load_state, LoadState::Idle) {
-            self.load_state = LoadState::Loaded {
-                run_id,
-                snapshot: Box::new(snapshot),
-                quick_check_running: false,
-            };
-        }
-    }
-
     pub fn snapshot(&self) -> Option<&SqliteDiagnosticsSnapshot> {
         match &self.load_state {
             LoadState::Loaded { snapshot, .. } => Some(snapshot),
@@ -267,7 +257,7 @@ mod tests {
     fn stale_run_does_not_replace_loaded_snapshot() {
         let mut state = SqliteDiagnosticsState::default();
         let run_id = state.begin_fetch();
-        state.set_loaded(
+        state.set_core_loaded(
             run_id,
             SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("3.45.0"),
@@ -275,7 +265,7 @@ mod tests {
             },
         );
 
-        state.set_loaded(
+        state.set_core_loaded(
             run_id + 1,
             SqliteDiagnosticsSnapshot {
                 sqlite_version: DiagnosticField::ok("9.9.9"),
