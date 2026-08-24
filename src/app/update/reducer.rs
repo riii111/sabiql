@@ -1912,7 +1912,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::ProcessPrefetchQueue { .. }))
+                    .any(|e| matches!(e, Effect::SchedulePrefetchQueueProcessing { .. }))
             );
         }
     }

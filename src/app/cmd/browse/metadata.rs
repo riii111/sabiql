@@ -77,7 +77,7 @@ pub async fn run(
             )
             .await;
         }
-        Effect::ProcessPrefetchQueue { run_id } => {
+        Effect::SchedulePrefetchQueueProcessing { run_id } => {
             action_tx
                 .send(Action::ProcessPrefetchQueue { run_id })
                 .await

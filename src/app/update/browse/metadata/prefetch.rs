@@ -54,7 +54,7 @@ fn prefetch_table_detail(
                 && state.sql_modal.prefetch_tracks_er()
                 && state.er_preparation.is_waiting()
             {
-                effects.push(Effect::ProcessPrefetchQueue { run_id });
+                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
             }
             return effects;
         }
@@ -119,7 +119,7 @@ pub(super) fn reduce_prefetch(
                     Effect::ResizeCompletionCache {
                         capacity: resize_capacity,
                     },
-                    Effect::ProcessPrefetchQueue { run_id },
+                    Effect::SchedulePrefetchQueueProcessing { run_id },
                 ])
             } else {
                 DispatchResult::handled()
@@ -144,7 +144,7 @@ pub(super) fn reduce_prefetch(
                         capacity: completion_cache_capacity(metadata.table_summaries.len()),
                     });
                 }
-                effects.push(Effect::ProcessPrefetchQueue { run_id });
+                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id });
                 DispatchResult::handled_with(effects)
             }
         }
@@ -162,7 +162,7 @@ pub(super) fn reduce_prefetch(
             for qualified_name in tables {
                 state.sql_modal.queue_table_prefetch(qualified_name.clone());
             }
-            DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id }])
+            DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing { run_id }])
         }
 
         Action::ProcessPrefetchQueue { run_id } => {
@@ -221,7 +221,7 @@ pub(super) fn reduce_prefetch(
             }];
 
             if state.sql_modal.has_pending_prefetch() {
-                effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
+                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
             }
 
             if state.sql_modal.prefetch_tracks_er() {
@@ -265,7 +265,7 @@ pub(super) fn reduce_prefetch(
             let mut effects = Vec::new();
 
             if had_other_pending_before_requeue {
-                effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
+                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
             }
             effects.push(Effect::DelayedProcessPrefetchQueue {
                 run_id: *run_id,
@@ -298,7 +298,7 @@ pub(super) fn reduce_prefetch(
             let mut effects = Vec::new();
 
             if state.sql_modal.has_pending_prefetch() {
-                effects.push(Effect::ProcessPrefetchQueue { run_id: *run_id });
+                effects.push(Effect::SchedulePrefetchQueueProcessing { run_id: *run_id });
             }
 
             if state.sql_modal.prefetch_tracks_er() {

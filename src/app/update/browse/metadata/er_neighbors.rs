@@ -46,7 +46,9 @@ pub(super) fn reduce_er_neighbors(
                     state.sql_modal.queue_table_prefetch(qualified_name.clone());
                 }
             }
-            DispatchResult::handled_with(vec![Effect::ProcessPrefetchQueue { run_id: *run_id }])
+            DispatchResult::handled_with(vec![Effect::SchedulePrefetchQueueProcessing {
+                run_id: *run_id,
+            }])
         }
         _ => DispatchResult::pass(),
     }
