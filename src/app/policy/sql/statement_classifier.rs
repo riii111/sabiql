@@ -1,3 +1,8 @@
+use crate::domain::sql_lex::{
+    advance_single_quote, skip_block_comment, skip_double_quoted_identifier, skip_line_comment,
+    skip_sqlite_quoted_identifier,
+};
+
 // - `Unsupported`: a recognizable SQL command that this classifier does not yet classify
 //   (e.g. GRANT, COPY, DO, MERGE). Risk cannot be assessed, so execution requires user
 //   acknowledgment (see policy::write::sql_risk).
@@ -386,98 +391,6 @@ pub fn extract_target_name(sql: &str, kind: &StatementKind) -> Option<String> {
     }
 }
 
-pub(crate) fn skip_line_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
-    if ch != '-' || !next_char_is(chars, i, '-') {
-        return None;
-    }
-    let mut cursor = i;
-    while cursor < chars.len() && chars[cursor].1 != '\n' {
-        cursor += 1;
-    }
-    Some(cursor)
-}
-
-pub(crate) fn skip_block_comment(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
-    if ch != '/' || !next_char_is(chars, i, '*') {
-        return None;
-    }
-    let mut cursor = i + 2;
-    while cursor + 1 < chars.len() && !(chars[cursor].1 == '*' && chars[cursor + 1].1 == '/') {
-        cursor += 1;
-    }
-    Some(cursor + 2)
-}
-
-pub(crate) fn advance_single_quote(
-    chars: &[(usize, char)],
-    i: usize,
-    ch: char,
-    in_string: &mut bool,
-) -> Option<usize> {
-    if ch != '\'' {
-        return None;
-    }
-    if *in_string {
-        if next_char_is(chars, i, '\'') {
-            return Some(i + 2);
-        }
-        *in_string = false;
-    } else {
-        *in_string = true;
-    }
-    Some(i + 1)
-}
-
-pub(crate) fn skip_double_quoted_identifier(
-    chars: &[(usize, char)],
-    i: usize,
-    ch: char,
-) -> Option<usize> {
-    if ch != '"' {
-        return None;
-    }
-    let mut cursor = i + 1;
-    while cursor < chars.len() {
-        if chars[cursor].1 == '"' {
-            if next_char_is(chars, cursor, '"') {
-                cursor += 2;
-            } else {
-                cursor += 1;
-                break;
-            }
-        } else {
-            cursor += 1;
-        }
-    }
-    Some(cursor)
-}
-
-pub(crate) fn skip_sqlite_quoted_identifier(
-    chars: &[(usize, char)],
-    i: usize,
-    ch: char,
-) -> Option<usize> {
-    let close = match ch {
-        '`' => '`',
-        '[' => ']',
-        _ => return None,
-    };
-    let mut cursor = i + 1;
-    while cursor < chars.len() {
-        if chars[cursor].1 == close {
-            if close == '`' && next_char_is(chars, cursor, close) {
-                cursor += 2;
-            } else {
-                cursor += 1;
-                break;
-            }
-        } else {
-            cursor += 1;
-        }
-    }
-    Some(cursor)
-}
-
 fn skip_quoted_identifier(chars: &[(usize, char)], i: usize, ch: char) -> Option<usize> {
     skip_double_quoted_identifier(chars, i, ch)
         .or_else(|| skip_sqlite_quoted_identifier(chars, i, ch))
@@ -525,10 +438,6 @@ pub(crate) fn update_parentheses_depth(ch: char, depth: &mut i32) {
     } else if ch == ')' {
         *depth -= 1;
     }
-}
-
-pub(crate) fn next_char_is(chars: &[(usize, char)], i: usize, expected: char) -> bool {
-    i + 1 < chars.len() && chars[i + 1].1 == expected
 }
 
 fn is_word_start(chars: &[(usize, char)], i: usize) -> bool {

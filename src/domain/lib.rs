@@ -14,6 +14,7 @@ pub mod query_history;
 pub mod query_result;
 pub mod rls;
 pub mod schema;
+pub mod sql_lex;
 pub mod sqlite_diagnostics;
 pub mod sqlite_sql;
 pub mod table;

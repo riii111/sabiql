@@ -7,6 +7,10 @@ use crate::domain::{
         has_mysql_read_only_side_effect, split_mysql_statements,
         statement_contains_unsupported_mysql_control,
     },
+    sql_lex::{
+        advance_single_quote, skip_block_comment, skip_double_quoted_identifier, skip_line_comment,
+        skip_sqlite_quoted_identifier,
+    },
     sqlite_sql::{
         SqliteStatementClassification, SqliteTransactionPolicy, parse_sqlite_pragma,
         split_sqlite_statements, sqlite_statement_classification,
@@ -14,10 +18,8 @@ use crate::domain::{
     },
 };
 use crate::policy::sql::statement_classifier::{
-    StatementKind, advance_single_quote, classify, collect_top_level_tokens, drop_subtype,
-    extract_target_name, first_keyword, skip_block_comment, skip_dollar_quoted_string,
-    skip_double_quoted_identifier, skip_line_comment, skip_sqlite_quoted_identifier,
-    statement_after_leading_ctes,
+    StatementKind, classify, collect_top_level_tokens, drop_subtype, extract_target_name,
+    first_keyword, skip_dollar_quoted_string, statement_after_leading_ctes,
 };
 
 // Why the statement cannot be confirmed via typed target name.
