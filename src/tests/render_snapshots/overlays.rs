@@ -9,6 +9,11 @@ use sabiql_app::policy::write::sql_risk::AcknowledgeReason;
 use sabiql_domain::query_history::{QueryHistoryEntry, QueryResultStatus};
 use sabiql_domain::{ConnectionId, DatabaseDiagnostic, DiagnosticLevel, QueryResult};
 
+const POSTGRES_SEQ_SCAN_PLAN: &str =
+    "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)";
+const POSTGRES_INDEX_SCAN_PLAN: &str = "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)";
+const POSTGRES_PLAN_QUERY: &str = "SELECT * FROM users WHERE id > 10";
+
 #[test]
 fn sql_modal_with_completion() {
     let mut state = connected_state();
@@ -800,7 +805,7 @@ fn sql_modal_plan_tab_with_plan_text() {
         DatabaseType::PostgreSQL,
         false,
         42,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
 
     let output = render_to_string(&mut terminal, &mut state);
@@ -867,21 +872,19 @@ fn sql_modal_compare_tab_with_verdict() {
     state.modal.set_mode(InputMode::SqlModal);
     // First EXPLAIN with high cost
     state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
-            .to_string(),
+        POSTGRES_SEQ_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         100,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     // Second EXPLAIN with low cost (Improved) — auto-advances first to left
     state.explain.set_plan(
-        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
-            .to_string(),
+        POSTGRES_INDEX_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         5,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
@@ -928,21 +931,19 @@ fn sql_modal_compare_tab_narrow_stacked() {
     state.modal.set_mode(InputMode::SqlModal);
     // First EXPLAIN
     state.explain.set_plan(
-        "Seq Scan on users  (cost=0.00..1000.00 rows=2550 width=36)\n  Filter: (id > 10)"
-            .to_string(),
+        POSTGRES_SEQ_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         100,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     // Second EXPLAIN — auto-advances first to left
     state.explain.set_plan(
-        "Index Scan using idx_users_id on users  (cost=0.28..8.30 rows=1 width=36)\n  Index Cond: (id > 10)"
-            .to_string(),
+        POSTGRES_INDEX_SCAN_PLAN.to_string(),
         DatabaseType::PostgreSQL,
         false,
         5,
-        "SELECT * FROM users WHERE id > 10",
+        POSTGRES_PLAN_QUERY,
     );
     state.sql_modal.set_active_tab(SqlModalTab::Compare);
 
