@@ -37,12 +37,6 @@ pub fn handle_normal_mode(combo: KeyCombo, state: &AppState) -> Action {
             Key::Char('o') if kb::query_history(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::QueryHistoryPicker);
             }
-            Key::Char('e')
-                if kb::csv_export(keymap_preset).combos.contains(&combo)
-                    && state.can_request_csv_export() =>
-            {
-                return Action::RequestCsvExport;
-            }
             Key::Char('p') if kb::table_picker(keymap_preset).combos.contains(&combo) => {
                 return Action::OpenModal(ModalKind::TablePicker);
             }
