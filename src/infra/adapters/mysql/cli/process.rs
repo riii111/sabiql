@@ -11,7 +11,7 @@ use tokio::process::{ChildStderr, ChildStdin, ChildStdout};
 use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
-use crate::domain::{MySqlDiagnostic, RefreshScope};
+use crate::domain::{DatabaseDiagnostic, RefreshScope};
 
 use super::args::{MYSQL_CLIENT_MAX_PACKET_BYTES, mysql_adhoc_args, mysql_query_args};
 #[cfg(not(unix))]
@@ -469,7 +469,7 @@ pub(super) async fn read_one_mysql_resultset(
 
 pub(super) async fn read_one_mysql_resultset_with_diagnostics(
     process: &mut MySqlProcess,
-) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<u8>, Vec<DatabaseDiagnostic>), DbOperationError> {
     #[cfg(unix)]
     {
         return read_one_pty_resultset_with_diagnostics(
@@ -626,7 +626,7 @@ mod tests {
     use crate::adapters::csv_export::export_to_path;
     use crate::domain::mysql_sql::{classify_mysql_statement, split_mysql_statements};
     use crate::domain::{
-        CommandTag, MySqlDiagnostic, MySqlDiagnosticLevel, QueryValue, RefreshScope,
+        CommandTag, DatabaseDiagnostic, DiagnosticLevel, QueryValue, RefreshScope,
     };
 
     mod cleanup {
@@ -1074,8 +1074,8 @@ done
             );
             assert_eq!(
                 result.diagnostics,
-                vec![MySqlDiagnostic {
-                    level: MySqlDiagnosticLevel::Warning,
+                vec![DatabaseDiagnostic {
+                    level: DiagnosticLevel::Warning,
                     code: 1265,
                     message: "truncated".to_string(),
                 }]
@@ -1769,13 +1769,13 @@ done
             assert_eq!(
                 result.diagnostics,
                 vec![
-                    MySqlDiagnostic {
-                        level: MySqlDiagnosticLevel::Warning,
+                    DatabaseDiagnostic {
+                        level: DiagnosticLevel::Warning,
                         code: 1062,
                         message: "duplicate ignored".to_string(),
                     },
-                    MySqlDiagnostic {
-                        level: MySqlDiagnosticLevel::Note,
+                    DatabaseDiagnostic {
+                        level: DiagnosticLevel::Note,
                         code: 1050,
                         message: "table already exists".to_string(),
                     },

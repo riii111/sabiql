@@ -1,17 +1,17 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MySqlDiagnosticLevel {
+pub enum DiagnosticLevel {
     Warning,
     Note,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MySqlDiagnostic {
-    pub level: MySqlDiagnosticLevel,
+pub struct DatabaseDiagnostic {
+    pub level: DiagnosticLevel,
     pub code: u32,
     pub message: String,
 }
 
-impl MySqlDiagnostic {
+impl DatabaseDiagnostic {
     #[must_use]
     pub fn display_message(&self) -> String {
         format!(
@@ -23,7 +23,7 @@ impl MySqlDiagnostic {
     }
 }
 
-impl MySqlDiagnosticLevel {
+impl DiagnosticLevel {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -40,8 +40,8 @@ mod tests {
     #[test]
     fn formats_level_code_and_message_for_statuses() {
         assert_eq!(
-            MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1265,
                 message: "Data truncated".to_string(),
             }

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::app::ports::outbound::{AccessMode, DbOperationError};
 use crate::domain::{
-    MySqlDiagnostic, RefreshScope,
+    DatabaseDiagnostic, RefreshScope,
     mysql_sql::{
         MySqlStatement, MySqlStatementKind, has_top_level_user_variable_into_clause,
         mysql_statement_is_data_modifying, mysql_statement_is_schema_modifying,
@@ -71,7 +71,7 @@ pub(super) async fn run_mysql_adhoc_with_program_and_statements(
 struct MySqlStatementExecution {
     result_set: Option<MySqlResultSet>,
     refresh_scope: RefreshScope,
-    diagnostics: Vec<MySqlDiagnostic>,
+    diagnostics: Vec<DatabaseDiagnostic>,
 }
 
 pub(super) async fn fill_mysql_empty_result_columns(
@@ -81,7 +81,7 @@ pub(super) async fn fill_mysql_empty_result_columns(
     query: &str,
     kind: &MySqlStatementKind,
     access_mode: AccessMode,
-    diagnostics: &mut Vec<MySqlDiagnostic>,
+    diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<MySqlResultSet, DbOperationError> {
     if !result.columns.is_empty() || !result.values.is_empty() {
         return Ok(result);
@@ -182,7 +182,7 @@ async fn fill_mysql_last_result_columns(
     last_result_statement: Option<&MySqlStatement>,
     access_mode: AccessMode,
     refresh_scope: RefreshScope,
-    diagnostics: &mut Vec<MySqlDiagnostic>,
+    diagnostics: &mut Vec<DatabaseDiagnostic>,
 ) -> Result<(), DbOperationError> {
     let Some(result) = last_result_set.take() else {
         return Ok(());

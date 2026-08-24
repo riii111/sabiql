@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{RefreshScope, WriteDiagnostic};
+use crate::domain::{DatabaseDiagnostic, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -379,14 +379,14 @@ pub fn reduce_write(
     }
 }
 
-fn write_message_with_diagnostics(message: String, diagnostics: &[WriteDiagnostic]) -> String {
+fn write_message_with_diagnostics(message: String, diagnostics: &[DatabaseDiagnostic]) -> String {
     if diagnostics.is_empty() {
         return message;
     }
 
     let details = diagnostics
         .iter()
-        .map(WriteDiagnostic::display_message)
+        .map(DatabaseDiagnostic::display_message)
         .collect::<Vec<_>>()
         .join("; ");
     format!("{message}; {details}")
@@ -449,7 +449,7 @@ mod tests {
 
     use crate::domain::connection::ConnectionId;
     use crate::domain::{
-        ColumnAttributes, DatabaseType, QueryResult, QuerySource, QueryValue, WriteDiagnosticLevel,
+        ColumnAttributes, DatabaseType, DiagnosticLevel, QueryResult, QuerySource, QueryValue,
     };
     use crate::model::browse::query_execution::{
         DeleteRefreshTarget, PREVIEW_PAGE_SIZE, PostDeleteRowSelection,
@@ -470,7 +470,7 @@ mod tests {
     fn write_succeeded_action_with_diagnostics(
         state: &mut AppState,
         affected_rows: usize,
-        diagnostics: Vec<WriteDiagnostic>,
+        diagnostics: Vec<DatabaseDiagnostic>,
     ) -> Action {
         let dsn = state
             .session
@@ -1418,8 +1418,8 @@ mod tests {
             let action = write_succeeded_action_with_diagnostics(
                 &mut state,
                 1,
-                vec![WriteDiagnostic {
-                    level: WriteDiagnosticLevel::Warning,
+                vec![DatabaseDiagnostic {
+                    level: DiagnosticLevel::Warning,
                     code: 1265,
                     message: "Data truncated".to_string(),
                 }],

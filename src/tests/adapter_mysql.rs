@@ -2086,12 +2086,12 @@ mod query_execution {
                 || result.columns != ["2"]
                 || result.values() != [[QueryValue::Text("2".to_string())]]
                 || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                    diagnostic.level == sabiql_domain::DiagnosticLevel::Warning
                         && diagnostic.code == 1062
                         && diagnostic.message.contains("Duplicate entry")
                 })
                 || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                    diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Note
+                    diagnostic.level == sabiql_domain::DiagnosticLevel::Note
                         && diagnostic.code == 1050
                         && diagnostic.message.contains("already exists")
                 })
@@ -2122,7 +2122,7 @@ mod query_execution {
                     || result.values().is_empty()
                     || result.columns != ["EXPLAIN"]
                     || !result.mysql_diagnostics.iter().any(|diagnostic| {
-                        diagnostic.level == sabiql_domain::MySqlDiagnosticLevel::Warning
+                        diagnostic.level == sabiql_domain::DiagnosticLevel::Warning
                             && diagnostic.code == 1292
                             && diagnostic
                                 .message

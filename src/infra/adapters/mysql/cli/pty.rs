@@ -8,7 +8,7 @@ use tokio::fs::File as TokioFile;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
 use crate::app::ports::outbound::DbOperationError;
-use crate::domain::MySqlDiagnostic;
+use crate::domain::DatabaseDiagnostic;
 
 use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
@@ -82,7 +82,7 @@ pub(super) async fn read_one_pty_resultset_with_diagnostics(
     pty: &mut MySqlPty,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
-) -> Result<(Vec<u8>, Vec<MySqlDiagnostic>), DbOperationError> {
+) -> Result<(Vec<u8>, Vec<DatabaseDiagnostic>), DbOperationError> {
     let mut chunk = [0; 4096];
     loop {
         if let Some(frame) = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(

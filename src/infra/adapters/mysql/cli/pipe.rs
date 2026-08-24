@@ -179,7 +179,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes_with_diagnostics<R, E>(
     frame_scanner: &mut MySqlResultsetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
-) -> Result<(Vec<u8>, Vec<crate::domain::MySqlDiagnostic>), DbOperationError>
+) -> Result<(Vec<u8>, Vec<crate::domain::DatabaseDiagnostic>), DbOperationError>
 where
     R: AsyncRead + Unpin,
     E: AsyncRead + Unpin,

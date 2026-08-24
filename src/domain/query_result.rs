@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use super::{CommandTag, MySqlDiagnostic};
+use super::{CommandTag, DatabaseDiagnostic};
 
 const BLOB_PREVIEW_BYTES: usize = 8;
 
@@ -268,7 +268,7 @@ pub struct QueryResult {
     pub error: Option<String>,
     pub command_tag: Option<CommandTag>,
     pub refresh_scope: RefreshScope,
-    pub mysql_diagnostics: Vec<MySqlDiagnostic>,
+    pub mysql_diagnostics: Vec<DatabaseDiagnostic>,
     rows: Vec<Vec<String>>,
     values: Vec<Vec<QueryValue>>,
     explicit_row_identity: Option<ExplicitRowIdentity>,
@@ -371,7 +371,7 @@ impl QueryResult {
     }
 
     #[must_use]
-    pub fn with_mysql_diagnostics(mut self, diagnostics: Vec<MySqlDiagnostic>) -> Self {
+    pub fn with_mysql_diagnostics(mut self, diagnostics: Vec<DatabaseDiagnostic>) -> Self {
         self.mysql_diagnostics = diagnostics;
         self
     }
@@ -605,7 +605,7 @@ mod tests {
 
     mod builder {
         use super::*;
-        use crate::MySqlDiagnosticLevel;
+        use crate::DiagnosticLevel;
 
         #[test]
         fn with_command_tag_sets_tag() {
@@ -625,8 +625,8 @@ mod tests {
                 0,
                 QuerySource::Adhoc,
             )
-            .with_mysql_diagnostics(vec![MySqlDiagnostic {
-                level: MySqlDiagnosticLevel::Warning,
+            .with_mysql_diagnostics(vec![DatabaseDiagnostic {
+                level: DiagnosticLevel::Warning,
                 code: 1062,
                 message: "duplicate".to_string(),
             }]);

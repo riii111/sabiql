@@ -1,24 +1,24 @@
-use crate::domain::{MySqlDiagnostic, MySqlDiagnosticLevel};
+use crate::domain::{DatabaseDiagnostic, DiagnosticLevel};
 
-pub(super) fn parse_mysql_cli_diagnostics(output: &[u8]) -> Vec<MySqlDiagnostic> {
+pub(super) fn parse_mysql_cli_diagnostics(output: &[u8]) -> Vec<DatabaseDiagnostic> {
     output
         .split(|byte| matches!(byte, b'\n' | b'\r'))
         .filter_map(parse_mysql_cli_diagnostic_line)
         .collect()
 }
 
-fn parse_mysql_cli_diagnostic_line(line: &[u8]) -> Option<MySqlDiagnostic> {
+fn parse_mysql_cli_diagnostic_line(line: &[u8]) -> Option<DatabaseDiagnostic> {
     let line = String::from_utf8_lossy(line);
     let line = line.trim();
     let (level, rest) = if let Some(rest) = line.strip_prefix("Warning (Code ") {
-        (MySqlDiagnosticLevel::Warning, rest)
+        (DiagnosticLevel::Warning, rest)
     } else if let Some(rest) = line.strip_prefix("Note (Code ") {
-        (MySqlDiagnosticLevel::Note, rest)
+        (DiagnosticLevel::Note, rest)
     } else {
         return None;
     };
     let (code, message) = rest.split_once("): ")?;
-    Some(MySqlDiagnostic {
+    Some(DatabaseDiagnostic {
         level,
         code: code.parse().ok()?,
         message: message.to_string(),
@@ -38,13 +38,13 @@ mod tests {
         assert_eq!(
             diagnostics,
             vec![
-                MySqlDiagnostic {
-                    level: MySqlDiagnosticLevel::Warning,
+                DatabaseDiagnostic {
+                    level: DiagnosticLevel::Warning,
                     code: 1062,
                     message: "Duplicate entry '1'".to_string(),
                 },
-                MySqlDiagnostic {
-                    level: MySqlDiagnosticLevel::Note,
+                DatabaseDiagnostic {
+                    level: DiagnosticLevel::Note,
                     code: 1050,
                     message: "Table exists".to_string(),
                 },
