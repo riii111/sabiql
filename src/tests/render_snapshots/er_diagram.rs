@@ -7,7 +7,12 @@ fn er_waiting_progress() {
     let mut terminal = create_test_terminal();
 
     let _ = state.er_preparation.start_waiting_run();
-    state.er_preparation.begin_full_prefetch(3);
+    state.er_preparation.begin_all_prefetch([
+        "public.users".to_string(),
+        "public.comments".to_string(),
+        "public.posts".to_string(),
+    ]);
+    state.er_preparation.on_table_cached("public.users");
     state
         .er_preparation
         .queue_pending_table("public.comments".to_string());

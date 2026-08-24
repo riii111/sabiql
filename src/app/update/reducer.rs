@@ -3042,11 +3042,10 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
-            state.er_preparation.begin_full_prefetch(1);
-            state.er_preparation.mark_fk_expanded();
             state
                 .er_preparation
-                .queue_pending_table("public.users".to_string());
+                .begin_all_prefetch(["public.users".to_string()]);
+            state.er_preparation.mark_fk_expanded();
             let now = Instant::now();
 
             let effects = reduce(
@@ -3074,14 +3073,13 @@ mod tests {
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             let run_id = state.sql_modal.begin_prefetch();
             state.er_preparation.mark_waiting_for_test();
-            state.er_preparation.begin_full_prefetch(2);
+            state
+                .er_preparation
+                .begin_all_prefetch(["public.posts".to_string(), "public.users".to_string()]);
             state.er_preparation.mark_fk_expanded();
             state
                 .er_preparation
                 .on_table_failed("public.posts", "timeout".to_string());
-            state
-                .er_preparation
-                .queue_pending_table("public.users".to_string());
             let now = Instant::now();
 
             let effects = reduce(
