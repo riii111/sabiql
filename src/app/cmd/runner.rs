@@ -394,7 +394,7 @@ mod tests {
 
         #[tokio::test]
         async fn calls_draw() {
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -403,20 +403,16 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::Render],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
+            test_fixtures::run_one_effect(
+                &runner,
+                Effect::Render,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut _rx,
+                None,
+            )
+            .await
+            .unwrap();
         }
 
         #[tokio::test]
@@ -511,7 +507,7 @@ mod tests {
 
         #[tokio::test]
         async fn dispatches_all_actions() {
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -520,31 +516,27 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DispatchActions(vec![
+                    Action::ProcessPrefetchQueue { run_id: 1 },
+                    Action::ProcessPrefetchQueue { run_id: 1 },
+                ]),
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut _rx,
+                None,
+            )
+            .await
+            .unwrap();
 
-            let result = runner
-                .execute_effects(
-                    vec![Effect::DispatchActions(vec![
-                        Action::ProcessPrefetchQueue { run_id: 1 },
-                        Action::ProcessPrefetchQueue { run_id: 1 },
-                    ])],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert_eq!(result.len(), 2);
+            assert_eq!(run.actions.len(), 2);
             assert!(matches!(
-                result[0],
+                run.actions[0],
                 Action::ProcessPrefetchQueue { run_id: 1 }
             ));
             assert!(matches!(
-                result[1],
+                run.actions[1],
                 Action::ProcessPrefetchQueue { run_id: 1 }
             ));
         }

@@ -412,14 +412,13 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
+    use crate::cmd::test_fixtures;
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
     use crate::ports::outbound::AccessMode;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::services::AppServices;
     use crate::update::action::Action;
 
     mod explain_plan_text {
@@ -485,14 +484,13 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
+        use crate::cmd::test_fixtures;
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
         use crate::ports::outbound::{CachedResultExporter, DbOperationError};
-        use crate::services::AppServices;
         use crate::update::action::Action;
 
         fn test_file_name(label: &str) -> String {
@@ -524,32 +522,28 @@ mod tests {
                 cache,
                 tx,
             );
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::ExportCsvFromCache {
+                    dsn: "sqlite:///tmp/test.db".to_string(),
+                    run_id: 7,
+                    file_name: test_file_name("success"),
+                    columns: vec!["id".to_string(), "payload".to_string()],
+                    values: vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::Blob(vec![0xAB, 0xCD]),
+                    ]],
+                    row_count: Some(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::ExportCsvFromCache {
-                        dsn: "sqlite:///tmp/test.db".to_string(),
-                        run_id: 7,
-                        file_name: test_file_name("success"),
-                        columns: vec!["id".to_string(), "payload".to_string()],
-                        values: vec![vec![
-                            QueryValue::SqlLiteral("1".to_string()),
-                            QueryValue::Blob(vec![0xAB, 0xCD]),
-                        ]],
-                        row_count: Some(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             let Action::CsvExportSucceeded {
                 path, row_count, ..
             } = action
@@ -573,29 +567,25 @@ mod tests {
                 tx,
                 Arc::new(FailingCachedResultExporter),
             );
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::ExportCsvFromCache {
+                    dsn: "sqlite:///tmp/test.db".to_string(),
+                    run_id: 8,
+                    file_name: test_file_name("failure"),
+                    columns: vec!["id".to_string()],
+                    values: vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+                    row_count: Some(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::ExportCsvFromCache {
-                        dsn: "sqlite:///tmp/test.db".to_string(),
-                        run_id: 8,
-                        file_name: test_file_name("failure"),
-                        columns: vec!["id".to_string()],
-                        values: vec![vec![QueryValue::SqlLiteral("1".to_string())]],
-                        row_count: Some(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(action, Action::CsvExportFailed { run_id: 8, .. }));
         }
     }
@@ -603,20 +593,20 @@ mod tests {
     mod execute_preview {
         use std::cell::RefCell;
         use std::sync::Arc;
+        use std::time::Duration;
 
         use tokio::sync::mpsc;
 
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
+        use crate::cmd::test_fixtures;
 
         use crate::model::app_state::AppState;
         use crate::ports::outbound::DbOperationError;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
-        use crate::services::AppServices;
         use crate::update::action::{Action, QueryFailureContext};
 
         #[tokio::test]
@@ -637,32 +627,27 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::ExecutePreview {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    run_id: 8,
+                    limit: 100,
+                    offset: 0,
+                    target_page: 0,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::ExecutePreview {
-                        dsn: "dsn://test".to_string(),
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                        generation: 1,
-                        run_id: 8,
-                        limit: 100,
-                        offset: 0,
-                        target_page: 0,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::QueryCompleted { .. }),
                 "expected QueryCompleted, got {action:?}"
@@ -689,32 +674,27 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::ExecutePreview {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    run_id: 8,
+                    limit: 100,
+                    offset: 0,
+                    target_page: 0,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::ExecutePreview {
-                        dsn: "dsn://test".to_string(),
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                        generation: 1,
-                        run_id: 8,
-                        limit: 100,
-                        offset: 0,
-                        target_page: 0,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -742,22 +722,18 @@ mod tests {
                 cache,
                 tx,
             );
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                effect,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![effect],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            recv_action_with_timeout(&mut rx, Duration::from_millis(500)).await
+            run.actions.into_iter().next().expect("action dispatched")
         }
 
         #[tokio::test]
