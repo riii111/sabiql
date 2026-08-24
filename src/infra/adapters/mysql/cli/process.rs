@@ -41,8 +41,7 @@ mod single;
 #[cfg(feature = "test-support")]
 pub(in crate::adapters::mysql) mod test_support;
 pub(in crate::adapters::mysql) use single::run_mysql_single_statement;
-mod metadata;
-pub(super) use metadata::mysql_metadata_columns;
+pub(super) mod metadata;
 
 pub(in crate::adapters::mysql) const MYSQL_QUERY_TIMEOUT: Duration = Duration::from_secs(31);
 #[cfg(unix)]

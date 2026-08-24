@@ -18,10 +18,10 @@ use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
 use super::policy::mysql_metadata_fallback_kind;
+use super::process::metadata::mysql_metadata_columns_with_diagnostics;
 use super::process::{
     MYSQL_QUERY_TIMEOUT, MySqlProcess, configure_mysql_session, finish_mysql_session,
-    mysql_metadata_columns, run_mysql_process_with_timeout, validate_mysql_session_exit,
-    write_mysql_statement,
+    run_mysql_process_with_timeout, validate_mysql_session_exit, write_mysql_statement,
 };
 #[cfg(unix)]
 use super::pty::MySqlExportPtySource;
@@ -376,14 +376,15 @@ pub(super) async fn run_mysql_export_process(
                 "MySQL empty CSV result has no supported metadata fallback".to_string(),
             )
         })?;
-        let columns = mysql_metadata_columns(
+        let columns = mysql_metadata_columns_with_diagnostics(
             process,
             option_file,
             query,
             fallback_kind,
             AccessMode::ReadOnly,
         )
-        .await?;
+        .await?
+        .0;
         csv_writer.write_record(columns.iter()).await?;
     }
 
