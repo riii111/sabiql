@@ -27,6 +27,10 @@ use super::catalog::{
     parse_unique_column_metadata, primary_key_names, required_text, selected_database,
 };
 
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "MySQL index metadata flags are independent index attributes"
+)]
 #[derive(Debug, Clone)]
 struct MySqlIndexMetadata {
     name: String,
@@ -37,20 +41,8 @@ struct MySqlIndexMetadata {
     sub_part: Option<i32>,
     expression: Option<String>,
     descending: bool,
-    visibility: MySqlIndexVisibility,
+    invisible: bool,
     primary: bool,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum MySqlIndexVisibility {
-    Visible,
-    Invisible,
-}
-
-impl MySqlIndexVisibility {
-    const fn is_invisible(self) -> bool {
-        matches!(self, Self::Invisible)
-    }
 }
 
 pub(super) async fn fetch_table_detail_in_session(
@@ -342,11 +334,7 @@ fn parse_index_metadata(
                     ));
                 }
             };
-            let visibility = if parse_boolean_flag(&row[8], "IS_VISIBLE")? {
-                MySqlIndexVisibility::Visible
-            } else {
-                MySqlIndexVisibility::Invisible
-            };
+            let invisible = !parse_boolean_flag(&row[8], "IS_VISIBLE")?;
             let (column_name, expression) = match (column_name, expression) {
                 (Some(column_name), None) => (column_name.to_string(), None),
                 (None, Some(expression)) => {
@@ -374,7 +362,7 @@ fn parse_index_metadata(
                 sub_part,
                 expression,
                 descending,
-                visibility,
+                invisible,
                 primary: parse_boolean_flag(&row[9], "IS_PRIMARY")?,
             })
         })
@@ -405,7 +393,7 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
             if column.descending {
                 index.attributes = index.attributes | IndexAttributes::DESCENDING;
             }
-            if column.visibility.is_invisible() {
+            if column.invisible {
                 index.attributes = index.attributes | IndexAttributes::INVISIBLE;
             }
             continue;
@@ -417,7 +405,7 @@ fn indexes_from_metadata(mut raw: Vec<MySqlIndexMetadata>) -> Vec<Index> {
         if column.descending {
             attributes = attributes | IndexAttributes::DESCENDING;
         }
-        if column.visibility.is_invisible() {
+        if column.invisible {
             attributes = attributes | IndexAttributes::INVISIBLE;
         }
         indexes.push(Index {
