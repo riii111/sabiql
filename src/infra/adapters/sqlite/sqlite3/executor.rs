@@ -62,7 +62,7 @@ impl SqliteCli {
     pub(in crate::adapters::sqlite) async fn ensure_safe_mode_supported(
         &self,
     ) -> Result<(), DbOperationError> {
-        let mut cmd = self.command();
+        let mut cmd = Command::new("sqlite3");
         Self::apply_initialization_file(&mut cmd);
         let output = cmd
             .arg("--safe")
@@ -175,19 +175,13 @@ impl SqliteCli {
         output_path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        Self::ensure_database_path(path)?;
+        let mut cmd = Self::build_command(
+            command,
+            path,
+            &["-batch", "-bail", "-csv", "-header", "-newline", "\n"],
+            read_only,
+        )?;
         let sql = sqlite_session_sql(sql, read_only);
-        let mut cmd = self.command_with_program(command);
-        #[cfg(test)]
-        super::tests::configure_command(path, &mut cmd);
-        Self::apply_session_options(&mut cmd, read_only);
-        cmd.arg("-batch")
-            .arg("-bail")
-            .arg("-csv")
-            .arg("-header")
-            .arg("-newline")
-            .arg("\n");
-        cmd.arg(sqlite_database_uri(path, read_only));
 
         let mut child = cmd
             .stdin(Stdio::piped())
@@ -284,17 +278,24 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<SqliteOutput, DbOperationError> {
-        Self::ensure_database_path(path)?;
+        let mut cmd = Self::build_command("sqlite3", path, args, read_only)?;
         let sql = sqlite_session_sql(sql, read_only);
-        let mut cmd = self.command();
+        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
+    }
+
+    fn build_command(
+        program: &str,
+        path: &str,
+        args: &[&str],
+        read_only: bool,
+    ) -> Result<Command, DbOperationError> {
+        Self::ensure_database_path(path)?;
+        let mut cmd = Command::new(program);
         #[cfg(test)]
         super::tests::configure_command(path, &mut cmd);
         Self::apply_session_options(&mut cmd, read_only);
-        for arg in args {
-            cmd.arg(arg);
-        }
-        cmd.arg(sqlite_database_uri(path, read_only));
-        Self::collect_output(&mut cmd, self.timeout_secs, &sql).await
+        cmd.args(args).arg(sqlite_database_uri(path, read_only));
+        Ok(cmd)
     }
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
@@ -313,14 +314,6 @@ impl SqliteCli {
 
     fn apply_initialization_file(cmd: &mut Command) {
         cmd.arg("-init").arg(sqlite_empty_init_file());
-    }
-
-    fn command(&self) -> Command {
-        self.command_with_program("sqlite3")
-    }
-
-    fn command_with_program(&self, program: &str) -> Command {
-        Command::new(program)
     }
 
     async fn collect_output(
