@@ -352,7 +352,7 @@ impl BrowseSession {
                     run_id,
                     generation: self.selection_generation,
                 });
-        self.cancel_metadata_for_mysql_connection_probe();
+        self.invalidate_inflight_state_for_mysql_probe();
         self.connection_generation = self.connection_generation.wrapping_add(1);
         let run_id = self.mysql_connection_probe_run.begin();
         self.pending_mysql_connection_probe = Some(PendingMySqlConnectionProbe {
@@ -370,7 +370,7 @@ impl BrowseSession {
         self.connection_generation = self.connection_generation.wrapping_add(1);
     }
 
-    fn cancel_metadata_for_mysql_connection_probe(&mut self) {
+    fn invalidate_inflight_state_for_mysql_probe(&mut self) {
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
