@@ -113,15 +113,11 @@ impl EffectRunner {
         self.metadata_tasks.cancel().await;
     }
 
-    async fn cancel_mysql_connection_probe(&self) {
-        self.mysql_connection_probe_task.cancel().await;
-    }
-
     async fn cancel_active_tasks(&self) {
         self.query_tasks.cancel();
         self.table_detail_tasks.cancel();
         self.cancel_metadata_tasks().await;
-        self.cancel_mysql_connection_probe().await;
+        self.mysql_connection_probe_task.cancel().await;
     }
 
     pub async fn run<T: Renderer>(
