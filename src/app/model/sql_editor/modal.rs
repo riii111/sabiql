@@ -274,20 +274,6 @@ impl SqlModalContext {
         &self.status
     }
 
-    pub fn last_adhoc_error(&self) -> Option<&str> {
-        match &self.status {
-            SqlModalStatus::Error(error) => Some(error),
-            _ => None,
-        }
-    }
-
-    pub fn last_adhoc_success(&self) -> Option<&AdhocSuccessSnapshot> {
-        match &self.status {
-            SqlModalStatus::Success(snapshot) => Some(snapshot),
-            _ => None,
-        }
-    }
-
     pub fn active_tab(&self) -> SqlModalTab {
         self.active_tab
     }
@@ -770,26 +756,20 @@ mod tests {
             };
             ctx.finish_adhoc_success(snapshot.clone());
             assert!(matches!(
-                &ctx.status,
+                ctx.status(),
                 SqlModalStatus::Success(payload) if payload == &snapshot
             ));
-            assert!(ctx.last_adhoc_success().is_some());
-            assert!(ctx.last_adhoc_error().is_none());
 
             ctx.finish_adhoc_error("syntax error".to_string());
 
             assert!(matches!(
-                &ctx.status,
+                ctx.status(),
                 SqlModalStatus::Error(error) if error == "syntax error"
             ));
-            assert!(ctx.last_adhoc_success().is_none());
-            assert_eq!(ctx.last_adhoc_error(), Some("syntax error"));
 
             ctx.enter_normal();
 
-            assert_eq!(ctx.status, SqlModalStatus::Normal);
-            assert!(ctx.last_adhoc_success().is_none());
-            assert!(ctx.last_adhoc_error().is_none());
+            assert_eq!(ctx.status(), &SqlModalStatus::Normal);
         }
     }
 

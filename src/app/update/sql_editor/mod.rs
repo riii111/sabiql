@@ -412,11 +412,10 @@ mod tests {
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("No active connection")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(error) if error == "No active connection"
+            ));
             assert!(effects.is_handled_and(Vec::is_empty));
         }
 
@@ -521,11 +520,10 @@ mod tests {
             let effects =
                 reduce_sql_modal(&mut state, &Action::SqlModalConfirmExecute, Instant::now());
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("No active connection")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(error) if error == "No active connection"
+            ));
             assert!(effects.is_handled_and(Vec::is_empty));
         }
 
@@ -732,11 +730,11 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("Read-only mode: write operations are disabled")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(error)
+                    if error == "Read-only mode: write operations are disabled"
+            ));
         }
 
         #[test]
@@ -753,7 +751,10 @@ mod tests {
                 execution_time_ms: 10,
                 mysql_diagnostics: Vec::new(),
             });
-            assert!(state.sql_modal.last_adhoc_success().is_some());
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Success(_)
+            ));
 
             // Now submit a write query in read-only mode
             state
@@ -764,9 +765,11 @@ mod tests {
                 .into_effects()
                 .expect("reducer should handle action");
 
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
-            assert!(state.sql_modal.last_adhoc_success().is_none());
-            assert!(state.sql_modal.last_adhoc_error().is_some());
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(error)
+                    if error == "Read-only mode: write operations are disabled"
+            ));
         }
 
         #[test]
@@ -820,11 +823,11 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(effects.is_empty());
-            assert!(matches!(state.sql_modal.status(), SqlModalStatus::Error(_)));
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("Read-only mode: write operations are disabled")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(error)
+                    if error == "Read-only mode: write operations are disabled"
+            ));
         }
     }
 

@@ -1314,6 +1314,7 @@ mod tests {
     mod query_failed {
         use super::*;
         use crate::model::shared::ui_state::ResultNavMode;
+        use crate::model::sql_editor::modal::SqlModalStatus;
 
         #[test]
         fn resets_result_selection_and_offsets() {
@@ -1476,12 +1477,10 @@ mod tests {
                 effect,
                 Effect::ExecutePreview { table, .. } if table == "users"
             )));
-            assert!(
-                state
-                    .sql_modal
-                    .last_adhoc_error()
-                    .is_some_and(|message| message.contains("later statement failed"))
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(message) if message.contains("later statement failed")
+            ));
         }
 
         #[test]
@@ -1560,10 +1559,10 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert_eq!(
-                state.sql_modal.last_adhoc_error(),
-                Some("previous adhoc error")
-            );
+            assert!(matches!(
+                state.sql_modal.status(),
+                SqlModalStatus::Error(message) if message == "previous adhoc error"
+            ));
             let result = state.query.current_result().expect("result");
             assert_eq!(result.source, QuerySource::Preview);
             assert!(result.is_error());
@@ -1881,19 +1880,19 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            let saved_tag = state
-                .sql_modal
-                .last_adhoc_success()
-                .and_then(|s| s.command_tag.clone());
+            let saved_tag = match state.sql_modal.status() {
+                SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
+                _ => panic!("expected adhoc success status"),
+            };
             assert!(matches!(saved_tag, Some(CommandTag::Alter(_))));
 
             let action = query_completed_action(&mut state, preview_result(5), 0, Some(0));
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            let tag_after = state
-                .sql_modal
-                .last_adhoc_success()
-                .and_then(|s| s.command_tag.clone());
+            let tag_after = match state.sql_modal.status() {
+                SqlModalStatus::Success(snapshot) => snapshot.command_tag.clone(),
+                _ => panic!("expected adhoc success status after preview"),
+            };
             assert!(matches!(tag_after, Some(CommandTag::Alter(_))));
         }
     }
