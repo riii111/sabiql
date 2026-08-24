@@ -310,7 +310,11 @@ impl EffectRunner {
 
             e @ (Effect::FetchSqliteDiagnosticsCore { .. }
             | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
-                sqlite_diagnostics::run(e, &self.action_tx, &self.query.sqlite_diagnostics);
+                sqlite_diagnostics::spawn_sqlite_diagnostics(
+                    e,
+                    &self.action_tx,
+                    &self.query.sqlite_diagnostics,
+                );
                 Ok(vec![])
             }
 
