@@ -8,8 +8,9 @@ pub(super) fn build_explain_sql(query: &str) -> Option<String> {
 }
 
 pub(super) fn build_explain_analyze_sql(query: &str) -> Option<String> {
-    mysql_tree_explain_query_kind(&format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))?;
-    Some(format!("EXPLAIN ANALYZE FORMAT=TREE {query}"))
+    let explain = format!("EXPLAIN ANALYZE FORMAT=TREE {query}");
+    mysql_tree_explain_query_kind(&explain)?;
+    Some(explain)
 }
 
 #[cfg(test)]
