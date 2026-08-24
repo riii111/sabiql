@@ -23,21 +23,7 @@ use super::{
     read_one_mysql_resultset_with_diagnostics, write_mysql_statement,
 };
 
-pub(in crate::adapters::mysql) async fn mysql_metadata_columns(
-    process: &mut MySqlProcess,
-    option_file: &std::path::Path,
-    query: &str,
-    kind: MySqlMetadataFallbackKind,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    Ok(
-        mysql_metadata_columns_with_diagnostics(process, option_file, query, kind, access_mode)
-            .await?
-            .0,
-    )
-}
-
-pub(super) async fn mysql_metadata_columns_with_diagnostics(
+pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnostics(
     process: &mut MySqlProcess,
     option_file: &std::path::Path,
     query: &str,
