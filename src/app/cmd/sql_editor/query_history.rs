@@ -19,21 +19,15 @@ pub fn run(
             let store = Arc::clone(query_history_store);
             let tx = action_tx.clone();
 
-            let scope_for_action = scope.clone();
             tokio::spawn(async move {
                 match store.load(&project_name, &scope).await {
                     Ok(entries) => {
-                        tx.send(Action::QueryHistoryLoaded(
-                            scope_for_action.clone(),
-                            entries,
-                        ))
-                        .await
-                        .ok();
-                    }
-                    Err(e) => {
-                        tx.send(Action::QueryHistoryLoadFailed(scope_for_action, e))
+                        tx.send(Action::QueryHistoryLoaded(scope, entries))
                             .await
                             .ok();
+                    }
+                    Err(e) => {
+                        tx.send(Action::QueryHistoryLoadFailed(scope, e)).await.ok();
                     }
                 }
             });
