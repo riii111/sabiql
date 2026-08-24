@@ -9,6 +9,15 @@ pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED"
 pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
 pub const MYSQL_CONNECT_TIMEOUT_ERRNOS: &[&str] = &["(60)", "(110)", "(10060)"];
 
+pub fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let start = lowercase_details.find("error ")? + "error ".len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
+}
+
 pub fn is_mysql_connect_timeout_message(value: &str) -> bool {
     let lowercase = value.to_ascii_lowercase();
     lowercase.contains("can't connect to mysql server")
