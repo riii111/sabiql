@@ -137,12 +137,6 @@ impl ErPreparationState {
         self.pending_tables.extend(tables.iter().cloned());
     }
 
-    pub fn retry_failed(&mut self) {
-        for (table, _) in self.failed_tables.drain() {
-            self.pending_tables.insert(table);
-        }
-    }
-
     pub fn mark_idle(&mut self) {
         self.status = ErStatus::Idle;
     }
@@ -183,13 +177,6 @@ impl ErPreparationState {
         run_id
     }
 
-    pub fn begin_full_prefetch(&mut self, total: usize) {
-        self.clear_table_tracking();
-        self.total_tables = total;
-        self.seed_tables.clear();
-        self.fk_expanded = true;
-    }
-
     pub fn set_targets(&mut self, tables: Vec<String>) {
         self.target_tables = tables;
     }
@@ -214,12 +201,6 @@ impl ErPreparationState {
     pub fn invalidate_refresh_signatures(&mut self, total_tables: usize) {
         self.last_signatures.clear();
         self.total_tables = total_tables;
-    }
-
-    fn clear_table_tracking(&mut self) {
-        self.pending_tables.clear();
-        self.fetching_tables.clear();
-        self.failed_tables.clear();
     }
 
     // Re-queueing a table starts a fresh attempt and clears any prior failure
@@ -424,23 +405,6 @@ mod tests {
             assert_eq!(state.seed_tables, tables);
             assert!(state.pending_tables.contains("public.users"));
             assert!(state.pending_tables.contains("public.orders"));
-        }
-    }
-
-    mod retry_failed {
-        use super::*;
-
-        #[test]
-        fn moves_failed_to_pending() {
-            let mut state = ErPreparationState::default();
-            state
-                .failed_tables
-                .insert("public.users".to_string(), "error".to_string());
-
-            state.retry_failed();
-
-            assert!(state.failed_tables.is_empty());
-            assert!(state.pending_tables.contains("public.users"));
         }
     }
 
