@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::process::{ExitStatus, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -17,7 +17,7 @@ async fn collect_csv_output(
     mut child: tokio::process::Child,
     path: &Path,
     timeout_duration: Duration,
-) -> Result<(ExitStatus, String), DbOperationError> {
+) -> Result<(), DbOperationError> {
     let stdout = child.stdout.take();
     let stderr_handle = child.stderr.take();
 
@@ -56,8 +56,13 @@ async fn collect_csv_output(
     })
     .await;
 
+    drop(writer);
     match result {
-        Ok(Ok(inner)) => Ok(inner),
+        Ok(Ok((status, _))) if status.success() => Ok(()),
+        Ok(Ok((_, stderr))) => {
+            let _ = tokio::fs::remove_file(path).await;
+            Err(classify_query_error(&stderr))
+        }
         Ok(Err(e)) => {
             let _ = tokio::fs::remove_file(path).await;
             Err(DbOperationError::QueryFailed(e.to_string()))
@@ -128,16 +133,7 @@ fn select_result_segment<'a>(segments: &[&'a str]) -> Option<&'a str> {
 }
 
 struct PsqlOutput {
-    status: ExitStatus,
     stdout: String,
-    stderr: String,
-}
-
-fn ensure_psql_success(output: &PsqlOutput) -> Result<(), DbOperationError> {
-    if !output.status.success() {
-        return Err(classify_query_error(&output.stderr));
-    }
-    Ok(())
 }
 
 impl PostgresAdapter {
@@ -243,11 +239,10 @@ impl PostgresAdapter {
         .map_err(|e| DbOperationError::QueryFailed(e.to_string()))?;
 
         let (status, stdout, stderr) = result;
-        Ok(PsqlOutput {
-            status,
-            stdout,
-            stderr,
-        })
+        if !status.success() {
+            return Err(classify_query_error(&stderr));
+        }
+        Ok(PsqlOutput { stdout })
     }
 
     pub(in crate::adapters::postgres) async fn execute_query(
@@ -256,8 +251,6 @@ impl PostgresAdapter {
         query: &str,
     ) -> Result<String, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
-
-        ensure_psql_success(&output)?;
 
         Ok(output.stdout)
     }
@@ -297,8 +290,6 @@ impl PostgresAdapter {
         let output = self.run_psql(dsn, &["--csv"], query, read_only).await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
-
-        ensure_psql_success(&output)?;
 
         let stdout_trimmed = output.stdout.trim();
         if stdout_trimmed.is_empty() {
@@ -340,8 +331,6 @@ impl PostgresAdapter {
             .await?;
 
         let elapsed = start.elapsed().as_millis() as u64;
-
-        ensure_psql_success(&output)?;
 
         let segments = split_marker_segments(&output.stdout, &marker);
         // A mismatch implies a marker collision in data; guessing would
@@ -420,8 +409,6 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         let output = self.run_psql(dsn, &[], query, read_only).await?;
 
-        ensure_psql_success(&output)?;
-
         let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
             |error: ParseCommandTagError| {
                 DbOperationError::CommandTagParseFailed(error.to_string())
@@ -441,7 +428,6 @@ impl PostgresAdapter {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
-        ensure_psql_success(&output)?;
         output.stdout.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
         })
@@ -463,14 +449,7 @@ impl PostgresAdapter {
             .spawn()
             .map_err(classify_cli_spawn_error)?;
 
-        let result =
-            collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
-
-        let (status, stderr) = result;
-        if !status.success() {
-            let _ = tokio::fs::remove_file(path).await;
-            return Err(classify_query_error(&stderr));
-        }
+        collect_csv_output(child, path, Duration::from_secs(self.timeout_secs * 10)).await?;
 
         Ok(())
     }
@@ -777,6 +756,8 @@ mod tests {
         use tempfile::tempdir;
         use tokio::process::Command;
 
+        use crate::app::ports::outbound::DbOperationError;
+
         use super::super::collect_csv_output;
 
         #[tokio::test]
@@ -794,17 +775,35 @@ mod tests {
                 .spawn()
                 .unwrap();
 
-            let (status, stderr) =
-                collect_csv_output(child, &path, std::time::Duration::from_secs(2))
-                    .await
-                    .unwrap();
+            collect_csv_output(child, &path, std::time::Duration::from_secs(2))
+                .await
+                .unwrap();
 
-            assert!(status.success());
-            assert!(stderr.len() > 128 * 1024);
             assert_eq!(
                 tokio::fs::read_to_string(path).await.unwrap(),
                 "id,name\n1,Alice\n"
             );
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_removes_partial_file_and_returns_classified_error() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+            let child = Command::new("sh")
+                .arg("-c")
+                .arg(
+                    "printf 'id,name\\n1,Alice\\n'; printf 'ERROR:  42501: permission denied\\n' >&2; exit 1",
+                )
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+
+            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+
+            assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
+            assert!(!path.exists());
         }
     }
 
