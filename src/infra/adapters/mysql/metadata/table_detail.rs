@@ -45,19 +45,13 @@ struct MySqlIndexMetadata {
     primary: bool,
 }
 
-pub(super) async fn fetch_table_detail_in_session(
+pub(super) async fn fetch_table_detail(
     dsn: &str,
     schema: &str,
     table: &str,
 ) -> Result<Table, DbOperationError> {
-    fetch_table_detail_in_session_with_program(
-        dsn,
-        schema,
-        table,
-        OsStr::new("mysql"),
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
+    fetch_table_detail_with_program(dsn, schema, table, OsStr::new("mysql"), MYSQL_QUERY_TIMEOUT)
+        .await
 }
 
 pub(super) async fn fetch_table_columns_and_fks(
@@ -117,7 +111,7 @@ async fn fetch_table_columns_and_fks_with_program(
     ))
 }
 
-async fn fetch_table_detail_in_session_with_program(
+async fn fetch_table_detail_with_program(
     dsn: &str,
     schema: &str,
     table: &str,
@@ -597,7 +591,7 @@ done
     async fn inspector_detail_orchestration_uses_one_process_for_table_and_view() {
         for (mode, schema, table) in [("table", "app", "items"), ("view", "app", "items_view")] {
             let (_directory, program, transcript) = fake_metadata_cli(mode);
-            let detail = fetch_table_detail_in_session_with_program(
+            let detail = fetch_table_detail_with_program(
                 "mysql://user:password@localhost:3306/app",
                 schema,
                 table,
@@ -687,7 +681,7 @@ done
     #[tokio::test]
     async fn inspector_detail_rejects_a_mismatched_completion_marker() {
         let (_directory, program, transcript) = fake_metadata_cli("completion-marker-failure");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -749,7 +743,7 @@ done
     #[tokio::test]
     async fn inspector_detail_read_only_setup_failure_never_sends_metadata_sql() {
         let (_directory, program, transcript) = fake_metadata_cli("read-only-failure");
-        let result = fetch_table_detail_in_session_with_program(
+        let result = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -770,7 +764,7 @@ done
     async fn inspector_detail_orchestration_rejects_empty_and_malformed_shapes_without_partial_table()
      {
         let (_directory, program, transcript) = fake_metadata_cli("empty");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -784,7 +778,7 @@ done
         assert_option_file_removed(&transcript);
 
         let (_directory, program, transcript) = fake_metadata_cli("malformed");
-        let error = fetch_table_detail_in_session_with_program(
+        let error = fetch_table_detail_with_program(
             "mysql://user:password@localhost:3306/app",
             "app",
             "items",
@@ -806,7 +800,7 @@ done
         ] {
             let (directory, program, transcript) = fake_metadata_cli(mode);
             let task = tokio::spawn(async move {
-                fetch_table_detail_in_session_with_program(
+                fetch_table_detail_with_program(
                     "mysql://user:password@localhost:3306/app",
                     "app",
                     "items",
@@ -841,7 +835,7 @@ done
     async fn inspector_detail_orchestration_cleans_up_after_cancellation() {
         let (_directory, program, transcript) = fake_metadata_cli("timeout");
         let task = tokio::spawn(async move {
-            fetch_table_detail_in_session_with_program(
+            fetch_table_detail_with_program(
                 "mysql://user:password@localhost:3306/app",
                 "app",
                 "items",

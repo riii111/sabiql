@@ -44,7 +44,7 @@ impl MetadataProvider for MySqlAdapter {
         schema: &str,
         table: &str,
     ) -> Result<Table, DbOperationError> {
-        table_detail::fetch_table_detail_in_session(dsn, schema, table).await
+        table_detail::fetch_table_detail(dsn, schema, table).await
     }
 
     async fn fetch_table_columns_and_fks(
