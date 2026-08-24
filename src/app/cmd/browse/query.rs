@@ -412,13 +412,13 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures;
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, WriteExecutionResult};
     use crate::model::app_state::AppState;
+    use crate::ports::outbound::AccessMode;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::ports::outbound::{AccessMode, RenderOutput, RenderResult, Renderer};
     use crate::services::AppServices;
     use crate::update::action::Action;
 
@@ -485,29 +485,15 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures;
+        use crate::cmd::test_fixtures::{self, NoopRenderer};
         use crate::domain::QueryValue;
         use crate::model::app_state::AppState;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
-        use crate::ports::outbound::{
-            CachedResultExporter, DbOperationError, RenderOutput, RenderResult, Renderer,
-        };
+        use crate::ports::outbound::{CachedResultExporter, DbOperationError};
         use crate::services::AppServices;
         use crate::update::action::Action;
-
-        struct NoopRenderer;
-        impl Renderer for NoopRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: std::time::Instant,
-            ) -> RenderResult<RenderOutput> {
-                Ok(RenderOutput::default())
-            }
-        }
 
         fn test_file_name(label: &str) -> String {
             format!("cached_{label}_{}", std::process::id())
@@ -629,28 +615,15 @@ mod tests {
         use crate::cmd::cache::TtlCache;
         use crate::cmd::completion_engine::CompletionEngine;
         use crate::cmd::effect::Effect;
-        use crate::cmd::test_fixtures;
-        use std::time::Instant;
+        use crate::cmd::test_fixtures::{self, NoopRenderer};
 
         use crate::model::app_state::AppState;
+        use crate::ports::outbound::DbOperationError;
         use crate::ports::outbound::connection_store::MockConnectionStore;
         use crate::ports::outbound::metadata::MockMetadataProvider;
         use crate::ports::outbound::query_executor::MockQueryExecutor;
-        use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
         use crate::services::AppServices;
         use crate::update::action::{Action, QueryFailureContext};
-
-        struct NoopRenderer;
-        impl Renderer for NoopRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: Instant,
-            ) -> RenderResult<RenderOutput> {
-                Ok(RenderOutput::default())
-            }
-        }
 
         #[tokio::test]
         async fn success_returns_query_completed() {
@@ -768,18 +741,6 @@ mod tests {
     mod execute_access_mode {
         use super::*;
         use crate::domain::DatabaseType;
-
-        struct NoopRenderer;
-        impl Renderer for NoopRenderer {
-            fn draw(
-                &mut self,
-                _state: &AppState,
-                _services: &AppServices,
-                _now: std::time::Instant,
-            ) -> RenderResult<RenderOutput> {
-                Ok(RenderOutput::default())
-            }
-        }
 
         async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
             let cache = TtlCache::new(300);

@@ -329,7 +329,7 @@ impl EffectRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmd::test_fixtures;
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::{DatabaseMetadata, TableSignatureSnapshot, TableSummary};
     use crate::model::shared::render_output::{
         BrowseLayout, DetailLayout, ExplorerLayout, JsonDetailLayout,
@@ -340,18 +340,6 @@ mod tests {
     use crate::ports::outbound::{MySqlConnectionProbeResult, RenderOutput, RenderResult};
     use crate::services::AppServices;
     use tokio::sync::mpsc;
-
-    struct NoopRenderer;
-    impl Renderer for NoopRenderer {
-        fn draw(
-            &mut self,
-            _state: &AppState,
-            _services: &AppServices,
-            _now: Instant,
-        ) -> RenderResult<RenderOutput> {
-            Ok(RenderOutput::default())
-        }
-    }
 
     mod render {
         use super::*;
