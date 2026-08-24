@@ -15,10 +15,6 @@ pub struct ConnectionError;
 
 impl ConnectionError {
     pub fn render(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
-        Self::render_at(frame, state, now, theme);
-    }
-
-    pub fn render_at(frame: &mut Frame, state: &AppState, now: Instant, theme: &ThemePalette) {
         let error_state = &state.connection_error;
         let Some(error_info) = error_state.error_info() else {
             return;
