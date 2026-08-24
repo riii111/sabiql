@@ -307,12 +307,6 @@ pub fn deletion_refresh_target_bulk(
     }
 }
 
-pub fn char_to_byte_index(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map_or(s.len(), |(byte_idx, _)| byte_idx)
-}
-
 pub fn find_text_matches(content: &str, query: &str) -> Vec<usize> {
     if query.is_empty() {
         return Vec::new();

@@ -21,6 +21,6 @@ pub use connection::dispatch_connection;
 pub use dispatch_result::DispatchResult;
 pub use er::dispatch_er;
 pub use explain::dispatch_explain;
-pub use helpers::{char_to_byte_index, validate_all, validate_field};
+pub use helpers::{validate_all, validate_field};
 pub use modal::dispatch_modal;
 pub use sql_editor::dispatch_sql_modal;

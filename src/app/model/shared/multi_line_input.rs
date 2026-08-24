@@ -1,9 +1,9 @@
 use crate::model::shared::cursor::CursorMove;
 
 use super::text_input::{
-    TextInputEditing, TextInputLike, TextInputState, TextKillDirection, next_word_start,
-    previous_word_start, readline_forward_word_end, readline_previous_whitespace_boundary,
-    readline_previous_word_start,
+    TextInputEditing, TextInputLike, TextInputState, TextKillDirection, char_to_byte_index,
+    next_word_start, previous_word_start, readline_forward_word_end,
+    readline_previous_whitespace_boundary, readline_previous_word_start,
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -256,7 +256,7 @@ impl MultiLineInputState {
     }
 
     pub fn char_to_byte_index(&self, char_idx: usize) -> usize {
-        char_to_byte_index_impl(self.content(), char_idx)
+        char_to_byte_index(self.content(), char_idx)
     }
 
     fn rebuild_derived(&mut self) {
@@ -396,12 +396,6 @@ fn find_cursor_position(line_spans: &[LineSpan], cursor: usize) -> (usize, usize
         .saturating_sub(1);
     let span = line_spans.get(row).copied().unwrap_or_default();
     (row, cursor.saturating_sub(span.start).min(span.len))
-}
-
-fn char_to_byte_index_impl(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map_or(s.len(), |(byte_idx, _)| byte_idx)
 }
 
 #[cfg(test)]
