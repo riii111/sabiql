@@ -77,7 +77,7 @@ impl MetadataProvider for SqliteAdapter {
             .collect::<Result<Vec<_>, DbOperationError>>()?;
         Ok(TableSignatureSnapshot {
             signatures,
-            table_details: Vec::new(),
+            prefetched_table_details: Vec::new(),
         })
     }
 }

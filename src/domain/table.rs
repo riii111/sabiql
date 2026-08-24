@@ -78,7 +78,7 @@ impl TableSignature {
 #[derive(Debug, Clone)]
 pub struct TableSignatureSnapshot {
     pub signatures: Vec<TableSignature>,
-    pub table_details: Vec<Table>,
+    pub prefetched_table_details: Vec<Table>,
 }
 
 impl TableSummary {
