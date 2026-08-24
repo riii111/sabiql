@@ -8,9 +8,8 @@ use ratatui::widgets::{Cell, Paragraph, Row, Table as RatatuiTable, Wrap};
 
 use crate::app::model::app_state::AppState;
 use crate::app::model::browse::inspector_view_model::{
-    InspectorColumnRow, InspectorEmptyState, InspectorForeignKeyRow, InspectorIndexRow,
-    InspectorInfoRow, InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow,
-    InspectorViewModel,
+    InspectorColumnRow, InspectorForeignKeyRow, InspectorIndexRow, InspectorInfoRow,
+    InspectorLoadState, InspectorRlsRow, InspectorSection, InspectorTriggerRow, InspectorViewModel,
 };
 use crate::app::model::shared::engine_feature_profile::InspectorInfoField;
 use crate::app::model::shared::flash_timer::{FlashId, FlashTimerStore};
@@ -142,12 +141,11 @@ impl Inspector {
         }
 
         if let Some(empty_state) = view_model.empty_state() {
-            let style = if matches!(empty_state, InspectorEmptyState::NoTableSelected) {
-                Style::default().fg(theme.semantic.text.placeholder)
-            } else {
-                Style::default().fg(theme.semantic.text.primary)
-            };
-            frame.render_widget(Paragraph::new(empty_state.message()).style(style), inner);
+            frame.render_widget(
+                Paragraph::new(empty_state.message())
+                    .style(Style::default().fg(theme.semantic.text.primary)),
+                inner,
+            );
             return ViewportPlan::default();
         }
 

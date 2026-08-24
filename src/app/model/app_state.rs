@@ -482,7 +482,7 @@ mod tests {
         ColumnAttributes, ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource,
         QueryValue, Table, TableKind, TableKindInfo,
     };
-    use crate::model::browse::inspector_view_model::{InspectorEmptyState, InspectorLoadState};
+    use crate::model::browse::inspector_view_model::InspectorLoadState;
     use crate::model::browse::row_detail::RowDetailState;
     use crate::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use crate::model::er_state::ErStatus;
@@ -623,10 +623,7 @@ mod tests {
             view_model.load_state(),
             &InspectorLoadState::NoTableSelected
         );
-        assert_eq!(
-            view_model.empty_state(),
-            Some(InspectorEmptyState::NoTableSelected)
-        );
+        assert_eq!(view_model.empty_state(), None);
     }
 
     #[rstest]
