@@ -88,6 +88,10 @@ pub(super) async fn fetch_metadata_snapshot(
     metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
 }
 
+fn mysql_table_not_found(schema: &str, table: &str) -> DbOperationError {
+    DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
+}
+
 pub(super) fn find_table(
     schema: &str,
     table: &str,
@@ -101,9 +105,7 @@ pub(super) fn find_table(
                 && candidate.name == table
         })
         .cloned()
-        .ok_or_else(|| {
-            DbOperationError::ObjectMissing(format!("MySQL table not found: {schema}.{table}"))
-        })
+        .ok_or_else(|| mysql_table_not_found(schema, table))
 }
 
 pub(super) fn parse_columns_for_table(
@@ -113,9 +115,7 @@ pub(super) fn parse_columns_for_table(
 ) -> Result<Vec<MySqlColumnMetadata>, DbOperationError> {
     let columns = parse_column_metadata(result)?;
     if columns.is_empty() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "MySQL table not found: {schema}.{table}"
-        )));
+        return Err(mysql_table_not_found(schema, table));
     }
     Ok(columns)
 }
@@ -145,9 +145,7 @@ pub(super) fn parse_preview_columns_for_table(
         })
         .collect::<Result<Vec<_>, _>>()?;
     if columns.is_empty() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "MySQL table not found: {schema}.{table}"
-        )));
+        return Err(mysql_table_not_found(schema, table));
     }
     Ok(columns)
 }
