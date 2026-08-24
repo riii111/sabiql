@@ -77,6 +77,12 @@ impl DbAdapterRegistry {
     }
 }
 
+impl Default for DbAdapterRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn is_postgres_conninfo_dsn(dsn: &str) -> bool {
     let Some((key, _)) = dsn.trim_start().split_once('=') else {
         return false;
