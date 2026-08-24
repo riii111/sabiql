@@ -660,13 +660,6 @@ pub enum Action {
         export_query: String,
         file_name: String,
     },
-    ExecuteCsvExport {
-        dsn: String,
-        run_id: u64,
-        export_query: String,
-        file_name: String,
-        row_count: Option<usize>,
-    },
     CsvExportSucceeded {
         dsn: String,
         run_id: u64,
