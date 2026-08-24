@@ -278,18 +278,6 @@ impl MySqlConnectionConfig {
         let mut url = Url::parse("mysql://localhost").expect("static MySQL URL is valid");
         url.set_host(Some(&host)).is_ok()
     }
-
-    pub fn is_valid(&self) -> bool {
-        self.transport.is_supported_on_current_platform()
-            && match self.transport {
-                MySqlTransport::Tcp => Self::is_valid_host(&self.host) && self.port > 0,
-                MySqlTransport::UnixSocket | MySqlTransport::NamedPipe => {
-                    self.transport_path.as_deref().is_some_and(|path| {
-                        !path.trim().is_empty() && !path.chars().any(char::is_control)
-                    })
-                }
-            }
-    }
 }
 
 #[expect(
@@ -477,29 +465,6 @@ mod tests {
                 format!("\"{name}\"")
             );
         }
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn unix_socket_config_uses_path_instead_of_tcp_values() {
-        let config = MySqlConnectionConfig::new(
-            "ignored-host",
-            3306,
-            None,
-            "user",
-            "password",
-            MySqlSslMode::Disabled,
-        )
-        .with_transport(
-            MySqlTransport::UnixSocket,
-            Some("/run/mysqld/mysqld.sock".to_string()),
-        );
-
-        assert!(config.is_valid());
-        assert_eq!(
-            config.transport_path.as_deref(),
-            Some("/run/mysqld/mysqld.sock")
-        );
     }
 
     #[test]
