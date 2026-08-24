@@ -14,11 +14,6 @@ pub(super) fn reduce_connection_error(
     now: Instant,
 ) -> DispatchResult {
     match action {
-        Action::ShowConnectionError(info) => {
-            state.connection_error.set_error(info.clone());
-            state.modal.replace_mode(InputMode::ConnectionError);
-            DispatchResult::handled()
-        }
         Action::CloseConnectionError => {
             if state.session.pending_mysql_connection_probe().is_some() {
                 state.session.clear_mysql_connection_probe();

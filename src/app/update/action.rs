@@ -7,7 +7,6 @@ use crate::domain::connection::{
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::json_detail::JsonDetailMode;
-use crate::model::connection::error::ConnectionErrorInfo;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::key_sequence::Prefix;
@@ -419,7 +418,6 @@ pub enum Action {
     },
     ConnectionEditLoaded(Box<ConnectionProfile>),
     ConnectionEditLoadFailed(ConnectionStoreError),
-    ShowConnectionError(ConnectionErrorInfo),
     CloseConnectionError,
     ToggleConnectionErrorDetails,
     CopyConnectionError,
