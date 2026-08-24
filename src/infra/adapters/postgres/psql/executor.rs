@@ -620,126 +620,84 @@ mod tests {
     }
 
     mod csv_parsing {
+        use crate::app::ports::outbound::DbOperationError;
+        use crate::domain::QuerySource;
+
         #[test]
-        fn empty_csv_output_has_no_headers() {
-            let csv_data = "";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(false)
-                .from_reader(csv_data.as_bytes());
+        fn empty_csv_returns_empty_query_result() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT * FROM users",
+                "",
+                17,
+                QuerySource::Preview,
+            )
+            .unwrap();
 
-            let records: Vec<_> = reader.records().collect();
-
-            assert_eq!(records.len(), 0);
+            assert!(result.columns.is_empty());
+            assert_eq!(result.data_row_count(), 0);
+            assert_eq!(result.row_count(), 0);
+            assert_eq!(result.execution_time_ms, 17);
+            assert_eq!(result.source, QuerySource::Preview);
         }
 
         #[test]
-        fn valid_csv_parses_headers_and_rows() {
-            let csv_data = "id,name\n1,alice\n2,bob";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn standard_csv_returns_columns_and_text_rows() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT id, name FROM users",
+                "id,name\n1,alice\n2,bob",
+                23,
+                QuerySource::Adhoc,
+            )
+            .unwrap();
 
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-            let rows: Vec<_> = reader.records().collect();
-
-            assert_eq!(headers.len(), 2);
-            assert_eq!(headers[0], "id");
-            assert_eq!(headers[1], "name");
-            assert_eq!(rows.len(), 2);
+            assert_eq!(result.columns, ["id", "name"]);
+            assert_eq!(
+                result.display_row_at(0),
+                Some(vec!["1".into(), "alice".into()])
+            );
+            assert_eq!(
+                result.display_row_at(1),
+                Some(vec!["2".into(), "bob".into()])
+            );
+            assert_eq!(result.data_row_count(), 2);
+            assert_eq!(result.row_count(), 2);
+            assert_eq!(result.execution_time_ms, 23);
+            assert_eq!(result.source, QuerySource::Adhoc);
         }
 
         #[test]
-        fn csv_with_multibyte_characters_parses_correctly() {
-            let csv_data = "名前,年齢\n太郎,25\n花子,30";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn quoted_multibyte_csv_preserves_fields_and_rows() {
+            let result = super::super::PostgresAdapter::csv_result(
+                "SELECT name, description FROM users",
+                "名前,説明\n太郎,\"hello, 世界\"\n花子,\"line1\nline2\"",
+                31,
+                QuerySource::Preview,
+            )
+            .unwrap();
 
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-            let first_row = reader.records().next().unwrap().unwrap();
-
-            assert_eq!(headers[0], "名前");
-            assert_eq!(first_row.get(0), Some("太郎"));
+            assert_eq!(result.columns, ["名前", "説明"]);
+            assert_eq!(
+                result.display_row_at(0),
+                Some(vec!["太郎".into(), "hello, 世界".into()])
+            );
+            assert_eq!(
+                result.display_row_at(1),
+                Some(vec!["花子".into(), "line1\nline2".into()])
+            );
+            assert_eq!(result.data_row_count(), 2);
         }
 
         #[test]
-        fn csv_with_quoted_fields_parses_correctly() {
-            let csv_data = "id,description\n1,\"hello, world\"\n2,\"line1\nline2\"";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
+        fn invalid_csv_returns_csv_parse_error() {
+            let error = super::super::PostgresAdapter::csv_result(
+                "SELECT id, name FROM users",
+                "id,name\n1,alice\n2,bob,extra",
+                41,
+                QuerySource::Adhoc,
+            )
+            .unwrap_err();
 
-            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
-
-            assert_eq!(rows[0].get(1), Some("hello, world"));
-            assert_eq!(rows[1].get(1), Some("line1\nline2"));
-        }
-
-        #[test]
-        fn csv_with_empty_values_parses_correctly() {
-            let csv_data = "id,name,email\n1,,alice@example.com\n2,bob,";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(csv_data.as_bytes());
-
-            let rows: Vec<_> = reader.records().map(|r| r.unwrap()).collect();
-
-            assert_eq!(rows[0].get(1), Some(""));
-            assert_eq!(rows[1].get(2), Some(""));
-        }
-
-        #[test]
-        fn invalid_csv_returns_error() {
-            let csv_data = "id,name\n1,alice\n2,bob,extra";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .flexible(false)
-                .from_reader(csv_data.as_bytes());
-
-            reader.headers().unwrap();
-            let results: Vec<_> = reader.records().collect();
-
-            assert!(results[1].is_err());
-        }
-
-        #[test]
-        fn non_csv_output_like_notice_parses_as_header() {
-            let non_csv = "NOTICE: some database notice\nNOTICE: another line";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(non_csv.as_bytes());
-
-            let headers = reader.headers();
-
-            assert!(headers.is_ok());
-        }
-
-        #[test]
-        fn mixed_notice_and_csv_parses_first_line_as_header() {
-            let mixed = "id,name\n1,alice";
-            let mut reader = csv::ReaderBuilder::new()
-                .has_headers(true)
-                .from_reader(mixed.as_bytes());
-
-            let headers: Vec<String> = reader
-                .headers()
-                .unwrap()
-                .iter()
-                .map(ToString::to_string)
-                .collect();
-
-            assert_eq!(headers[0], "id");
-            assert_eq!(headers[1], "name");
+            assert!(matches!(error, DbOperationError::CsvParse(_)));
         }
     }
 
