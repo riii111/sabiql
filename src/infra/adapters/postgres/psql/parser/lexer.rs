@@ -2,29 +2,12 @@
 // Shared by split_sql_statements and has_select_into to ensure
 // consistent quote/comment boundary handling.
 
-pub(super) fn skip_single_quoted(bytes: &[u8], mut i: usize) -> usize {
+fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i += 1;
     while i < bytes.len() {
-        if bytes[i] == b'\'' {
+        if bytes[i] == quote {
             i += 1;
-            if i < bytes.len() && bytes[i] == b'\'' {
-                i += 1;
-            } else {
-                break;
-            }
-        } else {
-            i += 1;
-        }
-    }
-    i
-}
-
-pub(super) fn skip_double_quoted(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b'"' {
-            i += 1;
-            if i < bytes.len() && bytes[i] == b'"' {
+            if i < bytes.len() && bytes[i] == quote {
                 i += 1;
             } else {
                 break;
@@ -81,8 +64,7 @@ pub(in crate::adapters::postgres) fn split_sql_statements(sql: &str) -> Vec<&str
 
     while i < bytes.len() {
         match bytes[i] {
-            b'\'' => i = skip_single_quoted(bytes, i),
-            b'"' => i = skip_double_quoted(bytes, i),
+            quote @ (b'\'' | b'"') => i = skip_quoted(bytes, i, quote),
             b'$' => i = skip_dollar_quoted(sql, bytes, i),
             b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => i = skip_line_comment(bytes, i),
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => i = skip_block_comment(bytes, i),
@@ -112,8 +94,7 @@ pub(super) fn has_select_into(lower: &str) -> bool {
 
     while i < bytes.len() {
         match bytes[i] {
-            b'\'' => i = skip_single_quoted(bytes, i),
-            b'"' => i = skip_double_quoted(bytes, i),
+            quote @ (b'\'' | b'"') => i = skip_quoted(bytes, i, quote),
             b'$' => i = skip_dollar_quoted(lower, bytes, i),
             b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => i = skip_line_comment(bytes, i),
             b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => i = skip_block_comment(bytes, i),
@@ -167,6 +148,10 @@ mod tests {
             "SELECT 'it''s'; SELECT 2",
             vec!["SELECT 'it''s'", "SELECT 2"]
         )]
+        #[case::escaped_double_quote(
+            "SELECT \"a\"\"b\"; SELECT 2",
+            vec!["SELECT \"a\"\"b\"", "SELECT 2"]
+        )]
         fn valid_input_returns_split_statements(#[case] sql: &str, #[case] expected: Vec<&str>) {
             assert_eq!(super::super::split_sql_statements(sql), expected);
         }
@@ -178,6 +163,8 @@ mod tests {
         #[case::tagged_dollar_quote("SELECT $tag$a;b$tag$", vec!["SELECT $tag$a;b$tag$"])]
         #[case::line_comment("SELECT 1 -- comment; here\n", vec!["SELECT 1 -- comment; here"])]
         #[case::block_comment("SELECT /* ; */ 1", vec!["SELECT /* ; */ 1"])]
+        #[case::unterminated_single_quote("SELECT 'a;b", vec!["SELECT 'a;b"])]
+        #[case::unterminated_double_quote("SELECT \"a;b", vec!["SELECT \"a;b"])]
         fn quoted_semicolon_returns_single_statement(
             #[case] sql: &str,
             #[case] expected: Vec<&str>,
