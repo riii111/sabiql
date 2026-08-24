@@ -70,7 +70,6 @@ pub(super) fn reduce_query_history_picker(
             state.messages.set_error_at(e.to_string(), now);
             DispatchResult::handled()
         }
-        Action::QueryHistoryAppendFailed(_) => DispatchResult::handled(),
         Action::TextInput {
             target: InputTarget::QueryHistoryFilter,
             ch: c,

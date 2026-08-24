@@ -1407,24 +1407,6 @@ mod tests {
 
                 assert!(state.messages.last_error.is_none());
             }
-
-            #[test]
-            fn append_failed_does_not_set_error() {
-                let mut state = connected_state();
-                let now = Instant::now();
-
-                let effects = super::dispatch_modal(
-                    &mut state,
-                    &Action::QueryHistoryAppendFailed(QueryHistoryError::Io(Arc::new(
-                        std::io::Error::other("write error"),
-                    ))),
-                    now,
-                )
-                .unwrap();
-
-                assert!(state.messages.last_error.is_none());
-                assert!(effects.is_empty());
-            }
         }
 
         mod filter_and_selection {

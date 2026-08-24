@@ -676,7 +676,6 @@ pub enum Action {
     // Query history
     QueryHistoryLoaded(QueryHistoryScope, Vec<QueryHistoryEntry>),
     QueryHistoryLoadFailed(QueryHistoryScope, QueryHistoryError),
-    QueryHistoryAppendFailed(QueryHistoryError),
     QueryHistoryConfirmSelection,
 
     // CSV export
