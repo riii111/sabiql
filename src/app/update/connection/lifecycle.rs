@@ -1118,7 +1118,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
+                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
             );
             assert!(
                 !effects
@@ -1651,7 +1651,7 @@ mod tests {
             assert!(state.connection_error.error_info().is_some());
             assert!(matches!(
                 error_effects.as_slice(),
-                [Effect::CancelActiveTasks]
+                [Effect::CancelTrackedTasks]
             ));
         }
 
@@ -1960,7 +1960,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap();
-            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
+            assert!(matches!(effects.first(), Some(Effect::CancelTrackedTasks)));
             assert!(!state.query.is_running());
             assert!(!state.query.is_current_run(query_run_id));
 

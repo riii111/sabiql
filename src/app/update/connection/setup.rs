@@ -1026,7 +1026,7 @@ mod tests {
             assert_eq!(state.session.metadata_state(), &MetadataState::Loading);
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::CancelActiveTasks, Effect::SaveAndConnect { .. }]
+                [Effect::CancelTrackedTasks, Effect::SaveAndConnect { .. }]
             ));
         }
 
@@ -1038,7 +1038,7 @@ mod tests {
             let first_effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
             assert!(first_effects.is_some_and(|effects| matches!(
                 effects.as_slice(),
-                [Effect::CancelActiveTasks, Effect::SaveAndConnect { .. }]
+                [Effect::CancelTrackedTasks, Effect::SaveAndConnect { .. }]
             )));
 
             let effects = reduce(&mut state, &Action::ConnectionSetupSave, Instant::now());
@@ -1068,7 +1068,7 @@ mod tests {
             assert!(!state.connection_setup.ssl_dropdown().is_open());
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::CancelActiveTasks, Effect::SaveAndConnect {
+                [Effect::CancelTrackedTasks, Effect::SaveAndConnect {
                     config: ConnectionConfig::PostgreSQL(config),
                     ..
                 }] if config.ssl_mode == SslMode::Require
@@ -1106,7 +1106,7 @@ mod tests {
 
             assert!(matches!(
                 effects.as_slice(),
-                [Effect::CancelActiveTasks, Effect::SaveAndConnect {
+                [Effect::CancelTrackedTasks, Effect::SaveAndConnect {
                     name,
                     config: ConnectionConfig::PostgreSQL(config),
                     ..

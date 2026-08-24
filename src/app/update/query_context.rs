@@ -9,7 +9,7 @@ pub fn termination_effects(query: &QueryExecution, follow_up: Vec<Effect>) -> Ve
     );
 
     let mut effects = Vec::with_capacity(follow_up.len() + 1);
-    effects.push(Effect::CancelActiveTasks);
+    effects.push(Effect::CancelTrackedTasks);
     effects.extend(follow_up);
     effects
 }
@@ -26,7 +26,7 @@ mod tests {
 
         let effects = termination_effects(&query, vec![Effect::ClearCompletionEngineCache]);
 
-        assert!(matches!(effects[0], Effect::CancelActiveTasks));
+        assert!(matches!(effects[0], Effect::CancelTrackedTasks));
         assert!(matches!(effects[1], Effect::ClearCompletionEngineCache));
     }
 

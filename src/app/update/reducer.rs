@@ -82,7 +82,7 @@ fn dispatch_enabled_action(
         }
         Action::Quit => {
             state.should_quit = true;
-            vec![Effect::CancelActiveTasks]
+            vec![Effect::CancelTrackedTasks]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -215,14 +215,14 @@ mod tests {
         use rstest::rstest;
 
         #[test]
-        fn quit_sets_should_quit_and_cancels_active_tasks() {
+        fn quit_sets_should_quit_and_cancels_tracked_tasks() {
             let mut state = create_test_state();
             let now = Instant::now();
 
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
@@ -320,7 +320,7 @@ mod tests {
                 state.session.table_detail_state(),
                 TableDetailState::Error(message) if message == "No active connection"
             ));
-            assert!(matches!(effects.first(), Some(Effect::CancelActiveTasks)));
+            assert!(matches!(effects.first(), Some(Effect::CancelTrackedTasks)));
         }
     }
 
@@ -1358,7 +1358,7 @@ mod tests {
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.has_error());
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
@@ -2175,7 +2175,7 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelActiveTasks]));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
@@ -2706,7 +2706,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|effect| matches!(effect, Effect::CancelActiveTasks))
+                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
             );
             assert!(
                 effects

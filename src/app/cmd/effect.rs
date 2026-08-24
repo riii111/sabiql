@@ -96,7 +96,7 @@ pub enum Effect {
         query: String,
         access_mode: AccessMode,
     },
-    CancelActiveTasks,
+    CancelTrackedTasks,
     CountRowsForExport {
         dsn: String,
         run_id: u64,
