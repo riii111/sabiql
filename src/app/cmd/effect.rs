@@ -50,7 +50,7 @@ pub enum Effect {
         run_id: u64,
     },
     // Only caches in completion_engine, does NOT update state.table_detail
-    PrefetchTableDetail {
+    PrefetchTableColumnsAndFks {
         dsn: String,
         run_id: u64,
         schema: String,

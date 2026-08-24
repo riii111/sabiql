@@ -614,7 +614,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .any(|e| matches!(e, Effect::PrefetchTableDetail { .. }))
+                    .any(|e| matches!(e, Effect::PrefetchTableColumnsAndFks { .. }))
             );
         }
     }
@@ -1034,7 +1034,7 @@ mod tests {
             assert!(
                 effects
                     .iter()
-                    .all(|effect| matches!(effect, Effect::PrefetchTableDetail { .. }))
+                    .all(|effect| matches!(effect, Effect::PrefetchTableColumnsAndFks { .. }))
             );
             assert!(
                 !effects

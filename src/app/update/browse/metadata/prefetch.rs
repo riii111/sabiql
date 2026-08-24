@@ -81,7 +81,7 @@ fn prefetch_table_detail(
         state.er_preparation.start_fetching(&qualified_name);
     }
 
-    vec![Effect::PrefetchTableDetail {
+    vec![Effect::PrefetchTableColumnsAndFks {
         dsn,
         run_id,
         schema: schema.to_string(),
