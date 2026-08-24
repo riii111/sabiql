@@ -380,7 +380,7 @@ fn handle_sql_modal_keys_internal(
             target: InputTarget::SqlModal,
         },
         Key::Enter => Action::SqlModalNewLine,
-        Key::Tab => Action::SqlModalTab,
+        Key::Tab => Action::SqlModalInsertTab,
         Key::Char(c) => Action::TextInput {
             target: InputTarget::SqlModal,
             ch: c,
@@ -466,7 +466,7 @@ mod tests {
     enum Expected {
         SqlModalSubmit,
         SqlModalNewLine,
-        SqlModalTab,
+        SqlModalInsertTab,
         SqlModalBackspace,
         SqlModalDelete,
         SqlModalInput(char),
@@ -498,7 +498,7 @@ mod tests {
         match expected {
             Expected::SqlModalSubmit => assert!(matches!(result, Action::SqlModalSubmit)),
             Expected::SqlModalNewLine => assert!(matches!(result, Action::SqlModalNewLine)),
-            Expected::SqlModalTab => assert!(matches!(result, Action::SqlModalTab)),
+            Expected::SqlModalInsertTab => assert!(matches!(result, Action::SqlModalInsertTab)),
             Expected::SqlModalBackspace => assert!(matches!(
                 result,
                 Action::TextBackspace {
@@ -601,7 +601,7 @@ mod tests {
         // Completion-aware keys: behavior when completion is hidden
         #[rstest]
         #[case(Key::Esc, Expected::SqlModalEnterNormal)]
-        #[case(Key::Tab, Expected::SqlModalTab)]
+        #[case(Key::Tab, Expected::SqlModalInsertTab)]
         #[case(Key::Enter, Expected::SqlModalNewLine)]
         #[case(Key::Up, Expected::SqlModalMoveCursor(CursorMove::Up))]
         #[case(Key::Down, Expected::SqlModalMoveCursor(CursorMove::Down))]

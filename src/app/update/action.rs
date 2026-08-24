@@ -537,7 +537,7 @@ pub enum Action {
     SqlModalYank,
     SqlModalYankSuccess,
     SqlModalNewLine,
-    SqlModalTab,
+    SqlModalInsertTab,
     SqlModalSubmit,
     SqlModalClear,
     SqlModalCancelConfirm,
