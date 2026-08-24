@@ -110,7 +110,7 @@ pub fn classify_mysql_statement(sql: &str) -> Result<MySqlStatement, MySqlLexErr
     })
 }
 
-pub fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
+fn has_top_level_into_clause(sql: &str) -> Result<bool, MySqlLexError> {
     side_effect::has_top_level_into_clause(sql)
 }
 
@@ -126,7 +126,7 @@ pub fn mysql_statement_reads_session_diagnostics(sql: &str) -> Result<bool, MySq
     side_effect::mysql_statement_reads_session_diagnostics(sql)
 }
 
-pub fn target_is_selected_database_with_lower_case_table_names(
+fn target_is_selected_database_with_lower_case_table_names(
     statement: &MySqlStatement,
     selected_database: Option<&str>,
     lower_case_table_names: u8,
