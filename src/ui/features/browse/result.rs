@@ -432,8 +432,8 @@ fn display_value_at_width(
             .map(|value| query_value_display_at_width(value, max_width))
     } else {
         result
-            .display_value_at(row, col)
-            .map(|value| truncate_display_text(&value, false, max_width))
+            .display_value_ref_at(row, col)
+            .map(|value| truncate_display_text(value.as_ref(), false, max_width))
     }
 }
 
@@ -452,8 +452,8 @@ fn display_width_at(result: &QueryResult, row: usize, col: usize) -> Option<usiz
         result.value_at(row, col).map(query_value_display_width)
     } else {
         result
-            .display_value_at(row, col)
-            .map(|value| display_width_of_first_line(&value, false))
+            .display_value_ref_at(row, col)
+            .map(|value| display_width_of_first_line(value.as_ref(), false))
     }
 }
 
