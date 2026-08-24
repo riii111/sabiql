@@ -503,14 +503,14 @@ mod tests {
 
         let inspector_action = if inspector_failed {
             Action::TableDetailFailed {
-                dsn: "postgres://localhost/test".to_string(),
+                dsn: active_dsn(&state),
                 run_id: detail_run_id,
                 error: DbOperationError::QueryFailed("inspector failed".to_string()),
                 generation,
             }
         } else {
             Action::TableDetailLoaded {
-                dsn: "postgres://localhost/test".to_string(),
+                dsn: active_dsn(&state),
                 run_id: detail_run_id,
                 detail: Box::new(users_table_detail()),
                 generation,
@@ -584,11 +584,16 @@ mod tests {
 
     fn state_with_selected_table(database_type: DatabaseType) -> (AppState, u64, u64) {
         let mut state = AppState::new("test".to_string());
+        let dsn = match database_type {
+            DatabaseType::PostgreSQL => "postgres://localhost/test",
+            DatabaseType::MySQL => "mysql://localhost/test",
+            DatabaseType::SQLite => "sqlite:///tmp/test.db",
+        };
         state.session.activate_connection_with_dsn(
             &ConnectionId::new(),
             "test",
             database_type,
-            "postgres://localhost/test",
+            dsn,
         );
         let generation = state
             .session
@@ -983,11 +988,12 @@ mod tests {
         ) {
             let (mut state, generation, detail_run_id) = state_with_selected_table(database_type);
             let now = Instant::now();
+            let dsn = active_dsn(&state);
 
             let inspector_effects = dispatch_metadata(
                 &mut state,
                 &Action::TableDetailLoaded {
-                    dsn: "postgres://localhost/test".to_string(),
+                    dsn,
                     run_id: detail_run_id,
                     detail: Box::new(users_table_detail()),
                     generation,
