@@ -164,30 +164,11 @@ pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexE
     let mut statements = Vec::new();
     let mut start = 0;
     let mut index = 0;
-    let mut quote = None;
     let bytes = sql.as_bytes();
     let mut depth = 0usize;
 
     while index < bytes.len() {
         let byte = bytes[index];
-        if let Some(delimiter) = quote {
-            if byte == b'\\' && delimiter != b'`' {
-                index += 2;
-                continue;
-            }
-            if byte == delimiter {
-                if bytes.get(index + 1) == Some(&delimiter) {
-                    index += 2;
-                } else {
-                    quote = None;
-                    index += 1;
-                }
-                continue;
-            }
-            index += 1;
-            continue;
-        }
-
         if is_line_comment_start(bytes, index) {
             index = skip_line_comment(bytes, index);
             continue;
@@ -197,8 +178,7 @@ pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexE
             continue;
         }
         if matches!(byte, b'\'' | b'"' | b'`') {
-            quote = Some(byte);
-            index += 1;
+            index = skip_quoted(bytes, index, byte)?;
             continue;
         }
         match byte {
@@ -217,11 +197,6 @@ pub(super) fn split_mysql_statements(sql: &str) -> Result<Vec<String>, MySqlLexE
         index += 1;
     }
 
-    if quote.is_some() {
-        return Err(MySqlLexError(
-            "unterminated MySQL quoted literal".to_string(),
-        ));
-    }
     if depth != 0 {
         return Err(MySqlLexError("unbalanced MySQL parentheses".to_string()));
     }
@@ -437,7 +412,7 @@ fn is_mysql_statement_keyword(word: &str) -> bool {
     )
 }
 
-fn skip_quoted(bytes: &[u8], index: usize, quote: u8) -> Result<usize, MySqlLexError> {
+pub(super) fn skip_quoted(bytes: &[u8], index: usize, quote: u8) -> Result<usize, MySqlLexError> {
     let mut cursor = index + 1;
     while cursor < bytes.len() {
         if bytes[cursor] == b'\\' && quote != b'`' {
