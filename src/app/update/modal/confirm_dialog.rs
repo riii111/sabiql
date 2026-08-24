@@ -20,12 +20,7 @@ pub(super) fn reduce_confirm_dialog(
             direction,
             amount: ScrollAmount::Line,
         } => {
-            let max_scroll = state.confirm_dialog.max_scroll() as usize;
-            state.confirm_dialog.preview_scroll = direction.clamp_vertical_offset(
-                state.confirm_dialog.preview_scroll as usize,
-                max_scroll,
-                1,
-            ) as u16;
+            state.confirm_dialog.scroll_preview(*direction);
             DispatchResult::handled()
         }
         Action::ConfirmDialogConfirm => {
