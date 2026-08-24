@@ -12,9 +12,7 @@ pub fn format_for_cell_detail(
 ) -> CellDetailDisplay {
     let should_pretty_print = matches!(
         handling,
-        PreviewCellTextDisplayHandling::SqliteText
-            | PreviewCellTextDisplayHandling::PostgreSqlJson
-            | PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+        PreviewCellTextDisplayHandling::PrettyPrintJsonText
             | PreviewCellTextDisplayHandling::StructuredJson
     );
     if !should_pretty_print {
@@ -51,7 +49,10 @@ mod tests {
         let handling =
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "json", r#"{"b":2,"a":1}"#)
                 .display_handling();
-        assert_eq!(handling, PreviewCellTextDisplayHandling::PostgreSqlJson);
+        assert_eq!(
+            handling,
+            PreviewCellTextDisplayHandling::PrettyPrintJsonText
+        );
         let formatted = format_for_cell_detail(r#"{"b":2,"a":1}"#, handling);
         assert_eq!(formatted.content, "{\n  \"a\": 1,\n  \"b\": 2\n}");
         assert!(formatted.formatted_json);
@@ -138,7 +139,7 @@ mod tests {
         .display_handling();
         assert_eq!(
             handling,
-            PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+            PreviewCellTextDisplayHandling::PrettyPrintJsonText
         );
         assert_eq!(
             format_for_cell_detail(r#"{"items":["admin","writer"]}"#, handling),
