@@ -68,14 +68,6 @@ impl ConfirmDialogState {
         self.preview_scroll
     }
 
-    pub fn preview_viewport_height(&self) -> Option<u16> {
-        self.preview_viewport_height
-    }
-
-    pub fn preview_content_height(&self) -> Option<u16> {
-        self.preview_content_height
-    }
-
     pub fn apply_preview_metrics(
         &mut self,
         viewport_height: Option<u16>,

@@ -202,6 +202,7 @@ mod tests {
     use super::*;
     use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::browse::session::TableDetailState;
+    use crate::model::shared::ui_state::UiState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::ConnectionStoreError;
     use crate::update::action::ModalKind;
@@ -255,9 +256,20 @@ mod tests {
                 &AppServices::stub(),
             );
 
-            assert_eq!(state.ui.terminal_width(), 100);
             assert_eq!(state.ui.terminal_height(), 50);
             let document = HelpDocument::from_state(&state);
+            let expected_layout = {
+                let mut expected = UiState::new();
+                expected.set_terminal_width(100);
+                expected.set_terminal_height(50);
+                expected.help_viewport_layout(document.line_count(), document.content_width())
+            };
+            assert_eq!(
+                state
+                    .ui
+                    .help_viewport_layout(document.line_count(), document.content_width()),
+                expected_layout
+            );
             assert_eq!(
                 state.ui.help().scroll_offset(),
                 state

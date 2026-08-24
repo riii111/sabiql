@@ -26,14 +26,6 @@ impl PickerState {
         self.scroll_offset
     }
 
-    pub fn pane_height(&self) -> u16 {
-        self.pane_height
-    }
-
-    pub fn filter_visible_width(&self) -> usize {
-        self.filter_visible_width
-    }
-
     pub fn set_pane_height(&mut self, height: u16) {
         self.pane_height = height;
     }
