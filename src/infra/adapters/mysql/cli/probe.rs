@@ -198,7 +198,10 @@ fn classify_mysql_probe_failure(stderr: String) -> DbOperationError {
         .to_ascii_lowercase()
         .contains("can't connect to mysql server")
     {
-        DbOperationError::ConnectionFailed(stderr)
+        DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::ConnectionRefused,
+            details: stderr,
+        }
     } else {
         super::error::classify_mysql_query_failure(stderr.as_bytes())
     }
@@ -372,7 +375,10 @@ mod probe_tests {
                 "ERROR 2003 (HY000): Can't connect to MySQL server on 'host:3306' (111)"
                     .to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::ConnectionRefused,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_probe_failure(
@@ -410,13 +416,19 @@ mod probe_tests {
             classify_mysql_probe_failure(
                 "ERROR 1045 (28000): Access denied for user 'user'".to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::Auth,
+                ..
+            }
         ));
         assert!(matches!(
             classify_mysql_probe_failure(
                 "ERROR 1049 (42000): Unknown database 'missing'".to_string()
             ),
-            DbOperationError::ConnectionFailed(_)
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
         ));
     }
 

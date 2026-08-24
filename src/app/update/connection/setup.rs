@@ -778,18 +778,27 @@ mod tests {
         }
 
         #[test]
-        fn mysql_probe_failure_uses_server_error_codes_for_connection_guidance() {
-            for (stderr, expected) in [
+        fn mysql_probe_failure_uses_typed_errors_for_connection_guidance() {
+            for (error, expected) in [
                 (
-                    "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'",
+                    DbOperationError::PermissionDenied(
+                        "ERROR 1044 (42000): Access denied for user 'user' to database 'mysql'"
+                            .to_string(),
+                    ),
                     ConnectionErrorKind::PermissionDenied,
                 ),
                 (
-                    "ERROR 1045 (28000): Access denied for user 'user'",
+                    DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::Auth,
+                        details: "ERROR 1045 (28000): Access denied for user 'user'".to_string(),
+                    },
                     ConnectionErrorKind::AuthFailed,
                 ),
                 (
-                    "ERROR 1049 (42000): Unknown database 'missing'",
+                    DbOperationError::ConnectionFailedWithKind {
+                        kind: ConnectionFailureKind::DatabaseNotFound,
+                        details: "ERROR 1049 (42000): Unknown database 'missing'".to_string(),
+                    },
                     ConnectionErrorKind::DatabaseNotFound,
                 ),
             ] {
@@ -803,7 +812,7 @@ mod tests {
                     &mut state,
                     &Action::ConnectionSaveFailed {
                         error: ConnectionSaveError::Probe {
-                            error: DbOperationError::ConnectionFailed(stderr.to_string()),
+                            error,
                             dsn: "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED"
                                 .to_string(),
                         },
