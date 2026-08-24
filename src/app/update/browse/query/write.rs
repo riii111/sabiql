@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
-use crate::domain::{DatabaseDiagnostic, RefreshScope};
+use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
 use crate::model::shared::confirm_dialog::ConfirmIntent;
@@ -385,10 +385,18 @@ fn write_message_with_diagnostics(message: String, diagnostics: &[DatabaseDiagno
 
     let details = diagnostics
         .iter()
-        .map(DatabaseDiagnostic::display_message)
+        .map(write_diagnostic_message)
         .collect::<Vec<_>>()
         .join("; ");
     format!("{message}; {details}")
+}
+
+fn write_diagnostic_message(diagnostic: &DatabaseDiagnostic) -> String {
+    let level = match diagnostic.level {
+        DiagnosticLevel::Warning => "Warning",
+        DiagnosticLevel::Note => "Note",
+    };
+    format!("{level} (Code {}): {}", diagnostic.code, diagnostic.message)
 }
 
 fn open_write_preview_confirm(
