@@ -41,10 +41,6 @@ impl ModalState {
             .copied()
             .unwrap_or(InputMode::Normal)
     }
-
-    pub fn is_modal_active(&self) -> bool {
-        !matches!(self.mode, InputMode::Normal | InputMode::CellEdit)
-    }
 }
 
 #[cfg(test)]
@@ -56,7 +52,6 @@ mod tests {
         let modal = ModalState::default();
 
         assert_eq!(modal.active_mode(), InputMode::Normal);
-        assert!(!modal.is_modal_active());
     }
 
     #[test]
@@ -147,23 +142,6 @@ mod tests {
         assert_eq!(modal.active_mode(), InputMode::ConnectionSetup);
         // Stack entry was consumed
         assert_eq!(modal.return_destination(), InputMode::Normal);
-    }
-
-    #[test]
-    fn is_modal_active_for_various_modes() {
-        let mut modal = ModalState::default();
-
-        modal.set_mode(InputMode::Normal);
-        assert!(!modal.is_modal_active());
-
-        modal.set_mode(InputMode::CellEdit);
-        assert!(!modal.is_modal_active());
-
-        modal.set_mode(InputMode::CommandLine);
-        assert!(modal.is_modal_active());
-
-        modal.set_mode(InputMode::Help);
-        assert!(modal.is_modal_active());
     }
 
     #[test]
