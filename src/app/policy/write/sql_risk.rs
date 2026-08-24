@@ -120,7 +120,7 @@ fn mysql_statement_risk(statement: &MySqlStatement) -> SqlRiskDecision {
     }
 }
 
-pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
+fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     match kind {
         MySqlStatementKind::Select => "SELECT",
         MySqlStatementKind::Table => "TABLE",
@@ -154,7 +154,7 @@ pub fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     }
 }
 
-pub fn evaluate_mysql_multi_statement(
+fn evaluate_mysql_multi_statement(
     sql: &str,
     selected_database: Option<&str>,
 ) -> MultiStatementDecision<MySqlStatement> {
@@ -282,11 +282,6 @@ fn contains_cli_meta_command(database_type: DatabaseType, sql: &str) -> bool {
     }
 
     false
-}
-
-pub fn split_statements(sql: &str) -> Vec<String> {
-    split_statements_for_database(DatabaseType::PostgreSQL, sql)
-        .expect("PostgreSQL statement splitting is infallible")
 }
 
 pub fn split_statements_for_database(
@@ -419,11 +414,6 @@ fn high_acknowledge(kind: &StatementKind) -> SqlRiskDecision {
     }
 }
 
-pub fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
-    evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
-        .expect("PostgreSQL SQL risk evaluation is supported")
-}
-
 pub fn evaluate_sql_risk_for_database(
     database_type: DatabaseType,
     kind: &StatementKind,
@@ -522,10 +512,6 @@ pub fn evaluate_mysql_explain_analyze_target(sql: &str) -> Option<SqlRiskDecisio
         label: mysql_statement_label(statement.kind()).to_string(),
     };
     Some(risk)
-}
-
-pub fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
-    evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
 }
 
 pub fn evaluate_multi_statement_for_database(
@@ -905,6 +891,20 @@ fn evaluate_sqlite_specific_risk(sql: &str) -> Option<SqlRiskDecision> {
 mod tests {
     use super::*;
     use rstest::rstest;
+
+    fn split_statements(sql: &str) -> Vec<String> {
+        split_statements_for_database(DatabaseType::PostgreSQL, sql)
+            .expect("PostgreSQL statement splitting is infallible")
+    }
+
+    fn evaluate_sql_risk(kind: &StatementKind, sql: &str) -> SqlRiskDecision {
+        evaluate_sql_risk_for_database(DatabaseType::PostgreSQL, kind, sql)
+            .expect("PostgreSQL SQL risk evaluation is supported")
+    }
+
+    fn evaluate_multi_statement(sql: &str) -> MultiStatementDecision {
+        evaluate_multi_statement_for_database(DatabaseType::PostgreSQL, sql)
+    }
 
     mod split_statements_tests {
         use super::*;
