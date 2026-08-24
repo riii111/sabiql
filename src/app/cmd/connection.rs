@@ -552,7 +552,7 @@ mod tests {
             let ce = RefCell::new(CompletionEngine::new());
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "MySQL".to_string(),
@@ -617,7 +617,7 @@ mod tests {
             let ce = RefCell::new(CompletionEngine::new());
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "MySQL".to_string(),
@@ -681,7 +681,7 @@ mod tests {
             let ce = RefCell::new(CompletionEngine::new());
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "MySQL".to_string(),
@@ -765,7 +765,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "Local".to_string(),
@@ -825,7 +825,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "Local".to_string(),
@@ -887,7 +887,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::DeleteConnection { id: id.clone() }],
                     &mut renderer,
                     state,
@@ -931,7 +931,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::DeleteConnection { id }],
                     &mut renderer,
                     state,
@@ -983,7 +983,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::LoadConnections],
                     &mut renderer,
                     state,
@@ -1046,7 +1046,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::LoadConnections],
                     &mut renderer,
                     state,
@@ -1121,7 +1121,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 0,
                     }],
@@ -1162,7 +1162,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SwitchConnection {
                         connection_index: 99,
                     }],

@@ -543,7 +543,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ExportCsvFromCache {
                         dsn: "sqlite:///tmp/test.db".to_string(),
                         run_id: 7,
@@ -595,7 +595,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ExportCsvFromCache {
                         dsn: "sqlite:///tmp/test.db".to_string(),
                         run_id: 8,
@@ -675,7 +675,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ExecutePreview {
                         dsn: "dsn://test".to_string(),
                         schema: "public".to_string(),
@@ -729,7 +729,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ExecutePreview {
                         dsn: "dsn://test".to_string(),
                         schema: "public".to_string(),
@@ -796,7 +796,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![effect],
                     &mut renderer,
                     &mut state,

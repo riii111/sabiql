@@ -363,7 +363,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: "dsn://test".to_string(),
                         run_id: 7,
@@ -420,7 +420,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: dsn.clone(),
                         run_id: 7,
@@ -483,7 +483,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: dsn.clone(),
                         run_id: 7,
@@ -536,7 +536,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: "dsn://miss".to_string(),
                         run_id: 7,
@@ -590,7 +590,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: "dsn://err".to_string(),
                         run_id: 7,
@@ -646,7 +646,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchEffectiveUser {
                         dsn: "dsn://test".to_string(),
                         run_id: 7,
@@ -712,7 +712,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchTableDetail {
                         dsn: "dsn://test".to_string(),
                         schema: "public".to_string(),
@@ -770,7 +770,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::PrefetchTableDetail {
                         dsn: "dsn://test".to_string(),
                         run_id: 3,
@@ -825,7 +825,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::CacheInvalidate {
                         dsn: "dsn://target".to_string(),
                     }],
