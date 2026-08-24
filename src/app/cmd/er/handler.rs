@@ -367,10 +367,8 @@ fn collect_cached_table_names(completion_engine: &RefCell<CompletionEngine>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{
-        Column, ColumnAttributes, ConnectionId, DatabaseType, Table, TableKindInfo, TableSignature,
-        TableStorageAttributes,
-    };
+    use crate::domain::{ConnectionId, DatabaseType, TableSignature};
+    use crate::test_support::table;
 
     fn state_with_mysql_dsn(dsn: &str) -> AppState {
         let mut state = AppState::new("test".to_string());
@@ -384,43 +382,13 @@ mod tests {
         state
     }
 
-    fn light_table_detail() -> Table {
-        Table {
-            schema: "app".to_string(),
-            name: "items".to_string(),
-            owner: None,
-            columns: vec![Column {
-                name: "id".to_string(),
-                data_type: "int".to_string(),
-                default: None,
-                attributes: ColumnAttributes::from_parts(false, true, false),
-                comment: None,
-                ordinal_position: 1,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            }],
-            primary_key: Some(vec!["id".to_string()]),
-            foreign_keys: Vec::new(),
-            indexes: Vec::new(),
-            rls: None,
-            triggers: Vec::new(),
-            row_count_estimate: None,
-            comment: None,
-            source_ddl: None,
-            storage_attributes: TableStorageAttributes::default(),
-            kind_info: TableKindInfo::default(),
-        }
-    }
-
     #[tokio::test]
     async fn signature_details_seed_empty_completion_cache_before_diff() {
         let dsn = "mysql://user:password@localhost:3306/app";
         let state = state_with_mysql_dsn(dsn);
         let completion_engine = RefCell::new(CompletionEngine::new());
         let (action_tx, mut action_rx) = mpsc::channel(1);
-        let table = light_table_detail();
+        let table = table::minimal("app", "items");
 
         handle_smart_refresh_cache_and_diff(
             &action_tx,
