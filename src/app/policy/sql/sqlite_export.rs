@@ -32,7 +32,7 @@ pub fn sqlite_export_plan(
     SqliteExportPlan::CachedResult { row_count }
 }
 
-pub fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
+fn is_sqlite_rerunnable_export_query(query: &str) -> bool {
     match evaluate_multi_statement_for_database(DatabaseType::SQLite, query) {
         MultiStatementDecision::Block { .. } => false,
         MultiStatementDecision::Allow { statements, .. } => {
