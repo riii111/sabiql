@@ -875,15 +875,9 @@ done
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
     use crate::domain::QueryValue;
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     #[test]
     fn trigger_metadata_preserves_action_order_context_and_definition() {

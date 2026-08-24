@@ -390,6 +390,7 @@ mod tests {
     #[cfg(unix)]
     use std::path::PathBuf;
 
+    use super::super::test_support::result;
     use super::*;
     use crate::domain::ColumnAttributes;
 
@@ -482,13 +483,6 @@ done
             !std::path::Path::new(option).exists(),
             "option file remains"
         );
-    }
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
     }
 
     fn column(name: &str, data_type: &str) -> Column {

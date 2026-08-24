@@ -648,14 +648,8 @@ pub(super) fn metadata_shape_error(field: &str) -> DbOperationError {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_support::result;
     use super::*;
-
-    fn result(columns: &[&str], values: Vec<Vec<QueryValue>>) -> MySqlResultSet {
-        MySqlResultSet {
-            columns: columns.iter().map(|value| (*value).to_string()).collect(),
-            values,
-        }
-    }
 
     #[test]
     fn optional_nonempty_string_preserves_catalog_value_boundaries() {
