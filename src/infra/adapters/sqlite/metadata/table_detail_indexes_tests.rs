@@ -1,7 +1,9 @@
 use crate::adapters::test_support;
 use crate::app::ports::outbound::MetadataProvider;
 
-use super::{RawIndexColumn, SqliteAdapter, index_key_column_names};
+use super::super::super::super::sqlite3::metadata::RawIndexColumn;
+use super::super::index_key_column_names;
+use super::SqliteAdapter;
 
 #[test]
 fn index_key_column_names_preserves_expression_and_unknown_key_columns() {
