@@ -122,12 +122,11 @@ impl QueryExecutor for SqliteAdapter {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         let path = Self::path_from_dsn(dsn)?;
         let plan = sqlite_statement_plan(query)?;
-        let (affected_rows, execution_time_ms) = self
+        let affected_rows = self
             .execute_changes_query(path, &plan, access_mode.is_read_only())
             .await?;
         Ok(WriteExecutionResult {
             affected_rows,
-            execution_time_ms,
             diagnostics: Vec::new(),
         })
     }
@@ -218,18 +217,12 @@ impl SqliteAdapter {
         path: &str,
         plan: &SqliteStatementPlan<'_>,
         read_only: bool,
-    ) -> Result<(usize, u64), DbOperationError> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures sqlite3 execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
+    ) -> Result<usize, DbOperationError> {
         let stdout = self
             .cli
             .execute_csv(path, &append_changes_query_for_plan(plan), read_only)
             .await?;
-        let elapsed = start.elapsed().as_millis() as u64;
-        Ok((parse_affected_rows(&stdout)?, elapsed))
+        parse_affected_rows(&stdout)
     }
 }
 

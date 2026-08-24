@@ -413,15 +413,7 @@ impl PostgresAdapter {
         query: &str,
         read_only: bool,
     ) -> Result<WriteExecutionResult, DbOperationError> {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures psql execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
-
         let output = self.run_psql(dsn, &[], query, read_only).await?;
-
-        let elapsed = start.elapsed().as_millis() as u64;
 
         if !output.status.success() {
             return Err(classify_query_error(&output.stderr));
@@ -435,7 +427,6 @@ impl PostgresAdapter {
 
         Ok(WriteExecutionResult {
             affected_rows,
-            execution_time_ms: elapsed,
             diagnostics: Vec::new(),
         })
     }
