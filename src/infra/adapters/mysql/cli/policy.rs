@@ -397,9 +397,7 @@ pub(super) fn query_failed_after_change(
     error: DbOperationError,
     refresh_scope: RefreshScope,
 ) -> DbOperationError {
-    if refresh_scope == RefreshScope::None
-        || matches!(&error, DbOperationError::QueryFailedAfterChange { .. })
-    {
+    if refresh_scope == RefreshScope::None || error.post_change_refresh_scope().is_some() {
         error
     } else {
         DbOperationError::QueryFailedAfterChange {
@@ -734,6 +732,18 @@ mod tests {
             error,
             DbOperationError::ForeignKeyViolation(details) if details == "foreign key failed"
         ));
+    }
+
+    #[test]
+    fn change_failure_is_not_wrapped_again() {
+        let error = DbOperationError::QueryFailedAfterChange {
+            source: Arc::new(DbOperationError::QueryFailed("failed".to_string())),
+            refresh_scope: RefreshScope::Data,
+        };
+
+        let error = query_failed_after_change(error, RefreshScope::Metadata);
+
+        assert_eq!(error.post_change_refresh_scope(), Some(RefreshScope::Data));
     }
 
     #[test]

@@ -161,10 +161,9 @@ pub fn reduce_execution(
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
-            let refresh_scope = match error {
-                DbOperationError::QueryFailedAfterChange { refresh_scope, .. } => *refresh_scope,
-                _ => RefreshScope::None,
-            };
+            let refresh_scope = error
+                .post_change_refresh_scope()
+                .unwrap_or(RefreshScope::None);
             let effects = if is_preview {
                 vec![]
             } else {
