@@ -406,7 +406,7 @@ pub(super) async fn stream_mysql_resultset_to_csv(
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: super::xml::MySqlResultsetFrameScanner::default(),
+            frame_scanner: super::xml::MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let source = MySqlXmlFieldLimitReader::new(source);

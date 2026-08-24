@@ -31,7 +31,7 @@ use super::pty::{
     read_pty_all, read_pty_until_idle,
 };
 use super::sanitize_mysql_command_environment;
-use super::xml::{MySqlResultsetFrameScanner, parse_mysql_xml, trace_mysql_statement};
+use super::xml::{MySqlResultSetFrameScanner, parse_mysql_xml, trace_mysql_statement};
 
 mod session;
 pub(in crate::adapters::mysql) use session::MySqlMetadataSession;
@@ -72,7 +72,7 @@ pub(in crate::adapters::mysql) struct MySqlProcess {
     #[cfg(not(unix))]
     pub(super) pending_stderr: Vec<u8>,
     #[cfg(not(unix))]
-    pub(super) frame_scanner: MySqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultSetFrameScanner,
 }
 
 impl MySqlProcess {
@@ -156,7 +156,7 @@ impl MySqlProcess {
                 stderr,
                 pending: Vec::new(),
                 pending_stderr: Vec::new(),
-                frame_scanner: MySqlResultsetFrameScanner::default(),
+                frame_scanner: MySqlResultSetFrameScanner::default(),
             })
         }
     }
@@ -198,7 +198,7 @@ impl MySqlProcess {
                 input,
                 output,
                 pending: Vec::new(),
-                frame_scanner: MySqlResultsetFrameScanner::default(),
+                frame_scanner: MySqlResultSetFrameScanner::default(),
             },
         })
     }
@@ -645,7 +645,7 @@ mod tests {
                 input: TokioFile::from_std(master.try_clone().expect("clone PTY master")),
                 output: TokioFile::from_std(master),
                 pending: Vec::new(),
-                frame_scanner: MySqlResultsetFrameScanner::default(),
+                frame_scanner: MySqlResultSetFrameScanner::default(),
             };
 
             assert!(
@@ -2067,7 +2067,7 @@ mod windows_tests {
             stderr,
             pending: Vec::new(),
             pending_stderr: b"ERROR 1".to_vec(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join("export.csv");
@@ -2118,7 +2118,7 @@ mod windows_tests {
             stderr,
             pending: Vec::new(),
             pending_stderr: b"ERROR 1".to_vec(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
 
         let result =
@@ -2157,7 +2157,7 @@ mod windows_tests {
             stderr,
             pending: Vec::new(),
             pending_stderr: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
 
         let result =

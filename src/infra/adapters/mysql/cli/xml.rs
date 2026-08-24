@@ -26,14 +26,14 @@ pub(super) const MYSQL_PREVIEW_MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 const MYSQL_PREVIEW_MAX_FIELD_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Debug, Default)]
-pub(super) struct MySqlResultsetFrameScanner {
+pub(super) struct MySqlResultSetFrameScanner {
     resultset_start: Option<usize>,
     resultset_end: Option<usize>,
     resultset_start_cursor: usize,
     resultset_end_cursor: usize,
 }
 
-impl MySqlResultsetFrameScanner {
+impl MySqlResultSetFrameScanner {
     pub(super) fn frame_start(&mut self, buffer: &[u8]) -> Option<usize> {
         if self.resultset_start_cursor > buffer.len() {
             self.resultset_start_cursor = 0;
@@ -103,7 +103,7 @@ impl MySqlResultsetFrameScanner {
 
 fn take_resultset_frame(
     buffer: &mut Vec<u8>,
-    scanner: &mut MySqlResultsetFrameScanner,
+    scanner: &mut MySqlResultSetFrameScanner,
     preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
     let bounds = scanner.frame_bounds(buffer);
@@ -124,7 +124,7 @@ fn take_resultset_frame(
 #[cfg(any(unix, test))]
 pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
     buffer: &mut Vec<u8>,
-    scanner: &mut MySqlResultsetFrameScanner,
+    scanner: &mut MySqlResultSetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
@@ -143,7 +143,7 @@ pub(super) fn take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget
 pub(super) fn take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
     buffer: &mut Vec<u8>,
     error_output: &[u8],
-    scanner: &mut MySqlResultsetFrameScanner,
+    scanner: &mut MySqlResultSetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
 ) -> Result<Option<MySqlResultsetFrameWithDiagnostics>, DbOperationError> {
@@ -455,7 +455,7 @@ mod tests {
     use super::*;
     use crate::domain::DiagnosticLevel;
 
-    impl MySqlResultsetFrameScanner {
+    impl MySqlResultSetFrameScanner {
         fn take(&mut self, buffer: &mut Vec<u8>) -> Option<Vec<u8>> {
             let bounds = self.frame_bounds(buffer)?;
             Some(self.take_bounds(buffer, bounds))
@@ -556,7 +556,7 @@ mod tests {
             b'x',
             MYSQL_PREVIEW_MAX_FRAME_BYTES + 1 - MYSQL_RESULTSET_START.len(),
         ));
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert!(
             take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
@@ -605,7 +605,7 @@ mod tests {
     fn frames_one_xml_resultset_and_preserves_following_output() {
         let mut buffer = b"    -> <?xml version=\"1.0\"?>\n<resultset></resultset>\r\n    -> <?xml version=\"1.0\"?>\n<resultset>"
             .to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert_eq!(
             scanner.take(&mut buffer),
@@ -623,7 +623,7 @@ mod tests {
     fn frames_resultset_after_mysql_cli_text() {
         let mut buffer =
             b"SELECT 1;\n<?xml version=\"1.0\"?>\nquery text\n<resultset></resultset>".to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert_eq!(
             scanner.take(&mut buffer),
@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn frame_start_does_not_scan_for_the_end_delimiter() {
         let buffer = b"<resultset></resultset>";
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert_eq!(scanner.frame_start(buffer), Some(0));
         assert_eq!(scanner.resultset_end, None);
@@ -645,7 +645,7 @@ mod tests {
     fn collects_diagnostics_before_a_resultset_and_preserves_following_marker() {
         let mut buffer = b"Warning (Code 1062): duplicate\nNote (Code 1050): exists\n<resultset></resultset>marker"
             .to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         let (frame, diagnostics) =
             take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
@@ -679,7 +679,7 @@ mod tests {
     #[test]
     fn pipe_frame_collection_keeps_diagnostics_before_the_resultset() {
         let mut buffer = b"Warning (Code 1265): truncated\n<resultset></resultset>".to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         let (frame, diagnostics) =
             take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
@@ -712,7 +712,7 @@ mod tests {
         expected.extend_from_slice(MYSQL_RESULTSET_END);
 
         let mut buffer = Vec::new();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
         let mut frames = Vec::new();
         for chunk in expected.chunks(4096) {
             buffer.extend_from_slice(chunk);
@@ -735,7 +735,7 @@ mod tests {
         expected.extend_from_slice(MYSQL_RESULTSET_END);
 
         let mut buffer = Vec::new();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
         let mut frames = Vec::new();
         for chunk in expected.chunks(37) {
             buffer.extend_from_slice(chunk);
@@ -755,7 +755,7 @@ mod tests {
         let mut input = first.to_vec();
         input.extend_from_slice(second);
         let mut buffer = Vec::new();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
         let mut frames = Vec::new();
 
         for chunk in input.chunks(11) {
@@ -773,7 +773,7 @@ mod tests {
     fn delimiter_prefix_in_field_text_does_not_end_the_frame() {
         let expected = b"<resultset><row><field name=\"value\">literal </resultset prefix</field></row></resultset>";
         let mut buffer = expected.to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert_eq!(scanner.take(&mut buffer), Some(expected.to_vec()));
         assert!(buffer.is_empty());
@@ -784,7 +784,7 @@ mod tests {
         let mut buffer = br#"<resultset><row><field name="message">line 1
 ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
             .to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         let frame = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
             &mut buffer,
@@ -803,7 +803,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn cli_error_before_resultset_frame_is_still_rejected() {
         let mut buffer =
             b"ERROR 1054 (42S22): Unknown column\n<resultset><row></row></resultset>".to_vec();
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         let result = take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget(
             &mut buffer,
@@ -824,7 +824,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#
     fn error_before_resultset_frame_is_not_accepted() {
         let mut buffer = b"<resultset><row></row></resultset>".to_vec();
         let error = b"ERROR 1054 (42S22): Unknown column missing_column\n";
-        let mut scanner = MySqlResultsetFrameScanner::default();
+        let mut scanner = MySqlResultSetFrameScanner::default();
 
         assert!(matches!(
             take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget(
