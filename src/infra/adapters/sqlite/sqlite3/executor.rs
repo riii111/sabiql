@@ -51,11 +51,8 @@ impl SqliteCli {
         path: &str,
         sql: &str,
     ) -> Result<T, DbOperationError> {
-        let output = self.run(path, &["-json"], sql, true).await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        let stdout = match output.stdout.trim() {
+        let stdout = self.execute_text(path, &["-json"], sql, true).await?;
+        let stdout = match stdout.trim() {
             "" => "[]",
             stdout => stdout,
         };
@@ -99,18 +96,13 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &["-batch", "-bail", "-csv", "-header"],
-                sql,
-                read_only,
-            )
-            .await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        Ok(output.stdout)
+        self.execute_text(
+            path,
+            &["-batch", "-bail", "-csv", "-header"],
+            sql,
+            read_only,
+        )
+        .await
     }
 
     pub(in crate::adapters::sqlite) async fn execute_quote(
@@ -119,18 +111,13 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &["-batch", "-bail", "-quote", "-header"],
-                sql,
-                read_only,
-            )
-            .await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
-        Ok(output.stdout)
+        self.execute_text(
+            path,
+            &["-batch", "-bail", "-quote", "-header"],
+            sql,
+            read_only,
+        )
+        .await
     }
 
     pub(in crate::adapters::sqlite) async fn execute_quote_with_explain_off(
@@ -139,21 +126,30 @@ impl SqliteCli {
         sql: &str,
         read_only: bool,
     ) -> Result<String, DbOperationError> {
-        let output = self
-            .run(
-                path,
-                &[
-                    "-batch",
-                    "-bail",
-                    "-quote",
-                    "-header",
-                    "-cmd",
-                    ".explain off",
-                ],
-                sql,
-                read_only,
-            )
-            .await?;
+        self.execute_text(
+            path,
+            &[
+                "-batch",
+                "-bail",
+                "-quote",
+                "-header",
+                "-cmd",
+                ".explain off",
+            ],
+            sql,
+            read_only,
+        )
+        .await
+    }
+
+    async fn execute_text(
+        &self,
+        path: &str,
+        args: &[&str],
+        sql: &str,
+        read_only: bool,
+    ) -> Result<String, DbOperationError> {
+        let output = self.run(path, args, sql, read_only).await?;
         if !output.status.success() {
             return Err(classify_query_error(&output.stderr));
         }
