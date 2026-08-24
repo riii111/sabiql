@@ -222,7 +222,7 @@ pub(super) async fn stop_mysql_process(
     Ok((status, true))
 }
 
-pub(super) async fn read_all<R>(reader: &mut R) -> std::io::Result<Vec<u8>>
+pub(super) async fn read_all_bytes<R>(reader: &mut R) -> std::io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {
@@ -240,7 +240,8 @@ where
     O: AsyncRead + Unpin,
     E: AsyncRead + Unpin,
 {
-    let (stdout, stderr, status) = tokio::join!(read_all(stdout), read_all(stderr), child.wait());
+    let (stdout, stderr, status) =
+        tokio::join!(read_all_bytes(stdout), read_all_bytes(stderr), child.wait());
     let stdout = stdout.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     let stderr = stderr.map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
     let status = status.map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
@@ -406,7 +407,10 @@ pub(super) async fn cleanup_mysql_process(process: &mut MySqlProcess) {
     #[cfg(not(unix))]
     {
         drop(process.stdin.take());
-        let _ = tokio::join!(read_all(&mut process.stdout), read_all(&mut process.stderr));
+        let _ = tokio::join!(
+            read_all_bytes(&mut process.stdout),
+            read_all_bytes(&mut process.stderr)
+        );
     }
     let _ = process.child.wait().await;
 }
