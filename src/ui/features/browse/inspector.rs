@@ -19,6 +19,7 @@ use crate::app::model::shared::viewport::{
     ColumnWidthConfig, MAX_COL_WIDTH, SelectionContext, ViewportPlan, select_viewport_columns,
     widths_fingerprint,
 };
+use crate::app::policy::column::column_generation_kind_label;
 use crate::app::services::AppServices;
 use crate::domain::DatabaseType;
 use crate::primitives::atoms::{apply_yank_flash, panel_block};
@@ -850,8 +851,10 @@ fn column_row_cells(row: &InspectorColumnRow, options: ColumnDisplayOptions) -> 
 
 fn generation_display(row: &InspectorColumnRow) -> String {
     match (row.generation_kind, row.generation_expression.as_deref()) {
-        (Some(kind), Some(expression)) => format!("{}: {expression}", kind.label()),
-        (Some(kind), None) => kind.label().to_string(),
+        (Some(kind), Some(expression)) => {
+            format!("{}: {expression}", column_generation_kind_label(kind))
+        }
+        (Some(kind), None) => column_generation_kind_label(kind).to_string(),
         (None, Some(expression)) => expression.to_string(),
         (None, None) => String::new(),
     }

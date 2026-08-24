@@ -18,15 +18,6 @@ pub enum ColumnGenerationKind {
     Stored,
 }
 
-impl ColumnGenerationKind {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Virtual => "VIRTUAL",
-            Self::Stored => "STORED",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ColumnAttributes(u8);
 
@@ -94,18 +85,6 @@ impl Column {
     pub const fn is_generated(&self) -> bool {
         self.attributes.contains(ColumnAttributes::GENERATED)
     }
-
-    pub const fn read_only_reason(&self) -> Option<&'static str> {
-        if self.is_generated() {
-            Some("generated")
-        } else if self.is_hidden() {
-            Some("hidden")
-        } else if self.is_read_only() {
-            Some("read-only")
-        } else {
-            None
-        }
-    }
 }
 
 #[cfg(test)]
@@ -151,44 +130,6 @@ mod tests {
             let attributes = ColumnAttributes::NULLABLE | ColumnAttributes::PRIMARY_KEY;
 
             assert_eq!(attributes, ColumnAttributes::from_parts(true, true, false));
-        }
-
-        #[rstest]
-        #[case(true, false, false, Some("read-only"))]
-        #[case(true, true, false, Some("hidden"))]
-        #[case(true, false, true, Some("generated"))]
-        #[case(true, true, true, Some("generated"))]
-        #[case(false, false, false, None)]
-        fn metadata_flags_report_read_only_reason(
-            #[case] read_only: bool,
-            #[case] hidden: bool,
-            #[case] generated: bool,
-            #[case] expected: Option<&str>,
-        ) {
-            let mut attributes = ColumnAttributes::from_parts(true, false, false);
-            if read_only {
-                attributes = attributes | ColumnAttributes::READ_ONLY;
-            }
-            if hidden {
-                attributes = attributes | ColumnAttributes::HIDDEN;
-            }
-            if generated {
-                attributes = attributes | ColumnAttributes::GENERATED;
-            }
-            let column = Column {
-                name: "col".to_string(),
-                data_type: "text".to_string(),
-                default: None,
-                attributes,
-                comment: None,
-                ordinal_position: 1,
-                character_set_name: None,
-                collation_name: None,
-                generation_expression: None,
-                generation_kind: None,
-            };
-
-            assert_eq!(column.read_only_reason(), expected);
         }
     }
 }

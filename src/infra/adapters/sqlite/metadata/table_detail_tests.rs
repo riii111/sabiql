@@ -1,3 +1,4 @@
+use crate::app::policy::column::column_read_only_reason;
 use crate::app::ports::outbound::{DbOperationError, DdlGenerator, MetadataProvider};
 use crate::domain::{
     DatabaseType, FkAction, IndexType, TableKind, TriggerEvent, TriggerTiming, UNRESOLVED_FK_COLUMN,
@@ -401,7 +402,7 @@ mod table_detail {
             .unwrap();
         assert!(generated.is_read_only());
         assert!(generated.is_generated());
-        assert_eq!(generated.read_only_reason(), Some("generated"));
+        assert_eq!(column_read_only_reason(generated), Some("generated"));
 
         let fts = adapter
             .fetch_table_detail(&dsn, "main", "notes_fts")
@@ -414,7 +415,7 @@ mod table_detail {
             .unwrap();
         assert!(hidden.is_read_only());
         assert!(hidden.is_hidden());
-        assert_eq!(hidden.read_only_reason(), Some("hidden"));
+        assert_eq!(column_read_only_reason(hidden), Some("hidden"));
     }
 
     #[tokio::test]

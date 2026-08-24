@@ -5,6 +5,7 @@ use crate::domain::{
 use crate::model::browse::session::TableDetailState;
 use crate::model::shared::engine_feature_profile::{EngineFeatureProfile, InspectorInfoField};
 use crate::model::shared::inspector_tab::InspectorTab;
+use crate::policy::column::column_read_only_reason;
 use crate::policy::table_kind::{inspector_flags_label, inspector_kind_label};
 use crate::ports::outbound::DdlGenerator;
 
@@ -187,7 +188,7 @@ impl InspectorViewModel {
                 let show_read_only = table
                     .columns
                     .iter()
-                    .any(|column| column.read_only_reason().is_some());
+                    .any(|column| column_read_only_reason(column).is_some());
                 let rows: Vec<InspectorColumnRow> = table
                     .columns
                     .iter()
@@ -196,7 +197,7 @@ impl InspectorViewModel {
                         data_type: column.data_type.clone(),
                         nullable: column.is_nullable(),
                         primary_key: column.is_primary_key(),
-                        read_only_reason: column.read_only_reason().map(ToString::to_string),
+                        read_only_reason: column_read_only_reason(column).map(ToString::to_string),
                         default: column.default.clone(),
                         comment: column.comment.clone(),
                         character_set_name: column.character_set_name.clone(),
