@@ -9,9 +9,7 @@ pub enum PreviewCellTextDiffHandling {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewCellTextDisplayHandling {
     RawText,
-    SqliteText,
-    PostgreSqlJsonLikeText,
-    PostgreSqlJson,
+    PrettyPrintJsonText,
     StructuredJson,
 }
 
@@ -31,7 +29,7 @@ impl CellPresentationPolicy {
         };
         let display_handling = match database_type {
             DatabaseType::SQLite if has_sqlite_text_affinity(column_data_type) => {
-                PreviewCellTextDisplayHandling::SqliteText
+                PreviewCellTextDisplayHandling::PrettyPrintJsonText
             }
             DatabaseType::MySQL if column_data_type == "json" => {
                 PreviewCellTextDisplayHandling::StructuredJson
@@ -39,9 +37,9 @@ impl CellPresentationPolicy {
             DatabaseType::SQLite | DatabaseType::MySQL => PreviewCellTextDisplayHandling::RawText,
             DatabaseType::PostgreSQL => match column_data_type {
                 "jsonb" => PreviewCellTextDisplayHandling::StructuredJson,
-                "json" => PreviewCellTextDisplayHandling::PostgreSqlJson,
+                "json" => PreviewCellTextDisplayHandling::PrettyPrintJsonText,
                 _ if looks_like_json_container(value) => {
-                    PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+                    PreviewCellTextDisplayHandling::PrettyPrintJsonText
                 }
                 _ => PreviewCellTextDisplayHandling::RawText,
             },
@@ -156,16 +154,16 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_text_affinity_uses_text_display_handling() {
+    fn sqlite_text_affinity_uses_pretty_print_json_text_handling() {
         assert_eq!(
             CellPresentationPolicy::new(DatabaseType::SQLite, "TEXT", r#"{"items":["admin"]}"#)
                 .display_handling(),
-            PreviewCellTextDisplayHandling::SqliteText
+            PreviewCellTextDisplayHandling::PrettyPrintJsonText
         );
         assert_eq!(
             CellPresentationPolicy::new(DatabaseType::SQLite, "varchar(255)", "42")
                 .display_handling(),
-            PreviewCellTextDisplayHandling::SqliteText
+            PreviewCellTextDisplayHandling::PrettyPrintJsonText
         );
     }
 
@@ -183,11 +181,11 @@ mod tests {
     }
 
     #[test]
-    fn postgresql_text_json_container_uses_json_like_display_handling() {
+    fn postgresql_text_json_container_uses_pretty_print_json_text_handling() {
         assert_eq!(
             CellPresentationPolicy::new(DatabaseType::PostgreSQL, "text", r#"{"items":["admin"]}"#)
                 .display_handling(),
-            PreviewCellTextDisplayHandling::PostgreSqlJsonLikeText
+            PreviewCellTextDisplayHandling::PrettyPrintJsonText
         );
     }
 }
