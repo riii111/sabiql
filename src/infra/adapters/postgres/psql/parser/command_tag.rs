@@ -558,10 +558,10 @@ mod tests {
     mod discard_rolled_back {
         use super::*;
 
-        fn sp() -> CommandTag {
+        fn savepoint_tag() -> CommandTag {
             CommandTag::Other("SAVEPOINT".to_string())
         }
-        fn release() -> CommandTag {
+        fn release_tag() -> CommandTag {
             CommandTag::Other("RELEASE".to_string())
         }
 
@@ -599,9 +599,9 @@ mod tests {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
-                sp(),
+                savepoint_tag(),
                 CommandTag::Insert(1),
-                release(),
+                release_tag(),
                 CommandTag::Commit,
             ];
             assert_eq!(
@@ -615,7 +615,7 @@ mod tests {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
-                sp(),
+                savepoint_tag(),
                 CommandTag::Insert(1),
                 CommandTag::Rollback,
                 CommandTag::Commit,
@@ -630,7 +630,7 @@ mod tests {
         fn full_rollback_with_savepoint() {
             let tags = vec![
                 CommandTag::Begin,
-                sp(),
+                savepoint_tag(),
                 CommandTag::Create("TABLE".to_string()),
                 CommandTag::Rollback,
                 CommandTag::Commit,
@@ -660,7 +660,7 @@ mod tests {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
-                sp(),
+                savepoint_tag(),
                 CommandTag::Insert(1),
                 CommandTag::Rollback,
                 CommandTag::Delete(3),
@@ -676,10 +676,10 @@ mod tests {
         fn rollback_then_release_same_sp() {
             let tags = vec![
                 CommandTag::Begin,
-                sp(),
+                savepoint_tag(),
                 CommandTag::Insert(1),
                 CommandTag::Rollback,
-                release(),
+                release_tag(),
                 CommandTag::Commit,
             ];
             let effective = PostgresAdapter::discard_rolled_back(&tags);
@@ -693,10 +693,10 @@ mod tests {
             let tags = vec![
                 CommandTag::Begin,
                 CommandTag::Update(1),
-                sp(),
+                savepoint_tag(),
                 CommandTag::Insert(1),
                 CommandTag::Rollback,
-                release(),
+                release_tag(),
                 CommandTag::Rollback,
             ];
             let effective = PostgresAdapter::discard_rolled_back(&tags);
