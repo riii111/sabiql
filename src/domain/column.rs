@@ -1,5 +1,3 @@
-use std::fmt::Write as _;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Column {
     pub name: String,
@@ -108,38 +106,12 @@ impl Column {
             None
         }
     }
-
-    pub fn type_display(&self) -> String {
-        let mut display = self.data_type.clone();
-        if !self.is_nullable() {
-            display.push_str(" NOT NULL");
-        }
-        if let Some(default) = &self.default {
-            let _ = write!(display, " DEFAULT {default}");
-        }
-        display
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use rstest::rstest;
-
-    fn make_column(nullable: bool, default: Option<&str>) -> Column {
-        Column {
-            name: "col".to_string(),
-            data_type: "integer".to_string(),
-            default: default.map(ToString::to_string),
-            attributes: ColumnAttributes::from_parts(nullable, false, false),
-            comment: None,
-            ordinal_position: 1,
-            character_set_name: None,
-            collation_name: None,
-            generation_expression: None,
-            generation_kind: None,
-        }
-    }
 
     mod attributes {
         use super::*;
@@ -217,25 +189,6 @@ mod tests {
             };
 
             assert_eq!(column.read_only_reason(), expected);
-        }
-    }
-
-    mod type_display {
-        use super::*;
-
-        #[rstest]
-        #[case(true, None, "integer")]
-        #[case(false, None, "integer NOT NULL")]
-        #[case(true, Some("0"), "integer DEFAULT 0")]
-        #[case(false, Some("now()"), "integer NOT NULL DEFAULT now()")]
-        fn formats_sql_type(
-            #[case] nullable: bool,
-            #[case] default: Option<&str>,
-            #[case] expected: &str,
-        ) {
-            let column = make_column(nullable, default);
-
-            assert_eq!(column.type_display(), expected);
         }
     }
 }
