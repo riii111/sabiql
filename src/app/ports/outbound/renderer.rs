@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::model::app_state::AppState;
@@ -6,17 +5,9 @@ use crate::services::AppServices;
 
 pub use crate::model::shared::render_output::{CellDetailViewport, RenderOutput};
 
-#[derive(Debug, Clone, thiserror::Error)]
-pub enum RenderError {
-    #[error("I/O error: {0}")]
-    Io(#[source] Arc<std::io::Error>),
-}
-
-impl From<std::io::Error> for RenderError {
-    fn from(error: std::io::Error) -> Self {
-        Self::Io(Arc::new(error))
-    }
-}
+#[derive(Debug, thiserror::Error)]
+#[error("I/O error: {0}")]
+pub struct RenderError(#[from] std::io::Error);
 
 pub type RenderResult<T> = Result<T, RenderError>;
 
