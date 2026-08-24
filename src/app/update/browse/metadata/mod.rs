@@ -937,7 +937,7 @@ mod tests {
         }
     }
 
-    mod start_prefetch_all {
+    mod start_er_prefetch_all {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
@@ -1044,7 +1044,7 @@ mod tests {
         }
     }
 
-    mod start_prefetch_scoped {
+    mod start_er_prefetch_scoped {
         use super::*;
         use crate::domain::{DatabaseMetadata, TableSummary};
 
