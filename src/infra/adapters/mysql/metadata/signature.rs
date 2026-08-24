@@ -57,10 +57,10 @@ async fn fetch_table_signatures_with_program(
         timeout,
     )
     .await?;
-    let snapshot =
+    let tables =
         metadata_snapshot_from_result(database, None, &results[0], lower_case_table_names)?;
     table_signatures_from_metadata(
-        &snapshot.tables,
+        &tables,
         database,
         lower_case_table_names,
         parse_signature_column_metadata(&results[1])?,

@@ -20,14 +20,10 @@ impl MetadataProvider for MySqlAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
         let target = parse_and_validate_mysql_dsn(dsn)?;
         let database = catalog::selected_database(&target)?;
-        let snapshot = catalog::fetch_metadata_snapshot(&target, database).await?;
+        let tables = catalog::fetch_metadata_snapshot(&target, database).await?;
         let mut metadata = DatabaseMetadata::new(database.to_string());
         metadata.schemas = vec![Schema::new(database.to_string())];
-        metadata.table_summaries = snapshot
-            .tables
-            .into_iter()
-            .map(catalog::table_summary)
-            .collect();
+        metadata.table_summaries = tables.into_iter().map(catalog::table_summary).collect();
         Ok(metadata)
     }
 

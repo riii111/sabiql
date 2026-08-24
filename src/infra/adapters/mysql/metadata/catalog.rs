@@ -79,15 +79,10 @@ impl MySqlTableMetadata {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct MySqlMetadataSnapshot {
-    pub(super) tables: Vec<MySqlTableMetadata>,
-}
-
 pub(super) async fn fetch_metadata_snapshot(
     target: &MySqlDsn,
     database: &str,
-) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     let (lower_case_table_names, result) =
         execute_metadata_query(target, TABLES_QUERY, TABLES_RESULT_COLUMNS).await?;
     metadata_snapshot_from_result(database, None, &result, lower_case_table_names)
@@ -248,7 +243,7 @@ pub(super) fn metadata_snapshot_from_result(
     requested_schema: Option<&str>,
     result: &MySqlResultSet,
     lower_case_table_names: u8,
-) -> Result<MySqlMetadataSnapshot, DbOperationError> {
+) -> Result<Vec<MySqlTableMetadata>, DbOperationError> {
     if let Some(schema) = requested_schema {
         validate_selected_schema_name(database, schema, lower_case_table_names)?;
     }
@@ -261,7 +256,7 @@ pub(super) fn metadata_snapshot_from_result(
             "MySQL metadata is limited to the selected database".to_string(),
         ));
     }
-    Ok(MySqlMetadataSnapshot { tables })
+    Ok(tables)
 }
 
 fn parse_table_metadata(
@@ -730,7 +725,7 @@ mod tests {
 
     #[test]
     fn metadata_snapshot_uses_server_schema() {
-        let snapshot = metadata_snapshot_from_result(
+        let tables = metadata_snapshot_from_result(
             "app",
             Some("app"),
             &result(
@@ -751,19 +746,16 @@ mod tests {
         )
         .unwrap();
 
-        let summary = table_summary(snapshot.tables[0].clone());
+        let summary = table_summary(tables[0].clone());
         assert_eq!(summary.name, "users");
         assert_eq!(summary.schema, "app");
-        assert_eq!(snapshot.tables[0].engine.as_deref(), Some("InnoDB"));
-        assert_eq!(snapshot.tables[0].row_format.as_deref(), Some("Dynamic"));
+        assert_eq!(tables[0].engine.as_deref(), Some("InnoDB"));
+        assert_eq!(tables[0].row_format.as_deref(), Some("Dynamic"));
         assert_eq!(
-            snapshot.tables[0].table_collation.as_deref(),
+            tables[0].table_collation.as_deref(),
             Some("utf8mb4_0900_ai_ci")
         );
-        assert_eq!(
-            snapshot.tables[0].create_options.as_deref(),
-            Some("partitioned")
-        );
+        assert_eq!(tables[0].create_options.as_deref(), Some("partitioned"));
     }
 
     #[test]
@@ -781,7 +773,7 @@ mod tests {
     #[test]
     fn metadata_accepts_database_case_difference_for_server_modes_one_and_two() {
         for lower_case_table_names in [1, 2] {
-            let snapshot = metadata_snapshot_from_result(
+            let tables = metadata_snapshot_from_result(
                 "app",
                 Some("APP"),
                 &tables_result("APP"),
@@ -789,10 +781,10 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(snapshot.tables[0].schema, "APP");
-            assert_eq!(table_summary(snapshot.tables[0].clone()).schema, "APP");
+            assert_eq!(tables[0].schema, "APP");
+            assert_eq!(table_summary(tables[0].clone()).schema, "APP");
 
-            let unicode_snapshot = metadata_snapshot_from_result(
+            let unicode_tables = metadata_snapshot_from_result(
                 "äpp",
                 Some("ÄPP"),
                 &tables_result("ÄPP"),
@@ -800,11 +792,8 @@ mod tests {
             )
             .unwrap();
 
-            assert_eq!(unicode_snapshot.tables[0].schema, "ÄPP");
-            assert_eq!(
-                table_summary(unicode_snapshot.tables[0].clone()).schema,
-                "ÄPP"
-            );
+            assert_eq!(unicode_tables[0].schema, "ÄPP");
+            assert_eq!(table_summary(unicode_tables[0].clone()).schema, "ÄPP");
         }
     }
 
