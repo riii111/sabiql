@@ -1,4 +1,5 @@
 use super::*;
+use crate::app::ports::outbound::ConnectionFailureKind;
 
 #[tokio::test]
 async fn diagnostics_use_adhoc_args_and_follow_resultset_to_marker() {
@@ -136,5 +137,11 @@ async fn classifies_connection_refusal_from_the_shared_cli_error_path() {
     )
     .await;
 
-    assert!(matches!(result, Err(DbOperationError::ConnectionFailed(_))));
+    assert!(matches!(
+        result,
+        Err(DbOperationError::ConnectionFailedWithKind {
+            kind: ConnectionFailureKind::ConnectionRefused,
+            ..
+        })
+    ));
 }
