@@ -317,7 +317,7 @@ mod metadata_fetch {
 
     #[tokio::test]
     #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
-    async fn loads_mysql_table_catalog_and_preserves_view_details() {
+    async fn loads_mysql_table_catalog() {
         with_mysql_test_db(|db| {
             Box::pin(async move {
                 let metadata = db
@@ -345,6 +345,17 @@ mod metadata_fetch {
                         table.kind_info
                     ));
                 }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn loads_mysql_table_detail_and_preserves_attributes() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
                 let detail = db
                     .adapter()
                     .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_FIXTURE_TABLE)
@@ -446,26 +457,6 @@ mod metadata_fetch {
                     || second_trigger.security_context.as_deref() != Some("sabiql@%")
                 {
                     return Err(format!("unexpected MySQL triggers: {:?}", detail.triggers));
-                }
-
-                let view_detail = db
-                    .adapter()
-                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
-                    .await
-                    .map_err(|error| format!("{error:?}"))?;
-                if view_detail.source_ddl().is_none()
-                    || !view_detail
-                        .source_ddl()
-                        .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
-                    || db
-                        .adapter()
-                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
-                        != view_detail.source_ddl().unwrap()
-                {
-                    return Err(format!(
-                        "unexpected MySQL view DDL: {:?}",
-                        view_detail.source_ddl()
-                    ));
                 }
 
                 let composite = db
@@ -582,6 +573,36 @@ mod metadata_fetch {
                 {
                     return Err(format!(
                         "unexpected MySQL table signature: {child_signature:?}"
+                    ));
+                }
+                Ok(())
+            })
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Oracle MySQL 8.4 server and CLI"]
+    async fn loads_mysql_view_detail() {
+        with_mysql_test_db(|db| {
+            Box::pin(async move {
+                let view_detail = db
+                    .adapter()
+                    .fetch_table_detail(db.dsn(), "sabiql_test", MYSQL_VIEW)
+                    .await
+                    .map_err(|error| format!("{error:?}"))?;
+                if view_detail.source_ddl().is_none()
+                    || !view_detail
+                        .source_ddl()
+                        .is_some_and(|ddl| ddl.contains("CREATE") && ddl.contains(MYSQL_VIEW))
+                    || db
+                        .adapter()
+                        .generate_ddl(sabiql_domain::DatabaseType::MySQL, &view_detail)
+                        != view_detail.source_ddl().unwrap()
+                {
+                    return Err(format!(
+                        "unexpected MySQL view DDL: {:?}",
+                        view_detail.source_ddl()
                     ));
                 }
                 Ok(())
