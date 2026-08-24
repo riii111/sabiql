@@ -67,9 +67,7 @@ pub(super) fn table_from_metadata(
     metadata: RawTableMetadata,
 ) -> Result<Table, DbOperationError> {
     if metadata.columns.is_empty() || metadata.table.is_none() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "SQLite table not found: {table}"
-        )));
+        return Err(super::sqlite_table_not_found(table));
     }
     let unique_single_columns = unique_single_columns_from_batch(&metadata.indexes);
     let indexes = if mode.include_indexes() {

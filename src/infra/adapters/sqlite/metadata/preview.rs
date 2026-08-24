@@ -23,14 +23,10 @@ fn preview_metadata_from_raw(
     metadata: RawPreviewMetadata,
 ) -> Result<(Vec<String>, Vec<String>, TableKindInfo), DbOperationError> {
     let Some(table_kind) = metadata.table.as_ref() else {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "SQLite table not found: {table}"
-        )));
+        return Err(super::sqlite_table_not_found(table));
     };
     if metadata.columns.is_empty() {
-        return Err(DbOperationError::ObjectMissing(format!(
-            "SQLite table not found: {table}"
-        )));
+        return Err(super::sqlite_table_not_found(table));
     }
     let primary_key = extract_primary_key(&metadata.columns);
     let visible_columns = metadata
