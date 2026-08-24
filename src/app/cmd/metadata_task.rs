@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, Weak};
 use tokio::task::JoinHandle;
 
 struct TaskEntry {
-    completed: Arc<AtomicBool>,
+    released: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -21,7 +21,7 @@ impl MetadataTaskRegistry {
         F: Future<Output = ()> + Send + 'static,
     {
         let task_id = registry.next_id.fetch_add(1, Ordering::Relaxed);
-        let completed = Arc::new(AtomicBool::new(false));
+        let released = Arc::new(AtomicBool::new(false));
         registry
             .active
             .lock()
@@ -29,18 +29,18 @@ impl MetadataTaskRegistry {
             .insert(
                 task_id,
                 TaskEntry {
-                    completed: Arc::clone(&completed),
+                    released: Arc::clone(&released),
                     handle: None,
                 },
             );
 
-        let completion = TaskCompletion {
+        let registration_guard = TaskRegistrationGuard {
             registry: Arc::downgrade(registry),
             task_id,
-            completed: Arc::clone(&completed),
+            released: Arc::clone(&released),
         };
         let handle = tokio::spawn(async move {
-            let _completion = completion;
+            let _registration_guard = registration_guard;
             task.await;
         });
 
@@ -51,7 +51,7 @@ impl MetadataTaskRegistry {
                 .lock()
                 .expect("metadata task registry lock poisoned");
             match active.get_mut(&task_id) {
-                Some(entry) if !completed.load(Ordering::SeqCst) => {
+                Some(entry) if !released.load(Ordering::SeqCst) => {
                     entry.handle = handle.take();
                     false
                 }
@@ -85,14 +85,14 @@ impl MetadataTaskRegistry {
         }
     }
 
-    fn remove_completed(&self, task_id: u64, completed: &Arc<AtomicBool>) {
+    fn remove_released(&self, task_id: u64, released: &Arc<AtomicBool>) {
         let mut active = self
             .active
             .lock()
             .expect("metadata task registry lock poisoned");
         let should_remove = active
             .get(&task_id)
-            .is_some_and(|entry| Arc::ptr_eq(&entry.completed, completed));
+            .is_some_and(|entry| Arc::ptr_eq(&entry.released, released));
         if should_remove {
             active.remove(&task_id);
         }
@@ -113,17 +113,17 @@ impl Drop for MetadataTaskRegistry {
     }
 }
 
-struct TaskCompletion {
+struct TaskRegistrationGuard {
     registry: Weak<MetadataTaskRegistry>,
     task_id: u64,
-    completed: Arc<AtomicBool>,
+    released: Arc<AtomicBool>,
 }
 
-impl Drop for TaskCompletion {
+impl Drop for TaskRegistrationGuard {
     fn drop(&mut self) {
-        self.completed.store(true, Ordering::SeqCst);
+        self.released.store(true, Ordering::SeqCst);
         if let Some(registry) = self.registry.upgrade() {
-            registry.remove_completed(self.task_id, &self.completed);
+            registry.remove_released(self.task_id, &self.released);
         }
     }
 }
@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn removes_completed_task_from_registry() {
+    async fn removes_released_task_from_registry() {
         let registry = Arc::new(MetadataTaskRegistry::default());
         let (done_tx, done_rx) = oneshot::channel();
         MetadataTaskRegistry::spawn(&registry, async move {
@@ -194,6 +194,6 @@ mod tests {
             }
         })
         .await
-        .expect("completed task should be removed");
+        .expect("released task should be removed");
     }
 }
