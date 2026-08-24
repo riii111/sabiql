@@ -17,7 +17,11 @@ impl SqliteAdapter {
         &self,
         path: &str,
     ) -> Result<Vec<RawTable>, DbOperationError> {
-        match self.cli.execute_json(path, sql::user_tables_query()).await {
+        match self
+            .cli
+            .execute_json_read_only(path, sql::user_tables_query())
+            .await
+        {
             Ok(tables) => Ok(tables),
             Err(DbOperationError::QueryFailed(message))
                 if sql::is_table_list_unavailable(&message) =>
@@ -26,7 +30,7 @@ impl SqliteAdapter {
                     return Err(sql::table_list_required_error());
                 }
                 self.cli
-                    .execute_json(path, sql::legacy_user_tables_query())
+                    .execute_json_read_only(path, sql::legacy_user_tables_query())
                     .await
             }
             Err(error) => Err(error),
@@ -65,7 +69,7 @@ impl SqliteAdapter {
     ) -> Result<Vec<RawNamedTableMetadata>, DbOperationError> {
         let rows: Vec<RawNamedJsonPayload> = self
             .cli
-            .execute_json(path, &sql::table_signatures_query())
+            .execute_json_read_only(path, &sql::table_signatures_query())
             .await?;
         rows.into_iter()
             .map(|row| {
@@ -82,7 +86,7 @@ impl SqliteAdapter {
     async fn has_virtual_tables(&self, path: &str) -> Result<bool, DbOperationError> {
         let rows: Vec<RawRowCount> = self
             .cli
-            .execute_json(path, sql::has_virtual_tables_query())
+            .execute_json_read_only(path, sql::has_virtual_tables_query())
             .await?;
         Ok(rows.into_iter().next().is_some_and(|row| row.count > 0))
     }
@@ -92,7 +96,7 @@ impl SqliteAdapter {
         path: &str,
         query: &str,
     ) -> Result<T, DbOperationError> {
-        let rows: Vec<RawJsonPayload> = self.cli.execute_json(path, query).await?;
+        let rows: Vec<RawJsonPayload> = self.cli.execute_json_read_only(path, query).await?;
         let payload = rows.into_iter().next().ok_or_else(|| {
             DbOperationError::MetadataParseFailed("SQLite metadata payload was empty".to_string())
         })?;
