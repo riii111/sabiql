@@ -446,7 +446,7 @@ mod tests {
         completion_engine: &std::cell::RefCell<CompletionEngine>,
     ) -> Vec<Action> {
         let pending = runner
-            .run(
+            .execute_effects(
                 effects,
                 renderer,
                 state,

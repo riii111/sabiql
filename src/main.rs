@@ -329,7 +329,7 @@ impl Runtime {
         let mut tui_adapter = TuiAdapter::new(&mut self.tui);
         let pending = self
             .effect_runner
-            .run(
+            .execute_effects(
                 effects,
                 &mut tui_adapter,
                 &mut self.state,

@@ -120,7 +120,7 @@ impl EffectRunner {
         self.mysql_connection_probe_task.cancel().await;
     }
 
-    pub async fn run<T: Renderer>(
+    pub async fn execute_effects<T: Renderer>(
         &self,
         effects: Vec<Effect>,
         tui: &mut T,
@@ -134,15 +134,27 @@ impl EffectRunner {
                 Effect::Sequence(seq_effects) => {
                     for seq_effect in seq_effects {
                         dispatched.extend(
-                            self.run_normal(seq_effect, tui, state, completion_engine, services)
-                                .await?,
+                            self.execute_single_effect(
+                                seq_effect,
+                                tui,
+                                state,
+                                completion_engine,
+                                services,
+                            )
+                            .await?,
                         );
                     }
                 }
                 single_effect => {
                     dispatched.extend(
-                        self.run_normal(single_effect, tui, state, completion_engine, services)
-                            .await?,
+                        self.execute_single_effect(
+                            single_effect,
+                            tui,
+                            state,
+                            completion_engine,
+                            services,
+                        )
+                        .await?,
                     );
                 }
             }
@@ -150,7 +162,7 @@ impl EffectRunner {
         Ok(dispatched)
     }
 
-    async fn run_normal<T: Renderer>(
+    async fn execute_single_effect<T: Renderer>(
         &self,
         effect: Effect,
         tui: &mut T,
@@ -171,7 +183,7 @@ impl EffectRunner {
             }
 
             Effect::Sequence(_) => {
-                // Handled in run()
+                // Handled in execute_effects()
                 Ok(vec![])
             }
             Effect::DispatchActions(actions) => Ok(actions),
@@ -408,7 +420,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::Render],
                     &mut renderer,
                     state,
@@ -449,7 +461,7 @@ mod tests {
             };
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::Render],
                     &mut renderer,
                     state,
@@ -490,7 +502,7 @@ mod tests {
             let mut renderer = JsonVisibleRowsRenderer { visible_rows: 2 };
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::Render],
                     &mut renderer,
                     state,
@@ -525,7 +537,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             let result = runner
-                .run(
+                .execute_effects(
                     vec![Effect::DispatchActions(vec![
                         Action::ProcessPrefetchQueue { run_id: 1 },
                         Action::ProcessPrefetchQueue { run_id: 1 },
@@ -718,7 +730,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ExecutePreview {
                         dsn: "postgres://localhost/current".to_string(),
                         schema: "public".to_string(),
@@ -754,7 +766,7 @@ mod tests {
                 &AppServices::stub(),
             );
             runner
-                .run(
+                .execute_effects(
                     effects,
                     &mut renderer,
                     &mut state,
@@ -795,7 +807,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchTableDetail {
                         dsn: "postgres://localhost/current".to_string(),
                         schema: "public".to_string(),
@@ -823,7 +835,7 @@ mod tests {
             );
             assert!(state.should_quit);
             runner
-                .run(
+                .execute_effects(
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
@@ -983,7 +995,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::FetchMetadata {
                         dsn: "postgres://localhost/old".to_string(),
                         run_id: 1,
@@ -998,7 +1010,7 @@ mod tests {
             metadata_started_rx.await.expect("metadata should start");
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ProbeMySqlConnection {
                         target: ConnectionTarget {
                             id: ConnectionId::new(),
@@ -1047,7 +1059,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![
                         Effect::FetchEffectiveUser {
                             dsn: "postgres://localhost/current".to_string(),
@@ -1076,7 +1088,7 @@ mod tests {
                 &AppServices::stub(),
             );
             runner
-                .run(
+                .execute_effects(
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
@@ -1188,7 +1200,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ProbeMySqlConnection {
                         target: mysql_target("mysql://localhost/old"),
                         run_id: 1,
@@ -1206,7 +1218,7 @@ mod tests {
             );
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ProbeMySqlConnection {
                         target: mysql_target("mysql://localhost/new"),
                         run_id: 2,
@@ -1226,7 +1238,7 @@ mod tests {
             );
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::CancelActiveTasks],
                     &mut renderer,
                     &mut state,
@@ -1261,7 +1273,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::SaveAndConnect {
                         id: None,
                         name: "old".to_string(),
@@ -1279,7 +1291,7 @@ mod tests {
             assert_eq!(started_rx.recv().await.as_deref(), Some(""));
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ProbeMySqlConnection {
                         target: mysql_target("mysql://localhost/new"),
                         run_id: 2,
@@ -1299,7 +1311,7 @@ mod tests {
             );
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::CancelActiveTasks],
                     &mut renderer,
                     &mut state,
@@ -1334,7 +1346,7 @@ mod tests {
             let mut renderer = NoopRenderer;
 
             runner
-                .run(
+                .execute_effects(
                     vec![Effect::ProbeMySqlConnection {
                         target: mysql_target("mysql://localhost/pending"),
                         run_id: 1,
@@ -1359,7 +1371,7 @@ mod tests {
             );
             assert!(state.should_quit);
             runner
-                .run(
+                .execute_effects(
                     shutdown_effects,
                     &mut renderer,
                     &mut state,
