@@ -95,7 +95,7 @@ impl ConnectionError {
             Span::styled(hint, Style::default().fg(theme.semantic.text.secondary)),
         ];
         if state.session.is_service_connection()
-            && state.connection_error.target_database_type().is_none()
+            && state.connection_error.destination_database_type().is_none()
             && let Some(path) = state.runtime.service_file_path()
         {
             spans.push(Span::styled(
