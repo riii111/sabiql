@@ -261,7 +261,7 @@ impl<R> MySqlXmlFieldLimitReader<R> {
         }
     }
 
-    fn process(&mut self, bytes: &[u8]) -> usize {
+    fn process_chunk(&mut self, bytes: &[u8]) -> usize {
         for (index, &byte) in bytes.iter().enumerate() {
             if !self.process_byte(byte) {
                 return index;
@@ -301,7 +301,7 @@ where
                 if bytes_read == 0 {
                     return Poll::Ready(Ok(()));
                 }
-                let bytes_allowed = self.process(&chunk[..bytes_read]);
+                let bytes_allowed = self.process_chunk(&chunk[..bytes_read]);
                 if bytes_allowed < bytes_read {
                     self.limit_error_pending = true;
                 }
