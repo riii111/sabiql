@@ -503,13 +503,10 @@ fn mysql_statement_input(query: &str) -> Vec<u8> {
 }
 
 #[cfg(test)]
-#[path = "process/process_tests.rs"]
 mod process_tests;
 
 #[cfg(all(test, unix))]
-#[path = "process/tests/mod.rs"]
 mod tests;
 
 #[cfg(all(test, not(unix)))]
-#[path = "process/windows_tests.rs"]
 mod windows_tests;
