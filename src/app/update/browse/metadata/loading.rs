@@ -96,7 +96,7 @@ pub(super) fn reduce_loading(
             run_id,
             effective_user,
         } => {
-            if state.session.dsn() != Some(dsn.as_str())
+            if !state.session.dsn_matches(dsn)
                 || !state.session.is_current_effective_user_run(*run_id)
             {
                 return DispatchResult::handled();
