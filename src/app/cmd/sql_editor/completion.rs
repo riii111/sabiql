@@ -77,14 +77,12 @@ pub async fn run(
             let (candidates, token_len, visible) = {
                 let engine = completion_engine.borrow();
                 let token_len = CompletionEngine::current_token_len_prepared(&prep);
-                let recent_cols = state.sql_modal.completion().recent_columns_vec();
                 let candidates = engine.get_candidates_prepared_for_database(
                     content,
                     cursor,
                     &prep,
                     state.session.metadata(),
                     state.session.table_detail(),
-                    &recent_cols,
                     CompletionDatabaseScope {
                         database_type,
                         active_database,

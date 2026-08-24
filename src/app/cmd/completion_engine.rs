@@ -335,7 +335,6 @@ impl CompletionEngine {
         prep: &PreparedCompletion,
         metadata: Option<&DatabaseMetadata>,
         table_detail: Option<&Table>,
-        recent_columns: &[String],
         scope: CompletionDatabaseScope<'_>,
     ) -> Vec<CompletionCandidate> {
         if prep.in_string_or_comment {
@@ -380,8 +379,7 @@ impl CompletionEngine {
                     self.qualified_name_from_ref_for_database(t, metadata, scope.database_type)
                 });
 
-                let mut columns =
-                    self.column_candidates_with_fk(table_detail, &current_token, recent_columns);
+                let mut columns = self.column_candidates_with_fk(table_detail, &current_token);
 
                 // UPDATE/DELETE/INSERT target table columns get priority
                 if let (Some(detail), Some(target)) = (table_detail, &target_qualified)
@@ -420,11 +418,8 @@ impl CompletionEngine {
                     if !use_all_cache && !referenced_tables.contains(qualified_name) {
                         continue;
                     }
-                    let mut cached_columns = self.column_candidates_with_fk(
-                        Some(cached_table),
-                        &current_token,
-                        recent_columns,
-                    );
+                    let mut cached_columns =
+                        self.column_candidates_with_fk(Some(cached_table), &current_token);
                     if target_qualified.as_ref() == Some(qualified_name) {
                         for col in &mut cached_columns {
                             col.score += 200;
@@ -1045,14 +1040,13 @@ impl CompletionEngine {
         table_detail: Option<&Table>,
         prefix: &str,
     ) -> Vec<CompletionCandidate> {
-        self.column_candidates_with_fk(table_detail, prefix, &[])
+        self.column_candidates_with_fk(table_detail, prefix)
     }
 
     fn column_candidates_with_fk(
         &self,
         table_detail: Option<&Table>,
         prefix: &str,
-        recent_columns: &[String],
     ) -> Vec<CompletionCandidate> {
         let Some(table) = table_detail else {
             return vec![];
@@ -1100,11 +1094,6 @@ impl CompletionEngine {
                 if !c.is_nullable() {
                     score += 20;
                 }
-                // Boost recently used columns (+30)
-                if recent_columns.contains(&c.name) {
-                    score += 30;
-                }
-
                 CompletionCandidate {
                     text: c.name.clone(),
                     kind: CompletionKind::Column,
@@ -1401,7 +1390,6 @@ mod tests {
             cursor_pos: usize,
             metadata: Option<&DatabaseMetadata>,
             table_detail: Option<&Table>,
-            recent_columns: &[String],
             scope: CompletionDatabaseScope<'_>,
         ) -> Vec<CompletionCandidate> {
             let prep = self.prepare_for_database(content, cursor_pos, scope.database_type);
@@ -1411,7 +1399,6 @@ mod tests {
                 &prep,
                 metadata,
                 table_detail,
-                recent_columns,
                 scope,
             )
         }
@@ -1493,14 +1480,12 @@ mod tests {
             cursor_pos: usize,
             metadata: Option<&DatabaseMetadata>,
             table_detail: Option<&Table>,
-            recent_columns: &[String],
         ) -> Vec<CompletionCandidate> {
             self.get_candidates_for_database(
                 content,
                 cursor_pos,
                 metadata,
                 table_detail,
-                recent_columns,
                 CompletionDatabaseScope {
                     database_type: DatabaseType::PostgreSQL,
                     active_database: None,
@@ -1869,7 +1854,7 @@ mod tests {
         fn inside_single_quote_string_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("SELECT 'SEL", 11, None, None, &[]);
+            let candidates = e.get_candidates("SELECT 'SEL", 11, None, None);
 
             assert!(candidates.is_empty());
         }
@@ -1878,7 +1863,7 @@ mod tests {
         fn inside_line_comment_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("-- SEL", 6, None, None, &[]);
+            let candidates = e.get_candidates("-- SEL", 6, None, None);
 
             assert!(candidates.is_empty());
         }
@@ -1887,7 +1872,7 @@ mod tests {
         fn inside_block_comment_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("/* SEL", 6, None, None, &[]);
+            let candidates = e.get_candidates("/* SEL", 6, None, None);
 
             assert!(candidates.is_empty());
         }
@@ -1896,7 +1881,7 @@ mod tests {
         fn inside_dollar_quote_returns_empty() {
             let e = engine();
 
-            let candidates = e.get_candidates("SELECT $$SEL", 12, None, None, &[]);
+            let candidates = e.get_candidates("SELECT $$SEL", 12, None, None);
 
             assert!(candidates.is_empty());
         }
@@ -1905,7 +1890,7 @@ mod tests {
         fn after_closed_string_returns_candidates() {
             let e = engine();
 
-            let candidates = e.get_candidates("'value' SEL", 11, None, None, &[]);
+            let candidates = e.get_candidates("'value' SEL", 11, None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
@@ -1915,7 +1900,7 @@ mod tests {
         fn after_closed_comment_returns_candidates() {
             let e = engine();
 
-            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None, &[]);
+            let candidates = e.get_candidates("/* comment */ SEL", 17, None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
@@ -1945,7 +1930,6 @@ mod tests {
                 14,
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -1980,7 +1964,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2018,7 +2001,6 @@ mod tests {
                 "SELECT f.ex".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2056,7 +2038,6 @@ mod tests {
                 "SELECT Foo.ex".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2092,7 +2073,6 @@ mod tests {
                 "SELECT f.fal".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2125,7 +2105,6 @@ mod tests {
                 "SELECT f.qu".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2159,7 +2138,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2192,7 +2170,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2225,7 +2202,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2256,7 +2232,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2289,7 +2264,6 @@ mod tests {
                 "SELECT f.uni".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2318,7 +2292,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2357,7 +2330,6 @@ mod tests {
                 "SELECT f.col".chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2378,7 +2350,6 @@ mod tests {
                 3,
                 None,
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2401,7 +2372,6 @@ mod tests {
                     prefix.chars().count(),
                     None,
                     None,
-                    &[],
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
@@ -2422,7 +2392,6 @@ mod tests {
                 3,
                 None,
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2448,7 +2417,6 @@ mod tests {
                     sql.chars().count(),
                     None,
                     None,
-                    &[],
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
@@ -2474,7 +2442,6 @@ mod tests {
                     cursor,
                     None,
                     None,
-                    &[],
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
@@ -2500,7 +2467,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2522,7 +2488,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2549,7 +2514,6 @@ mod tests {
                 cursor,
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2580,7 +2544,6 @@ mod tests {
                 cursor,
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2607,7 +2570,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2635,7 +2597,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app`db"),
@@ -2668,7 +2629,6 @@ mod tests {
                 19,
                 Some(&metadata),
                 None,
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2709,7 +2669,6 @@ mod tests {
                     sql.chars().count(),
                     Some(&metadata),
                     Some(&table),
-                    &[],
                     scope,
                 );
 
@@ -2734,7 +2693,6 @@ mod tests {
                     sql.chars().count(),
                     Some(&metadata),
                     None,
-                    &[],
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
@@ -2758,7 +2716,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 Some(&table),
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2785,7 +2742,6 @@ mod tests {
                 sql.chars().count(),
                 Some(&metadata),
                 Some(&table),
-                &[],
                 CompletionDatabaseScope {
                     database_type: DatabaseType::MySQL,
                     active_database: Some("app"),
@@ -2826,7 +2782,6 @@ mod tests {
                     sql.chars().count(),
                     Some(&metadata),
                     Some(&table),
-                    &[],
                     CompletionDatabaseScope {
                         database_type: DatabaseType::MySQL,
                         active_database: Some("app"),
@@ -2854,7 +2809,7 @@ mod tests {
         fn suppression_by_trailing_semicolon(#[case] content: &str, #[case] expect_empty: bool) {
             let e = engine();
             let cursor_pos = content.chars().count();
-            let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
+            let candidates = e.get_candidates(content, cursor_pos, None, None);
             assert_eq!(candidates.is_empty(), expect_empty);
         }
 
@@ -2867,7 +2822,7 @@ mod tests {
         fn multibyte_content_does_not_panic(#[case] content: &str, #[case] expect_empty: bool) {
             let e = engine();
             let cursor_pos = content.chars().count();
-            let candidates = e.get_candidates(content, cursor_pos, None, None, &[]);
+            let candidates = e.get_candidates(content, cursor_pos, None, None);
             assert_eq!(candidates.is_empty(), expect_empty);
         }
 
@@ -2876,7 +2831,7 @@ mod tests {
             let e = engine();
 
             let content = "SELECT * FROM users; S";
-            let candidates = e.get_candidates(content, content.chars().count(), None, None, &[]);
+            let candidates = e.get_candidates(content, content.chars().count(), None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "SELECT"));
@@ -3242,7 +3197,7 @@ mod tests {
             let e = engine();
             let table = create_table_with_fk();
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "", &[]);
+            let candidates = e.column_candidates_with_fk(Some(&table), "");
 
             // id: PK(+50) + NOT NULL(+20) = 170
             // user_id: FK(+40) + NOT NULL(+20) = 160
@@ -3268,7 +3223,7 @@ mod tests {
             let e = engine();
             let table = create_table_with_fk();
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "user", &[]);
+            let candidates = e.column_candidates_with_fk(Some(&table), "user");
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "user_id");
@@ -3294,7 +3249,7 @@ mod tests {
             };
 
             // "id" is contained in "user_id"
-            let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
+            let candidates = e.column_candidates_with_fk(Some(&table), "id");
 
             assert_eq!(candidates.len(), 1);
             assert_eq!(candidates[0].text, "user_id");
@@ -3313,41 +3268,13 @@ mod tests {
                 ..test_support::table::minimal("", "")
             };
 
-            let candidates = e.column_candidates_with_fk(Some(&table), "id", &[]);
+            let candidates = e.column_candidates_with_fk(Some(&table), "id");
 
             // "id" is prefix match (+100), "user_id" is contains match (+10)
             assert_eq!(candidates.len(), 2);
             assert_eq!(candidates[0].text, "id");
             assert_eq!(candidates[1].text, "user_id");
             assert!(candidates[0].score > candidates[1].score);
-        }
-    }
-
-    mod recent_columns_scoring {
-        use super::*;
-
-        #[test]
-        fn recent_column_returns_boosted_score() {
-            let e = engine();
-            let table = Table {
-                schema: "public".to_string(),
-                name: "test".to_string(),
-                columns: vec![
-                    test_support::column::test_nullable_column("name", "text", 1),
-                    test_support::column::test_nullable_column("email", "text", 2),
-                ],
-                ..test_support::table::minimal("", "")
-            };
-
-            let recent = vec!["email".to_string()];
-            let candidates = e.column_candidates_with_fk(Some(&table), "", &recent);
-
-            // "email" has recent bonus (+30)
-            let email_score = candidates.iter().find(|c| c.text == "email").unwrap().score;
-            let name_score = candidates.iter().find(|c| c.text == "name").unwrap().score;
-
-            assert!(email_score > name_score);
-            assert_eq!(email_score - name_score, 30);
         }
     }
 
@@ -3359,7 +3286,7 @@ mod tests {
             let e = engine();
 
             // Column context but no table_detail -> should fallback to keywords
-            let candidates = e.get_candidates("SELECT xxx F", 12, None, None, &[]);
+            let candidates = e.get_candidates("SELECT xxx F", 12, None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "FROM"));
@@ -3370,7 +3297,7 @@ mod tests {
             let e = engine();
 
             // "FROM" inside string should not trigger Table context
-            let candidates = e.get_candidates("SELECT 'FROM' ", 14, None, None, &[]);
+            let candidates = e.get_candidates("SELECT 'FROM' ", 14, None, None);
 
             // Should be Column context (after SELECT), but fallback to Keyword
             assert!(!candidates.is_empty());
@@ -3383,7 +3310,7 @@ mod tests {
             let e = engine();
 
             // "FROM" inside comment should not trigger Table context
-            let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None, &[]);
+            let candidates = e.get_candidates("SELECT -- FROM\n", 15, None, None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
@@ -3686,7 +3613,7 @@ mod tests {
             let table = create_users_table();
 
             // SELECT context with table_detail should return columns
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
 
             assert!(!candidates.is_empty());
             assert!(
@@ -3723,13 +3650,8 @@ mod tests {
             )];
 
             // "u." should trigger alias column completion from cache
-            let candidates = e.get_candidates(
-                "SELECT u. FROM public.users u",
-                9,
-                Some(&metadata),
-                None,
-                &[],
-            );
+            let candidates =
+                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
 
             assert!(!candidates.is_empty());
             assert!(candidates.iter().any(|c| c.text == "id"));
@@ -3743,7 +3665,7 @@ mod tests {
             let table = create_users_table();
 
             // Typing after SELECT with table_detail should show columns
-            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
 
             // Should include "name" column that starts with "n"
             assert!(
@@ -3759,8 +3681,7 @@ mod tests {
             let table = create_users_table();
 
             // WHERE context with table_detail should return columns
-            let candidates =
-                e.get_candidates("SELECT * FROM users WHERE ", 26, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT * FROM users WHERE ", 26, None, Some(&table));
 
             assert!(!candidates.is_empty());
             assert!(
@@ -3783,13 +3704,8 @@ mod tests {
             )];
 
             // "u." without cache should fallback to keywords
-            let candidates = e.get_candidates(
-                "SELECT u. FROM public.users u",
-                9,
-                Some(&metadata),
-                None,
-                &[],
-            );
+            let candidates =
+                e.get_candidates("SELECT u. FROM public.users u", 9, Some(&metadata), None);
 
             // Should fallback to keywords since cache is empty
             assert!(candidates.iter().any(|c| c.kind == CompletionKind::Keyword));
@@ -3801,7 +3717,7 @@ mod tests {
             let table = create_users_table();
 
             // "SELECT xxx F" with table_detail - should show both FROM keyword and columns starting with F
-            let candidates = e.get_candidates("SELECT xxx F", 12, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT xxx F", 12, None, Some(&table));
 
             // FROM keyword should appear (high priority)
             assert!(
@@ -3820,7 +3736,7 @@ mod tests {
             let table = create_users_table();
 
             // SELECT context should show both keywords and columns
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
 
             // Should have keywords
             assert!(
@@ -3854,8 +3770,7 @@ mod tests {
             let table = create_users_table();
 
             // After "ORDER ", BY should appear in candidates
-            let candidates =
-                e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT * FROM t ORDER ", 22, None, Some(&table));
 
             assert!(
                 candidates.iter().any(|c| c.text == "BY"),
@@ -3875,7 +3790,7 @@ mod tests {
                 ..test_support::table::minimal("", "")
             };
 
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
 
             // Count how many times "AND" appears (case-insensitive)
             let and_count = candidates
@@ -3892,7 +3807,7 @@ mod tests {
             let table = create_users_table();
 
             // Empty prefix: keywords should come first
-            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, None, Some(&table));
 
             // First candidate should be a keyword (score 200)
             assert_eq!(
@@ -3908,7 +3823,7 @@ mod tests {
             let table = create_users_table();
 
             // "na" prefix: "name" column should come before keywords
-            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table));
 
             // First candidate should be the "name" column (boosted score)
             assert_eq!(candidates[0].text, "name");
@@ -3925,7 +3840,7 @@ mod tests {
             let table = create_users_table();
 
             // 1 char prefix: keywords stay first (no boost)
-            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT n", 8, None, Some(&table));
 
             assert!(candidates.iter().any(|c| c.text == "name"));
             assert!(candidates.iter().any(|c| c.text == "NOT"));
@@ -3939,7 +3854,7 @@ mod tests {
             let table = create_users_table();
 
             // 2+ char prefix: columns get boosted
-            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table), &[]);
+            let candidates = e.get_candidates("SELECT na", 9, None, Some(&table));
 
             assert_eq!(candidates[0].text, "name");
             assert_eq!(candidates[0].kind, CompletionKind::Column);
@@ -3972,7 +3887,6 @@ mod tests {
                 59,
                 Some(&metadata),
                 Some(&users),
-                &[],
             );
 
             // Find columns from both tables
@@ -4008,7 +3922,7 @@ mod tests {
             )];
 
             // SELECT has no target, so no boost
-            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users), &[]);
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), Some(&users));
 
             let name_candidate = candidates.iter().find(|c| c.text == "name");
             assert!(name_candidate.is_some());
@@ -4029,7 +3943,7 @@ mod tests {
             e.cache_table_detail("public.orders".to_string(), orders);
             let metadata = DatabaseMetadata::new("test".to_string());
 
-            let candidates = e.get_candidates("SELECT na", 9, Some(&metadata), None, &[]);
+            let candidates = e.get_candidates("SELECT na", 9, Some(&metadata), None);
 
             let name_candidate = candidates.iter().find(|c| c.text == "name");
             assert!(name_candidate.is_some());
@@ -4044,7 +3958,7 @@ mod tests {
             e.cache_table_detail("public.orders".to_string(), orders);
             let metadata = DatabaseMetadata::new("test".to_string());
 
-            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), None, &[]);
+            let candidates = e.get_candidates("SELECT ", 7, Some(&metadata), None);
 
             let column_count = candidates
                 .iter()
@@ -4066,8 +3980,7 @@ mod tests {
                 TableSummary::new("public".to_string(), "orders".to_string(), None, false),
             ];
 
-            let candidates =
-                e.get_candidates("SELECT na FROM users", 9, Some(&metadata), None, &[]);
+            let candidates = e.get_candidates("SELECT na FROM users", 9, Some(&metadata), None);
 
             let name = candidates.iter().find(|c| c.text == "name");
             let user_id = candidates.iter().find(|c| c.text == "user_id");
@@ -4212,7 +4125,7 @@ mod tests {
                 .collect();
             let sql = "SELECT * FROM first_table; SELECT * FROM current_table WHERE ; SELECT * FROM later_table";
             let cursor_pos = sql.find("; SELECT * FROM later_table").unwrap();
-            let candidates = engine.get_candidates(sql, cursor_pos, Some(&metadata), None, &[]);
+            let candidates = engine.get_candidates(sql, cursor_pos, Some(&metadata), None);
 
             assert!(
                 candidates
