@@ -390,9 +390,9 @@ mod tests {
     #[cfg(unix)]
     use std::path::PathBuf;
 
+    use super::super::super::metadata_test_support::column;
     use super::super::test_support::result;
     use super::*;
-    use crate::domain::ColumnAttributes;
 
     fn convert_preview_values(
         result: &MySqlResultSet,
@@ -483,21 +483,6 @@ done
             !std::path::Path::new(option).exists(),
             "option file remains"
         );
-    }
-
-    fn column(name: &str, data_type: &str) -> Column {
-        Column {
-            name: name.to_string(),
-            data_type: data_type.to_string(),
-            default: None,
-            attributes: ColumnAttributes::empty(),
-            comment: None,
-            ordinal_position: 1,
-            character_set_name: None,
-            collation_name: None,
-            generation_expression: None,
-            generation_kind: None,
-        }
     }
 
     fn binary_charset_column(name: &str, data_type: &str) -> Column {
