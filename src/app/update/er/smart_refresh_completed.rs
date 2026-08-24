@@ -70,9 +70,9 @@ pub(super) fn reduce_smart_refresh_completed(
                     format!("Refreshing {} table(s) for ER diagram...", refetch.len()),
                     now,
                 );
-                effects.push(Effect::DispatchActions(vec![Action::StartPrefetchScoped {
-                    tables: refetch,
-                }]));
+                effects.push(Effect::DispatchActions(vec![
+                    Action::StartErPrefetchScoped { tables: refetch },
+                ]));
             }
 
             DispatchResult::handled_with(effects)

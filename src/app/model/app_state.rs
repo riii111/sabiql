@@ -1266,7 +1266,7 @@ mod tests {
         fn prepare_state_for_reload() -> AppState {
             let mut state = make_state();
             activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let _ = state.sql_modal.begin_prefetch();
+            let _ = state.sql_modal.begin_er_prefetch();
             state
                 .sql_modal
                 .queue_table_prefetch("public.users".to_string());

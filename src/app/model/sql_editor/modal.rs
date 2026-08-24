@@ -114,7 +114,7 @@ impl SqlModalContext {
     }
 
     #[must_use]
-    pub fn begin_prefetch(&mut self) -> u64 {
+    pub fn begin_er_prefetch(&mut self) -> u64 {
         if self.prefetch_run.active_id().is_some() && !self.prefetch_tracks_er {
             // Responses from the replaced completion run are stale and will be discarded.
             self.prefetching_tables.clear();
@@ -508,7 +508,7 @@ mod tests {
         #[test]
         fn reset_clears_all_state() {
             let mut ctx = SqlModalContext::default();
-            let _ = ctx.begin_prefetch();
+            let _ = ctx.begin_er_prefetch();
             ctx.queue_table_prefetch("public.users".to_string());
             ctx.start_table_prefetch("public.posts".to_string());
             ctx.fail_table_prefetch(

@@ -43,7 +43,7 @@ pub(super) fn reduce_smart_refresh_failed(
             );
             DispatchResult::handled_with(vec![
                 Effect::ClearCompletionEngineCache,
-                Effect::DispatchActions(vec![Action::StartPrefetchAll]),
+                Effect::DispatchActions(vec![Action::StartErPrefetchAll]),
             ])
         }
         _ => DispatchResult::pass(),

@@ -510,8 +510,8 @@ pub enum Action {
         schema: String,
         table: String,
     },
-    StartPrefetchAll,
-    StartPrefetchScoped {
+    StartErPrefetchAll,
+    StartErPrefetchScoped {
         tables: Vec<String>,
     },
     StartCompletionPrefetch {

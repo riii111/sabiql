@@ -364,7 +364,7 @@ mod tests {
         }
     }
 
-    mod begin_prefetch {
+    mod begin_er_prefetch {
         use super::*;
 
         #[test]
