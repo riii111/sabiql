@@ -16,6 +16,10 @@ use super::{SqliteAdapter, schema::MAIN_SCHEMA};
 use catalog::metadata_from_catalog;
 use table_detail::{TableDetailMode, table_from_metadata};
 
+fn sqlite_table_not_found(table: &str) -> DbOperationError {
+    DbOperationError::ObjectMissing(format!("SQLite table not found: {table}"))
+}
+
 #[async_trait]
 impl MetadataProvider for SqliteAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
