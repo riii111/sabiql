@@ -12,7 +12,7 @@ fn is_ident_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
-fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
+pub(in crate::adapters::sqlite) fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i += 1;
     while i < bytes.len() {
         if bytes[i] == quote {
@@ -28,7 +28,7 @@ fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
     i
 }
 
-fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
+pub(in crate::adapters::sqlite) fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
     i += 1;
     while i < bytes.len() {
         if bytes[i] == b']' {
@@ -188,7 +188,10 @@ pub(in crate::adapters::sqlite) fn reject_sqlite_fsdir(sql: &str) -> Result<(), 
 }
 
 /// Returns the next SQL keyword and the byte offset immediately after it.
-fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
+pub(in crate::adapters::sqlite) fn next_keyword_from(
+    sql: &str,
+    mut i: usize,
+) -> Option<(&str, usize)> {
     let bytes = sql.as_bytes();
     while i < bytes.len() {
         match bytes[i] {
