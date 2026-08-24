@@ -39,7 +39,13 @@ pub(in crate::adapters::mysql::cli) async fn mysql_metadata_columns_with_diagnos
         }
     };
     Ok((
-        mysql_metadata_columns_external(option_file, &query, access_mode).await?,
+        mysql_metadata_columns_external_with_program(
+            OsStr::new("mysql"),
+            option_file,
+            &query,
+            access_mode,
+        )
+        .await?,
         Vec::new(),
     ))
 }
@@ -82,20 +88,6 @@ async fn mysql_metadata_select_columns_with_diagnostics(
         ));
     }
     Ok((result.columns, diagnostics))
-}
-
-async fn mysql_metadata_columns_external(
-    option_file: &std::path::Path,
-    query: &str,
-    access_mode: AccessMode,
-) -> Result<Vec<String>, DbOperationError> {
-    mysql_metadata_columns_external_with_program(
-        OsStr::new("mysql"),
-        option_file,
-        query,
-        access_mode,
-    )
-    .await
 }
 
 pub(super) async fn mysql_metadata_columns_external_with_program(
