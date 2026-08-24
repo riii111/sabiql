@@ -157,11 +157,6 @@ impl QueryExecutor for MySqlAdapter {
         let statements =
             validate_mysql_multi_query(query, target.database.as_deref(), access_mode)?;
 
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "infra measures mysql execution time at the I/O boundary"
-        )]
-        let start = Instant::now();
         let option_file = MySqlOptionFile::create(&target)?;
         let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
         drop(option_file);
@@ -182,7 +177,6 @@ impl QueryExecutor for MySqlAdapter {
 
         Ok(WriteExecutionResult {
             affected_rows,
-            execution_time_ms: start.elapsed().as_millis() as u64,
             diagnostics: execution.diagnostics,
         })
     }

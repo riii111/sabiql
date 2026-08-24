@@ -894,7 +894,6 @@ mod tests {
                 .returning(|_, _, _| {
                     Ok(WriteExecutionResult {
                         affected_rows: 1,
-                        execution_time_ms: 0,
                         diagnostics: vec![DatabaseDiagnostic {
                             level: DiagnosticLevel::Warning,
                             code: 1265,
