@@ -1098,7 +1098,6 @@ mod tests {
         use crate::domain::connection::{
             ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
         };
-        use crate::model::browse::session::ConnectionSaveGuard;
         use crate::ports::outbound::DbOperationError;
         use crate::update::action::ConnectionTarget;
         use crate::update::reducer::reduce;
@@ -1149,12 +1148,6 @@ mod tests {
                 "secret",
                 MySqlSslMode::Required,
             ))
-        }
-
-        fn active_run_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
-            let guard = Arc::new(ConnectionSaveGuard::default());
-            guard.start(run_id);
-            guard
         }
 
         #[tokio::test]
@@ -1259,7 +1252,7 @@ mod tests {
                         name: "old".to_string(),
                         config: mysql_config(),
                         run_id: 1,
-                        run_guard: active_run_guard(1),
+                        run_guard: test_fixtures::active_connection_save_guard(1),
                     }],
                     &mut renderer,
                     &mut state,

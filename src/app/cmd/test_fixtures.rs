@@ -21,6 +21,7 @@ use crate::domain::{
     SqlitePathError, classify_sqlite_metadata_error, classify_sqlite_read_error,
 };
 use crate::model::app_state::AppState;
+use crate::model::browse::session::ConnectionSaveGuard;
 use crate::ports::outbound::DbOperationError;
 use crate::ports::outbound::{
     AppSettings, CachedResultExporter, ClipboardError, ClipboardWriter, ConfigWriter,
@@ -173,6 +174,12 @@ impl Renderer for NoopRenderer {
     ) -> RenderResult<RenderOutput> {
         Ok(RenderOutput::default())
     }
+}
+
+pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
+    let guard = Arc::new(ConnectionSaveGuard::default());
+    guard.start(run_id);
+    guard
 }
 
 pub struct EffectRun {
