@@ -755,13 +755,19 @@ mod tests {
 
     #[test]
     fn mysql_preview_profile_includes_saved_tls_paths() {
+        let expected_ssl_mode = MySqlSslMode::VerifyIdentity;
         let mut form_state = ConnectionSetupState::default();
         form_state.set_database_type(DatabaseType::MySQL);
         while form_state.focused_field() != ConnectionField::SslMode {
             form_state.focus_next_field();
         }
         form_state.toggle_focused_dropdown();
-        for _ in 0..4 {
+        for _ in 0..MySqlSslMode::all_variants().len() {
+            if MySqlSslMode::all_variants().get(form_state.ssl_dropdown().selected_index())
+                == Some(&expected_ssl_mode)
+            {
+                break;
+            }
             form_state.dropdown_next();
         }
         form_state.confirm_dropdown();
@@ -787,7 +793,7 @@ mod tests {
         let ConnectionConfig::MySQL(config) = profile.config else {
             panic!("preview profile must be MySQL");
         };
-        assert_eq!(config.ssl_mode, MySqlSslMode::VerifyIdentity);
+        assert_eq!(config.ssl_mode, expected_ssl_mode);
         assert_eq!(config.ssl_ca.as_deref(), Some("/etc/mysql/ca.pem"));
         assert_eq!(config.ssl_cert.as_deref(), Some("/etc/mysql/client.pem"));
         assert_eq!(config.ssl_key.as_deref(), Some("/etc/mysql/client-key.pem"));
