@@ -97,7 +97,13 @@ pub(super) async fn mysql_metadata_columns_external_with_program(
     access_mode: AccessMode,
 ) -> Result<Vec<String>, DbOperationError> {
     if access_mode.is_read_only() {
-        return run_mysql_metadata_query_with_read_only_session(program, option_file, query).await;
+        return run_mysql_metadata_query_with_read_only_session_with_timeout(
+            program,
+            option_file,
+            query,
+            MYSQL_QUERY_TIMEOUT,
+        )
+        .await;
     }
 
     let mut args = mysql_metadata_args(option_file);
@@ -201,20 +207,6 @@ async fn cleanup_mysql_metadata_process(process: &mut MySqlMetadataProcess) {
     drop(process.stdin.take());
     let _ = process.child.kill().await;
     let _ = finish_mysql_pipe(&mut process.stdout, &mut process.stderr, &mut process.child).await;
-}
-
-async fn run_mysql_metadata_query_with_read_only_session(
-    program: &OsStr,
-    option_file: &std::path::Path,
-    query: &str,
-) -> Result<Vec<String>, DbOperationError> {
-    run_mysql_metadata_query_with_read_only_session_with_timeout(
-        program,
-        option_file,
-        query,
-        MYSQL_QUERY_TIMEOUT,
-    )
-    .await
 }
 
 pub(super) async fn run_mysql_metadata_query_with_read_only_session_with_timeout(
