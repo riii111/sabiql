@@ -44,7 +44,7 @@ impl SqliteCli {
         Self { timeout_secs: 30 }
     }
 
-    pub(in crate::adapters::sqlite) async fn execute_json<T: DeserializeOwned>(
+    pub(in crate::adapters::sqlite) async fn execute_json_read_only<T: DeserializeOwned>(
         &self,
         path: &str,
         sql: &str,
