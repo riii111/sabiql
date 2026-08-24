@@ -115,10 +115,10 @@ async fn main() -> Result<()> {
     }
 
     let cli_sqlite = match args.database {
-        Some(database) => Some(
-            resolve_cli_sqlite_target(&database, &FsSqlitePathValidator)
-                .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?,
-        ),
+        Some(database) => Some(resolve_cli_sqlite_target(
+            &database,
+            &FsSqlitePathValidator,
+        )?),
         None => None,
     };
 
@@ -226,8 +226,7 @@ async fn main() -> Result<()> {
     }
 
     if let Some(target) = cli_sqlite.as_ref() {
-        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)
-            .map_err(|error| color_eyre::eyre::eyre!(error.to_string()))?;
+        activate_cli_sqlite_connection(&mut state, target, &FsSqlitePathValidator)?;
     }
 
     let mut tui = TuiRunner::new()?;
