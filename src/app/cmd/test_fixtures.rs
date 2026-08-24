@@ -178,7 +178,7 @@ impl Renderer for NoopRenderer {
 
 pub fn active_connection_save_guard(run_id: u64) -> Arc<ConnectionSaveGuard> {
     let guard = Arc::new(ConnectionSaveGuard::default());
-    guard.start(run_id);
+    guard.arm_save(run_id);
     guard
 }
 

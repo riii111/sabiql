@@ -30,7 +30,7 @@ enum ConnectionSaveState {
 }
 
 impl ConnectionSaveGuard {
-    pub(crate) fn start(&self, run_id: u64) {
+    pub(crate) fn arm_save(&self, run_id: u64) {
         *self.state.lock().expect("connection save guard poisoned") =
             ConnectionSaveState::Active(run_id);
     }
@@ -48,7 +48,7 @@ impl ConnectionSaveGuard {
         true
     }
 
-    pub(crate) fn start_save(&self, run_id: u64) -> bool {
+    pub(crate) fn begin_persistence(&self, run_id: u64) -> bool {
         let mut state = self.state.lock().expect("connection save guard poisoned");
         if *state != ConnectionSaveState::Claimed(run_id) {
             return false;
@@ -311,7 +311,7 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_connection_save(&mut self) -> u64 {
         let run_id = self.connection_save_run.begin();
-        self.connection_save_guard.start(run_id);
+        self.connection_save_guard.arm_save(run_id);
         run_id
     }
 

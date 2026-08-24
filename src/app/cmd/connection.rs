@@ -73,7 +73,7 @@ fn claim_and_save<T>(
     run_id: u64,
     save: impl FnOnce() -> T,
 ) -> Option<T> {
-    if !run_guard.claim(run_id) || !run_guard.start_save(run_id) {
+    if !run_guard.claim(run_id) || !run_guard.begin_persistence(run_id) {
         return None;
     }
     let result = save();
@@ -675,7 +675,7 @@ mod tests {
             assert!(run_guard.claim(1));
 
             run_guard.cancel();
-            assert!(!run_guard.start_save(1));
+            assert!(!run_guard.begin_persistence(1));
         }
 
         #[test]
@@ -683,10 +683,10 @@ mod tests {
             let run_guard = test_fixtures::active_connection_save_guard(1);
 
             assert!(run_guard.claim(1));
-            assert!(run_guard.start_save(1));
+            assert!(run_guard.begin_persistence(1));
 
             run_guard.cancel();
-            run_guard.start(2);
+            run_guard.arm_save(2);
             run_guard.finish_save(1);
 
             assert!(run_guard.claim(2));
