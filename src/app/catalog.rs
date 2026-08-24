@@ -1,13 +1,11 @@
 use unicode_width::UnicodeWidthStr;
 
-use crate::domain::DatabaseType;
 use crate::model::app_state::AppState;
 use crate::model::connection::setup::ConnectionField;
 use crate::model::shared::engine_feature_profile::EngineFeatureProfile;
 use crate::model::shared::focused_pane::FocusedPane;
 use crate::model::shared::help::{HelpOrigin, JsonHelpMode, SqlHelpMode};
 use crate::model::shared::settings::KeymapPreset;
-use crate::policy::preview_cell_text::CellPresentationPolicy;
 use crate::policy::{FeaturePolicy, FeatureRequirement};
 #[allow(
     clippy::wildcard_imports,
@@ -35,14 +33,6 @@ impl HelpDocument {
             filter.cursor(),
             state.settings.saved_keymap_preset(),
             &state.session.active_engine_feature_profile(),
-            state.session.active_database_type().map(|database_type| {
-                let data_type = if database_type == DatabaseType::MySQL {
-                    "json"
-                } else {
-                    "jsonb"
-                };
-                CellPresentationPolicy::new(database_type, data_type, "")
-            }),
         )
     }
 
@@ -57,11 +47,6 @@ impl HelpDocument {
             filter_cursor,
             origin.keymap_preset(),
             &EngineFeatureProfile::postgres_like(),
-            Some(CellPresentationPolicy::new(
-                DatabaseType::PostgreSQL,
-                "jsonb",
-                "",
-            )),
         )
     }
 
@@ -71,16 +56,11 @@ impl HelpDocument {
         filter_cursor: usize,
         keymap_preset: KeymapPreset,
         engine_feature_profile: &EngineFeatureProfile,
-        cell_presentation_policy: Option<CellPresentationPolicy>,
     ) -> Self {
         let feature_policy = FeaturePolicy::new(engine_feature_profile);
         let normalized = filter.trim().to_lowercase();
         let mut sections = vec![current_section(origin, &feature_policy)];
-        sections.extend(reference_sections(
-            keymap_preset,
-            &feature_policy,
-            cell_presentation_policy,
-        ));
+        sections.extend(reference_sections(keymap_preset, &feature_policy));
 
         if !normalized.is_empty() {
             sections = sections
@@ -347,7 +327,6 @@ fn command_line_rows(feature_policy: &FeaturePolicy) -> Vec<HelpRow> {
 fn reference_sections(
     keymap_preset: KeymapPreset,
     feature_policy: &FeaturePolicy,
-    cell_presentation_policy: Option<CellPresentationPolicy>,
 ) -> Vec<HelpSection> {
     let mut open_switch_rows = vec![
         table_picker(keymap_preset),
@@ -373,9 +352,7 @@ fn reference_sections(
         &result_active::UNSTAGE_DELETE,
         &inspector_ddl::YANK,
     ]);
-    if feature_policy.is_enabled(json_detail::YANK.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
-    {
+    if feature_policy.is_enabled(json_detail::YANK.feature_requirement()) {
         data_action_rows.extend(rows_from_mode_row_refs_if_visible(
             &[&json_detail::YANK],
             feature_policy,
@@ -389,9 +366,7 @@ fn reference_sections(
     if feature_policy.is_enabled(er_picker::TYPE_FILTER.feature_requirement()) {
         search_filter_rows.insert(1, row_from_mode_row(&er_picker::TYPE_FILTER));
     }
-    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement())
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
-    {
+    if feature_policy.is_enabled(json_search::TYPE_SEARCH.feature_requirement()) {
         search_filter_rows.extend(rows_from_bindings_if_visible(
             JSON_SEARCH_KEYS,
             feature_policy,
@@ -405,9 +380,7 @@ fn reference_sections(
         rows_from_bindings(CELL_EDIT_KEYS),
         rows_from_bindings_if_visible(SQL_MODAL_CONFIRMING_KEYS, feature_policy),
     ]);
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit)
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
-    {
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentEdit) {
         editing_rows.extend(rows_from_mode_rows_if_visible(
             JSON_EDIT_ROWS,
             feature_policy,
@@ -435,9 +408,7 @@ fn reference_sections(
             feature_policy,
         ));
     }
-    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail)
-        && cell_presentation_policy.is_some_and(CellPresentationPolicy::uses_json_detail_modal)
-    {
+    if feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail) {
         advanced_rows.extend(rows_from_mode_rows_if_visible(
             JSON_DETAIL_ROWS,
             feature_policy,
@@ -733,7 +704,7 @@ fn merge_rows(groups: &[Vec<HelpRow>]) -> Vec<HelpRow> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ConnectionId;
+    use crate::domain::{ConnectionId, DatabaseType};
     use crate::model::browse::json_detail::JsonDetailMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::sql_editor::modal::SqlModalTab;
@@ -1073,7 +1044,7 @@ mod tests {
     }
 
     #[test]
-    fn json_help_rows_follow_cell_presentation_policy() {
+    fn json_help_rows_follow_feature_policy() {
         for database_type in [
             DatabaseType::PostgreSQL,
             DatabaseType::MySQL,
@@ -1094,13 +1065,10 @@ mod tests {
             let help_includes_json = descriptions
                 .iter()
                 .any(|description| description.contains("Close JSON detail"));
-            let data_type = if database_type == DatabaseType::MySQL {
-                "json"
-            } else {
-                "jsonb"
-            };
+            let profile = EngineFeatureProfile::for_database_type(database_type);
+            let feature_policy = FeaturePolicy::new(&profile);
             let policy_allows_json =
-                CellPresentationPolicy::new(database_type, data_type, "").uses_json_detail_modal();
+                feature_policy.is_enabled(FeatureRequirement::JsonDocumentDetail);
 
             assert_eq!(help_includes_json, policy_allows_json);
             assert!(
