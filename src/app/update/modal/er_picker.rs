@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use crate::cmd::effect::Effect;
+use crate::domain::TableSummary;
 use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::model::shared::text_input::{TextInputEditing, TextInputState};
@@ -93,8 +94,11 @@ pub(super) fn reduce_er_picker(
             DispatchResult::handled()
         }
         Action::ErSelectAll => {
-            let all_tables: Vec<String> =
-                state.tables().iter().map(|t| t.qualified_name()).collect();
+            let all_tables: Vec<String> = state
+                .tables()
+                .iter()
+                .map(TableSummary::qualified_name)
+                .collect();
             if state.ui.er_selected_tables().len() == all_tables.len() {
                 state.ui.clear_er_selected_tables();
             } else {

@@ -818,11 +818,10 @@ impl BrowseSession {
         self.is_reloading
     }
 
-    pub fn tables(&self) -> Vec<&TableSummary> {
+    pub fn tables(&self) -> &[TableSummary] {
         self.metadata
             .as_ref()
-            .map(|m| m.table_summaries.iter().collect())
-            .unwrap_or_default()
+            .map_or(&[], |metadata| metadata.table_summaries.as_slice())
     }
 
     pub fn is_service_connection(&self) -> bool {

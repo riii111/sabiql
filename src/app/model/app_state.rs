@@ -270,7 +270,7 @@ impl AppState {
         self.ui.row_detail_content_visible_columns
     }
 
-    pub fn tables(&self) -> Vec<&TableSummary> {
+    pub fn tables(&self) -> &[TableSummary] {
         self.session.tables()
     }
 
