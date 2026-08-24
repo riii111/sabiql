@@ -771,7 +771,9 @@ mod tests {
             assert_eq!(state.modal.active_mode(), InputMode::ConnectionError);
             assert_eq!(
                 state.connection_error.error_info().unwrap().kind,
-                ConnectionErrorKind::MySqlHostnameVerificationFailed
+                ConnectionErrorKind::MySqlConnectionFailure(
+                    ConnectionFailureKind::TlsHostnameVerification
+                )
             );
         }
 

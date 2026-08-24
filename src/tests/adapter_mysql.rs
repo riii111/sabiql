@@ -17,7 +17,8 @@ mod connection {
     };
     use sabiql_app::model::connection::error::{ConnectionErrorInfo, ConnectionErrorKind};
     use sabiql_app::ports::outbound::{
-        AccessMode, DbOperationError, DsnBuilder, MySqlConnectionProbe, QueryExecutor,
+        AccessMode, ConnectionFailureKind, DbOperationError, DsnBuilder, MySqlConnectionProbe,
+        QueryExecutor,
     };
     use sabiql_domain::QueryValue;
     use sabiql_domain::connection::{
@@ -204,7 +205,7 @@ mod connection {
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
             ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn).kind,
-            ConnectionErrorKind::MySqlCaVerificationFailed
+            ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsCaVerification)
         );
     }
 
@@ -221,7 +222,9 @@ mod connection {
         let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
         assert_eq!(
             error_info.kind,
-            ConnectionErrorKind::MySqlHostnameVerificationFailed,
+            ConnectionErrorKind::MySqlConnectionFailure(
+                ConnectionFailureKind::TlsHostnameVerification
+            ),
             "masked connection error details: {}",
             error_info.masked_details()
         );
