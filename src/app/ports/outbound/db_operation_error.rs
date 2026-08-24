@@ -58,6 +58,25 @@ pub enum UnsupportedOperationKind {
     SessionMode,
 }
 
+impl UnsupportedOperationKind {
+    pub(crate) const fn presentation(self) -> (&'static str, &'static str) {
+        match self {
+            Self::ClientVersion => (
+                "Unsupported MySQL CLI version",
+                "Install the Oracle MySQL 8.4 client",
+            ),
+            Self::ServerVersion => (
+                "Unsupported MySQL server version",
+                "Connect to an Oracle MySQL 8.4 server",
+            ),
+            Self::SessionMode => (
+                "Unsupported MySQL sql_mode",
+                "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection",
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionFailureKind {
     TlsHandshake,
@@ -65,6 +84,29 @@ pub enum ConnectionFailureKind {
     TlsHostnameVerification,
     TlsClientCertificateRejected,
     TlsCertificateVerification,
+}
+
+impl ConnectionFailureKind {
+    pub(crate) const fn presentation(self) -> (&'static str, &'static str) {
+        match self {
+            Self::TlsHandshake | Self::TlsCertificateVerification => (
+                "MySQL TLS handshake failed",
+                "Check that the server and client support the selected TLS settings",
+            ),
+            Self::TlsCaVerification => (
+                "MySQL server certificate could not be verified",
+                "Check the CA certificate path and server certificate",
+            ),
+            Self::TlsHostnameVerification => (
+                "MySQL server hostname could not be verified",
+                "Use the hostname covered by the server certificate",
+            ),
+            Self::TlsClientCertificateRejected => (
+                "MySQL client certificate was rejected",
+                "Check the client certificate, key, and server account requirements",
+            ),
+        }
+    }
 }
 
 #[derive(Clone, thiserror::Error)]
@@ -135,98 +177,84 @@ impl DbOperationError {
         }
     }
 
-    pub fn summary(&self) -> &'static str {
+    fn presentation(&self) -> (&'static str, &'static str) {
         match self {
-            Self::ConnectionFailed(_) => "Connection failed",
-            Self::ConnectionLost(_) => "Connection lost during operation",
-            Self::PermissionDenied(_) => "Permission denied",
-            Self::ForeignKeyViolation(_) => "Foreign key constraint violation",
-            Self::UniqueViolation(_) => "Unique constraint violation",
-            Self::LockTimeout(_) => "Operation blocked by lock or timeout",
-            Self::ObjectMissing(_) => "Database object not found",
-            Self::QueryFailed(_) => "Query failed",
-            Self::PreviewSizeExceeded(_) => "Preview exceeded its byte budget",
-            Self::QueryFailedAfterChange { source, .. } => source.summary(),
-            Self::UnsupportedOperation(_) => "Unsupported operation",
-            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
-                UnsupportedOperationKind::ClientVersion => "Unsupported MySQL CLI version",
-                UnsupportedOperationKind::ServerVersion => "Unsupported MySQL server version",
-                UnsupportedOperationKind::SessionMode => "Unsupported MySQL sql_mode",
-            },
-            Self::ConnectionFailedWithKind { kind, .. } => match kind {
-                ConnectionFailureKind::TlsHandshake
-                | ConnectionFailureKind::TlsCertificateVerification => "MySQL TLS handshake failed",
-                ConnectionFailureKind::TlsCaVerification => {
-                    "MySQL server certificate could not be verified"
-                }
-                ConnectionFailureKind::TlsHostnameVerification => {
-                    "MySQL server hostname could not be verified"
-                }
-                ConnectionFailureKind::TlsClientCertificateRejected => {
-                    "MySQL client certificate was rejected"
-                }
-            },
-            Self::MetadataParseFailed(_) => "Failed to parse database metadata output",
-            Self::InvalidJson(_) => "Failed to parse database JSON output",
-            Self::EmptyResponse(_) => "Database returned an empty response",
-            Self::CsvParse(_) => "Failed to parse database CSV output",
-            Self::CommandTagParseFailed(_) => "Failed to parse database command tag",
-            Self::CommandNotFound { command, .. } => command.not_found_summary(),
-            Self::Timeout(_) => "Operation timed out",
-            Self::Canceled(_) => "Operation canceled",
+            Self::ConnectionFailed(_) => (
+                "Connection failed",
+                "Check the connection settings and database availability",
+            ),
+            Self::ConnectionLost(_) => (
+                "Connection lost during operation",
+                "Reconnect and retry the operation",
+            ),
+            Self::PermissionDenied(_) => {
+                ("Permission denied", "Check the connected user's privileges")
+            }
+            Self::ForeignKeyViolation(_) => (
+                "Foreign key constraint violation",
+                "Check referenced rows before retrying the write operation",
+            ),
+            Self::UniqueViolation(_) => (
+                "Unique constraint violation",
+                "Check for duplicate values before retrying",
+            ),
+            Self::LockTimeout(_) => (
+                "Operation blocked by lock or timeout",
+                "Retry; if it persists, check for blocking transactions or timeout settings",
+            ),
+            Self::ObjectMissing(_) => (
+                "Database object not found",
+                "Check the table, column, or connected database",
+            ),
+            Self::QueryFailed(_) => ("Query failed", "Review the database error details and SQL"),
+            Self::PreviewSizeExceeded(_) => (
+                "Preview exceeded its byte budget",
+                "Reduce the preview value size and retry",
+            ),
+            Self::QueryFailedAfterChange { source, .. } => source.presentation(),
+            Self::UnsupportedOperation(_) => (
+                "Unsupported operation",
+                "Use a supported operation for this database",
+            ),
+            Self::UnsupportedOperationWithKind { kind, .. } => kind.presentation(),
+            Self::ConnectionFailedWithKind { kind, .. } => kind.presentation(),
+            Self::MetadataParseFailed(_) => (
+                "Failed to parse database metadata output",
+                "Check whether the metadata output format changed unexpectedly",
+            ),
+            Self::InvalidJson(_) => (
+                "Failed to parse database JSON output",
+                "Check whether the adapter query output shape changed",
+            ),
+            Self::EmptyResponse(_) => (
+                "Database returned an empty response",
+                "Retry the operation and inspect the command output",
+            ),
+            Self::CsvParse(_) => (
+                "Failed to parse database CSV output",
+                "Check whether the adapter returned malformed CSV",
+            ),
+            Self::CommandTagParseFailed(_) => (
+                "Failed to parse database command tag",
+                "Check whether the command output format changed",
+            ),
+            Self::CommandNotFound { command, .. } => {
+                (command.not_found_summary(), command.not_found_hint())
+            }
+            Self::Timeout(_) => (
+                "Operation timed out",
+                "Retry the operation or increase the timeout",
+            ),
+            Self::Canceled(_) => ("Operation canceled", "Retry the operation if needed"),
         }
     }
 
+    pub fn summary(&self) -> &'static str {
+        self.presentation().0
+    }
+
     pub fn hint(&self) -> &'static str {
-        match self {
-            Self::ConnectionFailed(_) => "Check the connection settings and database availability",
-            Self::ConnectionLost(_) => "Reconnect and retry the operation",
-            Self::PermissionDenied(_) => "Check the connected user's privileges",
-            Self::ForeignKeyViolation(_) => {
-                "Check referenced rows before retrying the write operation"
-            }
-            Self::UniqueViolation(_) => "Check for duplicate values before retrying",
-            Self::LockTimeout(_) => {
-                "Retry; if it persists, check for blocking transactions or timeout settings"
-            }
-            Self::ObjectMissing(_) => "Check the table, column, or connected database",
-            Self::QueryFailed(_) => "Review the database error details and SQL",
-            Self::PreviewSizeExceeded(_) => "Reduce the preview value size and retry",
-            Self::QueryFailedAfterChange { source, .. } => source.hint(),
-            Self::UnsupportedOperation(_) => "Use a supported operation for this database",
-            Self::UnsupportedOperationWithKind { kind, .. } => match kind {
-                UnsupportedOperationKind::ClientVersion => "Install the Oracle MySQL 8.4 client",
-                UnsupportedOperationKind::ServerVersion => "Connect to an Oracle MySQL 8.4 server",
-                UnsupportedOperationKind::SessionMode => {
-                    "Disable NO_BACKSLASH_ESCAPES and ANSI_QUOTES for this connection"
-                }
-            },
-            Self::ConnectionFailedWithKind { kind, .. } => match kind {
-                ConnectionFailureKind::TlsHandshake
-                | ConnectionFailureKind::TlsCertificateVerification => {
-                    "Check that the server and client support the selected TLS settings"
-                }
-                ConnectionFailureKind::TlsCaVerification => {
-                    "Check the CA certificate path and server certificate"
-                }
-                ConnectionFailureKind::TlsHostnameVerification => {
-                    "Use the hostname covered by the server certificate"
-                }
-                ConnectionFailureKind::TlsClientCertificateRejected => {
-                    "Check the client certificate, key, and server account requirements"
-                }
-            },
-            Self::MetadataParseFailed(_) => {
-                "Check whether the metadata output format changed unexpectedly"
-            }
-            Self::InvalidJson(_) => "Check whether the adapter query output shape changed",
-            Self::EmptyResponse(_) => "Retry the operation and inspect the command output",
-            Self::CsvParse(_) => "Check whether the adapter returned malformed CSV",
-            Self::CommandTagParseFailed(_) => "Check whether the command output format changed",
-            Self::CommandNotFound { command, .. } => command.not_found_hint(),
-            Self::Timeout(_) => "Retry the operation or increase the timeout",
-            Self::Canceled(_) => "Retry the operation if needed",
-        }
+        self.presentation().1
     }
 
     pub fn masked_details(&self) -> String {
