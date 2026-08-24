@@ -699,280 +699,215 @@ mod tests {
             .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
     }
 
-    fn sqlite_numeric_edit_state() -> AppState {
-        let mut state = make_state();
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "sqlite",
-            DatabaseType::SQLite,
-            "sqlite:///tmp/app.db",
-        );
-        state
-            .query
-            .set_current_result(Arc::new(QueryResult::success_with_values(
-                "SELECT id, score FROM users".to_string(),
-                vec!["id".to_string(), "score".to_string()],
-                vec![vec![
-                    QueryValue::SqlLiteral("1".to_string()),
-                    QueryValue::SqlLiteral("42".to_string()),
-                ]],
-                10,
-                QuerySource::Preview,
-            )));
-        state.query.pagination.reset_for_table("main", "users");
-        state.session.set_table_detail_raw(Some(Table {
-            schema: "main".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "INTEGER".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY,
-                    comment: None,
-                    ordinal_position: 1,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "score".to_string(),
-                    data_type: "REAL".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            ..test_support::table::minimal("", "")
-        }));
-        state.result_interaction.activate_cell(0, 1);
-
-        state
+    fn test_column(
+        name: &str,
+        data_type: &str,
+        attributes: ColumnAttributes,
+        ordinal_position: i32,
+    ) -> Column {
+        Column {
+            name: name.to_string(),
+            data_type: data_type.to_string(),
+            default: None,
+            attributes,
+            comment: None,
+            ordinal_position,
+            character_set_name: None,
+            collation_name: None,
+            generation_expression: None,
+            generation_kind: None,
+        }
     }
 
-    fn blob_cell_state() -> AppState {
-        let mut state = make_state();
-        state
-            .query
-            .set_current_result(Arc::new(QueryResult::success_with_values(
-                "SELECT id, payload FROM users".to_string(),
-                vec!["id".to_string(), "payload".to_string()],
-                vec![vec![QueryValue::text("1"), QueryValue::Blob(vec![0, 255])]],
-                10,
-                QuerySource::Preview,
-            )));
-        state.query.pagination.reset_for_table("public", "users");
-        state.session.set_table_detail_raw(Some(Table {
-            schema: "public".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "INTEGER".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY,
-                    comment: None,
-                    ordinal_position: 1,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "payload".to_string(),
-                    data_type: "BLOB".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::NULLABLE,
-                    comment: None,
-                    ordinal_position: 2,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            ..test_support::table::minimal("", "")
-        }));
-        state.result_interaction.activate_cell(0, 1);
+    mod sqlite_numeric_edit {
+        use super::*;
 
-        state
+        fn sqlite_numeric_edit_state() -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "sqlite",
+                DatabaseType::SQLite,
+                "sqlite:///tmp/app.db",
+            );
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, score FROM users".to_string(),
+                    vec!["id".to_string(), "score".to_string()],
+                    vec![vec![
+                        QueryValue::SqlLiteral("1".to_string()),
+                        QueryValue::SqlLiteral("42".to_string()),
+                    ]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("main", "users");
+
+            let mut table = test_support::table::minimal("main", "users");
+            table.columns = vec![
+                test_column("id", "INTEGER", ColumnAttributes::PRIMARY_KEY, 1),
+                test_column("score", "REAL", ColumnAttributes::NULLABLE, 2),
+            ];
+            table.primary_key = Some(vec!["id".to_string()]);
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 1);
+            state
+        }
+
+        #[test]
+        fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
+            let state = sqlite_numeric_edit_state();
+
+            assert!(state.can_edit_selected_cell());
+        }
     }
 
-    fn mysql_hidden_primary_key_state() -> AppState {
-        let mut state = make_state();
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "mysql",
-            DatabaseType::MySQL,
-            "mysql://localhost/test",
-        );
-        state.query.set_current_result(Arc::new(
-            QueryResult::success_with_values(
-                "SELECT `payload` FROM `sabiql_test`.`users`".to_string(),
-                vec!["payload".to_string()],
-                vec![vec![QueryValue::text("before")]],
-                10,
-                QuerySource::Preview,
-            )
-            .with_explicit_row_identity(
-                vec!["id".to_string()],
-                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
-            ),
-        ));
-        state
-            .query
-            .pagination
-            .reset_for_table("sabiql_test", "users");
-        state.session.set_table_detail_raw(Some(Table {
-            schema: "sabiql_test".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY
+    mod blob_cell {
+        use super::*;
+
+        fn blob_cell_state() -> AppState {
+            let mut state = make_state();
+            state
+                .query
+                .set_current_result(Arc::new(QueryResult::success_with_values(
+                    "SELECT id, payload FROM users".to_string(),
+                    vec!["id".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("1"), QueryValue::Blob(vec![0, 255])]],
+                    10,
+                    QuerySource::Preview,
+                )));
+            state.query.pagination.reset_for_table("public", "users");
+
+            let mut table = test_support::table::minimal("public", "users");
+            table.columns = vec![
+                test_column("id", "INTEGER", ColumnAttributes::PRIMARY_KEY, 1),
+                test_column("payload", "BLOB", ColumnAttributes::NULLABLE, 2),
+            ];
+            table.primary_key = Some(vec!["id".to_string()]);
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 1);
+            state
+        }
+
+        #[test]
+        fn can_edit_selected_cell_rejects_blob_cell() {
+            let state = blob_cell_state();
+
+            assert!(!state.can_edit_selected_cell());
+        }
+    }
+
+    mod mysql_hidden_primary_key {
+        use super::*;
+
+        fn mysql_hidden_primary_key_state() -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success_with_values(
+                    "SELECT `payload` FROM `sabiql_test`.`users`".to_string(),
+                    vec!["payload".to_string()],
+                    vec![vec![QueryValue::text("before")]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_explicit_row_identity(
+                    vec!["id".to_string()],
+                    vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+                ),
+            ));
+            state
+                .query
+                .pagination
+                .reset_for_table("sabiql_test", "users");
+
+            let mut table = test_support::table::minimal("sabiql_test", "users");
+            table.columns = vec![
+                test_column(
+                    "id",
+                    "INT",
+                    ColumnAttributes::PRIMARY_KEY
                         | ColumnAttributes::HIDDEN
                         | ColumnAttributes::READ_ONLY,
-                    comment: None,
-                    ordinal_position: 1,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "payload".to_string(),
-                    data_type: "TEXT".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::empty(),
-                    comment: None,
-                    ordinal_position: 2,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            ..test_support::table::minimal("", "")
-        }));
-        state.result_interaction.activate_cell(0, 0);
+                    1,
+                ),
+                test_column("payload", "TEXT", ColumnAttributes::empty(), 2),
+            ];
+            table.primary_key = Some(vec!["id".to_string()]);
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 0);
+            state
+        }
 
-        state
+        #[test]
+        fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
+            let state = mysql_hidden_primary_key_state();
+
+            assert!(state.can_edit_selected_cell());
+        }
     }
 
-    fn mysql_hidden_primary_key_between_columns_state() -> AppState {
-        let mut state = make_state();
-        state.session.activate_connection_with_dsn(
-            &ConnectionId::new(),
-            "mysql",
-            DatabaseType::MySQL,
-            "mysql://localhost/test",
-        );
-        state.query.set_current_result(Arc::new(
-            QueryResult::success_with_values(
-                "SELECT `name`, `payload` FROM `sabiql_test`.`users`".to_string(),
-                vec!["name".to_string(), "payload".to_string()],
-                vec![vec![QueryValue::text("Alice"), QueryValue::text("before")]],
-                10,
-                QuerySource::Preview,
-            )
-            .with_explicit_row_identity(
-                vec!["id".to_string()],
-                vec![vec![QueryValue::SqlLiteral("1".to_string())]],
-            ),
-        ));
-        state
-            .query
-            .pagination
-            .reset_for_table("sabiql_test", "users");
-        state.session.set_table_detail_raw(Some(Table {
-            schema: "sabiql_test".to_string(),
-            name: "users".to_string(),
-            columns: vec![
-                Column {
-                    name: "name".to_string(),
-                    data_type: "VARCHAR".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::empty(),
-                    comment: None,
-                    ordinal_position: 1,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "id".to_string(),
-                    data_type: "INT".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::PRIMARY_KEY
+    mod mysql_hidden_primary_key_between_columns {
+        use super::*;
+
+        fn mysql_hidden_primary_key_between_columns_state() -> AppState {
+            let mut state = make_state();
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "mysql",
+                DatabaseType::MySQL,
+                "mysql://localhost/test",
+            );
+            state.query.set_current_result(Arc::new(
+                QueryResult::success_with_values(
+                    "SELECT `name`, `payload` FROM `sabiql_test`.`users`".to_string(),
+                    vec!["name".to_string(), "payload".to_string()],
+                    vec![vec![QueryValue::text("Alice"), QueryValue::text("before")]],
+                    10,
+                    QuerySource::Preview,
+                )
+                .with_explicit_row_identity(
+                    vec!["id".to_string()],
+                    vec![vec![QueryValue::SqlLiteral("1".to_string())]],
+                ),
+            ));
+            state
+                .query
+                .pagination
+                .reset_for_table("sabiql_test", "users");
+
+            let mut table = test_support::table::minimal("sabiql_test", "users");
+            table.columns = vec![
+                test_column("name", "VARCHAR", ColumnAttributes::empty(), 1),
+                test_column(
+                    "id",
+                    "INT",
+                    ColumnAttributes::PRIMARY_KEY
                         | ColumnAttributes::HIDDEN
                         | ColumnAttributes::READ_ONLY,
-                    comment: None,
-                    ordinal_position: 2,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-                Column {
-                    name: "payload".to_string(),
-                    data_type: "TEXT".to_string(),
-                    default: None,
-                    attributes: ColumnAttributes::empty(),
-                    comment: None,
-                    ordinal_position: 3,
-                    character_set_name: None,
-                    collation_name: None,
-                    generation_expression: None,
-                    generation_kind: None,
-                },
-            ],
-            primary_key: Some(vec!["id".to_string()]),
-            ..test_support::table::minimal("", "")
-        }));
-        state.result_interaction.activate_cell(0, 1);
+                    2,
+                ),
+                test_column("payload", "TEXT", ColumnAttributes::empty(), 3),
+            ];
+            table.primary_key = Some(vec!["id".to_string()]);
+            state.session.set_table_detail_raw(Some(table));
+            state.result_interaction.activate_cell(0, 1);
+            state
+        }
 
-        state
-    }
+        #[test]
+        fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
+         {
+            let state = mysql_hidden_primary_key_between_columns_state();
 
-    #[test]
-    fn can_edit_selected_cell_allows_sqlite_numeric_literal() {
-        let state = sqlite_numeric_edit_state();
-
-        assert!(state.can_edit_selected_cell());
-    }
-
-    #[test]
-    fn can_edit_selected_cell_rejects_blob_cell() {
-        let state = blob_cell_state();
-
-        assert!(!state.can_edit_selected_cell());
-    }
-
-    #[test]
-    fn can_edit_selected_cell_maps_visible_column_by_name_after_hidden_primary_key() {
-        let state = mysql_hidden_primary_key_state();
-
-        assert!(state.can_edit_selected_cell());
-    }
-
-    #[test]
-    fn can_edit_selected_cell_maps_visible_column_by_name_when_hidden_primary_key_is_between_columns()
-     {
-        let state = mysql_hidden_primary_key_between_columns_state();
-
-        assert!(state.can_edit_selected_cell());
+            assert!(state.can_edit_selected_cell());
+        }
     }
 
     mod pane_geometry {
