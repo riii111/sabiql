@@ -9,7 +9,7 @@ use crate::app::ports::outbound::DbOperationError;
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 use super::process::read_all_bytes;
 use super::xml::{
-    MySqlResultsetFrameScanner,
+    MySqlResultSetFrameScanner,
     take_mysql_resultset_frame_after_error_check_with_diagnostics_and_preview_budget,
     trace_mysql_frame,
 };
@@ -148,7 +148,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes<R, E>(
     child: &mut tokio::process::Child,
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
-    frame_scanner: &mut MySqlResultsetFrameScanner,
+    frame_scanner: &mut MySqlResultSetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
 ) -> Result<Vec<u8>, DbOperationError>
@@ -176,7 +176,7 @@ pub(super) async fn read_one_mysql_resultset_from_pipes_with_diagnostics<R, E>(
     child: &mut tokio::process::Child,
     pending: &mut Vec<u8>,
     pending_stderr: &mut Vec<u8>,
-    frame_scanner: &mut MySqlResultsetFrameScanner,
+    frame_scanner: &mut MySqlResultSetFrameScanner,
     client_packet_limit_bytes: Option<usize>,
     preview_byte_budget: bool,
 ) -> Result<(Vec<u8>, Vec<crate::domain::DatabaseDiagnostic>), DbOperationError>
@@ -374,7 +374,7 @@ mod tests {
             .unwrap();
         drop(stdout_writer);
         drop(stderr_writer);
-        let mut frame_scanner = MySqlResultsetFrameScanner::default();
+        let mut frame_scanner = MySqlResultSetFrameScanner::default();
         let mut child = exited_child();
 
         let result = read_one_mysql_resultset_from_pipes(
@@ -410,7 +410,7 @@ mod tests {
         let mut stderr = child.stderr.take().expect("piped stderr");
         let mut pending = Vec::new();
         let mut pending_stderr = Vec::new();
-        let mut frame_scanner = MySqlResultsetFrameScanner::default();
+        let mut frame_scanner = MySqlResultSetFrameScanner::default();
 
         let result = read_one_mysql_resultset_from_pipes(
             &mut stdout,

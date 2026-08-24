@@ -14,7 +14,7 @@ use super::error::{
     classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error, trace_mysql_error,
 };
 use super::xml::{
-    MySqlResultsetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget,
+    MySqlResultSetFrameScanner, take_mysql_pty_resultset_frame_with_diagnostics_and_preview_budget,
     trace_mysql_frame,
 };
 
@@ -22,7 +22,7 @@ pub(super) struct MySqlPty {
     pub(super) input: TokioFile,
     pub(super) output: TokioFile,
     pub(super) pending: Vec<u8>,
-    pub(super) frame_scanner: MySqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultSetFrameScanner,
 }
 
 pub(super) fn create_mysql_pty() -> io::Result<(std::fs::File, std::fs::File)> {
@@ -190,7 +190,7 @@ pub(super) struct MySqlExportPtySource<'a> {
     pub(super) error_output: Vec<u8>,
     pub(super) error_buffer: Vec<u8>,
     pub(super) pending: Vec<u8>,
-    pub(super) frame_scanner: MySqlResultsetFrameScanner,
+    pub(super) frame_scanner: MySqlResultSetFrameScanner,
     pub(super) started: bool,
 }
 
@@ -302,7 +302,7 @@ mod tests {
             input: TokioFile::from_std(input_file.reopen().unwrap()),
             output: TokioFile::from_std(output_file.reopen().unwrap()),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
         (output_file, pty)
     }
@@ -352,7 +352,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let mut result = Vec::new();
@@ -373,7 +373,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let mut result = Vec::new();
@@ -392,7 +392,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             input,
             output,
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
         let mut writer = TokioFile::from_std(slave);
         let producer = tokio::spawn(async move {
@@ -409,7 +409,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let mut output = vec![0; 1024];
@@ -436,7 +436,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             input,
             output,
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
         };
         let mut writer = TokioFile::from_std(slave);
         let producer = tokio::spawn(async move {
@@ -455,7 +455,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let mut output = vec![0; 1024];
@@ -482,7 +482,7 @@ ERROR 1146 (42S02): this is a cell value</field></row></resultset>"#;
             error_output: Vec::new(),
             error_buffer: Vec::new(),
             pending: Vec::new(),
-            frame_scanner: MySqlResultsetFrameScanner::default(),
+            frame_scanner: MySqlResultSetFrameScanner::default(),
             started: false,
         };
         let mut first = vec![b'x'; 4096 - b"<resultse".len()];
