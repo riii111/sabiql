@@ -156,13 +156,6 @@ fn mysql_statement_label(kind: &MySqlStatementKind) -> &'static str {
     }
 }
 
-fn evaluate_mysql_multi_statement(
-    sql: &str,
-    selected_database: Option<&str>,
-) -> MultiStatementDecision<MySqlStatement> {
-    evaluate_mysql_multi_statement_with_lower_case_table_names(sql, selected_database, 0)
-}
-
 pub fn evaluate_mysql_multi_statement_with_lower_case_table_names(
     sql: &str,
     selected_database: Option<&str>,
@@ -529,7 +522,11 @@ pub fn evaluate_multi_statement_for_database_with_context(
     sql: &str,
 ) -> MultiStatementDecision {
     if database_type == DatabaseType::MySQL {
-        return match evaluate_mysql_multi_statement(sql, selected_database) {
+        return match evaluate_mysql_multi_statement_with_lower_case_table_names(
+            sql,
+            selected_database,
+            0,
+        ) {
             MultiStatementDecision::Allow { statements, risk } => MultiStatementDecision::Allow {
                 statements: statements
                     .into_iter()
