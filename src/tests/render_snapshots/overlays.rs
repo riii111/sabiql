@@ -1031,7 +1031,7 @@ fn sqlite_diagnostics_overlay_loaded() {
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
@@ -1062,7 +1062,7 @@ fn sqlite_diagnostics_overlay_partial_failure() {
     let mut terminal = create_test_terminal();
 
     let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok("/tmp/app.db"),
@@ -1154,7 +1154,7 @@ fn sqlite_diagnostics_overlay_wrapped_scroll() {
     let mut terminal = create_test_terminal_sized(50, 24);
 
     let run_id = state.sqlite_diagnostics.begin_fetch();
-    state.sqlite_diagnostics.set_loaded(
+    state.sqlite_diagnostics.set_core_loaded(
         run_id,
         SqliteDiagnosticsSnapshot {
             db_file: DiagnosticField::ok(
