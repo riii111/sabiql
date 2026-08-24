@@ -300,7 +300,6 @@ async fn prefetch_table_detail(
 
 #[cfg(test)]
 mod tests {
-    use crate::cmd::test_fixtures::make_runner;
     use std::cell::RefCell;
     use std::sync::Arc;
 
@@ -309,7 +308,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
+    use crate::cmd::test_fixtures;
 
     use crate::domain::DatabaseMetadata;
     use crate::model::app_state::AppState;
@@ -317,7 +316,6 @@ mod tests {
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
-    use crate::services::AppServices;
     use crate::update::action::Action;
 
     mod fetch_metadata {
@@ -345,26 +343,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(200)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(200)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -400,26 +393,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(200)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(200)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -461,26 +449,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: dsn.clone(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        dsn: dsn.clone(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -512,26 +495,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://miss".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://miss".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -564,26 +542,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchMetadata {
+                    dsn: "dsn://err".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchMetadata {
-                        dsn: "dsn://err".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -610,7 +583,7 @@ mod tests {
                 });
 
             let (tx, mut rx) = mpsc::channel(8);
-            let runner = make_runner(
+            let runner = test_fixtures::make_runner(
                 Arc::new(mock_provider),
                 Arc::new(MockQueryExecutor::new()),
                 Arc::new(MockConnectionStore::new()),
@@ -618,26 +591,21 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchEffectiveUser {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 7,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchEffectiveUser {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 7,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::EffectiveUserLoaded {
@@ -682,29 +650,24 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::FetchTableDetail {
+                    dsn: "dsn://test".to_string(),
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                    run_id: 9,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::FetchTableDetail {
-                        dsn: "dsn://test".to_string(),
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                        generation: 1,
-                        run_id: 9,
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -738,28 +701,23 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::PrefetchTableDetail {
+                    dsn: "dsn://test".to_string(),
+                    run_id: 3,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::PrefetchTableDetail {
-                        dsn: "dsn://test".to_string(),
-                        run_id: 3,
-                        schema: "public".to_string(),
-                        table: "users".to_string(),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::TableDetailCached { .. }),
                 "expected TableDetailCached, got {action:?}"
@@ -782,7 +740,7 @@ mod tests {
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_some());
 
-            let (tx, _rx) = mpsc::channel(8);
+            let (tx, mut _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
                 Arc::new(MockQueryExecutor::new()),
@@ -791,22 +749,18 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::CacheInvalidate {
-                        dsn: "dsn://target".to_string(),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
+            let _run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::CacheInvalidate {
+                    dsn: "dsn://target".to_string(),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut _rx,
+                None,
+            )
+            .await
+            .unwrap();
 
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
         }

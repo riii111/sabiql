@@ -1,10 +1,15 @@
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use color_eyre::eyre::Result;
 use tokio::sync::mpsc;
 
 use crate::cmd::cache::TtlCache;
+use crate::cmd::completion_engine::CompletionEngine;
+use crate::cmd::effect::Effect;
 use crate::cmd::runner::{
     ConnectionDeps, EffectRunner, ErDeps, QueryDeps, SettingsDeps, UtilityDeps,
 };
@@ -168,6 +173,39 @@ impl Renderer for NoopRenderer {
     ) -> RenderResult<RenderOutput> {
         Ok(RenderOutput::default())
     }
+}
+
+pub struct EffectRun {
+    pub state: AppState,
+    pub actions: Vec<Action>,
+}
+
+pub fn run_one_effect<'a>(
+    runner: &'a EffectRunner,
+    effect: Effect,
+    mut state: AppState,
+    completion_engine: RefCell<CompletionEngine>,
+    action_rx: &'a mut mpsc::Receiver<Action>,
+    action_timeout: Option<Duration>,
+) -> Pin<Box<dyn Future<Output = Result<EffectRun>> + 'a>> {
+    Box::pin(async move {
+        let mut renderer = NoopRenderer;
+        let mut actions = runner
+            .execute_effects(
+                vec![effect],
+                &mut renderer,
+                &mut state,
+                &completion_engine,
+                &AppServices::stub(),
+            )
+            .await?;
+
+        if let Some(timeout) = action_timeout {
+            actions.push(recv_action_with_timeout(action_rx, timeout).await);
+        }
+
+        Ok(EffectRun { state, actions })
+    })
 }
 
 pub async fn recv_action_with_timeout(

@@ -434,7 +434,7 @@ mod tests {
     use crate::cmd::cache::TtlCache;
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::effect::Effect;
-    use crate::cmd::test_fixtures::{self, NoopRenderer, recv_action_with_timeout};
+    use crate::cmd::test_fixtures::{self, NoopRenderer};
     use crate::domain::connection::{
         ConnectionConfig, ConnectionId, ConnectionProfile, ConnectionProfileError, DatabaseType,
         MySqlConnectionConfig, MySqlSslMode, SqliteConnectionConfig, SqlitePathError, SslMode,
@@ -532,29 +532,24 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "MySQL".to_string(),
+                    config: mysql_config(Some("app")),
+                    run_id: 1,
+                    run_guard: active_run_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "MySQL".to_string(),
-                        config: mysql_config(Some("app")),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveCompleted {
@@ -595,29 +590,24 @@ mod tests {
                 Arc::new(MySqlDsnBuilder),
                 Arc::new(probe),
             );
-            let mut renderer = NoopRenderer;
-            let mut state = AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "MySQL".to_string(),
+                    config: mysql_config(None),
+                    run_id: 1,
+                    run_guard: active_run_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "MySQL".to_string(),
-                        config: mysql_config(None),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(matches!(
                 action,
                 Action::ConnectionSaveFailed {
@@ -741,31 +731,26 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "Local".to_string(),
+                    config: ConnectionConfig::SQLite(
+                        SqliteConnectionConfig::new(input_path).unwrap(),
+                    ),
+                    run_id: 1,
+                    run_guard: active_run_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "Local".to_string(),
-                        config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new(input_path).unwrap(),
-                        ),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -799,31 +784,26 @@ mod tests {
                 Arc::new(SqliteDsnBuilder),
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SaveAndConnect {
+                    id: None,
+                    name: "Local".to_string(),
+                    config: ConnectionConfig::SQLite(
+                        SqliteConnectionConfig::new(path_str).unwrap(),
+                    ),
+                    run_id: 1,
+                    run_guard: active_run_guard(1),
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::SaveAndConnect {
-                        id: None,
-                        name: "Local".to_string(),
-                        config: ConnectionConfig::SQLite(
-                            SqliteConnectionConfig::new(path_str).unwrap(),
-                        ),
-                        run_id: 1,
-                        run_guard: active_run_guard(1),
-                    }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -859,23 +839,18 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id: id.clone() },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::DeleteConnection { id: id.clone() }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleted(_)),
                 "expected ConnectionDeleted, got {action:?}"
@@ -901,23 +876,18 @@ mod tests {
             );
 
             let id = ConnectionId::new();
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::DeleteConnection { id },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::DeleteConnection { id }],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionDeleteFailed(_)),
                 "expected ConnectionDeleteFailed, got {action:?}"
@@ -951,23 +921,18 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnections,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::LoadConnections],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(action, Action::ConnectionsLoaded(ConnectionsLoadedPayload { ref profiles, .. }) if profiles.is_empty()),
                 "expected ConnectionsLoaded with empty profiles, got {action:?}"
@@ -1012,23 +977,18 @@ mod tests {
                 tx,
             );
 
-            let state = &mut AppState::new("test".to_string());
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::LoadConnections,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::LoadConnections],
-                    &mut renderer,
-                    state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action =
-                recv_action_with_timeout(&mut rx, std::time::Duration::from_millis(500)).await;
+            let action = run.actions.into_iter().next().expect("action dispatched");
             assert!(
                 matches!(
                     action,
@@ -1086,23 +1046,20 @@ mod tests {
             let mut state = AppState::new("test".to_string());
             state.set_connections(vec![profile]);
 
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SwitchConnection {
+                    connection_index: 0,
+                },
+                state,
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
 
-            runner
-                .execute_effects(
-                    vec![Effect::SwitchConnection {
-                        connection_index: 0,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            let action = rx.recv().await.expect("action dispatched");
+            let action = run.actions.into_iter().next().expect("action dispatched");
             match action {
                 Action::SwitchConnection(ConnectionTarget {
                     id,
@@ -1113,7 +1070,7 @@ mod tests {
                 }) => {
                     assert_eq!(dsn, "fake://db.example.com:5432/mydb");
                     assert_eq!(name, "My DB");
-                    assert_eq!(id, state.connections()[0].id);
+                    assert_eq!(id, run.state.connections()[0].id);
                     assert_eq!(database_type, DatabaseType::PostgreSQL);
                 }
                 other => panic!("expected SwitchConnection, got {other:?}"),
@@ -1125,25 +1082,20 @@ mod tests {
             let (tx, mut rx) = mpsc::channel::<Action>(16);
             let runner = make_runner_with_dsn_builder(tx);
 
-            let mut state = AppState::new("test".to_string());
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::SwitchConnection {
+                    connection_index: 99,
+                },
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                None,
+            )
+            .await
+            .unwrap();
 
-            let ce = RefCell::new(CompletionEngine::new());
-            let mut renderer = NoopRenderer;
-
-            runner
-                .execute_effects(
-                    vec![Effect::SwitchConnection {
-                        connection_index: 99,
-                    }],
-                    &mut renderer,
-                    &mut state,
-                    &ce,
-                    &AppServices::stub(),
-                )
-                .await
-                .unwrap();
-
-            assert!(rx.try_recv().is_err());
+            assert!(run.actions.is_empty());
         }
     }
 }
