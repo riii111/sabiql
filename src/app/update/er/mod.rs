@@ -518,7 +518,7 @@ mod tests {
                 new_metadata: make_metadata(1),
                 signature_snapshot: Arc::new(TableSignatureSnapshot {
                     signatures: Vec::new(),
-                    table_details: Vec::new(),
+                    prefetched_table_details: Vec::new(),
                 }),
             })
         }

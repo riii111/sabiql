@@ -145,7 +145,7 @@ fn table_signatures_from_metadata(
     }
 
     let mut signatures = Vec::with_capacity(tables.len());
-    let mut table_details = Vec::with_capacity(tables.len());
+    let mut prefetched_table_details = Vec::with_capacity(tables.len());
     for table in tables {
         let key = (table.schema.clone(), table.name.clone());
         let mut columns = columns_by_table.remove(&key).ok_or_else(|| {
@@ -197,11 +197,11 @@ fn table_signatures_from_metadata(
             name: table.name.clone(),
             signature: table_signature(&detail),
         });
-        table_details.push(detail);
+        prefetched_table_details.push(detail);
     }
     Ok(TableSignatureSnapshot {
         signatures,
-        table_details,
+        prefetched_table_details,
     })
 }
 
@@ -633,7 +633,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(signatures.signatures.len(), 2);
-        assert_eq!(signatures.table_details.len(), 2);
+        assert_eq!(signatures.prefetched_table_details.len(), 2);
         assert_eq!(signatures.signatures[0].qualified_name(), "App.child");
         assert!(signatures.signatures[0].signature.contains("id"));
         assert!(
@@ -641,7 +641,7 @@ mod tests {
                 .signature
                 .contains("fk_child_parent")
         );
-        let child = &signatures.table_details[0];
+        let child = &signatures.prefetched_table_details[0];
         assert_eq!(child.columns.len(), 2);
         assert!(child.columns[1].is_unique());
         assert_eq!(child.foreign_keys.len(), 1);
@@ -782,9 +782,9 @@ done
         });
 
         assert_eq!(snapshot.signatures.len(), 1);
-        assert_eq!(snapshot.table_details.len(), 1);
+        assert_eq!(snapshot.prefetched_table_details.len(), 1);
         assert_eq!(
-            snapshot.table_details[0]
+            snapshot.prefetched_table_details[0]
                 .storage_attributes
                 .engine
                 .as_deref(),

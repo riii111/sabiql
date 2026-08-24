@@ -54,7 +54,7 @@ impl MetadataProvider for PostgresAdapter {
             .await?;
         Ok(TableSignatureSnapshot {
             signatures: Self::parse_table_signatures(&json)?,
-            table_details: Vec::new(),
+            prefetched_table_details: Vec::new(),
         })
     }
 

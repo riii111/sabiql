@@ -270,11 +270,11 @@ async fn handle_smart_refresh_cache_and_diff(
 
     let TableSignatureSnapshot {
         signatures,
-        table_details,
+        prefetched_table_details,
     } = Arc::unwrap_or_clone(signature_snapshot);
     {
         let mut engine = completion_engine.borrow_mut();
-        for detail in table_details {
+        for detail in prefetched_table_details {
             engine.cache_table_detail(detail.qualified_name(), detail);
         }
     }
@@ -435,7 +435,7 @@ mod tests {
                     name: "items".to_string(),
                     signature: "signature".to_string(),
                 }],
-                table_details: vec![table],
+                prefetched_table_details: vec![table],
             }),
         )
         .await
