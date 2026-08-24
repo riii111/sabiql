@@ -183,7 +183,7 @@ impl EffectRunner {
                     &self.utility.clipboard,
                     &self.utility.folder_opener,
                 )
-                .await?;
+                .await;
                 Ok(vec![])
             }
 
@@ -215,7 +215,7 @@ impl EffectRunner {
                     &self.metadata_cache,
                     state,
                 )
-                .await?;
+                .await;
                 Ok(vec![])
             }
 
@@ -239,7 +239,7 @@ impl EffectRunner {
                     &self.metadata_tasks,
                     completion_engine,
                 )
-                .await?;
+                .await;
                 Ok(vec![])
             }
 
@@ -263,8 +263,7 @@ impl EffectRunner {
                     &self.query.cached_result_exporter,
                     &self.query_tasks,
                     state,
-                )
-                .await?;
+                );
                 Ok(vec![])
             }
 
@@ -308,7 +307,7 @@ impl EffectRunner {
             | Effect::ClearCompletionEngineCache
             | Effect::ResizeCompletionCache { .. }
             | Effect::TriggerCompletion) => {
-                cmd_completion::run(e, &self.action_tx, state, completion_engine).await?;
+                cmd_completion::run(e, &self.action_tx, state, completion_engine).await;
                 Ok(vec![])
             }
         }
