@@ -7,9 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::app::ports::outbound::{
-    DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-};
+use crate::app::ports::outbound::{DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER};
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -69,7 +67,7 @@ impl SqliteCli {
             .arg("--version")
             .output()
             .await
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let version = SqliteVersion::parse(&stdout).ok_or_else(|| {
             safe_mode_required_error("could not determine the installed sqlite3 version")
@@ -189,7 +187,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
@@ -327,7 +325,7 @@ impl SqliteCli {
             .stderr(Stdio::piped())
             .kill_on_drop(true)
             .spawn()
-            .map_err(|error| classify_cli_spawn_error(DatabaseCli::Sqlite3, error))?;
+            .map_err(classify_cli_spawn_error)?;
 
         let stdin = child.stdin.take();
         let mut stdout_handle = child.stdout.take();

@@ -1,12 +1,11 @@
 use crate::app::ports::outbound::{DatabaseCli, DbOperationError};
 
 pub(in crate::adapters::sqlite) fn classify_cli_spawn_error(
-    command: DatabaseCli,
     error: std::io::Error,
 ) -> DbOperationError {
     if error.kind() == std::io::ErrorKind::NotFound {
         DbOperationError::CommandNotFound {
-            command,
+            command: DatabaseCli::Sqlite3,
             details: error.to_string(),
         }
     } else {
@@ -177,10 +176,10 @@ mod tests {
 
     #[test]
     fn missing_sqlite_cli_has_command_specific_details() {
-        let error = classify_cli_spawn_error(
-            DatabaseCli::Sqlite3,
-            std::io::Error::new(std::io::ErrorKind::NotFound, "No such file or directory"),
-        );
+        let error = classify_cli_spawn_error(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No such file or directory",
+        ));
 
         assert!(matches!(
             error,
@@ -193,10 +192,10 @@ mod tests {
 
     #[test]
     fn non_missing_sqlite_cli_error_is_query_failed() {
-        let error = classify_cli_spawn_error(
-            DatabaseCli::Sqlite3,
-            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied"),
-        );
+        let error = classify_cli_spawn_error(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "permission denied",
+        ));
 
         assert!(matches!(
             error,
