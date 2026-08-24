@@ -133,6 +133,13 @@ struct PsqlOutput {
     stderr: String,
 }
 
+fn ensure_psql_success(output: &PsqlOutput) -> Result<(), DbOperationError> {
+    if !output.status.success() {
+        return Err(classify_query_error(&output.stderr));
+    }
+    Ok(())
+}
+
 impl PostgresAdapter {
     const PGOPTIONS_READ_ONLY: &str = "-c default_transaction_read_only=on";
 
@@ -246,9 +253,7 @@ impl PostgresAdapter {
     ) -> Result<String, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, false).await?;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
+        ensure_psql_success(&output)?;
 
         Ok(output.stdout)
     }
@@ -289,9 +294,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
+        ensure_psql_success(&output)?;
 
         let stdout_trimmed = output.stdout.trim();
         if stdout_trimmed.is_empty() {
@@ -334,9 +337,7 @@ impl PostgresAdapter {
 
         let elapsed = start.elapsed().as_millis() as u64;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
+        ensure_psql_success(&output)?;
 
         let segments = split_marker_segments(&output.stdout, &marker);
         // A mismatch implies a marker collision in data; guessing would
@@ -415,9 +416,7 @@ impl PostgresAdapter {
     ) -> Result<WriteExecutionResult, DbOperationError> {
         let output = self.run_psql(dsn, &[], query, read_only).await?;
 
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
+        ensure_psql_success(&output)?;
 
         let affected_rows = Self::parse_affected_rows_with_source(&output.stdout).map_err(
             |error: ParseCommandTagError| {
@@ -438,9 +437,7 @@ impl PostgresAdapter {
         read_only: bool,
     ) -> Result<usize, DbOperationError> {
         let output = self.run_psql(dsn, &["-t", "-A"], query, read_only).await?;
-        if !output.status.success() {
-            return Err(classify_query_error(&output.stderr));
-        }
+        ensure_psql_success(&output)?;
         output.stdout.trim().parse::<usize>().map_err(|e| {
             DbOperationError::QueryFailed(format!("Failed to parse COUNT result: {e}"))
         })
