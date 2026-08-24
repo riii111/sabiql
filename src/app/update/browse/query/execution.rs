@@ -1657,7 +1657,7 @@ mod tests {
 
             dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert!(state.session.table_detail().is_none());
         }
@@ -1779,7 +1779,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(
                 effects
                     .iter()

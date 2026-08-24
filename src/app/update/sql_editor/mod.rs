@@ -1105,7 +1105,7 @@ mod tests {
             .expect("SQL modal open should be handled");
 
             assert!(effects.is_empty());
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
         }
 
         #[test]

@@ -2463,7 +2463,7 @@ mod tests {
             let action = create_postgres_switch_action(&target_id, "cached_db");
             reduce(&mut state, &action);
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
         }
 
@@ -2479,7 +2479,7 @@ mod tests {
             let action = create_postgres_switch_action(&new_id, "fresh_db");
             reduce(&mut state, &action);
 
-            assert!(!state.sql_modal.is_prefetch_started());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
         }
 
