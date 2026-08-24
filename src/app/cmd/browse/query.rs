@@ -45,7 +45,7 @@ fn utc_now_iso8601() -> String {
     format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }
 
-fn save_query_history(
+fn spawn_query_history_append(
     query_history_store: &Arc<dyn QueryHistoryStore>,
     project_name: &str,
     scope: &QueryHistoryScope,
@@ -198,7 +198,7 @@ pub fn run(
                                 .command_tag
                                 .as_ref()
                                 .and_then(CommandTag::affected_rows);
-                            save_query_history(
+                            spawn_query_history_append(
                                 &history_store,
                                 &project,
                                 scope,
@@ -218,7 +218,7 @@ pub fn run(
                     }
                     Err(e) => {
                         if let Some(scope) = &history_scope {
-                            save_query_history(
+                            spawn_query_history_append(
                                 &history_store,
                                 &project,
                                 scope,
@@ -257,7 +257,7 @@ pub fn run(
                 match executor.execute_write(&dsn, &query, access_mode).await {
                     Ok(result) => {
                         if let Some(scope) = &history_scope {
-                            save_query_history(
+                            spawn_query_history_append(
                                 &history_store,
                                 &project,
                                 scope,
@@ -277,7 +277,7 @@ pub fn run(
                     }
                     Err(e) => {
                         if let Some(scope) = &history_scope {
-                            save_query_history(
+                            spawn_query_history_append(
                                 &history_store,
                                 &project,
                                 scope,

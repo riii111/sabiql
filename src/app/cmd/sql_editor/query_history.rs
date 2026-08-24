@@ -6,7 +6,7 @@ use crate::cmd::effect::Effect;
 use crate::ports::outbound::QueryHistoryStore;
 use crate::update::action::Action;
 
-pub fn run(
+pub fn spawn_query_history_load(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_history_store: &Arc<dyn QueryHistoryStore>,
@@ -32,6 +32,6 @@ pub fn run(
                 }
             });
         }
-        _ => unreachable!("query_history::run called with non-query-history effect"),
+        _ => unreachable!("spawn_query_history_load called with non-query-history effect"),
     }
 }
