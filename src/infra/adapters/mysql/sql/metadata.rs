@@ -251,23 +251,8 @@ pub(in crate::adapters::mysql) fn build_metadata_select_query(
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::metadata_test_support::column;
     use super::*;
-    use crate::domain::ColumnAttributes;
-
-    fn column(name: &str, data_type: &str) -> Column {
-        Column {
-            name: name.to_string(),
-            data_type: data_type.to_string(),
-            default: None,
-            attributes: ColumnAttributes::empty(),
-            comment: None,
-            ordinal_position: 1,
-            character_set_name: None,
-            collation_name: None,
-            generation_expression: None,
-            generation_kind: None,
-        }
-    }
 
     #[test]
     fn metadata_queries_escape_literals_and_preserve_scope_conditions() {
