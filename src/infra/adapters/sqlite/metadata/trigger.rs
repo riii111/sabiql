@@ -1,6 +1,8 @@
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{Trigger, TriggerEvent, TriggerTiming};
 
+use super::super::sqlite3::parser::{next_keyword_from, skip_bracket_quoted, skip_quoted};
+
 // SQLite stores trigger DDL in sqlite_master without TEMP/TEMPORARY or IF NOT EXISTS.
 // TEMP prefix support is for direct SQL input only; metadata collection uses sqlite_master.
 pub(super) fn parse_sqlite_trigger(
@@ -136,74 +138,6 @@ fn skip_update_of_clause(sql: &str, pos: usize) -> usize {
             _ => pos = next,
         }
     }
-}
-
-fn is_ident_char(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
-}
-
-fn skip_quoted(bytes: &[u8], mut i: usize, quote: u8) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == quote {
-            if i + 1 < bytes.len() && bytes[i + 1] == quote {
-                i += 2;
-            } else {
-                return i + 1;
-            }
-        } else {
-            i += 1;
-        }
-    }
-    i
-}
-
-fn skip_bracket_quoted(bytes: &[u8], mut i: usize) -> usize {
-    i += 1;
-    while i < bytes.len() {
-        if bytes[i] == b']' {
-            return i + 1;
-        }
-        i += 1;
-    }
-    i
-}
-
-fn next_keyword_from(sql: &str, mut i: usize) -> Option<(&str, usize)> {
-    let bytes = sql.as_bytes();
-    while i < bytes.len() {
-        match bytes[i] {
-            b'-' if i + 1 < bytes.len() && bytes[i + 1] == b'-' => {
-                while i < bytes.len() && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
-                i += 2;
-                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                    i += 1;
-                }
-                if i + 1 < bytes.len() {
-                    i += 2;
-                }
-            }
-            b'\'' | b'"' | b'`' => {
-                i = skip_quoted(bytes, i, bytes[i]);
-            }
-            b'[' => {
-                i = skip_bracket_quoted(bytes, i);
-            }
-            b if b.is_ascii_alphabetic() => {
-                let start = i;
-                while i < bytes.len() && is_ident_char(bytes[i]) {
-                    i += 1;
-                }
-                return Some((&sql[start..i], i));
-            }
-            _ => i += 1,
-        }
-    }
-    None
 }
 
 fn sqlite_trigger_parse_error(sql: &str, detail: &str) -> DbOperationError {
