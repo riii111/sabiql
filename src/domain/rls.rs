@@ -27,16 +27,6 @@ pub enum RlsCommand {
     Delete,
 }
 
-impl RlsInfo {
-    pub fn status_display(&self) -> &'static str {
-        match (self.enabled, self.force) {
-            (true, true) => "ENABLED (FORCED)",
-            (true, false) => "ENABLED",
-            (false, _) => "DISABLED",
-        }
-    }
-}
-
 impl std::fmt::Display for RlsCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
