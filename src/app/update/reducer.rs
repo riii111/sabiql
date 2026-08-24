@@ -1403,7 +1403,7 @@ mod tests {
         #[test]
         fn close_keeps_error_info_for_reopen() {
             let mut state = state_with_error();
-            state.connection_error.expand_details();
+            state.connection_error.toggle_details();
             state.connection_error.scroll_down(usize::MAX);
             let now = Instant::now();
 
