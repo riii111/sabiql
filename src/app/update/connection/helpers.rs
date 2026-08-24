@@ -30,7 +30,7 @@ fn reconcile_connection_state(state: &mut AppState, inspector_tab: InspectorTab)
 pub(super) fn reset_for_new_connection(state: &mut AppState, target: &ConnectionTarget) {
     let inspector_tab = state.ui.inspector_tab();
     let sql_modal_tab = state.sql_modal.active_tab();
-    reset_active_connection_state_inner(state);
+    reset_state_before_connection_reconciliation(state);
     state.ui.set_inspector_tab(inspector_tab);
     state.sql_modal.set_active_tab(sql_modal_tab);
     state.session.activate_connection_with_target(
@@ -105,11 +105,11 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
 
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
-    reset_active_connection_state_inner(state);
+    reset_state_before_connection_reconciliation(state);
     reconcile_connection_state(state, inspector_tab);
 }
 
-fn reset_active_connection_state_inner(state: &mut AppState) {
+fn reset_state_before_connection_reconciliation(state: &mut AppState) {
     state.session.reset(&mut state.query);
     state.result_interaction.reset_view();
     state.ui.set_explorer_selection(None);
