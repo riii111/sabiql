@@ -2127,7 +2127,7 @@ mod tests {
                 state.confirm_dialog.intent(),
                 Some(&ConfirmIntent::QuitNoConnection)
             ));
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
 
         #[test]
@@ -2145,7 +2145,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
     }
 

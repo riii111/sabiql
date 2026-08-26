@@ -23,7 +23,7 @@ pub(super) fn reduce_connection_error(
                 state.connection_error.clear_copied_feedback();
             }
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
         Action::ToggleConnectionErrorDetails => {
             state.connection_error.toggle_details();
@@ -75,7 +75,7 @@ pub(super) fn reduce_connection_error(
             state.session.cancel_connection_save();
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
         Action::RetryConnection => {
             if state.connection_error.is_save_and_connect_failure() {

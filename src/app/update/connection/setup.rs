@@ -37,7 +37,7 @@ pub fn reduce_connection_setup(
                 state.connection_setup.set_first_run(false);
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
         Action::StartEditConnection(id) => {
             DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
@@ -46,7 +46,7 @@ pub fn reduce_connection_setup(
             state.session.cancel_connection_save_and_disconnect();
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
         Action::ConnectionEditLoadFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
@@ -55,7 +55,7 @@ pub fn reduce_connection_setup(
         Action::CloseModal(ModalKind::ConnectionSetup) => {
             state.session.cancel_connection_save_and_disconnect();
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
 
         // ===== Clipboard Paste =====
@@ -237,10 +237,12 @@ pub fn reduce_connection_setup(
                     ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
-                DispatchResult::handled()
+                DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
             } else {
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(try_connect(state, now))
+                let mut effects = vec![Effect::CancelConnectionTask];
+                effects.extend(try_connect(state, now));
+                DispatchResult::handled_with(effects)
             }
         }
         Action::ConnectionSaveCompleted {

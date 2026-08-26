@@ -12,7 +12,7 @@ use crate::cmd::browse as cmd_browse;
 use crate::cmd::cache::TtlCache;
 use crate::cmd::completion_engine::CompletionEngine;
 use crate::cmd::connection as cmd_connection;
-use crate::cmd::connection::MySqlConnectionProbeTaskOwner;
+use crate::cmd::connection::ConnectionTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
@@ -75,7 +75,7 @@ pub struct EffectRunner {
     query_tasks: QueryTaskRegistry,
     table_detail_tasks: TableDetailTaskRegistry,
     metadata_tasks: Arc<MetadataTaskRegistry>,
-    mysql_connection_probe_task: MySqlConnectionProbeTaskOwner,
+    connection_task: ConnectionTaskOwner,
 }
 
 impl EffectRunner {
@@ -101,7 +101,7 @@ impl EffectRunner {
             query_tasks: QueryTaskRegistry::default(),
             table_detail_tasks: TableDetailTaskRegistry::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
-            mysql_connection_probe_task: MySqlConnectionProbeTaskOwner::default(),
+            connection_task: ConnectionTaskOwner::default(),
         }
     }
 
@@ -117,7 +117,7 @@ impl EffectRunner {
         self.query_tasks.cancel();
         self.table_detail_tasks.cancel();
         self.cancel_metadata_tasks().await;
-        self.mysql_connection_probe_task.cancel().await;
+        self.connection_task.cancel().await;
     }
 
     pub async fn execute_effects<T: Renderer>(
@@ -222,7 +222,7 @@ impl EffectRunner {
                     e,
                     &self.action_tx,
                     &self.connection,
-                    &self.mysql_connection_probe_task,
+                    &self.connection_task,
                     &self.metadata_provider,
                     &self.metadata_cache,
                     state,
@@ -252,6 +252,11 @@ impl EffectRunner {
                     completion_engine,
                 )
                 .await;
+                Ok(vec![])
+            }
+
+            Effect::CancelConnectionTask => {
+                self.connection_task.cancel().await;
                 Ok(vec![])
             }
 
@@ -1091,7 +1096,7 @@ mod tests {
         }
     }
 
-    mod mysql_connection_probe_lifecycle {
+    mod connection_task_lifecycle {
         use std::future::pending;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1099,8 +1104,10 @@ mod tests {
         use tokio::time::{Duration, timeout};
 
         use super::*;
+        use crate::domain::Table;
         use crate::domain::connection::{
             ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
+            PostgresConnectionConfig, SslMode,
         };
         use crate::ports::outbound::DbOperationError;
         use crate::update::action::ConnectionTarget;
@@ -1119,6 +1126,11 @@ mod tests {
             dropped: Arc<AtomicUsize>,
         }
 
+        struct PendingMetadataProvider {
+            started: UnboundedSender<String>,
+            dropped: Arc<AtomicUsize>,
+        }
+
         #[async_trait::async_trait]
         impl MySqlConnectionProbe for PendingMySqlConnectionProbe {
             async fn probe(
@@ -1129,6 +1141,45 @@ mod tests {
                 self.started
                     .send(dsn.to_string())
                     .expect("probe receiver should stay alive");
+                pending().await
+            }
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingMetadataProvider {
+            async fn fetch_metadata(
+                &self,
+                dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                let _drop_signal = DropSignal(Arc::clone(&self.dropped));
+                self.started
+                    .send(dsn.to_string())
+                    .expect("metadata receiver should stay alive");
+                pending().await
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                pending().await
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                pending().await
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
                 pending().await
             }
         }
@@ -1151,6 +1202,17 @@ mod tests {
                 "user",
                 "secret",
                 MySqlSslMode::Required,
+            ))
+        }
+
+        fn postgres_config() -> ConnectionConfig {
+            ConnectionConfig::PostgreSQL(PostgresConnectionConfig::new(
+                "localhost",
+                5432,
+                "app",
+                "user",
+                "secret",
+                SslMode::Prefer,
             ))
         }
 
@@ -1359,6 +1421,66 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
+
+        #[tokio::test]
+        async fn cancelling_postgres_save_aborts_metadata_before_cache_or_action() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let provider = PendingMetadataProvider {
+                started: started_tx,
+                dropped: Arc::clone(&dropped),
+            };
+            let cache = TtlCache::new(300);
+            let observed_cache = cache.clone();
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                action_tx,
+            );
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "PostgreSQL".to_string(),
+                        config: postgres_config(),
+                        run_id: 1,
+                        run_guard: test_fixtures::active_connection_save_guard(1),
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(started_rx.recv().await.as_deref(), Some(""));
+
+            runner
+                .execute_effects(
+                    vec![Effect::CancelConnectionTask],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert!(
+                timeout(Duration::from_millis(100), action_rx.recv())
+                    .await
+                    .is_err()
+            );
+            assert!(observed_cache.get(&String::new()).await.is_none());
         }
     }
 }

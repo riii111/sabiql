@@ -96,6 +96,7 @@ pub enum Effect {
         query: String,
         access_mode: AccessMode,
     },
+    CancelConnectionTask,
     CancelTrackedTasks,
     CountRowsForExport {
         dsn: String,
