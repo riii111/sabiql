@@ -24,10 +24,16 @@ impl TaskRegistry {
         *active = Some(handle);
     }
 
-    pub async fn cancel(&self) {
+    pub async fn abort(&self) -> Option<JoinHandle<()>> {
         let handle = self.active.lock().await.take();
-        if let Some(handle) = handle {
+        if let Some(handle) = &handle {
             handle.abort();
+        }
+        handle
+    }
+
+    pub async fn cancel(&self) {
+        if let Some(handle) = self.abort().await {
             let _ = handle.await;
         }
     }
