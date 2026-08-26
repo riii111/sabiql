@@ -6,6 +6,7 @@ use crate::model::app_state::AppState;
 use crate::model::shared::input_mode::InputMode;
 use crate::update::action::ConnectionTarget;
 use crate::update::action::{Action, ScrollAmount, ScrollDirection, ScrollTarget};
+use crate::update::connection::helpers::cancel_connection_task_effects;
 use crate::update::dispatch_result::DispatchResult;
 
 pub(super) fn reduce_connection_error(
@@ -21,9 +22,9 @@ pub(super) fn reduce_connection_error(
                 state.connection_error.reset_view();
                 state.connection_error.clear_copied_feedback();
             }
-            state.session.clear_mysql_connection_probe();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::ToggleConnectionErrorDetails => {
             state.connection_error.toggle_details();
@@ -73,10 +74,10 @@ pub(super) fn reduce_connection_error(
             }
             state.connection_error.clear();
             state.session.cancel_connection_save();
-            state.session.clear_mysql_connection_probe();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::RetryConnection => {
             if state.connection_error.is_save_and_connect_failure() {
