@@ -11,7 +11,7 @@ pub(super) fn start_adhoc_if_connected(
     query: String,
     now: Instant,
 ) -> DispatchResult {
-    if reject_pending_mysql_connection_probe(state, now) {
+    if reject_pending_mysql_connection_probe(state) {
         return DispatchResult::handled();
     }
 

@@ -44,7 +44,7 @@ pub(super) fn reduce_confirm_dialog(
                     sql,
                     blocked: false,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         state.result_interaction.clear_write_preview();
                         state.query.clear_delete_refresh_target();
                         return DispatchResult::handled();
@@ -60,9 +60,7 @@ pub(super) fn reduce_confirm_dialog(
                     } else {
                         state.result_interaction.clear_write_preview();
                         state.query.clear_delete_refresh_target();
-                        state
-                            .messages
-                            .set_error_at("No active connection".to_string(), now);
+                        state.messages.set_error("No active connection".to_string());
                         DispatchResult::handled()
                     }
                 }
@@ -77,7 +75,7 @@ pub(super) fn reduce_confirm_dialog(
                     file_name,
                     row_count,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         return DispatchResult::handled();
                     }
                     if state.is_stale_query_run(&dsn, run_id) {
@@ -99,7 +97,7 @@ pub(super) fn reduce_confirm_dialog(
                     row_count,
                     snapshot,
                 }) => {
-                    if reject_pending_mysql_connection_probe(state, now) {
+                    if reject_pending_mysql_connection_probe(state) {
                         return DispatchResult::handled();
                     }
                     if state.is_stale_query_run(&dsn, run_id) {

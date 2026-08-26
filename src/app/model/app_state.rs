@@ -1263,9 +1263,7 @@ mod tests {
         #[test]
         fn clears_stale_messages() {
             let mut state = prepare_state_for_reload();
-            state
-                .messages
-                .set_error_at("Old error".to_string(), Instant::now());
+            state.messages.set_error("Old error".to_string());
 
             assert!(state.messages.last_error().is_some());
             assert!(state.messages.expires_at().is_none());

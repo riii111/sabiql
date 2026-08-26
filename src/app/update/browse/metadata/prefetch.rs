@@ -46,7 +46,7 @@ fn prefetch_table_detail(
                 state
                     .er_preparation
                     .on_table_failed(&qualified_name, entry.error.clone());
-                check_er_completion(state, now)
+                check_er_completion(state)
             } else {
                 Vec::new()
             };
@@ -225,7 +225,7 @@ pub(super) fn reduce_prefetch(
             }
 
             if state.sql_modal.prefetch_tracks_er() {
-                effects.extend(check_er_completion(state, now));
+                effects.extend(check_er_completion(state));
             } else if state.modal.active_mode() == InputMode::SqlModal {
                 effects.push(Effect::TriggerCompletion);
             }
@@ -273,7 +273,7 @@ pub(super) fn reduce_prefetch(
             });
 
             if state.sql_modal.prefetch_tracks_er() {
-                effects.extend(check_er_completion(state, now));
+                effects.extend(check_er_completion(state));
             }
 
             DispatchResult::handled_with(effects)
@@ -302,7 +302,7 @@ pub(super) fn reduce_prefetch(
             }
 
             if state.sql_modal.prefetch_tracks_er() {
-                effects.extend(check_er_completion(state, now));
+                effects.extend(check_er_completion(state));
             } else if state.modal.active_mode() == InputMode::SqlModal {
                 effects.push(Effect::TriggerCompletion);
             }

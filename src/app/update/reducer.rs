@@ -108,7 +108,7 @@ fn dispatch_enabled_action(
                     .cloned();
                 if let Some(table) = table {
                     state.modal.set_mode(InputMode::Normal);
-                    return select_table(state, &table, now);
+                    return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
                 if state.connection_error.has_error() {
@@ -120,7 +120,7 @@ fn dispatch_enabled_action(
                 }
                 let table = state.tables().get(state.ui.explorer_selected()).cloned();
                 if let Some(table) = table {
-                    return select_table(state, &table, now);
+                    return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::CommandPalette {
                 use crate::update::input::palette::palette_action_for_index;
@@ -157,7 +157,7 @@ fn dispatch_enabled_action(
     }
 }
 
-fn select_table(state: &mut AppState, table: &TableSummary, now: Instant) -> Vec<Effect> {
+fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
     let generation = state
         .session
         .select_table(&table.schema, &table.name, &mut state.query);
@@ -181,7 +181,7 @@ fn select_table(state: &mut AppState, table: &TableSummary, now: Instant) -> Vec
         state
             .session
             .mark_table_detail_failed(generation, message.clone());
-        state.messages.set_error_at(message, now);
+        state.messages.set_error(message);
     }
     effects.push(Effect::DispatchActions(vec![Action::ExecutePreview(
         TableTarget {
@@ -313,10 +313,9 @@ mod tests {
         #[test]
         fn selecting_table_without_connection_does_not_leave_inspector_loading() {
             let mut state = create_test_state();
-            let now = Instant::now();
             let table = TableSummary::new("public".to_string(), "users".to_string(), None, false);
 
-            let effects = select_table(&mut state, &table, now);
+            let effects = select_table(&mut state, &table);
 
             assert!(matches!(
                 state.session.table_detail_state(),

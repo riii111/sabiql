@@ -37,7 +37,7 @@ pub(super) fn preview_effect_for_current_table(
     target_page: usize,
     generation: u64,
 ) -> Option<Effect> {
-    if reject_pending_mysql_connection_probe(state, now) {
+    if reject_pending_mysql_connection_probe(state) {
         return None;
     }
     let dsn = state.session.dsn().map(String::from)?;

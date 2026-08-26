@@ -177,7 +177,7 @@ pub fn reduce_write(
 ) -> DispatchResult {
     match action {
         Action::SubmitCellEditWrite => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if !state.result_interaction.staged_delete_rows().is_empty() {
@@ -189,27 +189,26 @@ pub fn reduce_write(
                             result.target_row,
                             staged_count,
                         );
-                        return open_write_preview_confirm(state, &result.preview, now);
+                        return open_write_preview_confirm(state, &result.preview);
                     }
                     Err(err) => {
-                        state.messages.set_error_at(err.to_string(), now);
+                        state.messages.set_error(err.to_string());
                         return DispatchResult::handled();
                     }
                 }
             }
 
             if state.query.is_running() {
-                state.messages.set_error_at(
-                    EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error(EditGuardrailError::WriteUnavailableWhileQueryRunning.to_string());
                 return DispatchResult::handled();
             }
 
             match build_update_preview(state, services) {
-                Ok(preview) => open_write_preview_confirm(state, &preview, now),
+                Ok(preview) => open_write_preview_confirm(state, &preview),
                 Err(err) => {
-                    state.messages.set_error_at(err.to_string(), now);
+                    state.messages.set_error(err.to_string());
                     DispatchResult::handled()
                 }
             }
@@ -242,13 +241,10 @@ pub fn reduce_write(
                             now,
                         );
                     } else {
-                        state.messages.set_error_at(
-                            write_message_with_diagnostics(
-                                format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
-                                diagnostics,
-                            ),
-                            now,
-                        );
+                        state.messages.set_error(write_message_with_diagnostics(
+                            format!("UPDATE expected 1 row, but affected {affected_rows} rows"),
+                            diagnostics,
+                        ));
                     }
 
                     state.result_interaction.clear_cell_edit();
@@ -284,19 +280,16 @@ pub fn reduce_write(
                             now,
                         );
                     } else {
-                        state.messages.set_error_at(
-                            write_message_with_diagnostics(
-                                format!(
-                                    "DELETE expected {} {}, but affected {} {}",
-                                    expected,
-                                    row_word(expected),
-                                    affected_rows,
-                                    row_word(*affected_rows),
-                                ),
-                                diagnostics,
+                        state.messages.set_error(write_message_with_diagnostics(
+                            format!(
+                                "DELETE expected {} {}, but affected {} {}",
+                                expected,
+                                row_word(expected),
+                                affected_rows,
+                                row_word(*affected_rows),
                             ),
-                            now,
-                        );
+                            diagnostics,
+                        ));
                     }
                     state.result_interaction.clear_cell_edit();
                     state.result_interaction.clear_staged_deletes();
@@ -330,7 +323,7 @@ pub fn reduce_write(
                 .unwrap_or(RefreshScope::None);
             let operation = state.result_interaction.complete_write_failure();
             state.query.clear_delete_refresh_target();
-            state.messages.set_error_at(error.user_message(), now);
+            state.messages.set_error(error.user_message());
             if refresh_scope == RefreshScope::None {
                 state.modal.set_mode(match operation {
                     WriteOperation::Update => InputMode::CellEdit,
@@ -370,16 +363,11 @@ fn write_diagnostic_message(diagnostic: &DatabaseDiagnostic) -> String {
     format!("{level} (Code {}): {}", diagnostic.code, diagnostic.message)
 }
 
-fn open_write_preview_confirm(
-    state: &mut AppState,
-    preview: &WritePreview,
-    now: Instant,
-) -> DispatchResult {
+fn open_write_preview_confirm(state: &mut AppState, preview: &WritePreview) -> DispatchResult {
     if state.session.is_read_only() {
-        state.messages.set_error_at(
-            "Read-only mode: write operations are disabled".to_string(),
-            now,
-        );
+        state
+            .messages
+            .set_error("Read-only mode: write operations are disabled".to_string());
         return DispatchResult::handled();
     }
     state.result_interaction.set_write_preview(preview.clone());
@@ -1551,7 +1539,7 @@ mod tests {
             state.modal.set_mode(InputMode::Normal);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+            let effects = open_write_preview_confirm(&mut state, &preview)
                 .into_effects()
                 .expect("write preview should be handled");
 
@@ -1571,7 +1559,7 @@ mod tests {
             state.query.set_delete_refresh_target(0, Some(2), 3);
             let preview = delete_preview();
 
-            let effects = open_write_preview_confirm(&mut state, &preview, Instant::now())
+            let effects = open_write_preview_confirm(&mut state, &preview)
                 .into_effects()
                 .expect("write preview should be handled");
 

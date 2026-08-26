@@ -21,7 +21,7 @@ pub(super) fn expand_prefetch_with_fk_neighbors(state: &AppState, run_id: u64) -
 pub(super) fn reduce_er_neighbors(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors { run_id } => {
@@ -35,7 +35,7 @@ pub(super) fn reduce_er_neighbors(
 
             if tables.is_empty() {
                 // No new neighbors — proceed to generate with what we have
-                return DispatchResult::handled_with(check_er_completion(state, now));
+                return DispatchResult::handled_with(check_er_completion(state));
             }
 
             for qualified_name in tables {

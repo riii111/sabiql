@@ -27,7 +27,7 @@ fn into_submit_result<Statement>(
 pub(super) fn reduce_submit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
     match action {
         Action::SqlModalSubmit => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             let query = state.sql_modal.editor.content().trim().to_string();

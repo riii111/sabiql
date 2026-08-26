@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub(super) fn reduce_smart_refresh_failed(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::SmartErRefreshFailed(SmartErRefreshError {
@@ -30,17 +30,16 @@ pub(super) fn reduce_smart_refresh_failed(
                 state.er_preparation.mark_idle();
                 state
                     .messages
-                    .set_error_at("Metadata not loaded yet".to_string(), now);
+                    .set_error("Metadata not loaded yet".to_string());
                 return DispatchResult::handled();
             };
             state
                 .er_preparation
                 .invalidate_refresh_signatures(metadata.table_summaries.len());
 
-            state.messages.set_error_at(
-                format!("Smart refresh failed ({error}), falling back to full refresh"),
-                now,
-            );
+            state.messages.set_error(format!(
+                "Smart refresh failed ({error}), falling back to full refresh"
+            ));
             DispatchResult::handled_with(vec![
                 Effect::ClearCompletionEngineCache,
                 Effect::DispatchActions(vec![Action::StartErPrefetchAll]),

@@ -109,7 +109,7 @@ pub fn reduce_execution(
             let is_preview = matches!(context, QueryFailureContext::Preview { .. });
             if is_preview && matches!(error, DbOperationError::PreviewSizeExceeded(_)) {
                 state.query.mark_idle();
-                state.messages.set_error_at(error.user_message(), now);
+                state.messages.set_error(error.user_message());
                 return DispatchResult::handled();
             }
 
@@ -140,7 +140,7 @@ pub fn reduce_execution(
                     state.query.set_current_result(result);
                 } else {
                     let user_message = error.user_message();
-                    state.messages.set_error_at(user_message.clone(), now);
+                    state.messages.set_error(user_message.clone());
                     state.sql_modal.finish_adhoc_error(user_message);
                 }
             }
@@ -216,7 +216,7 @@ pub fn reduce_execution(
             table,
             generation,
         }) => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if state.session.dsn().is_none() {
@@ -235,7 +235,7 @@ pub fn reduce_execution(
         }
 
         Action::ExecuteAdhoc(query) => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {

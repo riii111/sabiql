@@ -9,7 +9,7 @@ use crate::update::dispatch_result::DispatchResult;
 pub fn reduce_connection_list(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::ListSelect {
@@ -53,10 +53,10 @@ pub fn reduce_connection_list(
                 .set_service_file_path(service_file_path.clone());
 
             if let Some(warning) = profile_load_warning {
-                state.messages.set_error_at(warning.clone(), now);
+                state.messages.set_error(warning.clone());
             }
             if let Some(warning) = service_load_warning {
-                state.messages.set_error_at(warning.clone(), now);
+                state.messages.set_error(warning.clone());
             }
 
             let list_len = state.connection_list_items().len();

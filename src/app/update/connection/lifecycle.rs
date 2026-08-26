@@ -23,11 +23,11 @@ fn clear_query_confirmation(state: &mut AppState) {
 pub fn reduce_connection_lifecycle(
     state: &mut AppState,
     action: &Action,
-    now: std::time::Instant,
+    _now: std::time::Instant,
     _services: &AppServices,
 ) -> DispatchResult {
     match action {
-        Action::TryConnect => DispatchResult::handled_with(try_connect(state, now)),
+        Action::TryConnect => DispatchResult::handled_with(try_connect(state)),
 
         Action::SwitchConnection(target) => {
             state.session.cancel_connection_save_and_disconnect();
@@ -41,10 +41,9 @@ pub fn reduce_connection_lifecycle(
             } = target;
 
             if *database_type == DatabaseType::MySQL && database.is_none() {
-                state.messages.set_error_at(
-                    "MySQL connection field `database` is required".to_string(),
-                    now,
-                );
+                state
+                    .messages
+                    .set_error("MySQL connection field `database` is required".to_string());
                 return DispatchResult::handled();
             }
 
@@ -196,7 +195,7 @@ pub fn reduce_connection_lifecycle(
     }
 }
 
-pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<Effect> {
+pub(super) fn try_connect(state: &mut AppState) -> Vec<Effect> {
     state.session.cancel_connection_save_and_disconnect();
     if state.session.connection_state().is_not_connected()
         && state.modal.active_mode() == InputMode::Normal
@@ -204,10 +203,9 @@ pub(super) fn try_connect(state: &mut AppState, now: std::time::Instant) -> Vec<
         if let Some(dsn) = state.session.dsn().map(str::to_string) {
             if state.session.active_database_type() == Some(DatabaseType::MySQL) {
                 if state.session.active_database().is_none() {
-                    state.messages.set_error_at(
-                        "MySQL connection field `database` is required".to_string(),
-                        now,
-                    );
+                    state
+                        .messages
+                        .set_error("MySQL connection field `database` is required".to_string());
                     return vec![];
                 }
                 let target = ConnectionTarget {

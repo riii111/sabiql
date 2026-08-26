@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use unicode_casefold::UnicodeCaseFold;
 
 use crate::cmd::effect::Effect;
@@ -20,30 +18,26 @@ use crate::policy::{FeaturePolicy, FeatureRequirement};
 use crate::services::AppServices;
 use crate::update::dispatch_result::DispatchResult;
 
-pub(crate) fn require_er_diagram_enabled(
-    state: &mut AppState,
-    now: Instant,
-) -> Option<DispatchResult> {
+pub(crate) fn require_er_diagram_enabled(state: &mut AppState) -> Option<DispatchResult> {
     let feature_policy = FeaturePolicy::new(&state.session.active_engine_feature_profile());
     if feature_policy.is_enabled(FeatureRequirement::ErDiagram) {
         return None;
     }
 
-    state.messages.set_error_at(
-        "ER diagrams are not available for this connection".to_string(),
-        now,
-    );
+    state
+        .messages
+        .set_error("ER diagrams are not available for this connection".to_string());
     Some(DispatchResult::handled())
 }
 
-pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState, now: Instant) -> bool {
+pub(crate) fn reject_pending_mysql_connection_probe(state: &mut AppState) -> bool {
     if state.session.pending_mysql_connection_probe().is_none() {
         return false;
     }
 
     state
         .messages
-        .set_error_at("Connection switch in progress".to_string(), now);
+        .set_error("Connection switch in progress".to_string());
     true
 }
 
