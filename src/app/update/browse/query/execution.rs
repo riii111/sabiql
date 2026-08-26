@@ -120,19 +120,9 @@ pub fn reduce_execution(
                 && state.session.selected_table_key().is_some()
                 && !state.session.is_table_detail_terminal(*generation)
             {
-                let preview_query = state.query.pagination.qualified_name();
+                let result = Arc::new(preview_error_result(state, error));
                 state.query.mark_idle();
-                state.query.defer_preview(
-                    Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )),
-                    *generation,
-                    None,
-                    false,
-                );
+                state.query.defer_preview(result, *generation, None, false);
                 return DispatchResult::handled();
             }
 
@@ -143,18 +133,13 @@ pub fn reduce_execution(
             ) {
                 state.query.mark_idle();
                 if is_preview {
+                    let result = Arc::new(preview_error_result(state, error));
                     state.result_interaction.reset_view();
                     state
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = state.query.pagination.qualified_name();
-                    state.query.set_current_result(Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )));
+                    state.query.set_current_result(result);
                 } else {
                     let user_message = error.user_message();
                     state.messages.set_error_at(user_message.clone(), now);
@@ -308,6 +293,15 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         return vec![];
     }
     refresh_effects_for_scope(state, result.refresh_scope, now)
+}
+
+fn preview_error_result(state: &AppState, error: &DbOperationError) -> QueryResult {
+    QueryResult::error(
+        state.query.pagination.qualified_name(),
+        error.result_message(),
+        0,
+        QuerySource::Preview,
+    )
 }
 
 fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
