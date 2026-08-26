@@ -27,23 +27,42 @@ pub fn install_hooks() -> Result<()> {
 }
 
 fn restore_terminal() -> Result<()> {
-    if !crossterm::terminal::is_raw_mode_enabled()? {
-        return Ok(());
-    }
+    restore_terminal_with_probe(
+        crossterm::terminal::is_raw_mode_enabled().map_err(Into::into),
+        |step| match step {
+            RestoreStep::Cursor => {
+                execute!(stdout(), SetCursorStyle::DefaultUserShape).map_err(Into::into)
+            }
+            RestoreStep::AlternateScreen => {
+                execute!(stdout(), LeaveAlternateScreen).map_err(Into::into)
+            }
+            RestoreStep::MouseCapture => {
+                execute!(stdout(), DisableMouseCapture).map_err(Into::into)
+            }
+            RestoreStep::BracketedPaste => {
+                execute!(stdout(), DisableBracketedPaste).map_err(Into::into)
+            }
+            RestoreStep::Raw => disable_raw_mode().map_err(Into::into),
+        },
+    )
+}
 
-    restore_terminal_steps(|step| match step {
-        RestoreStep::Cursor => {
-            execute!(stdout(), SetCursorStyle::DefaultUserShape).map_err(Into::into)
-        }
-        RestoreStep::AlternateScreen => {
-            execute!(stdout(), LeaveAlternateScreen).map_err(Into::into)
-        }
-        RestoreStep::MouseCapture => execute!(stdout(), DisableMouseCapture).map_err(Into::into),
-        RestoreStep::BracketedPaste => {
-            execute!(stdout(), DisableBracketedPaste).map_err(Into::into)
-        }
-        RestoreStep::Raw => disable_raw_mode().map_err(Into::into),
-    })
+fn restore_terminal_with_probe<F>(raw_mode: Result<bool>, restore: F) -> Result<()>
+where
+    F: FnMut(RestoreStep) -> Result<()>,
+{
+    let mut first_error = match raw_mode {
+        Ok(true) => None,
+        Ok(false) => return Ok(()),
+        Err(error) => Some(error),
+    };
+
+    if let Err(error) = restore_terminal_steps(restore)
+        && first_error.is_none()
+    {
+        first_error = Some(error);
+    }
+    first_error.map_or(Ok(()), Err)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,6 +114,32 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error.to_string(), "bracketed paste restore failed");
+        assert_eq!(
+            restored,
+            vec![
+                RestoreStep::Cursor,
+                RestoreStep::BracketedPaste,
+                RestoreStep::MouseCapture,
+                RestoreStep::AlternateScreen,
+                RestoreStep::Raw,
+            ]
+        );
+    }
+
+    #[test]
+    fn continues_restore_when_raw_mode_probe_fails() {
+        let mut restored = Vec::new();
+
+        let error = restore_terminal_with_probe(
+            Err(std::io::Error::other("raw mode probe failed").into()),
+            |step| {
+                restored.push(step);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert_eq!(error.to_string(), "raw mode probe failed");
         assert_eq!(
             restored,
             vec![
