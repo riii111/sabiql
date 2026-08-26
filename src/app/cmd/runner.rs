@@ -515,7 +515,6 @@ mod tests {
 
     mod task_cancellation {
         use std::future::pending;
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::{Condvar, Mutex};
         use std::time::Duration as StdDuration;
 
@@ -563,11 +562,17 @@ mod tests {
             }
         }
 
-        struct DropSignal(Arc<AtomicBool>);
+        struct DropSignal(Mutex<Option<oneshot::Sender<()>>>);
 
         impl Drop for DropSignal {
             fn drop(&mut self) {
-                self.0.store(true, Ordering::SeqCst);
+                self.0
+                    .lock()
+                    .expect("table drop signal lock poisoned")
+                    .take()
+                    .expect("table drop signal should be observed once")
+                    .send(())
+                    .ok();
             }
         }
 
@@ -601,14 +606,13 @@ mod tests {
                 .await;
             query_started_rx.await.expect("query task should start");
 
-            let table_dropped = Arc::new(AtomicBool::new(false));
             let (table_started_tx, table_started_rx) = oneshot::channel();
+            let (table_drop_tx, mut table_drop_rx) = oneshot::channel();
             runner
                 .table_detail_tasks
                 .spawn({
-                    let dropped = Arc::clone(&table_dropped);
                     async move {
-                        let _drop_signal = DropSignal(dropped);
+                        let _drop_signal = DropSignal(Mutex::new(Some(table_drop_tx)));
                         table_started_tx.send(()).ok();
                         pending::<()>().await;
                     }
@@ -624,8 +628,16 @@ mod tests {
                 () = &mut cancel => "cancellation finished before query drop",
                 result = &mut query_drop_rx => {
                     match result {
-                        Ok(()) if table_dropped.load(Ordering::SeqCst) => "",
-                        Ok(()) => "table detail task was not aborted",
+                        Ok(()) => match timeout(
+                            Duration::from_secs(1),
+                            &mut table_drop_rx,
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => "",
+                            Ok(Err(_)) => "table drop signal was lost",
+                            Err(_) => "table detail task was not aborted",
+                        },
                         Err(_) => "query drop signal was lost",
                     }
                 }
