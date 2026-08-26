@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::domain::RefreshScope;
+use crate::domain::{RefreshScope, SqlitePathError};
 use crate::policy::password_masking::mask_password;
 
 pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
@@ -125,6 +125,8 @@ impl ConnectionFailureKind {
 pub enum DbOperationError {
     #[error("Connection failed")]
     ConnectionFailed(String),
+    #[error("Connection failed")]
+    SqlitePath(#[source] SqlitePathError),
     #[error("Connection lost")]
     ConnectionLost(String),
     #[error("Permission denied")]
@@ -190,7 +192,7 @@ impl DbOperationError {
 
     fn presentation(&self) -> (&'static str, &'static str) {
         match self {
-            Self::ConnectionFailed(_) => (
+            Self::ConnectionFailed(_) | Self::SqlitePath(_) => (
                 "Connection failed",
                 "Check the connection settings and database availability",
             ),
@@ -334,6 +336,7 @@ impl DbOperationError {
             | Self::Timeout(details)
             | Self::Canceled(details)
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
+            Self::SqlitePath(error) => Cow::Owned(error.to_string()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
             Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
@@ -405,6 +408,9 @@ mod tests {
 
         #[rstest]
         #[case(DbOperationError::ConnectionFailed("boom".to_string()))]
+        #[case(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
+            "/tmp/missing.db".to_string(),
+        )))]
         #[case(DbOperationError::ConnectionLost("boom".to_string()))]
         #[case(DbOperationError::PermissionDenied("boom".to_string()))]
         #[case(DbOperationError::ForeignKeyViolation("boom".to_string()))]
@@ -498,6 +504,7 @@ mod tests {
 
     mod user_messages {
         use super::*;
+        use std::error::Error;
 
         #[test]
         fn sqlite_cli_not_found_has_sqlite_specific_guidance() {
@@ -508,6 +515,25 @@ mod tests {
 
             assert_eq!(error.summary(), "sqlite3 not found");
             assert_eq!(error.hint(), "Install sqlite3 and add it to PATH");
+        }
+
+        #[test]
+        fn sqlite_path_preserves_source_and_masks_details() {
+            let error =
+                DbOperationError::SqlitePath(SqlitePathError::Io("password=secret".to_string()));
+
+            assert_eq!(
+                error.masked_details(),
+                "Cannot read SQLite database file metadata: password=****"
+            );
+            assert_eq!(
+                error
+                    .source()
+                    .expect("SQLite path error source")
+                    .to_string(),
+                "Cannot read SQLite database file metadata: password=secret"
+            );
+            assert!(!error.user_message().contains("secret"));
         }
 
         #[test]

@@ -1,4 +1,5 @@
 use crate::policy::password_masking::mask_password;
+use crate::policy::sqlite_path::connection_error_kind;
 use crate::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
     SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
@@ -183,10 +184,7 @@ impl ConnectionErrorInfo {
                     ConnectionErrorKind::MySqlConnectionFailure(*kind)
                 }
             },
-            DbOperationError::ConnectionFailed(details) => {
-                classify_sqlite_path_connection_error(details)
-                    .unwrap_or(ConnectionErrorKind::Unknown)
-            }
+            DbOperationError::SqlitePath(error) => connection_error_kind(error),
             _ => ConnectionErrorKind::Unknown,
         };
         Self::with_kind(kind, raw_details)
@@ -230,16 +228,10 @@ impl ConnectionErrorInfo {
     }
 }
 
-fn classify_sqlite_path_connection_error(message: &str) -> Option<ConnectionErrorKind> {
-    use crate::domain::SqlitePathError;
-    use crate::policy::sqlite_path::connection_error_kind;
-
-    SqlitePathError::from_display_message(message).map(|error| connection_error_kind(&error))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::SqlitePathError;
     use rstest::rstest;
 
     mod error_kind {
@@ -384,10 +376,9 @@ mod tests {
 
         #[test]
         fn from_db_operation_error_classifies_sqlite_missing_file() {
-            let info =
-                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
-                    "SQLite database file not found: /tmp/missing.db".to_string(),
-                ));
+            let info = ConnectionErrorInfo::from_db_operation_error(&DbOperationError::SqlitePath(
+                SqlitePathError::FileNotFound("/tmp/missing.db".to_string()),
+            ));
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteFileNotFound);
             assert_eq!(info.kind.summary(), "SQLite database file not found");
@@ -513,38 +504,51 @@ mod tests {
 
         #[rstest]
         #[case(
-            "SQLite path is a directory, not a file: /tmp/dir.db",
+            SqlitePathError::IsDirectory("/tmp/dir.db".to_string()),
             ConnectionErrorKind::SqlitePathIsDirectory
         )]
         #[case(
-            "SQLite path is not a regular file: /tmp/pipe.db",
+            SqlitePathError::NotRegularFile("/tmp/pipe.db".to_string()),
             ConnectionErrorKind::SqlitePathNotRegularFile
         )]
         #[case(
-            "File is readable but not a SQLite database: /tmp/not-db",
+            SqlitePathError::NotDatabaseFile("/tmp/not-db".to_string()),
             ConnectionErrorKind::SqliteNotDatabaseFile
         )]
         #[case(
-            "Cannot read SQLite database file: /tmp/app.db: permission denied",
+            SqlitePathError::ReadAccessDenied(
+                "/tmp/app.db: permission denied".to_string(),
+            ),
             ConnectionErrorKind::SqliteReadAccessDenied
         )]
         #[case(
-            "Cannot access SQLite database file: /tmp/app.db: permission denied",
+            SqlitePathError::PathAccessDenied(
+                "/tmp/app.db: permission denied".to_string(),
+            ),
             ConnectionErrorKind::SqlitePathAccessDenied
         )]
         #[case(
-            "Cannot read SQLite database file metadata: /tmp/app.db: device offline",
+            SqlitePathError::Io("/tmp/app.db: device offline".to_string()),
             ConnectionErrorKind::SqlitePathIo
         )]
         fn from_db_operation_error_classifies_sqlite_path_errors(
-            #[case] details: &str,
+            #[case] error: SqlitePathError,
             #[case] expected_kind: ConnectionErrorKind,
         ) {
-            let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::ConnectionFailed(details.to_string()),
-            );
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::SqlitePath(error));
 
             assert_eq!(info.kind, expected_kind);
+        }
+
+        #[test]
+        fn generic_connection_failure_with_sqlite_prefix_stays_unknown() {
+            let info =
+                ConnectionErrorInfo::from_db_operation_error(&DbOperationError::ConnectionFailed(
+                    "SQLite database file not found: /tmp/missing.db".to_string(),
+                ));
+
+            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
         }
 
         #[test]

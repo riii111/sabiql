@@ -1,7 +1,7 @@
 use crate::app::ports::outbound::{
     DbOperationError, MetadataProvider, SQLITE_SAFE_MODE_REQUIRED_MARKER,
 };
-use crate::domain::{Schema, TableKind, TableKindInfo};
+use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::super::sqlite3::metadata::RawTable;
 use super::super::SqliteAdapter;
@@ -68,8 +68,8 @@ mod metadata {
 
         assert!(matches!(
             result,
-            Err(DbOperationError::ConnectionFailed(details))
-                if details.contains("SQLite database file not found")
+            Err(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(file_path)))
+                if file_path == path.display().to_string()
         ));
         assert!(!path.exists());
     }

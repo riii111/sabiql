@@ -298,7 +298,7 @@ impl SqliteCli {
 
     fn ensure_database_path(path: &str) -> Result<(), DbOperationError> {
         path_validation::validate_sqlite_database_path(Path::new(path))
-            .map_err(|error| DbOperationError::ConnectionFailed(error.to_string()))
+            .map_err(DbOperationError::SqlitePath)
     }
 
     fn apply_session_options(cmd: &mut Command, read_only: bool) {
