@@ -15,6 +15,7 @@ use crate::cmd::connection as cmd_connection;
 use crate::cmd::connection::MySqlConnectionProbeTaskOwner;
 use crate::cmd::effect::Effect;
 use crate::cmd::er::handler as cmd_er;
+use crate::cmd::er::task::SmartErRefreshTaskOwner;
 use crate::cmd::metadata_task::MetadataTaskRegistry;
 use crate::cmd::query_task::{QueryTaskRegistry, TableDetailTaskRegistry};
 use crate::cmd::settings as cmd_settings;
@@ -77,6 +78,7 @@ pub struct EffectRunner {
     metadata_tasks: Arc<MetadataTaskRegistry>,
     mysql_connection_probe_task: MySqlConnectionProbeTaskOwner,
     sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
+    smart_er_refresh_task: SmartErRefreshTaskOwner,
 }
 
 impl EffectRunner {
@@ -104,6 +106,7 @@ impl EffectRunner {
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
             mysql_connection_probe_task: MySqlConnectionProbeTaskOwner::default(),
             sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
+            smart_er_refresh_task: SmartErRefreshTaskOwner::default(),
         }
     }
 
@@ -116,10 +119,17 @@ impl EffectRunner {
     }
 
     async fn cancel_tracked_tasks(&self) {
-        self.query_tasks.cancel();
-        self.table_detail_tasks.cancel();
+        let (query_task, table_detail_task) =
+            tokio::join!(self.query_tasks.abort(), self.table_detail_tasks.abort());
+        if let Some(task) = query_task {
+            let _ = task.await;
+        }
+        if let Some(task) = table_detail_task {
+            let _ = task.await;
+        }
         self.cancel_metadata_tasks().await;
         self.mysql_connection_probe_task.cancel().await;
+        self.smart_er_refresh_task.cancel().await;
     }
 
     pub async fn execute_effects<T: Renderer>(
@@ -217,8 +227,14 @@ impl EffectRunner {
                 ) {
                     self.cancel_metadata_tasks().await;
                 }
+                if matches!(
+                    &e,
+                    Effect::SwitchConnection { .. } | Effect::SwitchToService { .. }
+                ) {
+                    self.smart_er_refresh_task.cancel().await;
+                }
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
-                    self.table_detail_tasks.cancel();
+                    self.table_detail_tasks.cancel().await;
                 }
                 cmd_connection::run(
                     e,
@@ -242,6 +258,7 @@ impl EffectRunner {
             | Effect::CacheInvalidate { .. }) => {
                 if matches!(&e, Effect::FetchMetadata { .. }) {
                     self.cancel_metadata_tasks().await;
+                    self.smart_er_refresh_task.cancel().await;
                 }
                 cmd_browse::metadata::run(
                     e,
@@ -282,19 +299,18 @@ impl EffectRunner {
                     &self.query.cached_result_exporter,
                     &self.query_tasks,
                     state,
-                );
+                )
+                .await;
                 Ok(vec![])
             }
 
             e @ (Effect::GenerateErDiagramFromCache { .. }
             | Effect::ExtractFkNeighbors { .. }
             | Effect::WriteErFailureLog { .. }
-            | Effect::SmartErRefresh { .. }
             | Effect::SmartErRefreshCacheAndDiff { .. }) => {
                 cmd_er::run(
                     e,
                     &self.action_tx,
-                    &self.metadata_provider,
                     &self.er.er_exporter,
                     &self.er.config_writer,
                     &self.er.er_log_writer,
@@ -302,6 +318,18 @@ impl EffectRunner {
                     completion_engine,
                 )
                 .await?;
+                Ok(vec![])
+            }
+
+            Effect::SmartErRefresh { dsn, run_id } => {
+                self.smart_er_refresh_task
+                    .replace(cmd_er::smart_refresh_task(
+                        self.action_tx.clone(),
+                        Arc::clone(&self.metadata_provider),
+                        dsn,
+                        run_id,
+                    ))
+                    .await;
                 Ok(vec![])
             }
 
@@ -512,6 +540,149 @@ mod tests {
             assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
             assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.json_detail.editor().scroll_row(), 2);
+        }
+    }
+
+    mod task_cancellation {
+        use std::future::pending;
+        use std::sync::{Condvar, Mutex};
+        use std::time::Duration as StdDuration;
+
+        use tokio::sync::oneshot;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+
+        struct BlockingDropState {
+            entered: Mutex<Option<oneshot::Sender<()>>>,
+            released: (Mutex<bool>, Condvar),
+        }
+
+        impl BlockingDropState {
+            fn release(&self) {
+                let (released, condvar) = &self.released;
+                *released.lock().expect("release lock poisoned") = true;
+                condvar.notify_one();
+            }
+        }
+
+        struct BlockingDrop(Arc<BlockingDropState>);
+
+        impl Drop for BlockingDrop {
+            fn drop(&mut self) {
+                self.0
+                    .entered
+                    .lock()
+                    .expect("drop signal lock poisoned")
+                    .take()
+                    .expect("drop signal should be observed once")
+                    .send(())
+                    .ok();
+                let (released, condvar) = &self.0.released;
+                let mut released = released.lock().expect("release lock poisoned");
+                while !*released {
+                    let (next, result) = condvar
+                        .wait_timeout(released, StdDuration::from_secs(1))
+                        .expect("release wait poisoned");
+                    released = next;
+                    if result.timed_out() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        struct DropSignal(Mutex<Option<oneshot::Sender<()>>>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0
+                    .lock()
+                    .expect("table drop signal lock poisoned")
+                    .take()
+                    .expect("table drop signal should be observed once")
+                    .send(())
+                    .ok();
+            }
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn cancel_tracked_tasks_aborts_both_groups_before_joining() {
+            let (tx, _rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                tx,
+            );
+
+            let (query_started_tx, query_started_rx) = oneshot::channel();
+            let (query_drop_tx, mut query_drop_rx) = oneshot::channel();
+            let query_drop_state = Arc::new(BlockingDropState {
+                entered: Mutex::new(Some(query_drop_tx)),
+                released: (Mutex::new(false), Condvar::new()),
+            });
+            runner
+                .query_tasks
+                .spawn({
+                    let drop_state = Arc::clone(&query_drop_state);
+                    async move {
+                        let _drop_signal = BlockingDrop(drop_state);
+                        query_started_tx.send(()).ok();
+                        pending::<()>().await;
+                    }
+                })
+                .await;
+            query_started_rx.await.expect("query task should start");
+
+            let (table_started_tx, table_started_rx) = oneshot::channel();
+            let (table_drop_tx, mut table_drop_rx) = oneshot::channel();
+            runner
+                .table_detail_tasks
+                .spawn({
+                    async move {
+                        let _drop_signal = DropSignal(Mutex::new(Some(table_drop_tx)));
+                        table_started_tx.send(()).ok();
+                        pending::<()>().await;
+                    }
+                })
+                .await;
+            table_started_rx
+                .await
+                .expect("table detail task should start");
+
+            let cancel = runner.cancel_tracked_tasks();
+            tokio::pin!(cancel);
+            let observed = tokio::select! {
+                () = &mut cancel => "cancellation finished before query drop",
+                result = &mut query_drop_rx => {
+                    match result {
+                        Ok(()) => match timeout(
+                            Duration::from_secs(1),
+                            &mut table_drop_rx,
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => "",
+                            Ok(Err(_)) => "table drop signal was lost",
+                            Err(_) => "table detail task was not aborted",
+                        },
+                        Err(_) => "query drop signal was lost",
+                    }
+                }
+                () = tokio::time::sleep(Duration::from_secs(1)) => {
+                    "query task was not aborted"
+                }
+            };
+
+            query_drop_state.release();
+            let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
+            assert!(
+                cancellation_finished,
+                "cancellation did not finish: {observed}"
+            );
+            assert!(observed.is_empty(), "{observed}");
         }
     }
 
@@ -1368,6 +1539,282 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    mod smart_er_refresh_lifecycle {
+        use std::future::pending;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use tokio::sync::mpsc::UnboundedSender;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+        use crate::domain::Table;
+        use crate::ports::outbound::DbOperationError;
+        use crate::update::reducer::reduce;
+
+        struct DropSignal(Arc<AtomicUsize>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        struct PendingSmartErProvider {
+            started: UnboundedSender<String>,
+            dropped: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl MetadataProvider for PendingSmartErProvider {
+            async fn fetch_metadata(
+                &self,
+                dsn: &str,
+            ) -> Result<DatabaseMetadata, DbOperationError> {
+                let _guard = DropSignal(Arc::clone(&self.dropped));
+                self.started.send(dsn.to_string()).ok();
+                pending().await
+            }
+
+            async fn fetch_table_detail(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts smart ER refresh")
+            }
+
+            async fn fetch_table_columns_and_fks(
+                &self,
+                _dsn: &str,
+                _schema: &str,
+                _table: &str,
+            ) -> Result<Table, DbOperationError> {
+                unreachable!("test only starts smart ER refresh")
+            }
+
+            async fn fetch_table_signatures(
+                &self,
+                _dsn: &str,
+            ) -> Result<TableSignatureSnapshot, DbOperationError> {
+                unreachable!("test only starts smart ER refresh")
+            }
+        }
+
+        async fn wait_for_no_action(action_rx: &mut mpsc::Receiver<Action>) {
+            assert!(
+                timeout(Duration::from_millis(100), action_rx.recv())
+                    .await
+                    .is_err()
+            );
+        }
+
+        fn runner_with_pending_provider(
+            started: UnboundedSender<String>,
+            dropped: Arc<AtomicUsize>,
+            action_tx: mpsc::Sender<Action>,
+        ) -> EffectRunner {
+            test_fixtures::make_runner(
+                Arc::new(PendingSmartErProvider { started, dropped }),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                action_tx,
+            )
+        }
+
+        #[tokio::test]
+        async fn rerun_aborts_previous_refresh_before_starting_new_one() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SmartErRefresh {
+                        dsn: "postgres://localhost/old".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("postgres://localhost/old")
+            );
+
+            runner
+                .execute_effects(
+                    vec![Effect::SmartErRefresh {
+                        dsn: "postgres://localhost/new".to_string(),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("postgres://localhost/new")
+            );
+            wait_for_no_action(&mut action_rx).await;
+        }
+
+        #[tokio::test]
+        async fn connection_switch_aborts_pending_refresh_and_emits_no_action() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SmartErRefresh {
+                        dsn: "postgres://localhost/current".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("postgres://localhost/current")
+            );
+
+            runner
+                .execute_effects(
+                    vec![Effect::SwitchConnection {
+                        connection_index: usize::MAX,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            wait_for_no_action(&mut action_rx).await;
+        }
+
+        #[tokio::test]
+        async fn metadata_refresh_aborts_pending_smart_er_refresh() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SmartErRefresh {
+                        dsn: "postgres://localhost/current".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("postgres://localhost/current")
+            );
+
+            runner
+                .execute_effects(
+                    vec![Effect::FetchMetadata {
+                        dsn: "postgres://localhost/current".to_string(),
+                        run_id: 2,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            wait_for_no_action(&mut action_rx).await;
+        }
+
+        #[tokio::test]
+        async fn quit_aborts_pending_refresh_and_emits_no_action() {
+            let (started_tx, mut started_rx) = mpsc::unbounded_channel();
+            let dropped = Arc::new(AtomicUsize::new(0));
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let runner = runner_with_pending_provider(started_tx, Arc::clone(&dropped), action_tx);
+            let mut state = AppState::new("test".to_string());
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SmartErRefresh {
+                        dsn: "postgres://localhost/current".to_string(),
+                        run_id: 1,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                started_rx.recv().await.as_deref(),
+                Some("postgres://localhost/current")
+            );
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            runner
+                .execute_effects(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(dropped.load(Ordering::SeqCst), 1);
+            wait_for_no_action(&mut action_rx).await;
         }
     }
 }

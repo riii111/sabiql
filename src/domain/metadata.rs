@@ -25,5 +25,5 @@ pub enum MetadataState {
     NotLoaded,
     Loading,
     Loaded,
-    Error(String),
+    Error,
 }
