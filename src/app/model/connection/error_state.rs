@@ -55,7 +55,10 @@ impl ConnectionErrorState {
     }
 
     pub fn has_destination(&self) -> bool {
-        !matches!(self.source, ConnectionErrorSource::ActiveConnection)
+        matches!(
+            self.source,
+            ConnectionErrorSource::SaveAndConnect | ConnectionErrorSource::ConnectionSwitch
+        )
     }
 
     pub fn can_retry(&self) -> bool {
