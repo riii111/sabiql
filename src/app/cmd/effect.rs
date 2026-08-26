@@ -97,6 +97,7 @@ pub enum Effect {
         access_mode: AccessMode,
     },
     CancelConnectionTask,
+    CancelSqliteDiagnostics,
     CancelTrackedTasks,
     CountRowsForExport {
         dsn: String,

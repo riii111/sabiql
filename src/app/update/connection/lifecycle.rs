@@ -59,10 +59,13 @@ pub fn reduce_connection_lifecycle(
                 state.query.reset_for_context_change();
                 return DispatchResult::handled_with(termination_effects(
                     &state.query,
-                    vec![Effect::ProbeMySqlConnection {
-                        target: target.clone(),
-                        run_id,
-                    }],
+                    vec![
+                        Effect::CancelSqliteDiagnostics,
+                        Effect::ProbeMySqlConnection {
+                            target: target.clone(),
+                            run_id,
+                        },
+                    ],
                 ));
             }
 
@@ -70,7 +73,10 @@ pub fn reduce_connection_lifecycle(
 
             if let Some(cached) = state.connection_caches.get(id).cloned() {
                 restore_cache(state, &cached, target);
-                let mut effects = vec![Effect::ClearCompletionEngineCache];
+                let mut effects = vec![
+                    Effect::CancelSqliteDiagnostics,
+                    Effect::ClearCompletionEngineCache,
+                ];
                 if state.session.effective_user().is_none() {
                     let run_id = state.session.begin_effective_user_fetch();
                     effects.push(Effect::FetchEffectiveUser {
@@ -86,6 +92,7 @@ pub fn reduce_connection_lifecycle(
                 DispatchResult::handled_with(termination_effects(
                     &state.query,
                     vec![
+                        Effect::CancelSqliteDiagnostics,
                         Effect::ClearCompletionEngineCache,
                         Effect::FetchMetadata {
                             dsn: dsn.clone(),
@@ -175,12 +182,11 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state
                     .session
-                    .mark_table_detail_probe_failed(&target.dsn, message.clone());
-                state.session.mark_connection_failed(message);
+                    .mark_table_detail_probe_failed(&target.dsn, message);
+                state.session.mark_connection_failed();
             }
             state.connection_error.set_connection_switch_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
-                target.database_type,
             );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())

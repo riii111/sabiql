@@ -40,9 +40,6 @@ pub fn reduce_connection_setup(
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled_with(cancel_effects)
         }
-        Action::StartEditConnection(id) => {
-            DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
-        }
         Action::ConnectionEditLoaded(profile) => {
             state.session.cancel_connection_save_and_disconnect();
             let cancel_effects = cancel_connection_task_effects(state);
@@ -320,7 +317,7 @@ pub fn reduce_connection_setup(
             if let Some(error_info) = mysql_error {
                 state
                     .connection_error
-                    .set_save_and_connect_error(error_info, *database_type);
+                    .set_save_and_connect_error(error_info);
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
@@ -989,10 +986,7 @@ mod tests {
             );
 
             assert!(state.connection_error.is_save_and_connect_failure());
-            assert_eq!(
-                state.connection_error.destination_database_type(),
-                Some(DatabaseType::MySQL)
-            );
+            assert!(state.connection_error.has_destination());
             let effects =
                 reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
                     .into_effects()

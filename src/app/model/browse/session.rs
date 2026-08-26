@@ -513,8 +513,8 @@ impl BrowseSession {
 
     // On reload failure (already Connected), keeps Connected to preserve
     // the current browse session while surfacing the error.
-    pub fn mark_connection_failed(&mut self, error: String) {
-        self.metadata_state = MetadataState::Error(error);
+    pub fn mark_connection_failed(&mut self) {
+        self.metadata_state = MetadataState::Error;
         self.is_reloading = false;
         self.metadata_run.clear_active();
         if !self.connection_state.is_connected() {
@@ -1398,13 +1398,10 @@ mod tests {
             let mut session = BrowseSession::default();
             session.set_connection_state(ConnectionState::Connecting);
 
-            session.mark_connection_failed("timeout".to_string());
+            session.mark_connection_failed();
 
             assert!(session.connection_state().is_failed());
-            assert_eq!(
-                session.metadata_state(),
-                &MetadataState::Error("timeout".to_string())
-            );
+            assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
         }
 
@@ -1415,13 +1412,10 @@ mod tests {
             let _ = session.begin_reload();
             session.mark_effective_user_loaded(Some("postgres".to_string()));
 
-            session.mark_connection_failed("reload timeout".to_string());
+            session.mark_connection_failed();
 
             assert!(session.connection_state().is_connected());
-            assert_eq!(
-                session.metadata_state(),
-                &MetadataState::Error("reload timeout".to_string())
-            );
+            assert_eq!(session.metadata_state(), &MetadataState::Error);
             assert!(!session.is_reloading());
             assert_eq!(session.effective_user(), Some("postgres"));
         }

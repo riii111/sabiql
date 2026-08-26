@@ -30,7 +30,10 @@ pub(super) fn reduce_confirm_dialog(
             match intent {
                 Some(ConfirmIntent::QuitNoConnection) => {
                     state.should_quit = true;
-                    DispatchResult::handled_with(vec![Effect::CancelTrackedTasks])
+                    DispatchResult::handled_with(vec![
+                        Effect::CancelSqliteDiagnostics,
+                        Effect::CancelTrackedTasks,
+                    ])
                 }
                 Some(ConfirmIntent::DeleteConnection(id)) => {
                     DispatchResult::handled_with(vec![Effect::DeleteConnection { id }])

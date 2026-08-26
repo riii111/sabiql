@@ -115,7 +115,7 @@ pub(super) fn reduce_loading(
             let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(error, dsn);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
-            state.session.mark_connection_failed(error.masked_details());
+            state.session.mark_connection_failed();
             if !was_connected {
                 state.session.set_metadata(None);
                 state.session.clear_table_selection(&mut state.query);
@@ -132,17 +132,6 @@ pub(super) fn reduce_loading(
             } else {
                 termination_effects(&state.query, vec![])
             })
-        }
-        Action::LoadMetadata => {
-            if reject_pending_mysql_connection_probe(state, now) {
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.session.begin_metadata_refresh();
-                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
-            } else {
-                DispatchResult::handled()
-            }
         }
         Action::ReloadMetadata => {
             if reject_pending_mysql_connection_probe(state, now) {
