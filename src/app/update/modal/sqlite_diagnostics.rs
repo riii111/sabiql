@@ -35,7 +35,7 @@ pub(super) fn reduce_sqlite_diagnostics(
         Action::CloseModal(ModalKind::SqliteDiagnostics) => {
             state.sqlite_diagnostics.clear();
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(vec![Effect::CancelSqliteDiagnostics])
         }
         Action::SqliteDiagnosticsCoreLoaded {
             dsn,
@@ -198,6 +198,24 @@ mod tests {
 
         assert!(effects.is_empty());
         assert!(!state.sqlite_diagnostics.is_quick_check_running());
+    }
+
+    #[test]
+    fn close_cancels_diagnostics_task_after_clearing_modal_state() {
+        let mut state = AppState::new("test".to_string());
+        test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/app.db");
+        state.modal.set_mode(InputMode::SqliteDiagnostics);
+        state.sqlite_diagnostics.begin_core_fetch();
+
+        let effects =
+            reduce_at_boundary(&mut state, Action::CloseModal(ModalKind::SqliteDiagnostics));
+
+        assert_eq!(state.input_mode(), InputMode::Normal);
+        assert!(state.sqlite_diagnostics.snapshot().is_none());
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::CancelSqliteDiagnostics]
+        ));
     }
 
     #[test]
