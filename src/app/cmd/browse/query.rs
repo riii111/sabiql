@@ -100,7 +100,6 @@ pub async fn run(
                     {
                         Ok(result) => {
                             tx.send(Action::QueryCompleted {
-                                dsn,
                                 run_id,
                                 result: Arc::new(result),
                                 context: QueryCompletionContext::Preview {
@@ -113,7 +112,6 @@ pub async fn run(
                         }
                         Err(e) => {
                             tx.send(Action::QueryFailed {
-                                dsn,
                                 run_id,
                                 error: e,
                                 context: QueryFailureContext::Preview { generation },
@@ -213,7 +211,6 @@ pub async fn run(
                                 );
                             }
                             tx.send(Action::QueryCompleted {
-                                dsn,
                                 run_id,
                                 result: Arc::new(result),
                                 context: QueryCompletionContext::Adhoc,
@@ -233,7 +230,6 @@ pub async fn run(
                                 );
                             }
                             tx.send(Action::QueryFailed {
-                                dsn,
                                 run_id,
                                 error: e,
                                 context: QueryFailureContext::Adhoc,

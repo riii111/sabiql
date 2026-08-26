@@ -30,12 +30,11 @@ pub fn reduce_execution(
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
-            dsn,
             run_id,
             result,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             if let QueryCompletionContext::Preview { generation, .. } = context
@@ -99,12 +98,11 @@ pub fn reduce_execution(
             DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
         }
         Action::QueryFailed {
-            dsn,
             run_id,
             error,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -568,7 +566,6 @@ mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryFailed {
-            dsn: state.session.dsn().unwrap_or_default().to_string(),
             run_id,
             error,
             context: match source {
@@ -1285,7 +1282,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
@@ -1294,6 +1290,33 @@ mod tests {
                 &AppServices::stub(),
             );
 
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.is_running());
+        }
+
+        #[test]
+        fn same_dsn_reconnect_rejects_previous_query_completion_by_run_id() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+
+            state.session.reset(&mut state.query);
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            let current_run_id = begin_query_run(&mut state);
+
+            let action = Action::QueryCompleted {
+                run_id: stale_run_id,
+                result: adhoc_result(),
+                context: QueryCompletionContext::Adhoc,
+            };
+            assert!(!format!("{action:?}").contains("dsn:"));
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
             assert!(state.query.is_running());
         }
@@ -1309,7 +1332,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: stale_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,

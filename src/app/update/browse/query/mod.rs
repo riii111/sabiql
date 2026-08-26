@@ -96,7 +96,6 @@ pub(super) mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryCompleted {
-            dsn: active_dsn(state),
             run_id,
             result,
             context: match target_page {
