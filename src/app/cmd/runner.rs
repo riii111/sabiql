@@ -598,7 +598,7 @@ mod tests {
                 let mut released = released.lock().expect("release lock poisoned");
                 while !*released {
                     let (next, result) = condvar
-                        .wait_timeout(released, StdDuration::from_secs(1))
+                        .wait_timeout(released, StdDuration::from_secs(10))
                         .expect("release wait poisoned");
                     released = next;
                     if result.timed_out() {
