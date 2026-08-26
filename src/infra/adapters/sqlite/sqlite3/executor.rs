@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::{ExitStatus, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::de::DeserializeOwned;
@@ -7,6 +8,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use crate::adapters::csv_export::CsvOutputError;
 use crate::app::ports::outbound::{DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER};
 
 use super::super::path_validation;
@@ -195,12 +197,12 @@ impl SqliteCli {
 
         let file = tokio::fs::File::create(output_path)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
         let mut writer = tokio::io::BufWriter::new(file);
 
         let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
-                write_sql_to_stdin(stdin, &sql),
+                async { Ok::<_, CsvOutputError>(write_sql_to_stdin(stdin, &sql).await?) },
                 async {
                     if let Some(mut stdout) = stdout {
                         let mut buf = [0u8; 8192];
@@ -217,25 +219,34 @@ impl SqliteCli {
                             {
                                 let output =
                                     newline_normalizer.normalize(&buf[..n], &mut normalized_buf);
-                                writer.write_all(output).await?;
+                                writer
+                                    .write_all(output)
+                                    .await
+                                    .map_err(CsvOutputError::File)?;
                             }
                             #[cfg(not(windows))]
-                            writer.write_all(&buf[..n]).await?;
+                            writer
+                                .write_all(&buf[..n])
+                                .await
+                                .map_err(CsvOutputError::File)?;
                         }
                         #[cfg(windows)]
                         if let Some(trailing_carriage_return) = newline_normalizer.finish() {
-                            writer.write_all(&[trailing_carriage_return]).await?;
+                            writer
+                                .write_all(&[trailing_carriage_return])
+                                .await
+                                .map_err(CsvOutputError::File)?;
                         }
-                        writer.flush().await?;
+                        writer.flush().await.map_err(CsvOutputError::File)?;
                     }
-                    Ok::<_, std::io::Error>(())
+                    Ok::<_, CsvOutputError>(())
                 },
                 async {
                     let mut buf = Vec::new();
                     if let Some(ref mut stderr) = stderr_handle {
                         stderr.read_to_end(&mut buf).await?;
                     }
-                    Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                    Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
                 }
             );
 
@@ -243,7 +254,7 @@ impl SqliteCli {
             stdout_result?;
             let stderr = stderr_result?;
             let status = child.wait().await?;
-            Ok::<_, std::io::Error>((status, stderr))
+            Ok::<_, CsvOutputError>((status, stderr))
         })
         .await;
 
@@ -252,7 +263,7 @@ impl SqliteCli {
                 Ok(values) => values,
                 Err(error) => {
                     let _ = tokio::fs::remove_file(output_path).await;
-                    return Err(DbOperationError::QueryFailed(error.to_string()));
+                    return Err(error.into_db_operation_error());
                 }
             },
             Err(error) => {

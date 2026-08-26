@@ -195,7 +195,8 @@ mod tests {
                 .await
                 .unwrap_err();
 
-            assert!(matches!(error, DbOperationError::QueryFailed(_)));
+            assert!(matches!(error, DbOperationError::ExportIo(_)));
+            assert!(std::error::Error::source(&error).is_some());
         }
     }
 }

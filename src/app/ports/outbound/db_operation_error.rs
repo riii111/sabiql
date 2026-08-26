@@ -139,6 +139,8 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("CSV export failed")]
+    ExportIo(#[source] Arc<std::io::Error>),
     #[error("Preview exceeded its byte budget")]
     PreviewSizeExceeded(String),
     #[error("Query failed after a change")]
@@ -218,6 +220,10 @@ impl DbOperationError {
                 "Check the table, column, or connected database",
             ),
             Self::QueryFailed(_) => ("Query failed", "Review the database error details and SQL"),
+            Self::ExportIo(_) => (
+                "CSV export failed",
+                "Check the export folder and available disk space",
+            ),
             Self::PreviewSizeExceeded(_) => (
                 "Preview exceeded its byte budget",
                 "Reduce the preview value size and retry",
@@ -334,6 +340,7 @@ impl DbOperationError {
             | Self::Timeout(details)
             | Self::Canceled(details)
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
+            Self::ExportIo(error) => Cow::Owned(error.to_string()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
             Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
@@ -412,6 +419,7 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
+        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperationWithKind {
             kind: UnsupportedOperationKind::ClientVersion,
@@ -545,6 +553,23 @@ mod tests {
             assert_eq!(
                 error.user_message(),
                 "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
+            );
+        }
+
+        #[test]
+        fn export_io_uses_export_guidance_and_preserves_source() {
+            let error = DbOperationError::ExportIo(Arc::new(std::io::Error::other("disk full")));
+
+            assert_eq!(error.summary(), "CSV export failed");
+            assert_eq!(
+                error.hint(),
+                "Check the export folder and available disk space"
+            );
+            assert_eq!(error.masked_details(), "disk full");
+            assert!(std::error::Error::source(&error).is_some());
+            assert_eq!(
+                error.user_message(),
+                "CSV export failed: disk full. Check the export folder and available disk space."
             );
         }
 

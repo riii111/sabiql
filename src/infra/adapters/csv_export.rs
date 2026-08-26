@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
@@ -84,6 +85,26 @@ impl Drop for RemoveOnDropGuard {
     }
 }
 
+pub enum CsvOutputError {
+    File(std::io::Error),
+    Process(std::io::Error),
+}
+
+impl From<std::io::Error> for CsvOutputError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Process(error)
+    }
+}
+
+impl CsvOutputError {
+    pub fn into_db_operation_error(self) -> DbOperationError {
+        match self {
+            Self::File(error) => DbOperationError::ExportIo(Arc::new(error)),
+            Self::Process(error) => DbOperationError::QueryFailed(error.to_string()),
+        }
+    }
+}
+
 pub async fn export_to_downloads<F, Fut>(
     file_name: &str,
     write: F,
@@ -116,7 +137,7 @@ impl CsvFileWriter {
     pub(crate) async fn create(path: PathBuf) -> Result<Self, DbOperationError> {
         let file = tokio::fs::File::create(path)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
         Ok(Self {
             file: BufWriter::new(file),
             csv_writer: new_csv_writer(),
@@ -148,11 +169,11 @@ impl CsvFileWriter {
         self.file
             .write_all(&encoded)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
         self.file
             .flush()
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))
     }
 
     async fn flush_buffer(&mut self) -> Result<(), DbOperationError> {
@@ -163,11 +184,11 @@ impl CsvFileWriter {
         self.file
             .write_all(&encoded)
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
         self.file
             .flush()
             .await
-            .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
         self.bytes_since_flush = 0;
         Ok(())
     }
@@ -189,7 +210,7 @@ where
 
     tokio::fs::hard_link(&temporary_path, &final_path)
         .await
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
     let mut published_file = RemoveOnDropGuard::new(final_path.clone());
 
     if cleanup(&temporary_path).is_ok() {
@@ -202,7 +223,6 @@ where
 #[cfg(test)]
 mod tests {
     use std::future::pending;
-    use std::sync::Arc;
 
     use tempfile::tempdir;
     use tokio::sync::Barrier;
@@ -274,7 +294,8 @@ mod tests {
         let error = export_to_path(final_path.clone(), |_| async { Ok(()) })
             .await
             .unwrap_err();
-        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+        assert!(matches!(error, DbOperationError::ExportIo(_)));
+        assert!(std::error::Error::source(&error).is_some());
         assert_eq!(
             tokio::fs::read_to_string(final_path).await.unwrap(),
             "complete,csv\n"
@@ -310,7 +331,8 @@ mod tests {
         })
         .await
         .unwrap_err();
-        assert!(matches!(rename_error, DbOperationError::QueryFailed(_)));
+        assert!(matches!(rename_error, DbOperationError::ExportIo(_)));
+        assert!(std::error::Error::source(&rename_error).is_some());
         assert!(!rename_dir.exists());
     }
 
@@ -399,14 +421,8 @@ mod tests {
         let second = second.await.unwrap();
 
         assert!(first.is_ok() ^ second.is_ok());
-        assert!(matches!(
-            first,
-            Ok(_) | Err(DbOperationError::QueryFailed(_))
-        ));
-        assert!(matches!(
-            second,
-            Ok(_) | Err(DbOperationError::QueryFailed(_))
-        ));
+        assert!(matches!(first, Ok(_) | Err(DbOperationError::ExportIo(_))));
+        assert!(matches!(second, Ok(_) | Err(DbOperationError::ExportIo(_))));
         assert!(matches!(
             tokio::fs::read_to_string(final_path)
                 .await

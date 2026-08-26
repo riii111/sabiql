@@ -1,11 +1,13 @@
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 use tokio::time::timeout;
 
+use crate::adapters::csv_export::CsvOutputError;
 use crate::app::ports::outbound::DbOperationError;
 use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
 
@@ -23,7 +25,7 @@ async fn collect_csv_output(
 
     let file = tokio::fs::File::create(path)
         .await
-        .map_err(|e| DbOperationError::QueryFailed(format!("Failed to create file: {e}")))?;
+        .map_err(|e| DbOperationError::ExportIo(Arc::new(e)))?;
     let mut writer = tokio::io::BufWriter::new(file);
 
     let result = timeout(timeout_duration, async {
@@ -36,23 +38,26 @@ async fn collect_csv_output(
                         if n == 0 {
                             break;
                         }
-                        writer.write_all(&buf[..n]).await?;
+                        writer
+                            .write_all(&buf[..n])
+                            .await
+                            .map_err(CsvOutputError::File)?;
                     }
-                    writer.flush().await?;
+                    writer.flush().await.map_err(CsvOutputError::File)?;
                 }
-                Ok::<_, std::io::Error>(())
+                Ok::<_, CsvOutputError>(())
             },
             async {
                 let mut buf = Vec::new();
                 if let Some(mut err) = stderr_handle {
                     err.read_to_end(&mut buf).await?;
                 }
-                Ok::<_, std::io::Error>(String::from_utf8_lossy(&buf).into_owned())
+                Ok::<_, CsvOutputError>(String::from_utf8_lossy(&buf).into_owned())
             },
-            child.wait(),
+            async { Ok::<_, CsvOutputError>(child.wait().await?) },
         )?;
 
-        Ok::<_, std::io::Error>((status, stderr))
+        Ok::<_, CsvOutputError>((status, stderr))
     })
     .await;
 
@@ -65,7 +70,7 @@ async fn collect_csv_output(
         }
         Ok(Err(e)) => {
             let _ = tokio::fs::remove_file(path).await;
-            Err(DbOperationError::QueryFailed(e.to_string()))
+            Err(e.into_db_operation_error())
         }
         Err(e) => {
             let _ = tokio::fs::remove_file(path).await;
