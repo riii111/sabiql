@@ -189,7 +189,7 @@ pub fn reduce_execution(
                     state.session.cancel_connection_save_and_disconnect();
                     state.session.clear_mysql_connection_probe();
                     state.should_quit = true;
-                    vec![Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
+                    vec![Effect::CancelTrackedTasks]
                 }
                 Action::ToggleModal(ModalKind::Help) => {
                     state.ui.help_mut().open(HelpOrigin::CommandLine);
@@ -627,10 +627,7 @@ mod tests {
             assert!(state.should_quit);
             assert!(!state.session.is_current_connection_save(save_run_id));
             assert!(state.session.pending_mysql_connection_probe().is_none());
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
-            ));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]

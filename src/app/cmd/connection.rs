@@ -40,15 +40,21 @@ impl ConnectionTaskOwner {
     }
 
     pub(crate) async fn cancel(&self) {
+        if let Some(task) = self.abort() {
+            let _ = task.await;
+        }
+    }
+
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
         let task = self
             .active
             .lock()
             .expect("connection task lock poisoned")
             .take();
-        if let Some(task) = task {
+        if let Some(task) = &task {
             task.abort();
-            let _ = task.await;
         }
+        task
     }
 }
 

@@ -119,6 +119,10 @@ impl EffectRunner {
     }
 
     async fn cancel_tracked_tasks(&self) {
+        let connection_task = self.connection_task.abort();
+        let metadata_tasks = self.metadata_tasks.abort();
+        let smart_er_task = self.smart_er_refresh_task.abort();
+        let sqlite_diagnostics_tasks = self.sqlite_diagnostics_task.abort();
         let (query_task, table_detail_task) =
             tokio::join!(self.query_tasks.abort(), self.table_detail_tasks.abort());
         if let Some(task) = query_task {
@@ -127,9 +131,16 @@ impl EffectRunner {
         if let Some(task) = table_detail_task {
             let _ = task.await;
         }
-        self.cancel_metadata_tasks().await;
-        self.connection_task.cancel().await;
-        self.smart_er_refresh_task.cancel().await;
+        if let Some(task) = connection_task {
+            let _ = task.await;
+        }
+        for task in metadata_tasks
+            .into_iter()
+            .chain(smart_er_task)
+            .chain(sqlite_diagnostics_tasks)
+        {
+            let _ = task.await;
+        }
     }
 
     pub async fn execute_effects<T: Renderer>(
@@ -597,22 +608,22 @@ mod tests {
             }
         }
 
-        struct DropSignal(Mutex<Option<oneshot::Sender<()>>>);
+        struct TaskDropSignal(Mutex<Option<oneshot::Sender<()>>>);
 
-        impl Drop for DropSignal {
+        impl Drop for TaskDropSignal {
             fn drop(&mut self) {
                 self.0
                     .lock()
-                    .expect("table drop signal lock poisoned")
+                    .expect("task drop signal lock poisoned")
                     .take()
-                    .expect("table drop signal should be observed once")
+                    .expect("task drop signal should be observed once")
                     .send(())
                     .ok();
             }
         }
 
-        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-        async fn cancel_tracked_tasks_aborts_both_groups_before_joining() {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        async fn cancel_tracked_tasks_aborts_all_groups_before_joining() {
             let (tx, _rx) = mpsc::channel(8);
             let runner = test_fixtures::make_runner(
                 Arc::new(MockMetadataProvider::new()),
@@ -647,7 +658,7 @@ mod tests {
                 .table_detail_tasks
                 .spawn({
                     async move {
-                        let _drop_signal = DropSignal(Mutex::new(Some(table_drop_tx)));
+                        let _drop_signal = TaskDropSignal(Mutex::new(Some(table_drop_tx)));
                         table_started_tx.send(()).ok();
                         pending::<()>().await;
                     }
@@ -657,37 +668,40 @@ mod tests {
                 .await
                 .expect("table detail task should start");
 
+            let (connection_started_tx, connection_started_rx) = oneshot::channel();
+            let (connection_drop_tx, mut connection_drop_rx) = oneshot::channel();
+            runner
+                .connection_task
+                .replace(async move {
+                    let _drop_signal = TaskDropSignal(Mutex::new(Some(connection_drop_tx)));
+                    connection_started_tx.send(()).ok();
+                    pending::<()>().await;
+                })
+                .await;
+            connection_started_rx
+                .await
+                .expect("connection task should start");
+
             let cancel = runner.cancel_tracked_tasks();
             tokio::pin!(cancel);
-            let observed = tokio::select! {
-                () = &mut cancel => "cancellation finished before query drop",
-                result = &mut query_drop_rx => {
-                    match result {
-                        Ok(()) => match timeout(
-                            Duration::from_secs(1),
-                            &mut table_drop_rx,
-                        )
-                        .await
-                        {
-                            Ok(Ok(())) => "",
-                            Ok(Err(_)) => "table drop signal was lost",
-                            Err(_) => "table detail task was not aborted",
-                        },
-                        Err(_) => "query drop signal was lost",
-                    }
-                }
-                () = tokio::time::sleep(Duration::from_secs(1)) => {
-                    "query task was not aborted"
-                }
+            let connection_aborted = tokio::select! {
+                result = &mut connection_drop_rx => result.is_ok(),
+                () = &mut cancel => false,
+                () = tokio::time::sleep(Duration::from_secs(1)) => false,
             };
 
             query_drop_state.release();
+            let query_dropped = timeout(Duration::from_secs(1), &mut query_drop_rx)
+                .await
+                .is_ok();
+            let table_dropped = timeout(Duration::from_secs(1), &mut table_drop_rx)
+                .await
+                .is_ok();
             let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
-            assert!(
-                cancellation_finished,
-                "cancellation did not finish: {observed}"
-            );
-            assert!(observed.is_empty(), "{observed}");
+            assert!(connection_aborted, "connection task was not aborted first");
+            assert!(query_dropped, "query task was not aborted");
+            assert!(table_dropped, "table detail task was not aborted");
+            assert!(cancellation_finished, "cancellation did not finish");
         }
     }
 
