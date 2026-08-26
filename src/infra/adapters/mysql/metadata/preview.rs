@@ -9,7 +9,7 @@ use super::super::{
         MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet,
         validate_mysql_multi_query_with_lower_case_table_names,
     },
-    dsn::parse_and_validate_mysql_dsn,
+    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
     option_file::MySqlOptionFile,
     sql::{
         PREVIEW_COLUMN_METADATA_RESULT_COLUMNS, build_preview_query, preview_columns_query,
@@ -77,7 +77,10 @@ async fn execute_preview_with_program(
         execute_preview_with_session(&mut session, database, schema, table, limit, offset),
     )
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 async fn execute_preview_with_session(

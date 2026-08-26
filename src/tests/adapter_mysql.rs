@@ -180,7 +180,7 @@ mod connection {
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
-        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
             error_info.kind,
             ConnectionErrorKind::AuthFailed,
@@ -204,7 +204,7 @@ mod connection {
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn).kind,
+            ConnectionErrorInfo::from_db_operation_error(&error).kind,
             ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsCaVerification)
         );
     }
@@ -219,7 +219,7 @@ mod connection {
         let adapter = MySqlAdapter::new();
         let dsn = adapter.build_dsn(&profile);
         let error = adapter.probe(&dsn).await.unwrap_err();
-        let error_info = ConnectionErrorInfo::from_db_operation_error_with_dsn(&error, &dsn);
+        let error_info = ConnectionErrorInfo::from_db_operation_error(&error);
         assert_eq!(
             error_info.kind,
             ConnectionErrorKind::MySqlConnectionFailure(
@@ -242,11 +242,7 @@ mod connection {
         let permission_dsn = adapter.build_dsn(&permission_profile);
         let permission_error = adapter.probe(&permission_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(
-                &permission_error,
-                &permission_dsn
-            )
-            .kind,
+            ConnectionErrorInfo::from_db_operation_error(&permission_error).kind,
             ConnectionErrorKind::PermissionDenied
         );
 
@@ -258,8 +254,7 @@ mod connection {
         let missing_dsn = adapter.build_dsn(&missing_profile);
         let missing_error = adapter.probe(&missing_dsn).await.unwrap_err();
         assert_eq!(
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&missing_error, &missing_dsn)
-                .kind,
+            ConnectionErrorInfo::from_db_operation_error(&missing_error).kind,
             ConnectionErrorKind::DatabaseNotFound
         );
 
@@ -268,8 +263,7 @@ mod connection {
         let auth_profile = mysql_profile("mysql-authentication", auth_config);
         let auth_dsn = adapter.build_dsn(&auth_profile);
         let auth_error = adapter.probe(&auth_dsn).await.unwrap_err();
-        let auth_info =
-            ConnectionErrorInfo::from_db_operation_error_with_dsn(&auth_error, &auth_dsn);
+        let auth_info = ConnectionErrorInfo::from_db_operation_error(&auth_error);
         assert_eq!(
             auth_info.kind,
             ConnectionErrorKind::AuthFailed,
