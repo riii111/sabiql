@@ -103,6 +103,27 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
     state.connection_caches.save(&current_id, cache);
 }
 
+pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect> {
+    let table_detail_retry =
+        state
+            .session
+            .retry_table_detail_after_probe_failure()
+            .map(|(dsn, generation, run_id)| Effect::FetchTableDetail {
+                dsn,
+                schema: state.query.pagination.schema().to_string(),
+                table: state.query.pagination.table().to_string(),
+                generation,
+                run_id,
+            });
+    state.session.clear_mysql_connection_probe();
+
+    let mut effects = vec![Effect::CancelConnectionTask];
+    if let Some(table_detail_retry) = table_detail_retry {
+        effects.push(table_detail_retry);
+    }
+    effects
+}
+
 pub(super) fn reset_active_connection_state(state: &mut AppState) {
     let inspector_tab = state.ui.inspector_tab();
     reset_state_before_connection_reconciliation(state);

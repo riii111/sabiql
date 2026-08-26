@@ -19,26 +19,35 @@ impl SqliteDiagnosticsTaskOwner {
     where
         F: std::future::Future<Output = ()> + Send + 'static,
     {
-        Self::cancel_slot(slot).await;
+        if let Some(task) = Self::abort_slot(slot) {
+            let _ = task.await;
+        }
         let task = tokio::spawn(task);
         *slot.lock().expect("SQLite diagnostics task lock poisoned") = Some(task);
     }
 
-    async fn cancel_slot(slot: &std::sync::Mutex<Option<JoinHandle<()>>>) {
+    fn abort_slot(slot: &std::sync::Mutex<Option<JoinHandle<()>>>) -> Option<JoinHandle<()>> {
         let task = {
             slot.lock()
                 .expect("SQLite diagnostics task lock poisoned")
                 .take()
         };
-        if let Some(task) = task {
+        if let Some(task) = &task {
             task.abort();
+        }
+        task
+    }
+
+    pub(crate) async fn cancel(&self) {
+        for task in self.abort() {
             let _ = task.await;
         }
     }
 
-    pub(crate) async fn cancel(&self) {
-        Self::cancel_slot(&self.core).await;
-        Self::cancel_slot(&self.quick_check).await;
+    pub(crate) fn abort(&self) -> Vec<JoinHandle<()>> {
+        let core = Self::abort_slot(&self.core);
+        let quick_check = Self::abort_slot(&self.quick_check);
+        [core, quick_check].into_iter().flatten().collect()
     }
 }
 

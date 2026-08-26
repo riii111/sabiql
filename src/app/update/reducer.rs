@@ -81,8 +81,10 @@ fn dispatch_enabled_action(
             vec![]
         }
         Action::Quit => {
+            state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             state.should_quit = true;
-            vec![Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
+            vec![Effect::CancelTrackedTasks]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -222,10 +224,7 @@ mod tests {
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
-            ));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
@@ -2105,7 +2104,7 @@ mod tests {
                 state.confirm_dialog.intent(),
                 Some(&ConfirmIntent::QuitNoConnection)
             ));
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
 
         #[test]
@@ -2123,7 +2122,7 @@ mod tests {
             );
 
             assert_eq!(state.input_mode(), InputMode::Normal);
-            assert!(effects.is_empty());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
     }
 
@@ -2153,10 +2152,7 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
-            ));
+            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
         #[test]
