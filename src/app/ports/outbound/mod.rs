@@ -31,9 +31,8 @@ pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, ExportIoSource,
-    MYSQL_CONNECT_TIMEOUT_ERRNOS, SqliteCompatibilityKind, UnsupportedOperationKind,
-    is_mysql_connect_timeout_message, mysql_server_error_code,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, ExportIoSource, SqliteCompatibilityKind,
+    UnsupportedOperationKind,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;
