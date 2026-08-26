@@ -1,11 +1,27 @@
 use std::io::{self, Write};
 
-use crate::app::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, is_mysql_connect_timeout_message,
-    mysql_server_error_code,
-};
+use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
 use super::probe::mysql_tls_failure_kind;
+
+const MYSQL_CONNECT_TIMEOUT_ERRNOS: [&str; 3] = ["(60)", "(110)", "(10060)"];
+
+fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
+    let start = lowercase_details.find("error ")? + "error ".len();
+    let digits = &lowercase_details[start..];
+    let end = digits
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(digits.len());
+    digits[..end].parse().ok()
+}
+
+pub(super) fn is_mysql_connect_timeout_message(value: &str) -> bool {
+    let lowercase = value.to_ascii_lowercase();
+    lowercase.contains("can't connect to mysql server")
+        && MYSQL_CONNECT_TIMEOUT_ERRNOS
+            .iter()
+            .any(|errno| lowercase.contains(errno))
+}
 
 pub(super) fn map_mysql_cli_spawn_error(error: io::Error) -> DbOperationError {
     if error.kind() == io::ErrorKind::NotFound {
@@ -84,7 +100,7 @@ pub(super) fn classify_mysql_query_failure_with_packet_limit(
     } else if lower.contains("command denied") {
         DbOperationError::PermissionDenied(details)
     } else if lower.contains("unknown database") {
-        DbOperationError::ConnectionFailed(details)
+        connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details)
     } else if lower.contains("doesn't exist") || lower.contains("does not exist") {
         DbOperationError::ObjectMissing(details)
     } else if lower.contains("access denied") || lower.contains("authentication") {
@@ -136,6 +152,9 @@ fn classify_mysql_server_error(
             ConnectionFailureKind::ConnectionRefused,
             details.to_string(),
         ),
+        2005 => {
+            connection_failed_with_kind(ConnectionFailureKind::HostUnreachable, details.to_string())
+        }
         3024 => error(DbOperationError::Timeout),
         _ => return None,
     })
@@ -272,6 +291,32 @@ mod tests {
     }
 
     #[test]
+    fn classifies_mysql_unknown_host_errno_as_host_unreachable() {
+        let details = "ERROR 2005 (HY000): Unknown MySQL server host 'db.internal' (11001)";
+
+        assert!(matches!(
+            classify_mysql_query_failure(details.as_bytes()),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::HostUnreachable,
+                details: actual_details,
+            } if actual_details == details
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_unknown_database_without_error_code_as_database_not_found() {
+        let details = "mysql: [ERROR] Unknown database 'missing'";
+
+        assert!(matches!(
+            classify_mysql_query_failure(details.as_bytes()),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                details: actual_details,
+            } if actual_details == details
+        ));
+    }
+
+    #[test]
     fn preserves_mysql_query_timeout_code_and_message_in_timeout_details() {
         let details = "ERROR 3024 (HY000): Query execution was interrupted, maximum statement execution time exceeded";
 
@@ -298,6 +343,21 @@ mod tests {
 
         let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): SSL connection error");
         assert!(matches!(error, DbOperationError::QueryFailed(_)));
+
+        let error = classify_mysql_query_failure(b"ERROR 9999 (HY000): Unknown database 'missing'");
+        assert!(matches!(error, DbOperationError::QueryFailed(_)));
+    }
+
+    #[test]
+    fn mysql_connect_timeout_classifier_preserves_errno_and_case_rules() {
+        for errno in MYSQL_CONNECT_TIMEOUT_ERRNOS {
+            assert!(is_mysql_connect_timeout_message(&format!(
+                "Can't connect to MySQL server (host) {errno}"
+            )));
+        }
+        assert!(!is_mysql_connect_timeout_message(
+            "Can't connect to MySQL server (host) (111)"
+        ));
     }
 
     #[test]

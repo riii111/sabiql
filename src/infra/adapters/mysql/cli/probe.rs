@@ -9,11 +9,12 @@ use tokio::time::timeout;
 
 use crate::app::ports::outbound::{
     ConnectionFailureKind, DbOperationError, MySqlConnectionProbeResult, UnsupportedOperationKind,
-    is_mysql_connect_timeout_message,
 };
 
 use super::args::mysql_connection_args;
-use super::error::{clean_mysql_stderr, map_mysql_cli_spawn_error};
+use super::error::{
+    clean_mysql_stderr, is_mysql_connect_timeout_message, map_mysql_cli_spawn_error,
+};
 use super::sanitize_mysql_command_environment;
 
 const MYSQL_PROBE_TIMEOUT: Duration = Duration::from_secs(11);
@@ -425,6 +426,30 @@ mod probe_tests {
             classify_mysql_probe_failure(
                 "ERROR 1049 (42000): Unknown database 'missing'".to_string()
             ),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::DatabaseNotFound,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_probe_unknown_host_errno_as_host_unreachable() {
+        assert!(matches!(
+            classify_mysql_probe_failure(
+                "ERROR 2005 (HY000): Unknown MySQL server host 'db.internal' (11001)".to_string()
+            ),
+            DbOperationError::ConnectionFailedWithKind {
+                kind: ConnectionFailureKind::HostUnreachable,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn classifies_mysql_probe_unknown_database_without_error_code_as_database_not_found() {
+        assert!(matches!(
+            classify_mysql_probe_failure("mysql: [ERROR] Unknown database 'missing'".to_string()),
             DbOperationError::ConnectionFailedWithKind {
                 kind: ConnectionFailureKind::DatabaseNotFound,
                 ..
