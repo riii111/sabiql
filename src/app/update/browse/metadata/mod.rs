@@ -76,6 +76,17 @@ mod tests {
         state
     }
 
+    fn sqlite_state_with_dsn(dsn: &str) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            dsn,
+        );
+        state
+    }
+
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
         Box::new(test_support::table::minimal(schema, name))
     }
@@ -869,6 +880,42 @@ mod tests {
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
+        }
+
+        #[test]
+        fn metadata_reload_does_not_cancel_diagnostics_modal_task() {
+            let mut state = sqlite_state_with_dsn("sqlite:///tmp/test.db");
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_core_fetch();
+            state.modal.set_mode(InputMode::SqliteDiagnostics);
+            let metadata_run_id = state.session.begin_metadata_refresh();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::MetadataLoaded {
+                    dsn: "sqlite:///tmp/test.db".to_string(),
+                    run_id: metadata_run_id,
+                    metadata: make_metadata(vec![("public", "orders")]),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
+            );
+            assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
+            assert!(state.sqlite_diagnostics.is_current_run(diagnostics_run_id));
+            assert!(state.sqlite_diagnostics.snapshot().is_none());
         }
 
         #[test]

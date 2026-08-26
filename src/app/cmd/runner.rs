@@ -77,6 +77,7 @@ pub struct EffectRunner {
     table_detail_tasks: TableDetailTaskRegistry,
     metadata_tasks: Arc<MetadataTaskRegistry>,
     mysql_connection_probe_task: MySqlConnectionProbeTaskOwner,
+    sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner,
     smart_er_refresh_task: SmartErRefreshTaskOwner,
 }
 
@@ -104,6 +105,7 @@ impl EffectRunner {
             table_detail_tasks: TableDetailTaskRegistry::default(),
             metadata_tasks: Arc::new(MetadataTaskRegistry::default()),
             mysql_connection_probe_task: MySqlConnectionProbeTaskOwner::default(),
+            sqlite_diagnostics_task: sqlite_diagnostics::SqliteDiagnosticsTaskOwner::default(),
             smart_er_refresh_task: SmartErRefreshTaskOwner::default(),
         }
     }
@@ -272,6 +274,11 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
+            Effect::CancelSqliteDiagnostics => {
+                self.sqlite_diagnostics_task.cancel().await;
+                Ok(vec![])
+            }
+
             Effect::CancelTrackedTasks => {
                 self.cancel_tracked_tasks().await;
                 Ok(vec![])
@@ -338,11 +345,13 @@ impl EffectRunner {
 
             e @ (Effect::FetchSqliteDiagnosticsCore { .. }
             | Effect::FetchSqliteDiagnosticsQuickCheck { .. }) => {
-                sqlite_diagnostics::spawn_sqlite_diagnostics(
+                sqlite_diagnostics::run(
                     e,
                     &self.action_tx,
                     &self.query.sqlite_diagnostics,
-                );
+                    &self.sqlite_diagnostics_task,
+                )
+                .await;
                 Ok(vec![])
             }
 

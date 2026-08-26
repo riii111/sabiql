@@ -82,7 +82,7 @@ fn dispatch_enabled_action(
         }
         Action::Quit => {
             state.should_quit = true;
-            vec![Effect::CancelTrackedTasks]
+            vec![Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
         }
         Action::Resize(w, h) => {
             state.ui.set_terminal_width(w);
@@ -222,7 +222,10 @@ mod tests {
             let effects = reduce(&mut state, Action::Quit, now, &AppServices::stub());
 
             assert!(state.should_quit);
-            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
+            ));
         }
 
         #[test]
@@ -2150,7 +2153,10 @@ mod tests {
 
             assert!(state.should_quit);
             assert!(state.confirm_dialog.intent().is_none());
-            assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
+            ));
         }
 
         #[test]
@@ -2625,7 +2631,7 @@ mod tests {
                     .explorer_selected,
                 5
             );
-            assert_eq!(effects.len(), 3);
+            assert_eq!(effects.len(), 4);
         }
 
         #[test]
@@ -2675,7 +2681,7 @@ mod tests {
                 state.session.metadata().as_ref().unwrap().database_name,
                 "cached_db"
             );
-            assert_eq!(effects.len(), 3);
+            assert_eq!(effects.len(), 4);
             assert!(
                 effects
                     .iter()
