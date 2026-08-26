@@ -114,8 +114,14 @@ impl EffectRunner {
     }
 
     async fn cancel_tracked_tasks(&self) {
-        self.query_tasks.cancel();
-        self.table_detail_tasks.cancel();
+        let (query_task, table_detail_task) =
+            tokio::join!(self.query_tasks.abort(), self.table_detail_tasks.abort());
+        if let Some(task) = query_task {
+            let _ = task.await;
+        }
+        if let Some(task) = table_detail_task {
+            let _ = task.await;
+        }
         self.cancel_metadata_tasks().await;
         self.mysql_connection_probe_task.cancel().await;
     }
@@ -216,7 +222,7 @@ impl EffectRunner {
                     self.cancel_metadata_tasks().await;
                 }
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
-                    self.table_detail_tasks.cancel();
+                    self.table_detail_tasks.cancel().await;
                 }
                 cmd_connection::run(
                     e,
@@ -275,7 +281,8 @@ impl EffectRunner {
                     &self.query.cached_result_exporter,
                     &self.query_tasks,
                     state,
-                );
+                )
+                .await;
                 Ok(vec![])
             }
 
@@ -503,6 +510,149 @@ mod tests {
             assert_eq!(state.ui.json_detail_editor_visible_rows(), 2);
             assert_eq!(state.json_detail.editor().cursor_to_position().0, 3);
             assert_eq!(state.json_detail.editor().scroll_row(), 2);
+        }
+    }
+
+    mod task_cancellation {
+        use std::future::pending;
+        use std::sync::{Condvar, Mutex};
+        use std::time::Duration as StdDuration;
+
+        use tokio::sync::oneshot;
+        use tokio::time::{Duration, timeout};
+
+        use super::*;
+
+        struct BlockingDropState {
+            entered: Mutex<Option<oneshot::Sender<()>>>,
+            released: (Mutex<bool>, Condvar),
+        }
+
+        impl BlockingDropState {
+            fn release(&self) {
+                let (released, condvar) = &self.released;
+                *released.lock().expect("release lock poisoned") = true;
+                condvar.notify_one();
+            }
+        }
+
+        struct BlockingDrop(Arc<BlockingDropState>);
+
+        impl Drop for BlockingDrop {
+            fn drop(&mut self) {
+                self.0
+                    .entered
+                    .lock()
+                    .expect("drop signal lock poisoned")
+                    .take()
+                    .expect("drop signal should be observed once")
+                    .send(())
+                    .ok();
+                let (released, condvar) = &self.0.released;
+                let mut released = released.lock().expect("release lock poisoned");
+                while !*released {
+                    let (next, result) = condvar
+                        .wait_timeout(released, StdDuration::from_secs(1))
+                        .expect("release wait poisoned");
+                    released = next;
+                    if result.timed_out() {
+                        break;
+                    }
+                }
+            }
+        }
+
+        struct DropSignal(Mutex<Option<oneshot::Sender<()>>>);
+
+        impl Drop for DropSignal {
+            fn drop(&mut self) {
+                self.0
+                    .lock()
+                    .expect("table drop signal lock poisoned")
+                    .take()
+                    .expect("table drop signal should be observed once")
+                    .send(())
+                    .ok();
+            }
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn cancel_tracked_tasks_aborts_both_groups_before_joining() {
+            let (tx, _rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                TtlCache::new(300),
+                tx,
+            );
+
+            let (query_started_tx, query_started_rx) = oneshot::channel();
+            let (query_drop_tx, mut query_drop_rx) = oneshot::channel();
+            let query_drop_state = Arc::new(BlockingDropState {
+                entered: Mutex::new(Some(query_drop_tx)),
+                released: (Mutex::new(false), Condvar::new()),
+            });
+            runner
+                .query_tasks
+                .spawn({
+                    let drop_state = Arc::clone(&query_drop_state);
+                    async move {
+                        let _drop_signal = BlockingDrop(drop_state);
+                        query_started_tx.send(()).ok();
+                        pending::<()>().await;
+                    }
+                })
+                .await;
+            query_started_rx.await.expect("query task should start");
+
+            let (table_started_tx, table_started_rx) = oneshot::channel();
+            let (table_drop_tx, mut table_drop_rx) = oneshot::channel();
+            runner
+                .table_detail_tasks
+                .spawn({
+                    async move {
+                        let _drop_signal = DropSignal(Mutex::new(Some(table_drop_tx)));
+                        table_started_tx.send(()).ok();
+                        pending::<()>().await;
+                    }
+                })
+                .await;
+            table_started_rx
+                .await
+                .expect("table detail task should start");
+
+            let cancel = runner.cancel_tracked_tasks();
+            tokio::pin!(cancel);
+            let observed = tokio::select! {
+                () = &mut cancel => "cancellation finished before query drop",
+                result = &mut query_drop_rx => {
+                    match result {
+                        Ok(()) => match timeout(
+                            Duration::from_secs(1),
+                            &mut table_drop_rx,
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => "",
+                            Ok(Err(_)) => "table drop signal was lost",
+                            Err(_) => "table detail task was not aborted",
+                        },
+                        Err(_) => "query drop signal was lost",
+                    }
+                }
+                () = tokio::time::sleep(Duration::from_secs(1)) => {
+                    "query task was not aborted"
+                }
+            };
+
+            query_drop_state.release();
+            let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
+            assert!(
+                cancellation_finished,
+                "cancellation did not finish: {observed}"
+            );
+            assert!(observed.is_empty(), "{observed}");
         }
     }
 

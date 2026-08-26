@@ -1525,10 +1525,6 @@ mod tests {
         fn make_service(name: &str) -> ServiceEntry {
             ServiceEntry {
                 service_name: name.to_string(),
-                host: None,
-                dbname: None,
-                port: None,
-                user: None,
             }
         }
 

@@ -24,7 +24,7 @@ impl Explorer {
         let inner = block.inner(area);
         frame.render_widget(block, area);
 
-        let is_error = matches!(state.session.metadata_state(), MetadataState::Error(_));
+        let is_error = matches!(state.session.metadata_state(), MetadataState::Error);
         let has_cached_data =
             !is_error && state.session.metadata().is_some() && !state.tables().is_empty();
         Self::render_tables_section(frame, inner, state, has_cached_data, theme);
@@ -70,7 +70,7 @@ impl Explorer {
                 MetadataState::Loading => {
                     vec![ListItem::new(" Loading metadata...")]
                 }
-                MetadataState::Error(_) => {
+                MetadataState::Error => {
                     vec![
                         ListItem::new(" Metadata load failed"),
                         ListItem::new(" (r: retry, Enter: details)"),

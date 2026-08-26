@@ -1354,10 +1354,14 @@ mod tests {
 
             assert!(matches!(
                 state.session.metadata_state(),
-                MetadataState::Error(_)
+                MetadataState::Error
             ));
             assert_eq!(state.input_mode(), InputMode::ConnectionError);
             assert!(state.connection_error.has_error());
+            assert_eq!(
+                state.connection_error.masked_details(),
+                Some("psql: error: connection refused")
+            );
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
@@ -1443,9 +1447,7 @@ mod tests {
         #[test]
         fn reopen_modal_after_close_shows_same_error() {
             let mut state = state_with_error();
-            state
-                .session
-                .set_metadata_state(MetadataState::Error("error".to_string()));
+            state.session.set_metadata_state(MetadataState::Error);
             state.ui.set_focused_pane(FocusedPane::Explorer);
             let now = Instant::now();
 
@@ -1597,34 +1599,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
-        use crate::domain::{DatabaseMetadata, MetadataState};
-
-        #[test]
-        fn load_metadata_with_dsn_returns_fetch_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
-            assert!(matches!(
-                state.session.metadata_state(),
-                MetadataState::Loading
-            ));
-        }
-
-        #[test]
-        fn load_metadata_without_dsn_returns_no_effects() {
-            let mut state = create_test_state();
-            state.session.clear_connection();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
-
-            assert!(effects.is_empty());
-        }
+        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn reload_metadata_returns_sequence_effect() {
@@ -2474,7 +2449,7 @@ mod tests {
             assert!(state.session.connection_state().is_failed());
             assert!(matches!(
                 state.session.metadata_state(),
-                MetadataState::Error(_)
+                MetadataState::Error
             ));
         }
 
@@ -2512,7 +2487,7 @@ mod tests {
             // But metadata state should be Error
             assert!(matches!(
                 state.session.metadata_state(),
-                MetadataState::Error(_)
+                MetadataState::Error
             ));
         }
 
@@ -2520,9 +2495,7 @@ mod tests {
         fn reenter_connection_setup_resets_all_states() {
             let mut state = create_test_state();
             state.session.set_connection_state(ConnectionState::Failed);
-            state
-                .session
-                .set_metadata_state(MetadataState::Error("error".to_string()));
+            state.session.set_metadata_state(MetadataState::Error);
             state.modal.set_mode(InputMode::ConnectionError);
             let now = Instant::now();
 

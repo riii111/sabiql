@@ -72,17 +72,9 @@ fn connection_selector_with_service_entries() {
         vec![
             ServiceEntry {
                 service_name: "dev-db".to_string(),
-                host: Some("localhost".to_string()),
-                dbname: Some("devdb".to_string()),
-                port: Some(5432),
-                user: Some("dev".to_string()),
             },
             ServiceEntry {
                 service_name: "prod-replica".to_string(),
-                host: Some("replica.example.com".to_string()),
-                dbname: Some("proddb".to_string()),
-                port: Some(5433),
-                user: None,
             },
         ],
     );
@@ -107,17 +99,9 @@ fn connection_selector_with_long_service_name() {
     state.set_service_entries(vec![
         ServiceEntry {
             service_name: "my-very-long-service-name-that-exceeds-normal-length".to_string(),
-            host: Some("db.example.com".to_string()),
-            dbname: Some("mydb".to_string()),
-            port: Some(5432),
-            user: None,
         },
         ServiceEntry {
             service_name: "short".to_string(),
-            host: Some("localhost".to_string()),
-            dbname: None,
-            port: None,
-            user: None,
         },
     ]);
     state.modal.set_mode(InputMode::ConnectionSelector);
@@ -136,17 +120,9 @@ fn connection_selector_with_active_service() {
     state.set_service_entries(vec![
         ServiceEntry {
             service_name: "dev-local".to_string(),
-            host: Some("localhost".to_string()),
-            dbname: Some("devdb".to_string()),
-            port: Some(5432),
-            user: Some("dev".to_string()),
         },
         ServiceEntry {
             service_name: "prod-replica".to_string(),
-            host: Some("replica.example.com".to_string()),
-            dbname: Some("proddb".to_string()),
-            port: Some(5433),
-            user: None,
         },
     ]);
     // Set active connection to the first service entry
@@ -172,10 +148,6 @@ fn connection_selector_with_multibyte_service_name() {
 
     state.set_service_entries(vec![ServiceEntry {
         service_name: "本番データベース接続".to_string(),
-        host: Some("db.example.com".to_string()),
-        dbname: Some("mydb".to_string()),
-        port: Some(5432),
-        user: None,
     }]);
     state.modal.set_mode(InputMode::ConnectionSelector);
     state.ui.set_connection_list_selection(Some(0));
