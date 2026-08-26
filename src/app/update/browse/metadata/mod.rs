@@ -220,7 +220,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_metadata_actions_start_fetches() {
+        fn mysql_reload_metadata_starts_fetch() {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_target(
                 &ConnectionId::new(),
@@ -242,7 +242,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_metadata_actions_during_pending_switch_preserve_probe() {
+        fn mysql_reload_metadata_during_pending_switch_preserves_probe() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("mysql-a");
             let target_id = ConnectionId::from_string("mysql-b");
@@ -282,7 +282,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_metadata_actions_during_same_connection_retry_preserve_probe() {
+        fn mysql_reload_metadata_during_same_connection_retry_preserves_probe() {
             let mut state = AppState::new("test".to_string());
             let id = ConnectionId::from_string("mysql-a");
             let dsn = "mysql://user@localhost:3306/a";
