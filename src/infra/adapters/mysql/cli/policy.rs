@@ -362,16 +362,18 @@ pub(super) fn validate_mysql_session_marker(
     result: &MySqlResultSet,
     marker: &str,
 ) -> Result<(), DbOperationError> {
-    if result.columns != [MYSQL_SESSION_MARKER_COLUMN]
-        || result.values.len() != 1
-        || result.values[0].len() != 1
-        || result.values[0][0].as_str() != Some(marker)
-    {
+    if !is_mysql_single_marker(result, MYSQL_SESSION_MARKER_COLUMN, marker) {
         return Err(DbOperationError::QueryFailed(
             "mysql read-only session marker did not match".to_string(),
         ));
     }
     Ok(())
+}
+
+pub(super) fn is_mysql_single_marker(result: &MySqlResultSet, column: &str, marker: &str) -> bool {
+    result.columns == [column]
+        && result.values.len() == 1
+        && matches!(result.values[0].as_slice(), [value] if value.as_str() == Some(marker))
 }
 
 pub(super) fn validate_mysql_session(
@@ -621,6 +623,68 @@ mod tests {
             validate_mysql_session(&mismatched_marker, "marker"),
             Err(DbOperationError::QueryFailed(details))
                 if details == "mysql read-only session marker did not match"
+        ));
+    }
+
+    #[test]
+    fn one_column_one_row_marker_requires_exact_shape_and_value() {
+        let make_result = |columns: &[&str], values: Vec<Vec<QueryValue>>| MySqlResultSet {
+            columns: columns.iter().map(|column| (*column).to_string()).collect(),
+            values,
+        };
+        let marker_value = || QueryValue::Text("marker".to_string());
+
+        assert!(is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![vec![marker_value()]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&[], vec![vec![marker_value()]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column", "extra"],
+                vec![vec![marker_value(), marker_value()]],
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![marker_value()], vec![marker_value()]],
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(&["marker_column"], vec![vec![]]),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![marker_value(), marker_value()]]
+            ),
+            "marker_column",
+            "marker",
+        ));
+        assert!(!is_mysql_single_marker(
+            &make_result(
+                &["marker_column"],
+                vec![vec![QueryValue::Text("other".to_string())]],
+            ),
+            "marker_column",
+            "marker",
         ));
     }
 
