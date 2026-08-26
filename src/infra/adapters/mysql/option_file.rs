@@ -1,4 +1,3 @@
-#[cfg(windows)]
 use std::fs::File;
 use std::fs::{self, OpenOptions};
 #[cfg(windows)]
@@ -17,6 +16,7 @@ use super::dsn::{
 
 pub(super) struct MySqlOptionFile {
     pub(super) path: PathBuf,
+    pub(super) file: Option<File>,
 }
 
 impl MySqlOptionFile {
@@ -43,27 +43,34 @@ impl MySqlOptionFile {
             windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE
                 | windows_sys::Win32::Storage::FileSystem::WRITE_DAC,
         );
-        let mut file = options.open(&path).map_err(|error| {
+        let file = options.open(&path).map_err(|error| {
             DbOperationError::ConnectionFailed(format!(
                 "Unable to create MySQL option file: {error}"
             ))
         })?;
+        let mut option_file = Self {
+            path,
+            file: Some(file),
+        };
         #[cfg(windows)]
-        if let Err(error) = set_file_permissions(&file) {
-            drop(file);
-            let _ = fs::remove_file(&path);
-            return Err(DbOperationError::ConnectionFailed(format!(
+        set_file_permissions(option_file.file.as_ref().unwrap()).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
                 "Unable to secure MySQL option file: {error}"
-            )));
-        }
+            ))
+        })?;
         let contents = serialize_option_file(target);
-        if let Err(error) = file.write_all(contents.as_bytes()) {
-            let _ = fs::remove_file(&path);
-            return Err(DbOperationError::ConnectionFailed(format!(
-                "Unable to write MySQL option file: {error}"
-            )));
-        }
-        Ok(Self { path })
+        option_file
+            .file
+            .as_mut()
+            .unwrap()
+            .write_all(contents.as_bytes())
+            .map_err(|error| {
+                DbOperationError::ConnectionFailed(format!(
+                    "Unable to write MySQL option file: {error}"
+                ))
+            })?;
+        drop(option_file.file.take());
+        Ok(option_file)
     }
 }
 
@@ -453,6 +460,7 @@ fn current_user_sid(token: windows_sys::Win32::Foundation::HANDLE) -> io::Result
 
 impl Drop for MySqlOptionFile {
     fn drop(&mut self) {
+        drop(self.file.take());
         let _ = fs::remove_file(&self.path);
     }
 }
@@ -840,6 +848,25 @@ ssl-mode = \"REQUIRED\"\n"
         assert_owner_only_acl(&option_file.path);
         let path = option_file.path.clone();
         drop(option_file);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn option_file_drop_closes_open_handle_before_cleanup() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("partial.cnf");
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let option_file = MySqlOptionFile {
+            path: path.clone(),
+            file: Some(file),
+        };
+
+        drop(option_file);
+
         assert!(!path.exists());
     }
 
