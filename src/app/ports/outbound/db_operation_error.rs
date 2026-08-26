@@ -5,8 +5,6 @@ use std::sync::Arc;
 use crate::domain::{RefreshScope, SqlitePathError};
 use crate::policy::password_masking::mask_password;
 
-pub const SQLITE_TABLE_LIST_REQUIRED_MARKER: &str = "SQLITE_TABLE_LIST_REQUIRED";
-pub const SQLITE_SAFE_MODE_REQUIRED_MARKER: &str = "SQLITE_SAFE_MODE_REQUIRED";
 pub const MYSQL_CONNECT_TIMEOUT_ERRNOS: &[&str] = &["(60)", "(110)", "(10060)"];
 
 pub fn mysql_server_error_code(lowercase_details: &str) -> Option<u32> {
@@ -75,6 +73,12 @@ impl UnsupportedOperationKind {
             ),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SqliteCompatibilityKind {
+    SafeMode,
+    TableList,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,6 +160,11 @@ pub enum DbOperationError {
     #[error("Unsupported operation")]
     UnsupportedOperationWithKind {
         kind: UnsupportedOperationKind,
+        details: String,
+    },
+    #[error("Unsupported operation")]
+    UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind,
         details: String,
     },
     #[error("Connection failed")]
@@ -254,7 +263,7 @@ impl DbOperationError {
                 "Reduce the preview value size and retry",
             ),
             Self::QueryFailedAfterChange { source, .. } => source.presentation(),
-            Self::UnsupportedOperation(_) => (
+            Self::UnsupportedOperation(_) | Self::UnsupportedOperationWithSqliteKind { .. } => (
                 "Unsupported operation",
                 "Use a supported operation for this database",
             ),
@@ -358,6 +367,7 @@ impl DbOperationError {
             | Self::PreviewSizeExceeded(details)
             | Self::UnsupportedOperation(details)
             | Self::UnsupportedOperationWithKind { details, .. }
+            | Self::UnsupportedOperationWithSqliteKind { details, .. }
             | Self::ConnectionFailedWithKind { details, .. }
             | Self::MetadataParseFailed(details)
             | Self::EmptyResponse(details)
@@ -452,6 +462,10 @@ mod tests {
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperationWithKind {
             kind: UnsupportedOperationKind::ClientVersion,
+            details: "boom".to_string(),
+        })]
+        #[case(DbOperationError::UnsupportedOperationWithSqliteKind {
+            kind: SqliteCompatibilityKind::SafeMode,
             details: "boom".to_string(),
         })]
         #[case(DbOperationError::ConnectionFailedWithKind {

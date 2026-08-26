@@ -1,4 +1,4 @@
-use crate::app::ports::outbound::{DbOperationError, SQLITE_TABLE_LIST_REQUIRED_MARKER};
+use crate::app::ports::outbound::{DbOperationError, SqliteCompatibilityKind};
 
 use super::literal::{quote_ident, quote_literal};
 
@@ -71,10 +71,12 @@ pub(in crate::adapters::sqlite) fn has_virtual_tables_query() -> &'static str {
 }
 
 pub(in crate::adapters::sqlite) fn table_list_required_error() -> DbOperationError {
-    DbOperationError::UnsupportedOperation(format!(
-        "{SQLITE_TABLE_LIST_REQUIRED_MARKER}: This database contains virtual tables (such as FTS or RTree). \
-         Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
-    ))
+    DbOperationError::UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind::TableList,
+        details: "This database contains virtual tables (such as FTS or RTree). \
+                  Upgrade sqlite3 to version 3.41.1 or later to browse it safely."
+            .to_string(),
+    }
 }
 
 pub(in crate::adapters::sqlite) fn is_table_list_unavailable(error: &str) -> bool {
@@ -303,11 +305,20 @@ mod tests {
         }
 
         #[test]
-        fn table_list_required_error_includes_marker_and_upgrade_guidance() {
+        fn table_list_required_error_keeps_upgrade_guidance_without_marker() {
             let error = table_list_required_error();
             let message = error.user_message();
-            assert!(message.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER));
+            assert_eq!(error.summary(), "Unsupported operation");
+            assert_eq!(error.hint(), "Use a supported operation for this database");
             assert!(message.contains("3.41.1"));
+            assert!(!message.contains("SQLITE_TABLE_LIST_REQUIRED"));
+            assert!(matches!(
+                error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::TableList,
+                    ..
+                }
+            ));
         }
 
         #[test]

@@ -1,6 +1,4 @@
-use crate::app::ports::outbound::{
-    DbOperationError, MetadataProvider, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-};
+use crate::app::ports::outbound::{DbOperationError, MetadataProvider, SqliteCompatibilityKind};
 use crate::domain::{Schema, SqlitePathError, TableKind, TableKindInfo};
 
 use super::super::super::sqlite3::metadata::RawTable;
@@ -49,8 +47,12 @@ mod metadata {
             std::env::var_os("SABIQL_EXPECT_SQLITE_SAFE_MODE_REJECTION").is_some();
 
         match adapter.fetch_metadata(&dsn).await {
-            Err(DbOperationError::UnsupportedOperation(details)) if expects_rejection => {
-                assert!(details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER));
+            Err(DbOperationError::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode,
+                details,
+            }) if expects_rejection => {
+                assert!(details.contains("3.41.1"));
+                assert!(!details.contains("SQLITE_SAFE_MODE_REQUIRED"));
             }
             Ok(_) if !expects_rejection => {}
             result => panic!("unexpected SQLite safe mode connection result: {result:?}"),
