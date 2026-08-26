@@ -39,9 +39,6 @@ pub fn reduce_connection_setup(
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled()
         }
-        Action::StartEditConnection(id) => {
-            DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
-        }
         Action::ConnectionEditLoaded(profile) => {
             state.session.cancel_connection_save_and_disconnect();
             state.connection_setup = ConnectionSetupState::from(&**profile);

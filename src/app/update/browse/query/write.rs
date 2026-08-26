@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use crate::cmd::effect::Effect;
 use crate::domain::{DatabaseDiagnostic, DiagnosticLevel, RefreshScope};
 use crate::model::app_state::AppState;
 use crate::model::browse::query_execution::{DeleteRefreshTarget, PostDeleteRowSelection};
@@ -16,7 +15,6 @@ use crate::policy::write::write_guardrails::{
     ColumnDiff, RiskLevel, TargetSummary, WriteOperation, WritePreview, evaluate_guardrails,
 };
 use crate::policy::write::write_update::escape_preview_value;
-use crate::ports::outbound::AccessMode;
 use crate::services::AppServices;
 use crate::update::action::Action;
 use crate::update::browse::query::{
@@ -214,33 +212,6 @@ pub fn reduce_write(
                     state.messages.set_error_at(err.to_string(), now);
                     DispatchResult::handled()
                 }
-            }
-        }
-
-        Action::ExecuteWrite(query) => {
-            if reject_pending_mysql_connection_probe(state, now) {
-                return DispatchResult::handled();
-            }
-            if state.session.is_read_only() {
-                state.messages.set_error_at(
-                    "Read-only mode: write operations are disabled".to_string(),
-                    now,
-                );
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
-                DispatchResult::handled_with(vec![Effect::ExecuteWrite {
-                    dsn,
-                    run_id,
-                    query: query.clone(),
-                    access_mode: AccessMode::from_read_only(state.session.is_read_only()),
-                }])
-            } else {
-                state
-                    .messages
-                    .set_error_at("No active connection".to_string(), now);
-                DispatchResult::handled()
             }
         }
 
@@ -451,6 +422,7 @@ fn open_write_preview_confirm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::effect::Effect;
     use crate::test_support;
     use crate::update::test_fixtures;
 

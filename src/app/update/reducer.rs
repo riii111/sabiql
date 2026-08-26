@@ -1597,34 +1597,7 @@ mod tests {
 
     mod effect_producing_actions {
         use super::*;
-        use crate::domain::{DatabaseMetadata, MetadataState};
-
-        #[test]
-        fn load_metadata_with_dsn_returns_fetch_effect() {
-            let mut state = create_test_state();
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
-
-            assert_eq!(effects.len(), 1);
-            assert!(matches!(effects[0], Effect::FetchMetadata { .. }));
-            assert!(matches!(
-                state.session.metadata_state(),
-                MetadataState::Loading
-            ));
-        }
-
-        #[test]
-        fn load_metadata_without_dsn_returns_no_effects() {
-            let mut state = create_test_state();
-            state.session.clear_connection();
-            let now = Instant::now();
-
-            let effects = reduce(&mut state, Action::LoadMetadata, now, &AppServices::stub());
-
-            assert!(effects.is_empty());
-        }
+        use crate::domain::DatabaseMetadata;
 
         #[test]
         fn reload_metadata_returns_sequence_effect() {

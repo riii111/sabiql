@@ -233,13 +233,11 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.iter().any(contains_fetch_metadata));
-            }
+            assert!(effects.iter().any(contains_fetch_metadata));
             assert!(state.messages.last_error().is_none());
         }
 
@@ -265,24 +263,22 @@ mod tests {
                 Some("b"),
             );
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.is_empty());
-                assert_eq!(
-                    state
-                        .session
-                        .pending_mysql_connection_probe()
-                        .map(|pending| pending.run_id),
-                    Some(probe_run_id)
-                );
-                assert_eq!(
-                    state.messages.last_error(),
-                    Some("Connection switch in progress")
-                );
-            }
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
         }
 
         #[test]
@@ -305,24 +301,22 @@ mod tests {
                     .session
                     .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.is_empty());
-                assert_eq!(
-                    state
-                        .session
-                        .pending_mysql_connection_probe()
-                        .map(|pending| pending.run_id),
-                    Some(probe_run_id)
-                );
-                assert_eq!(
-                    state.messages.last_error(),
-                    Some("Connection switch in progress")
-                );
-            }
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
         }
 
         fn contains_fetch_metadata(effect: &Effect) -> bool {
