@@ -133,17 +133,6 @@ pub(super) fn reduce_loading(
                 termination_effects(&state.query, vec![])
             })
         }
-        Action::LoadMetadata => {
-            if reject_pending_mysql_connection_probe(state, now) {
-                return DispatchResult::handled();
-            }
-            if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.session.begin_metadata_refresh();
-                DispatchResult::handled_with(vec![Effect::FetchMetadata { dsn, run_id }])
-            } else {
-                DispatchResult::handled()
-            }
-        }
         Action::ReloadMetadata => {
             if reject_pending_mysql_connection_probe(state, now) {
                 return DispatchResult::handled();
