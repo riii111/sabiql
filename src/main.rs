@@ -256,7 +256,8 @@ async fn main() -> Result<()> {
         let deadline = next_animation_deadline(&runtime.state, now);
 
         tokio::select! {
-            Some(event) = runtime.tui.next_event() => {
+            event = runtime.tui.next_event() => {
+                let event = event?;
                 let action = handle_event(event, &runtime.state);
                 if !action.is_none() {
                     runtime.process_terminal_event_burst(action).await?;
@@ -394,7 +395,7 @@ impl Runtime {
         // end of the burst so N input events produce one draw, not N.
         let mut drained = 0;
         while drained < MAX_DRAIN {
-            let Some(event) = self.tui.try_next_event() else {
+            let Some(event) = self.tui.try_next_event()? else {
                 break;
             };
             drained += 1;
