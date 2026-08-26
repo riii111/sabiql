@@ -3176,7 +3176,6 @@ mod tests {
             reduce(
                 &mut state,
                 Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id,
                     result,
                     context: QueryCompletionContext::Preview {

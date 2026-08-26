@@ -585,13 +585,11 @@ pub enum Action {
     ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
     QueryCompleted {
-        dsn: String,
         run_id: u64,
         result: Arc<QueryResult>,
         context: QueryCompletionContext,
     },
     QueryFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
         context: QueryFailureContext,
