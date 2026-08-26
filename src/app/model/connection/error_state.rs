@@ -1,18 +1,13 @@
 use std::time::{Duration, Instant};
 
 use super::error::ConnectionErrorInfo;
-use crate::domain::DatabaseType;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum ConnectionErrorSource {
     #[default]
     ActiveConnection,
-    SaveAndConnect {
-        database_type: DatabaseType,
-    },
-    ConnectionSwitch {
-        database_type: DatabaseType,
-    },
+    SaveAndConnect,
+    ConnectionSwitch,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -31,26 +26,12 @@ impl ConnectionErrorState {
         self.set_error_with_source(info, ConnectionErrorSource::ActiveConnection);
     }
 
-    pub fn set_save_and_connect_error(
-        &mut self,
-        info: ConnectionErrorInfo,
-        database_type: DatabaseType,
-    ) {
-        self.set_error_with_source(
-            info,
-            ConnectionErrorSource::SaveAndConnect { database_type },
-        );
+    pub fn set_save_and_connect_error(&mut self, info: ConnectionErrorInfo) {
+        self.set_error_with_source(info, ConnectionErrorSource::SaveAndConnect);
     }
 
-    pub fn set_connection_switch_error(
-        &mut self,
-        info: ConnectionErrorInfo,
-        database_type: DatabaseType,
-    ) {
-        self.set_error_with_source(
-            info,
-            ConnectionErrorSource::ConnectionSwitch { database_type },
-        );
+    pub fn set_connection_switch_error(&mut self, info: ConnectionErrorInfo) {
+        self.set_error_with_source(info, ConnectionErrorSource::ConnectionSwitch);
     }
 
     fn set_error_with_source(&mut self, info: ConnectionErrorInfo, source: ConnectionErrorSource) {
@@ -70,15 +51,11 @@ impl ConnectionErrorState {
     }
 
     pub fn is_save_and_connect_failure(&self) -> bool {
-        matches!(self.source, ConnectionErrorSource::SaveAndConnect { .. })
+        matches!(self.source, ConnectionErrorSource::SaveAndConnect)
     }
 
-    pub fn destination_database_type(&self) -> Option<DatabaseType> {
-        match self.source {
-            ConnectionErrorSource::ActiveConnection => None,
-            ConnectionErrorSource::SaveAndConnect { database_type }
-            | ConnectionErrorSource::ConnectionSwitch { database_type } => Some(database_type),
-        }
+    pub fn has_destination(&self) -> bool {
+        !matches!(self.source, ConnectionErrorSource::ActiveConnection)
     }
 
     pub fn can_retry(&self) -> bool {
@@ -183,6 +160,18 @@ mod tests {
             assert!(!state.details_expanded());
             assert_eq!(state.scroll_offset(), 0);
             assert!(!state.is_copied_visible_at(now()));
+        }
+
+        #[test]
+        fn tracks_destination_presence_without_database_type() {
+            let mut state = ConnectionErrorState::default();
+            assert!(!state.has_destination());
+
+            state.set_save_and_connect_error(sample_error());
+            assert!(state.has_destination());
+
+            state.set_connection_switch_error(sample_error());
+            assert!(state.has_destination());
         }
 
         #[test]
