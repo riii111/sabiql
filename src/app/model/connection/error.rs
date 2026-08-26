@@ -1,8 +1,8 @@
 use crate::policy::password_masking::mask_password;
 use crate::policy::sqlite_path::connection_error_kind;
 use crate::ports::outbound::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-    SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
+    UnsupportedOperationKind,
 };
 use sabiql_domain::connection::MySqlSslMode;
 use url::Url;
@@ -165,12 +165,10 @@ impl ConnectionErrorInfo {
             DbOperationError::UnsupportedOperationWithKind { kind, .. } => {
                 ConnectionErrorKind::MySqlUnsupportedOperation(*kind)
             }
-            DbOperationError::UnsupportedOperation(details)
-                if details.contains(SQLITE_TABLE_LIST_REQUIRED_MARKER)
-                    || details.contains(SQLITE_SAFE_MODE_REQUIRED_MARKER) =>
-            {
-                ConnectionErrorKind::SqliteVersionTooOld
-            }
+            DbOperationError::UnsupportedOperationWithSqliteKind {
+                kind: SqliteCompatibilityKind::SafeMode | SqliteCompatibilityKind::TableList,
+                ..
+            } => ConnectionErrorKind::SqliteVersionTooOld,
             DbOperationError::ConnectionFailedWithKind { kind, .. } => match kind {
                 ConnectionFailureKind::HostUnreachable => ConnectionErrorKind::HostUnreachable,
                 ConnectionFailureKind::Auth => ConnectionErrorKind::AuthFailed,
@@ -552,28 +550,49 @@ mod tests {
         }
 
         #[test]
-        fn from_db_operation_error_classifies_sqlite_table_list_requirement() {
+        fn from_db_operation_error_classifies_typed_sqlite_table_list_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperation(format!(
-                    "{SQLITE_TABLE_LIST_REQUIRED_MARKER}: upgrade sqlite3"
-                )),
+                &DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::TableList,
+                    details: "upgrade sqlite3 to version 3.41.1 or later".to_string(),
+                },
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
             assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
+            assert_eq!(
+                info.masked_details(),
+                "upgrade sqlite3 to version 3.41.1 or later"
+            );
         }
 
         #[test]
-        fn from_db_operation_error_classifies_sqlite_safe_mode_requirement() {
+        fn from_db_operation_error_classifies_typed_sqlite_safe_mode_requirement() {
             let info = ConnectionErrorInfo::from_db_operation_error(
-                &DbOperationError::UnsupportedOperation(format!(
-                    "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
-                )),
+                &DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::SafeMode,
+                    details: "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)".to_string(),
+                },
             );
 
             assert_eq!(info.kind, ConnectionErrorKind::SqliteVersionTooOld);
             assert_eq!(info.kind.summary(), "SQLite 3.41.1 or later required");
             assert_eq!(info.kind.hint(), "Upgrade sqlite3 to use SQLite safely");
+            assert_eq!(
+                info.masked_details(),
+                "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+            );
+        }
+
+        #[test]
+        fn marker_like_unsupported_operation_stays_unknown() {
+            let info = ConnectionErrorInfo::from_db_operation_error(
+                &DbOperationError::UnsupportedOperation(
+                    "SQLITE_SAFE_MODE_REQUIRED: sqlite3 3.41.1".to_string(),
+                ),
+            );
+
+            assert_eq!(info.kind, ConnectionErrorKind::Unknown);
         }
     }
 

@@ -8,9 +8,7 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
-use crate::app::ports::outbound::{
-    DbOperationError, ExportIoSource, SQLITE_SAFE_MODE_REQUIRED_MARKER,
-};
+use crate::app::ports::outbound::{DbOperationError, ExportIoSource, SqliteCompatibilityKind};
 
 use super::super::path_validation;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -435,9 +433,12 @@ impl SqliteVersion {
 }
 
 fn safe_mode_required_error(details: &str) -> DbOperationError {
-    DbOperationError::UnsupportedOperation(format!(
-        "{SQLITE_SAFE_MODE_REQUIRED_MARKER}: sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
-    ))
+    DbOperationError::UnsupportedOperationWithSqliteKind {
+        kind: SqliteCompatibilityKind::SafeMode,
+        details: format!(
+            "sqlite3 3.41.1 or later is required for safe SQLite execution ({details})"
+        ),
+    }
 }
 
 async fn write_sql_to_stdin(
@@ -614,6 +615,22 @@ mod tests {
         fn safe_mode_requires_sqlite_3_41_1_or_later() {
             assert!(SqliteVersion::new(3, 41, 0) < SQLITE_SAFE_MODE_MIN_VERSION);
             assert!(SqliteVersion::new(3, 41, 1) >= SQLITE_SAFE_MODE_MIN_VERSION);
+        }
+
+        #[test]
+        fn safe_mode_required_error_keeps_details_without_marker() {
+            let error = safe_mode_required_error("found sqlite3 3.41.0");
+
+            assert!(matches!(
+                &error,
+                DbOperationError::UnsupportedOperationWithSqliteKind {
+                    kind: SqliteCompatibilityKind::SafeMode,
+                    details,
+                    } if details == "sqlite3 3.41.1 or later is required for safe SQLite execution (found sqlite3 3.41.0)"
+            ));
+            assert_eq!(error.summary(), "Unsupported operation");
+            assert_eq!(error.hint(), "Use a supported operation for this database");
+            assert!(!error.user_message().contains("SQLITE_SAFE_MODE_REQUIRED"));
         }
 
         #[test]
