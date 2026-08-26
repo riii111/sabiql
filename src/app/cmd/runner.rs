@@ -516,7 +516,8 @@ mod tests {
     mod task_cancellation {
         use std::future::pending;
         use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::{Barrier, Mutex};
+        use std::sync::{Condvar, Mutex};
+        use std::time::Duration as StdDuration;
 
         use tokio::sync::oneshot;
         use tokio::time::{Duration, timeout};
@@ -525,7 +526,15 @@ mod tests {
 
         struct BlockingDropState {
             entered: Mutex<Option<oneshot::Sender<()>>>,
-            barrier: Arc<Barrier>,
+            released: (Mutex<bool>, Condvar),
+        }
+
+        impl BlockingDropState {
+            fn release(&self) {
+                let (released, condvar) = &self.released;
+                *released.lock().expect("release lock poisoned") = true;
+                condvar.notify_one();
+            }
         }
 
         struct BlockingDrop(Arc<BlockingDropState>);
@@ -540,7 +549,17 @@ mod tests {
                     .expect("drop signal should be observed once")
                     .send(())
                     .ok();
-                self.0.barrier.wait();
+                let (released, condvar) = &self.0.released;
+                let mut released = released.lock().expect("release lock poisoned");
+                while !*released {
+                    let (next, result) = condvar
+                        .wait_timeout(released, StdDuration::from_secs(1))
+                        .expect("release wait poisoned");
+                    released = next;
+                    if result.timed_out() {
+                        break;
+                    }
+                }
             }
         }
 
@@ -565,14 +584,14 @@ mod tests {
 
             let (query_started_tx, query_started_rx) = oneshot::channel();
             let (query_drop_tx, mut query_drop_rx) = oneshot::channel();
-            let query_barrier = Arc::new(Barrier::new(2));
+            let query_drop_state = Arc::new(BlockingDropState {
+                entered: Mutex::new(Some(query_drop_tx)),
+                released: (Mutex::new(false), Condvar::new()),
+            });
             runner
                 .query_tasks
                 .spawn({
-                    let drop_state = Arc::new(BlockingDropState {
-                        entered: Mutex::new(Some(query_drop_tx)),
-                        barrier: Arc::clone(&query_barrier),
-                    });
+                    let drop_state = Arc::clone(&query_drop_state);
                     async move {
                         let _drop_signal = BlockingDrop(drop_state);
                         query_started_tx.send(()).ok();
@@ -601,21 +620,27 @@ mod tests {
 
             let cancel = runner.cancel_tracked_tasks();
             tokio::pin!(cancel);
-            tokio::select! {
-                () = &mut cancel => panic!("cancellation should wait for the blocked query drop"),
+            let observed = tokio::select! {
+                () = &mut cancel => "cancellation finished before query drop",
                 result = &mut query_drop_rx => {
-                    result.expect("query drop should start");
-                    assert!(table_dropped.load(Ordering::SeqCst));
+                    match result {
+                        Ok(()) if table_dropped.load(Ordering::SeqCst) => "",
+                        Ok(()) => "table detail task was not aborted",
+                        Err(_) => "query drop signal was lost",
+                    }
                 }
                 () = tokio::time::sleep(Duration::from_secs(1)) => {
-                    panic!("query task should be aborted");
+                    "query task was not aborted"
                 }
-            }
+            };
 
-            query_barrier.wait();
-            timeout(Duration::from_secs(1), cancel)
-                .await
-                .expect("cancellation should finish after query drop is released");
+            query_drop_state.release();
+            let cancellation_finished = timeout(Duration::from_secs(1), cancel).await.is_ok();
+            assert!(
+                cancellation_finished,
+                "cancellation did not finish: {observed}"
+            );
+            assert!(observed.is_empty(), "{observed}");
         }
     }
 
