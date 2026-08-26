@@ -313,7 +313,7 @@ mod tests {
     use crate::cmd::effect::Effect;
     use crate::cmd::test_fixtures;
 
-    use crate::domain::DatabaseMetadata;
+    use crate::domain::{DatabaseMetadata, SqlitePathError};
     use crate::model::app_state::AppState;
     use crate::ports::outbound::DbOperationError;
     use crate::ports::outbound::connection_store::MockConnectionStore;
@@ -417,8 +417,10 @@ mod tests {
                     Action::MetadataFailed {
                         ref dsn,
                         run_id: 7,
-                        error: DbOperationError::ConnectionFailed(_),
-                    } if *dsn == expected_dsn
+                        error: DbOperationError::SqlitePath(SqlitePathError::FileNotFound(
+                            ref file_path,
+                        )),
+                    } if *dsn == expected_dsn && file_path == &path.display().to_string()
                 ),
                 "expected MetadataFailed, got {action:?}"
             );

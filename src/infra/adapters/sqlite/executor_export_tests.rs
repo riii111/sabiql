@@ -206,8 +206,8 @@ async fn missing_database_is_rejected_without_creating_an_empty_file() {
 
     assert!(matches!(
         result,
-        Err(DbOperationError::ConnectionFailed(details))
-            if details.contains("SQLite database file not found")
+        Err(DbOperationError::SqlitePath(SqlitePathError::FileNotFound(file_path)))
+            if file_path == path.display().to_string()
     ));
     assert!(!path.exists());
 }
