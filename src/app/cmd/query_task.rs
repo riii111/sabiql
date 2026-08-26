@@ -1,10 +1,9 @@
-use std::sync::Mutex;
-
-use tokio::task::AbortHandle;
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 
 #[derive(Default)]
 pub struct TaskRegistry {
-    active: Mutex<Option<AbortHandle>>,
+    active: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl TaskRegistry {
@@ -12,26 +11,24 @@ impl TaskRegistry {
     ///
     /// Each registry instance intentionally permits only one active task at a
     /// time; separate instances are used for queries and table details.
-    pub fn spawn<F>(&self, task: F)
+    pub async fn spawn<F>(&self, task: F)
     where
         F: Future<Output = ()> + Send + 'static,
     {
-        let mut active = self.active.lock().expect("task registry lock poisoned");
+        let mut active = self.active.lock().await;
         if let Some(handle) = active.take() {
             handle.abort();
+            let _ = handle.await;
         }
         let handle = tokio::spawn(task);
-        *active = Some(handle.abort_handle());
+        *active = Some(handle);
     }
 
-    pub fn cancel(&self) {
-        let handle = self
-            .active
-            .lock()
-            .expect("task registry lock poisoned")
-            .take();
+    pub async fn cancel(&self) {
+        let handle = self.active.lock().await.take();
         if let Some(handle) = handle {
             handle.abort();
+            let _ = handle.await;
         }
     }
 }
@@ -44,7 +41,6 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::sync::oneshot;
-    use tokio::time::{Duration, timeout};
 
     use super::*;
 
@@ -63,21 +59,48 @@ mod tests {
         let (started_tx, started_rx) = oneshot::channel();
         let guard = DropSignal(Arc::clone(&dropped));
 
-        registry.spawn(async move {
-            let _guard = guard;
-            started_tx.send(()).ok();
-            std::future::pending::<()>().await;
-        });
+        registry
+            .spawn(async move {
+                let _guard = guard;
+                started_tx.send(()).ok();
+                std::future::pending::<()>().await;
+            })
+            .await;
 
         started_rx.await.expect("query task should start");
-        registry.cancel();
+        registry.cancel().await;
 
-        timeout(Duration::from_secs(1), async {
-            while !dropped.load(Ordering::SeqCst) {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("cancelled query task should be dropped");
+        assert!(dropped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn replacement_waits_for_previous_query_task_to_drop() {
+        let registry = QueryTaskRegistry::default();
+        let dropped = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = oneshot::channel();
+        let first_guard = DropSignal(Arc::clone(&dropped));
+
+        registry
+            .spawn(async move {
+                let _guard = first_guard;
+                started_tx.send(()).ok();
+                std::future::pending::<()>().await;
+            })
+            .await;
+
+        started_rx.await.expect("query task should start");
+
+        let (replacement_started_tx, replacement_started_rx) = oneshot::channel();
+        registry
+            .spawn(async move {
+                assert!(dropped.load(Ordering::SeqCst));
+                replacement_started_tx.send(()).ok();
+            })
+            .await;
+
+        replacement_started_rx
+            .await
+            .expect("replacement query task should start");
+        registry.cancel().await;
     }
 }

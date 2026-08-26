@@ -114,8 +114,8 @@ impl EffectRunner {
     }
 
     async fn cancel_tracked_tasks(&self) {
-        self.query_tasks.cancel();
-        self.table_detail_tasks.cancel();
+        self.query_tasks.cancel().await;
+        self.table_detail_tasks.cancel().await;
         self.cancel_metadata_tasks().await;
         self.mysql_connection_probe_task.cancel().await;
     }
@@ -216,7 +216,7 @@ impl EffectRunner {
                     self.cancel_metadata_tasks().await;
                 }
                 if matches!(&e, Effect::ProbeMySqlConnection { .. }) {
-                    self.table_detail_tasks.cancel();
+                    self.table_detail_tasks.cancel().await;
                 }
                 cmd_connection::run(
                     e,
@@ -275,7 +275,8 @@ impl EffectRunner {
                     &self.query.cached_result_exporter,
                     &self.query_tasks,
                     state,
-                );
+                )
+                .await;
                 Ok(vec![])
             }
 
