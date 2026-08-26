@@ -83,12 +83,7 @@ impl MySqlMetadataSession {
         } else {
             parse_mysql_xml(&xml)?
         };
-        if result.columns.is_empty() && result.values.is_empty() {
-            result.columns = expected_columns
-                .iter()
-                .map(|column| (*column).to_string())
-                .collect();
-        }
+        normalize_empty_result_columns(&mut result, expected_columns);
         Ok(result)
     }
 
@@ -106,12 +101,7 @@ impl MySqlMetadataSession {
 
         let source_xml = read_one_mysql_resultset(&mut self.process).await?;
         let mut source_result = parse_mysql_xml(&source_xml)?;
-        if source_result.columns.is_empty() && source_result.values.is_empty() {
-            source_result.columns = expected_columns
-                .iter()
-                .map(|column| (*column).to_string())
-                .collect();
-        }
+        normalize_empty_result_columns(&mut source_result, expected_columns);
         let marker_xml = read_one_mysql_resultset(&mut self.process).await?;
         let marker_result = parse_mysql_xml(&marker_xml)?;
         if marker_result.columns != [MYSQL_INSPECTOR_COMPLETION_MARKER_COLUMN]
@@ -170,6 +160,15 @@ impl MySqlMetadataSession {
         };
         cleanup_mysql_process(&mut self.process).await;
         result
+    }
+}
+
+fn normalize_empty_result_columns(result: &mut MySqlResultSet, expected_columns: &[&str]) {
+    if result.columns.is_empty() && result.values.is_empty() {
+        result.columns = expected_columns
+            .iter()
+            .map(|column| (*column).to_string())
+            .collect();
     }
 }
 
