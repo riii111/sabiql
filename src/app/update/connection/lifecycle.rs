@@ -180,7 +180,6 @@ pub fn reduce_connection_lifecycle(
             }
             state.connection_error.set_connection_switch_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
-                target.database_type,
             );
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())

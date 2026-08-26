@@ -311,7 +311,7 @@ pub fn reduce_connection_setup(
             if let Some(error_info) = mysql_error {
                 state
                     .connection_error
-                    .set_save_and_connect_error(error_info, *database_type);
+                    .set_save_and_connect_error(error_info);
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
@@ -980,10 +980,7 @@ mod tests {
             );
 
             assert!(state.connection_error.is_save_and_connect_failure());
-            assert_eq!(
-                state.connection_error.destination_database_type(),
-                Some(DatabaseType::MySQL)
-            );
+            assert!(state.connection_error.has_destination());
             let effects =
                 reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
                     .into_effects()
