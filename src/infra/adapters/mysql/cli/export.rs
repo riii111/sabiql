@@ -13,7 +13,10 @@ use quick_xml::escape::unescape;
 use quick_xml::events::Event;
 use tokio::io::{AsyncRead, BufReader, ReadBuf};
 
-use super::super::{dsn::MySqlDsn, option_file::MySqlOptionFile};
+use super::super::{
+    dsn::{MySqlDsn, map_mysql_tls_failure},
+    option_file::MySqlOptionFile,
+};
 use super::error::{classify_mysql_query_failure_with_packet_limit, has_mysql_cli_error};
 #[cfg(not(unix))]
 use super::pipe::MySqlExportPipeSource;
@@ -349,13 +352,14 @@ pub(in crate::adapters::mysql) async fn export_mysql_csv_to_file(
 ) -> Result<(), DbOperationError> {
     let option_file = MySqlOptionFile::create(&target)?;
     let mut process = MySqlProcess::spawn_with_program(OsStr::new("mysql"), &option_file.path)?;
-    run_mysql_process_with_timeout(
+    let result = run_mysql_process_with_timeout(
         MYSQL_EXPORT_TIMEOUT,
         &mut process,
         RefreshScope::None,
         async |process| run_mysql_export_process(process, &option_file.path, query, path).await,
     )
-    .await
+    .await;
+    result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 pub(super) async fn run_mysql_export_process(

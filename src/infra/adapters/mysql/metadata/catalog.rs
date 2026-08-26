@@ -10,7 +10,7 @@ use crate::domain::{
 
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::MySqlDsn,
+    dsn::{MySqlDsn, map_mysql_tls_failure},
     option_file::MySqlOptionFile,
     sql::{
         COLUMN_METADATA_BASE_RESULT_COLUMNS, COLUMN_METADATA_RESULT_COLUMNS,
@@ -200,7 +200,10 @@ pub(super) async fn execute_metadata_queries_in_session_with_program(
         Ok((lower_case_table_names, results))
     })
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 pub(super) fn selected_database(target: &MySqlDsn) -> Result<&str, DbOperationError> {

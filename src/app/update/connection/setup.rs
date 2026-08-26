@@ -305,9 +305,7 @@ pub fn reduce_connection_setup(
                 ConnectionSaveError::Probe { error, dsn }
                     if *database_type == DatabaseType::MySQL =>
                 {
-                    Some(ConnectionErrorInfo::from_db_operation_error_with_dsn(
-                        error, dsn,
-                    ))
+                    Some(ConnectionErrorInfo::from_db_operation_error(error))
                 }
                 _ => None,
             };
@@ -634,7 +632,6 @@ mod tests {
         use std::sync::Arc;
 
         use super::*;
-        use crate::domain::connection::MySqlSslMode;
         use crate::domain::{
             DatabaseMetadata, MetadataState, QueryResult, QuerySource, TableSummary,
         };
@@ -743,19 +740,17 @@ mod tests {
         }
 
         #[test]
-        fn mysql_probe_failure_uses_tls_mode_to_classify_hostname_verification() {
+        fn mysql_probe_failure_preserves_adapter_tls_classification() {
             let mut state = AppState::new("test".to_string());
             state
                 .connection_setup
                 .set_database_type(DatabaseType::MySQL);
-            state.connection_setup.mysql_ssl_mode = MySqlSslMode::VerifyIdentity;
 
             let error = DbOperationError::ConnectionFailedWithKind {
-                kind: ConnectionFailureKind::TlsCertificateVerification,
+                kind: ConnectionFailureKind::TlsHostnameVerification,
                 details: "certificate verification failed".to_string(),
             };
-            let dsn =
-                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY".to_string();
+            let dsn = "mysql://user:password@localhost:3306/app?ssl-mode=PREFERRED".to_string();
             let run_id = state.session.begin_connection_save();
 
             reduce(

@@ -185,9 +185,9 @@ pub fn reduce_connection_lifecycle(
                     .mark_table_detail_probe_failed(&target.dsn, message);
                 state.session.mark_connection_failed();
             }
-            state.connection_error.set_connection_switch_error(
-                ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
-            );
+            state
+                .connection_error
+                .set_connection_switch_error(ConnectionErrorInfo::from_db_operation_error(error));
             state.modal.replace_mode(InputMode::ConnectionError);
             DispatchResult::handled_with(table_detail_retry.into_iter().collect())
         }

@@ -16,7 +16,7 @@ use super::super::sql::{
 };
 use super::super::{
     cli::{MYSQL_QUERY_TIMEOUT, MySqlMetadataSession, MySqlResultSet},
-    dsn::parse_and_validate_mysql_dsn,
+    dsn::{map_mysql_tls_failure, parse_and_validate_mysql_dsn},
     option_file::MySqlOptionFile,
 };
 use super::catalog::{
@@ -127,7 +127,10 @@ async fn fetch_table_detail_with_program(
         fetch_table_detail_with_session(&mut session, database, schema, table),
     )
     .await;
-    session.resolve_timed_result(result).await
+    session
+        .resolve_timed_result(result)
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))
 }
 
 async fn fetch_table_detail_with_session(

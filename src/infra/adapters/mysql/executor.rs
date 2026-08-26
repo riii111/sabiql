@@ -13,7 +13,7 @@ use super::cli::{
     validate_mysql_export_query, validate_mysql_multi_query,
     validate_mysql_multi_query_with_lower_case_table_names,
 };
-use super::dsn::{MySqlDsn, parse_and_validate_mysql_dsn};
+use super::dsn::{MySqlDsn, map_mysql_tls_failure, parse_and_validate_mysql_dsn};
 use super::metadata;
 use super::option_file::MySqlOptionFile;
 
@@ -31,7 +31,7 @@ async fn execute_adhoc_with_target(
         let option_file = MySqlOptionFile::create(target)?;
         let result = run_mysql_single_statement(&option_file.path, query, access_mode).await;
         drop(option_file);
-        let execution = result?;
+        let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
         let result_set = execution.result_set.ok_or_else(|| {
             DbOperationError::QueryFailed("MySQL TREE EXPLAIN returned no resultset".to_string())
         })?;
@@ -47,7 +47,8 @@ async fn execute_adhoc_with_target(
 
     let option_file = MySqlOptionFile::create(target)?;
     let lower_case_table_names = probe_mysql_server(&option_file.path)
-        .await?
+        .await
+        .map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?
         .lower_case_table_names;
     let statements = validate_mysql_multi_query_with_lower_case_table_names(
         query,
@@ -63,7 +64,7 @@ async fn execute_adhoc_with_target(
     let start = Instant::now();
     let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
     drop(option_file);
-    let execution = result?;
+    let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
     let elapsed = start.elapsed().as_millis() as u64;
     let mut result = match execution.result_set {
         Some(result_set) => QueryResult::success_with_values(
@@ -160,7 +161,7 @@ impl QueryExecutor for MySqlAdapter {
         let option_file = MySqlOptionFile::create(&target)?;
         let result = run_mysql_adhoc(&option_file.path, &statements, access_mode).await;
         drop(option_file);
-        let execution = result?;
+        let execution = result.map_err(|error| map_mysql_tls_failure(error, target.ssl_mode))?;
         let affected_rows = execution
             .command_tag
             .and_then(|tag| tag.affected_rows())

@@ -4,8 +4,6 @@ use crate::ports::outbound::{
     ConnectionFailureKind, DatabaseCli, DbOperationError, SqliteCompatibilityKind,
     UnsupportedOperationKind,
 };
-use sabiql_domain::connection::MySqlSslMode;
-use url::Url;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConnectionErrorKind {
@@ -117,19 +115,6 @@ impl ConnectionErrorKind {
     }
 }
 
-fn mysql_ssl_mode_from_dsn(dsn: &str) -> Option<MySqlSslMode> {
-    let url = Url::parse(dsn).ok()?;
-    if url.scheme() != "mysql" {
-        return None;
-    }
-    url.query_pairs().find_map(|(key, value)| {
-        if key != "ssl-mode" {
-            return None;
-        }
-        value.parse().ok()
-    })
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionErrorInfo {
     pub kind: ConnectionErrorKind,
@@ -186,35 +171,6 @@ impl ConnectionErrorInfo {
             _ => ConnectionErrorKind::Unknown,
         };
         Self::with_kind(kind, raw_details)
-    }
-
-    pub fn from_db_operation_error_with_dsn(error: &DbOperationError, dsn: &str) -> Self {
-        let mut info = Self::from_db_operation_error(error);
-        info.kind = mysql_ssl_mode_from_dsn(dsn)
-            .and_then(|ssl_mode| match (ssl_mode, error) {
-                (
-                    MySqlSslMode::VerifyCa,
-                    DbOperationError::ConnectionFailedWithKind {
-                        kind: ConnectionFailureKind::TlsCertificateVerification,
-                        ..
-                    },
-                ) => Some(ConnectionErrorKind::MySqlConnectionFailure(
-                    ConnectionFailureKind::TlsCaVerification,
-                )),
-                (
-                    MySqlSslMode::VerifyIdentity,
-                    DbOperationError::ConnectionFailedWithKind {
-                        kind: ConnectionFailureKind::TlsCertificateVerification,
-                        ..
-                    },
-                ) => Some(ConnectionErrorKind::MySqlConnectionFailure(
-                    ConnectionFailureKind::TlsHostnameVerification,
-                )),
-                _ => None,
-            })
-            .unwrap_or(info.kind);
-
-        info
     }
 
     pub fn masked_details(&self) -> &str {
@@ -324,35 +280,6 @@ mod tests {
         }
 
         #[test]
-        fn from_db_operation_error_with_dsn_uses_mysql_tls_mode_for_ambiguous_verification() {
-            let error = DbOperationError::ConnectionFailedWithKind {
-                kind: ConnectionFailureKind::TlsCertificateVerification,
-                details: "certificate verification failed".to_string(),
-            };
-            let ca = ConnectionErrorInfo::from_db_operation_error_with_dsn(
-                &error,
-                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_CA",
-            );
-            let identity = ConnectionErrorInfo::from_db_operation_error_with_dsn(
-                &error,
-                "mysql://user:password@localhost:3306/app?ssl-mode=VERIFY_IDENTITY",
-            );
-
-            assert_eq!(
-                ca.kind,
-                ConnectionErrorKind::MySqlConnectionFailure(
-                    ConnectionFailureKind::TlsCaVerification
-                )
-            );
-            assert_eq!(
-                identity.kind,
-                ConnectionErrorKind::MySqlConnectionFailure(
-                    ConnectionFailureKind::TlsHostnameVerification
-                )
-            );
-        }
-
-        #[test]
         fn from_db_operation_error_preserves_connection_lost_kind() {
             let info = ConnectionErrorInfo::from_db_operation_error(
                 &DbOperationError::ConnectionLost("connection to server was lost".to_string()),
@@ -454,6 +381,12 @@ mod tests {
         #[case(
             ConnectionFailureKind::TlsHandshake,
             ConnectionErrorKind::MySqlConnectionFailure(ConnectionFailureKind::TlsHandshake)
+        )]
+        #[case(
+            ConnectionFailureKind::TlsCertificateVerification,
+            ConnectionErrorKind::MySqlConnectionFailure(
+                ConnectionFailureKind::TlsCertificateVerification
+            )
         )]
         #[case(
             ConnectionFailureKind::TlsCaVerification,
