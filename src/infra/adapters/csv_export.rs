@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
-use sabiql_app::ports::outbound::DbOperationError;
+use sabiql_app::ports::outbound::{DbOperationError, ExportIoSource};
 use tokio::io::{AsyncWriteExt, BufWriter};
 
 pub const CSV_FLUSH_THRESHOLD: usize = 64 * 1024;
@@ -85,7 +84,7 @@ impl Drop for RemoveOnDropGuard {
     }
 }
 
-pub enum CsvOutputError {
+pub(super) enum CsvOutputError {
     File(std::io::Error),
     Process(std::io::Error),
 }
@@ -97,9 +96,9 @@ impl From<std::io::Error> for CsvOutputError {
 }
 
 impl CsvOutputError {
-    pub fn into_db_operation_error(self) -> DbOperationError {
+    pub(super) fn into_db_operation_error(self) -> DbOperationError {
         match self {
-            Self::File(error) => DbOperationError::ExportIo(Arc::new(error)),
+            Self::File(error) => DbOperationError::ExportIo(ExportIoSource::new(error)),
             Self::Process(error) => DbOperationError::QueryFailed(error.to_string()),
         }
     }
@@ -137,7 +136,7 @@ impl CsvFileWriter {
     pub(crate) async fn create(path: PathBuf) -> Result<Self, DbOperationError> {
         let file = tokio::fs::File::create(path)
             .await
-            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
+            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
         Ok(Self {
             file: BufWriter::new(file),
             csv_writer: new_csv_writer(),
@@ -169,11 +168,11 @@ impl CsvFileWriter {
         self.file
             .write_all(&encoded)
             .await
-            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
+            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
         self.file
             .flush()
             .await
-            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))
+            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))
     }
 
     async fn flush_buffer(&mut self) -> Result<(), DbOperationError> {
@@ -184,11 +183,11 @@ impl CsvFileWriter {
         self.file
             .write_all(&encoded)
             .await
-            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
+            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
         self.file
             .flush()
             .await
-            .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
+            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
         self.bytes_since_flush = 0;
         Ok(())
     }
@@ -210,7 +209,7 @@ where
 
     tokio::fs::hard_link(&temporary_path, &final_path)
         .await
-        .map_err(|error| DbOperationError::ExportIo(Arc::new(error)))?;
+        .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
     let mut published_file = RemoveOnDropGuard::new(final_path.clone());
 
     if cleanup(&temporary_path).is_ok() {
@@ -223,6 +222,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::future::pending;
+    use std::sync::Arc;
 
     use tempfile::tempdir;
     use tokio::sync::Barrier;
@@ -231,6 +231,67 @@ mod tests {
     use super::*;
 
     const MEMORY_MEASUREMENT_FIELD_BYTES: usize = 8 * 1024 * 1024;
+
+    fn assert_export_io_source(error: &DbOperationError) {
+        assert!(matches!(error, DbOperationError::ExportIo(_)));
+        let source = std::error::Error::source(error).expect("ExportIo source");
+        assert!(source.downcast_ref::<std::io::Error>().is_some());
+    }
+
+    #[cfg(unix)]
+    async fn read_only_csv_writer(path: &Path) -> CsvFileWriter {
+        tokio::fs::write(path, []).await.unwrap();
+        let file = tokio::fs::OpenOptions::new()
+            .read(true)
+            .open(path)
+            .await
+            .unwrap();
+        CsvFileWriter {
+            file: BufWriter::new(file),
+            csv_writer: new_csv_writer(),
+            bytes_since_flush: 0,
+        }
+    }
+
+    #[test]
+    fn csv_output_errors_keep_file_and_process_failures_distinct() {
+        let file_error =
+            CsvOutputError::File(std::io::Error::other("disk full")).into_db_operation_error();
+        assert_export_io_source(&file_error);
+
+        let process_error =
+            CsvOutputError::Process(std::io::Error::other("pipe closed")).into_db_operation_error();
+        assert!(matches!(
+            &process_error,
+            DbOperationError::QueryFailed(details) if details == "pipe closed"
+        ));
+        assert!(std::error::Error::source(&process_error).is_none());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_file_flush_failure_is_export_io() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("read-only.csv");
+        let mut writer = read_only_csv_writer(&path).await;
+        writer.csv_writer.write_record(["row"]).unwrap();
+        writer.csv_writer.flush().unwrap();
+
+        let error = writer.finish().await.unwrap_err();
+        assert_export_io_source(&error);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_file_write_failure_is_export_io() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("read-only.csv");
+        let mut writer = read_only_csv_writer(&path).await;
+        let value = "x".repeat(CSV_FLUSH_THRESHOLD);
+
+        let error = writer.write_record([value.as_str()]).await.unwrap_err();
+        assert_export_io_source(&error);
+    }
 
     #[tokio::test]
     async fn writes_large_record_without_changing_csv_bytes() {

@@ -140,7 +140,7 @@ pub enum DbOperationError {
     #[error("Query failed")]
     QueryFailed(String),
     #[error("CSV export failed")]
-    ExportIo(#[source] Arc<std::io::Error>),
+    ExportIo(#[source] ExportIoSource),
     #[error("Preview exceeded its byte budget")]
     PreviewSizeExceeded(String),
     #[error("Query failed after a change")]
@@ -180,6 +180,29 @@ pub enum DbOperationError {
     Timeout(String),
     #[error("Operation canceled")]
     Canceled(String),
+}
+
+#[derive(Clone)]
+pub struct ExportIoSource(Arc<std::io::Error>);
+
+impl ExportIoSource {
+    pub fn new(error: std::io::Error) -> Self {
+        Self(Arc::new(error))
+    }
+}
+
+impl std::ops::Deref for ExportIoSource {
+    type Target = std::io::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Display for ExportIoSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
 impl DbOperationError {
@@ -419,7 +442,7 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
-        #[case(DbOperationError::ExportIo(Arc::new(std::io::Error::other("boom"))))]
+        #[case(DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other("boom"))))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperationWithKind {
             kind: UnsupportedOperationKind::ClientVersion,
@@ -558,19 +581,23 @@ mod tests {
 
         #[test]
         fn export_io_uses_export_guidance_and_preserves_source() {
-            let error = DbOperationError::ExportIo(Arc::new(std::io::Error::other("disk full")));
+            let error = DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other(
+                "password=mysecret host=localhost",
+            )));
 
             assert_eq!(error.summary(), "CSV export failed");
             assert_eq!(
                 error.hint(),
                 "Check the export folder and available disk space"
             );
-            assert_eq!(error.masked_details(), "disk full");
+            assert_eq!(error.masked_details(), "password=**** host=localhost");
             assert!(std::error::Error::source(&error).is_some());
             assert_eq!(
                 error.user_message(),
-                "CSV export failed: disk full. Check the export folder and available disk space."
+                "CSV export failed: password=**** host=localhost. Check the export folder and available disk space."
             );
+            assert!(!error.user_message().contains("mysecret"));
+            assert!(!format!("{error:?}").contains("mysecret"));
         }
 
         #[test]
