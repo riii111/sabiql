@@ -42,9 +42,7 @@ pub fn reduce_yank(
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
-                    state
-                        .messages
-                        .set_error_at("Cell index out of bounds".into(), now);
+                    state.messages.set_error("Cell index out of bounds".into());
                     DispatchResult::handled()
                 }
             } else {
@@ -101,9 +99,7 @@ pub fn reduce_yank(
                         on_failure: Some(Box::new(clipboard_unavailable())),
                     }])
                 } else {
-                    state
-                        .messages
-                        .set_error_at("Row index out of bounds".into(), now);
+                    state.messages.set_error("Row index out of bounds".into());
                     DispatchResult::handled()
                 }
             } else {
@@ -131,7 +127,7 @@ pub fn reduce_yank(
             DispatchResult::handled()
         }
         Action::CopyFailed(e) => {
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),

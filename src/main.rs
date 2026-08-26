@@ -361,12 +361,7 @@ impl Runtime {
             pending = next;
         }
         if depth >= MAX_DEPTH && !pending.is_empty() {
-            dispatch_overflow_fallback(
-                &mut self.state,
-                self.effect_runner.action_tx(),
-                pending,
-                Instant::now(),
-            );
+            dispatch_overflow_fallback(&mut self.state, self.effect_runner.action_tx(), pending);
             // Render immediately so the overflow error is visible before the next
             // event-loop pass; errors do not have an expiry wake-up anymore.
             self.run_effects(vec![Effect::Render]).await?;
@@ -445,7 +440,6 @@ fn dispatch_overflow_fallback(
     state: &mut AppState,
     action_tx: &mpsc::Sender<Action>,
     pending: Vec<Action>,
-    now: Instant,
 ) {
     let deferred = pending.len();
     let mut dropped = 0usize;
@@ -463,7 +457,7 @@ fn dispatch_overflow_fallback(
             "Internal error: action dispatch depth exceeded ({MAX_DEPTH}); {deferred} actions deferred"
         )
     };
-    state.messages.set_error_at(message, now);
+    state.messages.set_error(message);
 }
 
 fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader) {
@@ -474,7 +468,7 @@ fn load_service_entries(state: &mut AppState, reader: &dyn PgServiceEntryReader)
         }
         Ok(_) | Err(ServiceFileError::NotFound(_)) => {}
         Err(e) => {
-            state.messages.set_error_at(e.to_string(), Instant::now());
+            state.messages.set_error(e.to_string());
         }
     }
 }

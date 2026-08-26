@@ -98,7 +98,7 @@ pub(super) fn reduce_connection_selector(
             })
         }
         Action::ConnectionDeleteFailed(e) => {
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
 

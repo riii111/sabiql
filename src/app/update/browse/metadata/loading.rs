@@ -134,7 +134,7 @@ pub(super) fn reduce_loading(
             })
         }
         Action::ReloadMetadata => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {

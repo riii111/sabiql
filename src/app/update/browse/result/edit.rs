@@ -78,13 +78,13 @@ fn editable_cell_context(state: &AppState) -> Result<(usize, usize, String), Edi
     Ok((row_idx, col_idx, cell_value))
 }
 
-pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+pub fn reduce_edit(state: &mut AppState, action: &Action, _now: Instant) -> DispatchResult {
     match action {
         Action::ResultEnterCellEdit => {
             if state.session.is_read_only() {
                 state
                     .messages
-                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                    .set_error("Read-only mode: editing is disabled".to_string());
                 return DispatchResult::handled();
             }
 
@@ -103,7 +103,7 @@ pub fn reduce_edit(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                     DispatchResult::handled()
                 }
                 Err(reason) => {
-                    state.messages.set_error_at(reason.to_string(), now);
+                    state.messages.set_error(reason.to_string());
                     DispatchResult::handled()
                 }
             }

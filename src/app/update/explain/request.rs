@@ -25,7 +25,7 @@ pub(super) fn reduce_request(
 ) -> DispatchResult {
     match action {
         Action::ExplainRequest => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             let content = state.sql_modal.editor.content().trim().to_string();

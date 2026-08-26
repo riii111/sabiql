@@ -107,7 +107,7 @@ pub(super) fn reduce_high_risk_confirmation(
         }
 
         Action::SqlModalConfirmExecute => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 state.sql_modal.cancel_confirmation();
                 return DispatchResult::handled();
             }

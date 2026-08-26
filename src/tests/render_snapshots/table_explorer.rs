@@ -52,12 +52,11 @@ fn focus_mode_fullscreen_result() {
 #[test]
 fn error_message_in_footer() {
     let mut state = explorer_selected_state();
-    let now = test_instant();
     let mut terminal = create_test_terminal();
 
     state
         .messages
-        .set_error_at("Connection failed: timeout".to_string(), now);
+        .set_error("Connection failed: timeout".to_string());
 
     let output = render_to_string(&mut terminal, &mut state);
 
@@ -67,12 +66,10 @@ fn error_message_in_footer() {
 #[test]
 fn long_error_message_wraps_into_footer_and_command_line() {
     let mut state = explorer_selected_state();
-    let now = test_instant();
     let mut terminal = create_test_terminal();
 
-    state.messages.set_error_at(
+    state.messages.set_error(
         "Connection failed: the database server returned a detailed explanation that should remain visible until the next user operation instead of disappearing from the footer after a short timeout".to_string(),
-        now,
     );
 
     let output = render_to_string(&mut terminal, &mut state);

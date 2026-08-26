@@ -163,7 +163,7 @@ pub fn reduce_pagination(
 ) -> DispatchResult {
     match action {
         Action::RequestCsvExport => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if !state.can_request_csv_export() {
@@ -183,7 +183,7 @@ pub fn reduce_pagination(
             if state.session.active_database_type() == Some(DatabaseType::SQLite) {
                 match sqlite_export_plan(result.source, &export_query, &result.columns, row_count) {
                     SqliteExportPlan::NotExportable { reason } => {
-                        state.messages.set_error_at(reason, now);
+                        state.messages.set_error(reason);
                         return DispatchResult::handled();
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
@@ -261,7 +261,7 @@ pub fn reduce_pagination(
             export_query,
             file_name,
         } => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if state.is_stale_query_run(dsn, *run_id) {
@@ -306,20 +306,20 @@ pub fn reduce_pagination(
             }
 
             state.query.mark_idle();
-            state.messages.set_error_at(error.user_message(), now);
+            state.messages.set_error(error.user_message());
             DispatchResult::handled()
         }
 
         Action::OpenFolderFailed(error) => {
             state
                 .messages
-                .set_error_at(format!("Failed to open folder: {error}"), now);
+                .set_error(format!("Failed to open folder: {error}"));
 
             DispatchResult::handled()
         }
 
         Action::ResultNextPage => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {
@@ -340,7 +340,7 @@ pub fn reduce_pagination(
         }
 
         Action::ResultPrevPage => {
-            if reject_pending_mysql_connection_probe(state, now) {
+            if reject_pending_mysql_connection_probe(state) {
                 return DispatchResult::handled();
             }
             if state.query.is_running() || !state.query.can_paginate_visible_result() {

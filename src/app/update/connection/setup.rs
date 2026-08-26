@@ -27,7 +27,7 @@ use crate::update::query_context::termination_effects;
 pub fn reduce_connection_setup(
     state: &mut AppState,
     action: &Action,
-    now: Instant,
+    _now: Instant,
 ) -> DispatchResult {
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
@@ -48,7 +48,7 @@ pub fn reduce_connection_setup(
             DispatchResult::handled_with(cancel_effects)
         }
         Action::ConnectionEditLoadFailed(e) => {
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
@@ -242,7 +242,7 @@ pub fn reduce_connection_setup(
             } else {
                 state.modal.set_mode(InputMode::Normal);
                 let mut effects = cancel_effects;
-                effects.extend(try_connect(state, now));
+                effects.extend(try_connect(state));
                 DispatchResult::handled_with(effects)
             }
         }
@@ -316,7 +316,7 @@ pub fn reduce_connection_setup(
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
-            state.messages.set_error_at(e.to_string(), now);
+            state.messages.set_error(e.to_string());
             DispatchResult::handled()
         }
 

@@ -22,7 +22,7 @@ impl MessageState {
         self.expires_at
     }
 
-    pub fn set_error_at(&mut self, msg: String, _now: Instant) {
+    pub fn set_error(&mut self, msg: String) {
         self.last_error = Some(msg);
         self.last_success = None;
         self.expires_at = None;
@@ -69,7 +69,7 @@ mod tests {
         state.set_success_at("Success!".to_string(), now);
         assert!(state.last_success().is_some());
 
-        state.set_error_at("Error!".to_string(), now);
+        state.set_error("Error!".to_string());
 
         assert_eq!(state.last_error(), Some("Error!"));
         assert!(state.last_success().is_none());
@@ -79,7 +79,7 @@ mod tests {
     fn set_success_clears_error_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at("Error!".to_string(), now);
+        state.set_error("Error!".to_string());
         assert!(state.last_error().is_some());
 
         state.set_success_at("Success!".to_string(), now);
@@ -90,11 +90,10 @@ mod tests {
 
     #[test]
     fn set_error_does_not_set_expiration_time() {
-        let now = fixed_instant();
         let mut state = MessageState::default();
         assert!(state.expires_at().is_none());
 
-        state.set_error_at("Error!".to_string(), now);
+        state.set_error("Error!".to_string());
 
         assert!(state.expires_at().is_none());
     }
@@ -103,7 +102,7 @@ mod tests {
     fn clear_expired_at_keeps_error_message() {
         let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at("Error".to_string(), now);
+        state.set_error("Error".to_string());
 
         state.clear_expired_at(now + Duration::from_mins(1));
 
@@ -129,9 +128,8 @@ mod tests {
 
     #[test]
     fn clear_error_removes_error_message() {
-        let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at("Error".to_string(), now);
+        state.set_error("Error".to_string());
 
         state.clear_error();
 
@@ -140,9 +138,8 @@ mod tests {
 
     #[test]
     fn clear_removes_all_messages() {
-        let now = fixed_instant();
         let mut state = MessageState::default();
-        state.set_error_at("Error".to_string(), now);
+        state.set_error("Error".to_string());
 
         state.clear();
 

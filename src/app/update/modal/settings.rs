@@ -120,7 +120,7 @@ pub(super) fn reduce_settings(
         Action::SettingsSaveFailed(error) => {
             state
                 .messages
-                .set_error_at(format!("Failed to save settings: {error}"), now);
+                .set_error(format!("Failed to save settings: {error}"));
             DispatchResult::handled()
         }
         _ => DispatchResult::pass(),

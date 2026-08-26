@@ -68,9 +68,7 @@ pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> Dispa
                     serde_json::to_string_pretty(&value).unwrap_or_else(|_| cell_value.clone())
                 }
                 Err(err) => {
-                    state
-                        .messages
-                        .set_error_at(format!("Invalid JSON: {err}"), now);
+                    state.messages.set_error(format!("Invalid JSON: {err}"));
                     return DispatchResult::handled();
                 }
             };
@@ -113,11 +111,11 @@ pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             if state.session.is_read_only() {
                 state
                     .messages
-                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                    .set_error("Read-only mode: editing is disabled".to_string());
                 return DispatchResult::handled();
             }
             if let Err(reason) = ensure_json_column_writable(state) {
-                state.messages.set_error_at(reason.to_string(), now);
+                state.messages.set_error(reason.to_string());
                 return DispatchResult::handled();
             }
             state.json_detail.enter_edit();
@@ -129,11 +127,11 @@ pub fn reduce_json(state: &mut AppState, action: &Action, now: Instant) -> Dispa
             if state.session.is_read_only() {
                 state
                     .messages
-                    .set_error_at("Read-only mode: editing is disabled".to_string(), now);
+                    .set_error("Read-only mode: editing is disabled".to_string());
                 return DispatchResult::handled();
             }
             if let Err(reason) = ensure_json_column_writable(state) {
-                state.messages.set_error_at(reason.to_string(), now);
+                state.messages.set_error(reason.to_string());
                 return DispatchResult::handled();
             }
             state
