@@ -4,6 +4,7 @@ use std::panic;
 use color_eyre::eyre::Result;
 use crossterm::{
     cursor::SetCursorStyle,
+    event::{DisableBracketedPaste, DisableMouseCapture},
     execute,
     terminal::{LeaveAlternateScreen, disable_raw_mode},
 };
@@ -26,10 +27,83 @@ pub fn install_hooks() -> Result<()> {
 }
 
 fn restore_terminal() -> Result<()> {
-    if crossterm::terminal::is_raw_mode_enabled()? {
-        let _ = execute!(stdout(), SetCursorStyle::DefaultUserShape);
-        execute!(stdout(), LeaveAlternateScreen)?;
-        disable_raw_mode()?;
+    if !crossterm::terminal::is_raw_mode_enabled()? {
+        return Ok(());
     }
-    Ok(())
+
+    restore_terminal_steps(|step| match step {
+        RestoreStep::Cursor => {
+            execute!(stdout(), SetCursorStyle::DefaultUserShape).map_err(Into::into)
+        }
+        RestoreStep::AlternateScreen => {
+            execute!(stdout(), LeaveAlternateScreen).map_err(Into::into)
+        }
+        RestoreStep::MouseCapture => execute!(stdout(), DisableMouseCapture).map_err(Into::into),
+        RestoreStep::BracketedPaste => {
+            execute!(stdout(), DisableBracketedPaste).map_err(Into::into)
+        }
+        RestoreStep::Raw => disable_raw_mode().map_err(Into::into),
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RestoreStep {
+    Cursor,
+    BracketedPaste,
+    MouseCapture,
+    AlternateScreen,
+    Raw,
+}
+
+fn restore_terminal_steps<F>(mut restore: F) -> Result<()>
+where
+    F: FnMut(RestoreStep) -> Result<()>,
+{
+    let mut first_error = None;
+    for step in [
+        RestoreStep::Cursor,
+        RestoreStep::BracketedPaste,
+        RestoreStep::MouseCapture,
+        RestoreStep::AlternateScreen,
+        RestoreStep::Raw,
+    ] {
+        if let Err(error) = restore(step)
+            && first_error.is_none()
+        {
+            first_error = Some(error);
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn continues_restore_steps_after_a_failure() {
+        let mut restored = Vec::new();
+
+        let error = restore_terminal_steps(|step| {
+            restored.push(step);
+            if step == RestoreStep::BracketedPaste {
+                Err(color_eyre::eyre::eyre!("bracketed paste restore failed"))
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
+
+        assert_eq!(error.to_string(), "bracketed paste restore failed");
+        assert_eq!(
+            restored,
+            vec![
+                RestoreStep::Cursor,
+                RestoreStep::BracketedPaste,
+                RestoreStep::MouseCapture,
+                RestoreStep::AlternateScreen,
+                RestoreStep::Raw,
+            ]
+        );
+    }
 }
