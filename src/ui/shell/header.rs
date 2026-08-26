@@ -39,7 +39,7 @@ impl Header {
             match &state.session.metadata_state() {
                 MetadataState::Loaded => ("connected", theme.semantic.status.success),
                 MetadataState::Loading => ("loading...", theme.semantic.status.warning),
-                MetadataState::Error(_) => ("error", theme.semantic.status.error),
+                MetadataState::Error => ("error", theme.semantic.status.error),
                 MetadataState::NotLoaded => ("not loaded", theme.semantic.text.muted),
             }
         };

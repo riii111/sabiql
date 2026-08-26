@@ -175,8 +175,8 @@ pub fn reduce_connection_lifecycle(
             if state.session.dsn_matches(&target.dsn) {
                 state
                     .session
-                    .mark_table_detail_probe_failed(&target.dsn, message.clone());
-                state.session.mark_connection_failed(message);
+                    .mark_table_detail_probe_failed(&target.dsn, message);
+                state.session.mark_connection_failed();
             }
             state.connection_error.set_connection_switch_error(
                 ConnectionErrorInfo::from_db_operation_error_with_dsn(error, &target.dsn),
