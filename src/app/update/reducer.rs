@@ -81,6 +81,8 @@ fn dispatch_enabled_action(
             vec![]
         }
         Action::Quit => {
+            state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             state.should_quit = true;
             vec![Effect::CancelTrackedTasks]
         }

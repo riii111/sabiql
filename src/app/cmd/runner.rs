@@ -1097,9 +1097,11 @@ mod tests {
     }
 
     mod connection_task_lifecycle {
+        use std::fs;
         use std::future::pending;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
+        use tempfile::tempdir;
         use tokio::sync::mpsc::UnboundedSender;
         use tokio::time::{Duration, timeout};
 
@@ -1107,7 +1109,7 @@ mod tests {
         use crate::domain::Table;
         use crate::domain::connection::{
             ConnectionConfig, ConnectionId, DatabaseType, MySqlConnectionConfig, MySqlSslMode,
-            PostgresConnectionConfig, SslMode,
+            PostgresConnectionConfig, SqliteConnectionConfig, SslMode,
         };
         use crate::ports::outbound::DbOperationError;
         use crate::update::action::ConnectionTarget;
@@ -1421,6 +1423,75 @@ mod tests {
                 .unwrap();
 
             assert_eq!(dropped.load(Ordering::SeqCst), 1);
+        }
+
+        #[tokio::test]
+        async fn quitting_cancels_sqlite_save_before_blocking_claim() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("app.db");
+            fs::write(&path, b"").unwrap();
+
+            let (action_tx, mut action_rx) = mpsc::channel(8);
+            let mut store = MockConnectionStore::new();
+            store.expect_save().never();
+            let runner = test_fixtures::make_runner_with_dsn(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(store),
+                TtlCache::new(300),
+                action_tx,
+                Arc::new(test_fixtures::NoopDsnBuilder),
+            );
+            let mut state = AppState::new("test".to_string());
+            let run_id = state.session.begin_connection_save();
+            let run_guard = state.session.connection_save_guard();
+            let completion_engine = RefCell::new(CompletionEngine::new());
+            let mut renderer = NoopRenderer;
+
+            runner
+                .execute_effects(
+                    vec![Effect::SaveAndConnect {
+                        id: None,
+                        name: "Local".to_string(),
+                        config: ConnectionConfig::SQLite(
+                            SqliteConnectionConfig::new(path.to_string_lossy().to_string())
+                                .unwrap(),
+                        ),
+                        run_id,
+                        run_guard,
+                    }],
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            let shutdown_effects = reduce(
+                &mut state,
+                Action::Quit,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(state.should_quit);
+            tokio::task::yield_now().await;
+            runner
+                .execute_effects(
+                    shutdown_effects,
+                    &mut renderer,
+                    &mut state,
+                    &completion_engine,
+                    &AppServices::stub(),
+                )
+                .await
+                .unwrap();
+
+            assert!(
+                timeout(Duration::from_millis(100), action_rx.recv())
+                    .await
+                    .is_err()
+            );
         }
 
         #[tokio::test]

@@ -201,6 +201,8 @@ pub fn reduce_execution(
 
             DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
+                    state.session.cancel_connection_save_and_disconnect();
+                    state.session.clear_mysql_connection_probe();
                     state.should_quit = true;
                     vec![Effect::CancelTrackedTasks]
                 }
@@ -610,6 +612,14 @@ mod tests {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("q".to_string());
+            let save_run_id = state.session.begin_connection_save();
+            let probe_id = ConnectionId::from_string("pending-probe");
+            let _ = state.session.begin_mysql_connection_probe(
+                &probe_id,
+                "mysql",
+                "mysql://localhost/app",
+                Some("app"),
+            );
 
             let effects = dispatch_query(
                 &mut state,
@@ -621,6 +631,8 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
+            assert!(!state.session.is_current_connection_save(save_run_id));
+            assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 

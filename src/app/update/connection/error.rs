@@ -16,12 +16,12 @@ pub(super) fn reduce_connection_error(
     match action {
         Action::CloseConnectionError => {
             if state.session.pending_mysql_connection_probe().is_some() {
-                state.session.clear_mysql_connection_probe();
                 state.connection_error.clear();
             } else {
                 state.connection_error.reset_view();
                 state.connection_error.clear_copied_feedback();
             }
+            state.session.clear_mysql_connection_probe();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
@@ -73,6 +73,7 @@ pub(super) fn reduce_connection_error(
             }
             state.connection_error.clear();
             state.session.cancel_connection_save();
+            state.session.clear_mysql_connection_probe();
             state.session.mark_disconnected();
             state.modal.replace_mode(InputMode::ConnectionSetup);
             DispatchResult::handled_with(vec![Effect::CancelConnectionTask])

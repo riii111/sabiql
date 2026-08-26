@@ -32,6 +32,7 @@ pub fn reduce_connection_setup(
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             state.connection_setup.reset();
             if !state.connections().is_empty() || state.session.dsn().is_some() {
                 state.connection_setup.set_first_run(false);
@@ -44,6 +45,7 @@ pub fn reduce_connection_setup(
         }
         Action::ConnectionEditLoaded(profile) => {
             state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
             DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
@@ -54,6 +56,7 @@ pub fn reduce_connection_setup(
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
             state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             state.modal.set_mode(InputMode::Normal);
             DispatchResult::handled_with(vec![Effect::CancelConnectionTask])
         }
@@ -230,6 +233,7 @@ pub fn reduce_connection_setup(
         }
         Action::ConnectionSetupCancel => {
             state.session.cancel_connection_save_and_disconnect();
+            state.session.clear_mysql_connection_probe();
             if state.connection_setup.is_first_run() {
                 state.confirm_dialog.open(
                     "Confirm",
@@ -1378,6 +1382,68 @@ mod tests {
                     .get(&ConnectionField::Host),
                 Some(&"Must be 255 characters or less".to_string())
             );
+        }
+    }
+
+    mod connection_task_cancellation {
+        use super::*;
+
+        fn state_with_pending_mysql_probe() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql-pending");
+            let _ = state.session.begin_mysql_connection_probe(
+                &id,
+                "mysql",
+                "mysql://localhost/app",
+                Some("app"),
+            );
+            state
+        }
+
+        #[test]
+        fn opening_setup_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+
+            let effects = reduce(
+                &mut state,
+                &Action::OpenModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+        }
+
+        #[test]
+        fn loading_edit_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+        }
+
+        #[test]
+        fn closing_setup_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+            state.modal.set_mode(InputMode::ConnectionSetup);
+
+            let effects = reduce(
+                &mut state,
+                &Action::CloseModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
         }
     }
 
