@@ -309,9 +309,6 @@ pub fn reduce_connection_setup(
                         error, dsn,
                     ))
                 }
-                ConnectionSaveError::Metadata(error) if *database_type == DatabaseType::MySQL => {
-                    Some(ConnectionErrorInfo::from_db_operation_error(error))
-                }
                 _ => None,
             };
             if let Some(error_info) = mysql_error {
