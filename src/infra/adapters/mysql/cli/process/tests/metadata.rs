@@ -7,6 +7,7 @@ async fn reuses_one_process_for_ordered_resultsets() {
     let (_directory, program, option_file_path) = fake_mysql_multi();
     let option_file = MySqlOptionFile {
         path: option_file_path.clone(),
+        file: None,
     };
     let mut session =
         MySqlMetadataSession::spawn_with_metadata_program(OsStr::new(&program), option_file)

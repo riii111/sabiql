@@ -712,10 +712,12 @@ mod tests {
             DatabaseType::MySQL,
             "mysql://user@localhost:3306/app?ssl-mode=PREFERRED",
         );
-        state.connection_error.set_save_and_connect_error(
-            ConnectionErrorInfo::with_kind(ConnectionErrorKind::Timeout, "connection timed out"),
-            DatabaseType::MySQL,
-        );
+        state
+            .connection_error
+            .set_save_and_connect_error(ConnectionErrorInfo::with_kind(
+                ConnectionErrorKind::Timeout,
+                "connection timed out",
+            ));
         state.modal.set_mode(InputMode::ConnectionError);
 
         let hints = Footer::get_context_hints(&state);

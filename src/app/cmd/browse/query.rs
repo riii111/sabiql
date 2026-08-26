@@ -69,7 +69,7 @@ fn spawn_query_history_append(
     });
 }
 
-pub fn run(
+pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     query_executor: &Arc<dyn QueryExecutor>,
@@ -92,36 +92,36 @@ pub fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            query_tasks.spawn(async move {
-                match executor
-                    .execute_preview(&dsn, &schema, &table, limit, offset)
-                    .await
-                {
-                    Ok(result) => {
-                        tx.send(Action::QueryCompleted {
-                            dsn,
-                            run_id,
-                            result: Arc::new(result),
-                            context: QueryCompletionContext::Preview {
-                                generation,
-                                target_page,
-                            },
-                        })
+            query_tasks
+                .spawn(async move {
+                    match executor
+                        .execute_preview(&dsn, &schema, &table, limit, offset)
                         .await
-                        .ok();
+                    {
+                        Ok(result) => {
+                            tx.send(Action::QueryCompleted {
+                                run_id,
+                                result: Arc::new(result),
+                                context: QueryCompletionContext::Preview {
+                                    generation,
+                                    target_page,
+                                },
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(e) => {
+                            tx.send(Action::QueryFailed {
+                                run_id,
+                                error: e,
+                                context: QueryFailureContext::Preview { generation },
+                            })
+                            .await
+                            .ok();
+                        }
                     }
-                    Err(e) => {
-                        tx.send(Action::QueryFailed {
-                            dsn,
-                            run_id,
-                            error: e,
-                            context: QueryFailureContext::Preview { generation },
-                        })
-                        .await
-                        .ok();
-                    }
-                }
-            });
+                })
+                .await;
         }
 
         Effect::ExecuteExplain {
@@ -137,44 +137,46 @@ pub fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            query_tasks.spawn(async move {
-                match executor.execute_adhoc(&dsn, &query, access_mode).await {
-                    Ok(result) => {
-                        let plan_text = match database_type {
-                            DatabaseType::SQLite => {
-                                sqlite_explain_query_plan_text_from_result(&result)
-                            }
-                            DatabaseType::PostgreSQL => {
-                                postgres_explain_plan_text_from_result(&result)
-                            }
-                            DatabaseType::MySQL => mysql_explain_plan_text_from_result(&result),
-                        };
-                        tx.send(Action::ExplainCompleted {
-                            dsn,
-                            database_type,
-                            database_generation,
-                            run_id,
-                            query: source_query,
-                            plan_text,
-                            is_analyze,
-                            execution_time_ms: result.execution_time_ms,
-                        })
-                        .await
-                        .ok();
+            query_tasks
+                .spawn(async move {
+                    match executor.execute_adhoc(&dsn, &query, access_mode).await {
+                        Ok(result) => {
+                            let plan_text = match database_type {
+                                DatabaseType::SQLite => {
+                                    sqlite_explain_query_plan_text_from_result(&result)
+                                }
+                                DatabaseType::PostgreSQL => {
+                                    postgres_explain_plan_text_from_result(&result)
+                                }
+                                DatabaseType::MySQL => mysql_explain_plan_text_from_result(&result),
+                            };
+                            tx.send(Action::ExplainCompleted {
+                                dsn,
+                                database_type,
+                                database_generation,
+                                run_id,
+                                query: source_query,
+                                plan_text,
+                                is_analyze,
+                                execution_time_ms: result.execution_time_ms,
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(e) => {
+                            tx.send(Action::ExplainFailed {
+                                dsn,
+                                database_generation,
+                                run_id,
+                                error: e,
+                                is_analyze,
+                            })
+                            .await
+                            .ok();
+                        }
                     }
-                    Err(e) => {
-                        tx.send(Action::ExplainFailed {
-                            dsn,
-                            database_generation,
-                            run_id,
-                            error: e,
-                            is_analyze,
-                        })
-                        .await
-                        .ok();
-                    }
-                }
-            });
+                })
+                .await;
         }
 
         Effect::ExecuteAdhoc {
@@ -189,55 +191,55 @@ pub fn run(
             let project = state.runtime.project_name().to_string();
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
-            query_tasks.spawn(async move {
-                let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
-                match result {
-                    Ok(result) => {
-                        if let Some(scope) = &history_scope {
-                            let rows = result
-                                .command_tag
-                                .as_ref()
-                                .and_then(CommandTag::affected_rows);
-                            spawn_query_history_append(
-                                &history_store,
-                                &project,
-                                scope,
-                                &query_for_history,
-                                QueryResultStatus::Success,
-                                rows,
-                            );
+            query_tasks
+                .spawn(async move {
+                    let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
+                    match result {
+                        Ok(result) => {
+                            if let Some(scope) = &history_scope {
+                                let rows = result
+                                    .command_tag
+                                    .as_ref()
+                                    .and_then(CommandTag::affected_rows);
+                                spawn_query_history_append(
+                                    &history_store,
+                                    &project,
+                                    scope,
+                                    &query_for_history,
+                                    QueryResultStatus::Success,
+                                    rows,
+                                );
+                            }
+                            tx.send(Action::QueryCompleted {
+                                run_id,
+                                result: Arc::new(result),
+                                context: QueryCompletionContext::Adhoc,
+                            })
+                            .await
+                            .ok();
                         }
-                        tx.send(Action::QueryCompleted {
-                            dsn,
-                            run_id,
-                            result: Arc::new(result),
-                            context: QueryCompletionContext::Adhoc,
-                        })
-                        .await
-                        .ok();
-                    }
-                    Err(e) => {
-                        if let Some(scope) = &history_scope {
-                            spawn_query_history_append(
-                                &history_store,
-                                &project,
-                                scope,
-                                &query_for_history,
-                                QueryResultStatus::Failed,
-                                None,
-                            );
+                        Err(e) => {
+                            if let Some(scope) = &history_scope {
+                                spawn_query_history_append(
+                                    &history_store,
+                                    &project,
+                                    scope,
+                                    &query_for_history,
+                                    QueryResultStatus::Failed,
+                                    None,
+                                );
+                            }
+                            tx.send(Action::QueryFailed {
+                                run_id,
+                                error: e,
+                                context: QueryFailureContext::Adhoc,
+                            })
+                            .await
+                            .ok();
                         }
-                        tx.send(Action::QueryFailed {
-                            dsn,
-                            run_id,
-                            error: e,
-                            context: QueryFailureContext::Adhoc,
-                        })
-                        .await
-                        .ok();
                     }
-                }
-            });
+                })
+                .await;
         }
 
         Effect::ExecuteWrite {
@@ -253,49 +255,51 @@ pub fn run(
             let history_scope = state.session.query_history_scope();
             let query_for_history = query.clone();
 
-            query_tasks.spawn(async move {
-                match executor.execute_write(&dsn, &query, access_mode).await {
-                    Ok(result) => {
-                        if let Some(scope) = &history_scope {
-                            spawn_query_history_append(
-                                &history_store,
-                                &project,
-                                scope,
-                                &query_for_history,
-                                QueryResultStatus::Success,
-                                Some(result.affected_rows as u64),
-                            );
+            query_tasks
+                .spawn(async move {
+                    match executor.execute_write(&dsn, &query, access_mode).await {
+                        Ok(result) => {
+                            if let Some(scope) = &history_scope {
+                                spawn_query_history_append(
+                                    &history_store,
+                                    &project,
+                                    scope,
+                                    &query_for_history,
+                                    QueryResultStatus::Success,
+                                    Some(result.affected_rows as u64),
+                                );
+                            }
+                            tx.send(Action::ExecuteWriteSucceeded {
+                                dsn,
+                                run_id,
+                                affected_rows: result.affected_rows,
+                                diagnostics: result.diagnostics,
+                            })
+                            .await
+                            .ok();
                         }
-                        tx.send(Action::ExecuteWriteSucceeded {
-                            dsn,
-                            run_id,
-                            affected_rows: result.affected_rows,
-                            diagnostics: result.diagnostics,
-                        })
-                        .await
-                        .ok();
-                    }
-                    Err(e) => {
-                        if let Some(scope) = &history_scope {
-                            spawn_query_history_append(
-                                &history_store,
-                                &project,
-                                scope,
-                                &query_for_history,
-                                QueryResultStatus::Failed,
-                                None,
-                            );
+                        Err(e) => {
+                            if let Some(scope) = &history_scope {
+                                spawn_query_history_append(
+                                    &history_store,
+                                    &project,
+                                    scope,
+                                    &query_for_history,
+                                    QueryResultStatus::Failed,
+                                    None,
+                                );
+                            }
+                            tx.send(Action::ExecuteWriteFailed {
+                                dsn,
+                                run_id,
+                                error: e,
+                            })
+                            .await
+                            .ok();
                         }
-                        tx.send(Action::ExecuteWriteFailed {
-                            dsn,
-                            run_id,
-                            error: e,
-                        })
-                        .await
-                        .ok();
                     }
-                }
-            });
+                })
+                .await;
         }
 
         Effect::CountRowsForExport {
@@ -308,18 +312,20 @@ pub fn run(
             let executor = Arc::clone(query_executor);
             let tx = action_tx.clone();
 
-            query_tasks.spawn(async move {
-                let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
-                tx.send(Action::CsvExportRowsCounted {
-                    dsn,
-                    run_id,
-                    row_count,
-                    export_query,
-                    file_name,
+            query_tasks
+                .spawn(async move {
+                    let row_count = executor.count_query_rows(&dsn, &count_query).await.ok();
+                    tx.send(Action::CsvExportRowsCounted {
+                        dsn,
+                        run_id,
+                        row_count,
+                        export_query,
+                        file_name,
+                    })
+                    .await
+                    .ok();
                 })
-                .await
-                .ok();
-            });
+                .await;
         }
 
         Effect::ExportCsv {
@@ -333,32 +339,34 @@ pub fn run(
             let tx = action_tx.clone();
             let export_dsn = dsn.clone();
 
-            query_tasks.spawn(async move {
-                let result = executor
-                    .export_to_csv(&export_dsn, &query, &file_name)
-                    .await;
-                match result {
-                    Ok(path) => {
-                        tx.send(Action::CsvExportSucceeded {
-                            dsn,
-                            run_id,
-                            path: path.display().to_string(),
-                            row_count,
-                        })
-                        .await
-                        .ok();
+            query_tasks
+                .spawn(async move {
+                    let result = executor
+                        .export_to_csv(&export_dsn, &query, &file_name)
+                        .await;
+                    match result {
+                        Ok(path) => {
+                            tx.send(Action::CsvExportSucceeded {
+                                dsn,
+                                run_id,
+                                path: path.display().to_string(),
+                                row_count,
+                            })
+                            .await
+                            .ok();
+                        }
+                        Err(e) => {
+                            tx.send(Action::CsvExportFailed {
+                                dsn,
+                                run_id,
+                                error: e,
+                            })
+                            .await
+                            .ok();
+                        }
                     }
-                    Err(e) => {
-                        tx.send(Action::CsvExportFailed {
-                            dsn,
-                            run_id,
-                            error: e,
-                        })
-                        .await
-                        .ok();
-                    }
-                }
-            });
+                })
+                .await;
         }
 
         Effect::ExportCsvFromCache {
@@ -372,29 +380,31 @@ pub fn run(
             let tx = action_tx.clone();
             let exporter = Arc::clone(cached_result_exporter);
 
-            query_tasks.spawn(async move {
-                let result = exporter
-                    .export_cached_result_to_csv(file_name, columns, values)
-                    .await;
+            query_tasks
+                .spawn(async move {
+                    let result = exporter
+                        .export_cached_result_to_csv(file_name, columns, values)
+                        .await;
 
-                match result {
-                    Ok(path) => {
-                        tx.send(Action::CsvExportSucceeded {
-                            dsn,
-                            run_id,
-                            path: path.display().to_string(),
-                            row_count,
-                        })
-                        .await
-                        .ok();
-                    }
-                    Err(error) => {
-                        tx.send(Action::CsvExportFailed { dsn, run_id, error })
+                    match result {
+                        Ok(path) => {
+                            tx.send(Action::CsvExportSucceeded {
+                                dsn,
+                                run_id,
+                                path: path.display().to_string(),
+                                row_count,
+                            })
                             .await
                             .ok();
+                        }
+                        Err(error) => {
+                            tx.send(Action::CsvExportFailed { dsn, run_id, error })
+                                .await
+                                .ok();
+                        }
                     }
-                }
-            });
+                })
+                .await;
         }
 
         _ => unreachable!("query::run called with non-query effect"),

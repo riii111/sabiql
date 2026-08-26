@@ -57,7 +57,8 @@ pub async fn run(
                 generation,
                 run_id,
                 table_detail_tasks,
-            );
+            )
+            .await;
         }
         Effect::PrefetchTableColumnsAndFks {
             dsn,
@@ -186,7 +187,7 @@ fn fetch_effective_user(
     });
 }
 
-fn fetch_table_detail(
+async fn fetch_table_detail(
     action_tx: &mpsc::Sender<Action>,
     metadata_provider: &Arc<dyn MetadataProvider>,
     dsn: String,
@@ -199,30 +200,32 @@ fn fetch_table_detail(
     let provider = Arc::clone(metadata_provider);
     let tx = action_tx.clone();
 
-    table_detail_tasks.spawn(async move {
-        match provider.fetch_table_detail(&dsn, &schema, &table).await {
-            Ok(detail) => {
-                tx.send(Action::TableDetailLoaded {
-                    dsn,
-                    run_id,
-                    detail: Box::new(detail),
-                    generation,
-                })
-                .await
-                .ok();
+    table_detail_tasks
+        .spawn(async move {
+            match provider.fetch_table_detail(&dsn, &schema, &table).await {
+                Ok(detail) => {
+                    tx.send(Action::TableDetailLoaded {
+                        dsn,
+                        run_id,
+                        detail: Box::new(detail),
+                        generation,
+                    })
+                    .await
+                    .ok();
+                }
+                Err(e) => {
+                    tx.send(Action::TableDetailFailed {
+                        dsn,
+                        run_id,
+                        error: e,
+                        generation,
+                    })
+                    .await
+                    .ok();
+                }
             }
-            Err(e) => {
-                tx.send(Action::TableDetailFailed {
-                    dsn,
-                    run_id,
-                    error: e,
-                    generation,
-                })
-                .await
-                .ok();
-            }
-        }
-    });
+        })
+        .await;
 }
 
 async fn prefetch_table_detail(

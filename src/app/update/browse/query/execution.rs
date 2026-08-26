@@ -30,12 +30,11 @@ pub fn reduce_execution(
 ) -> DispatchResult {
     match action {
         Action::QueryCompleted {
-            dsn,
             run_id,
             result,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
             if let QueryCompletionContext::Preview { generation, .. } = context
@@ -99,12 +98,11 @@ pub fn reduce_execution(
             DispatchResult::handled_with(try_adhoc_refresh(state, result, now))
         }
         Action::QueryFailed {
-            dsn,
             run_id,
             error,
             context,
         } => {
-            if state.is_stale_query_run(dsn, *run_id) {
+            if !state.query.is_current_run(*run_id) {
                 return DispatchResult::handled();
             }
 
@@ -120,19 +118,9 @@ pub fn reduce_execution(
                 && state.session.selected_table_key().is_some()
                 && !state.session.is_table_detail_terminal(*generation)
             {
-                let preview_query = state.query.pagination.qualified_name();
+                let result = Arc::new(preview_error_result(state, error));
                 state.query.mark_idle();
-                state.query.defer_preview(
-                    Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )),
-                    *generation,
-                    None,
-                    false,
-                );
+                state.query.defer_preview(result, *generation, None, false);
                 return DispatchResult::handled();
             }
 
@@ -143,18 +131,13 @@ pub fn reduce_execution(
             ) {
                 state.query.mark_idle();
                 if is_preview {
+                    let result = Arc::new(preview_error_result(state, error));
                     state.result_interaction.reset_view();
                     state
                         .query
                         .set_post_delete_selection(PostDeleteRowSelection::Keep);
                     state.query.clear_delete_refresh_target();
-                    let preview_query = state.query.pagination.qualified_name();
-                    state.query.set_current_result(Arc::new(QueryResult::error(
-                        preview_query,
-                        error.result_message(),
-                        0,
-                        QuerySource::Preview,
-                    )));
+                    state.query.set_current_result(result);
                 } else {
                     let user_message = error.user_message();
                     state.messages.set_error_at(user_message.clone(), now);
@@ -201,6 +184,8 @@ pub fn reduce_execution(
 
             DispatchResult::handled_with(match follow_up {
                 Action::Quit => {
+                    state.session.cancel_connection_save_and_disconnect();
+                    state.session.clear_mysql_connection_probe();
                     state.should_quit = true;
                     vec![Effect::CancelTrackedTasks]
                 }
@@ -308,6 +293,15 @@ fn try_adhoc_refresh(state: &mut AppState, result: &QueryResult, now: Instant) -
         return vec![];
     }
     refresh_effects_for_scope(state, result.refresh_scope, now)
+}
+
+fn preview_error_result(state: &AppState, error: &DbOperationError) -> QueryResult {
+    QueryResult::error(
+        state.query.pagination.qualified_name(),
+        error.result_message(),
+        0,
+        QuerySource::Preview,
+    )
 }
 
 fn reset_view_for_new_result(state: &mut AppState, now: Instant) {
@@ -572,7 +566,6 @@ mod tests {
     ) -> Action {
         let run_id = begin_query_run(state);
         Action::QueryFailed {
-            dsn: state.session.dsn().unwrap_or_default().to_string(),
             run_id,
             error,
             context: match source {
@@ -610,6 +603,14 @@ mod tests {
             let mut state = create_test_state();
             state.modal.push_mode(InputMode::CommandLine);
             state.command_line_input.set_content("q".to_string());
+            let save_run_id = state.session.begin_connection_save();
+            let probe_id = ConnectionId::from_string("pending-probe");
+            let _ = state.session.begin_mysql_connection_probe(
+                &probe_id,
+                "mysql",
+                "mysql://localhost/app",
+                Some("app"),
+            );
 
             let effects = dispatch_query(
                 &mut state,
@@ -621,6 +622,8 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.should_quit);
+            assert!(!state.session.is_current_connection_save(save_run_id));
+            assert!(state.session.pending_mysql_connection_probe().is_none());
             assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
         }
 
@@ -1279,7 +1282,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: old_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,
@@ -1288,6 +1290,33 @@ mod tests {
                 &AppServices::stub(),
             );
 
+            assert!(state.query.current_result().is_none());
+            assert!(state.query.is_running());
+        }
+
+        #[test]
+        fn same_dsn_reconnect_rejects_previous_query_completion_by_run_id() {
+            let mut state = create_test_state();
+            let stale_run_id = begin_query_run(&mut state);
+
+            state.session.reset(&mut state.query);
+            state.session.activate_connection_with_dsn(
+                &ConnectionId::new(),
+                "postgres",
+                DatabaseType::PostgreSQL,
+                "postgres://localhost/test",
+            );
+            let current_run_id = begin_query_run(&mut state);
+
+            let action = Action::QueryCompleted {
+                run_id: stale_run_id,
+                result: adhoc_result(),
+                context: QueryCompletionContext::Adhoc,
+            };
+            assert!(!format!("{action:?}").contains("dsn:"));
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            assert!(stale_run_id < current_run_id);
             assert!(state.query.current_result().is_none());
             assert!(state.query.is_running());
         }
@@ -1303,7 +1332,6 @@ mod tests {
             dispatch_query(
                 &mut state,
                 &Action::QueryCompleted {
-                    dsn: "postgres://localhost/test".to_string(),
                     run_id: stale_run_id,
                     result: adhoc_result(),
                     context: QueryCompletionContext::Adhoc,

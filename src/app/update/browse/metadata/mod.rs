@@ -76,6 +76,17 @@ mod tests {
         state
     }
 
+    fn sqlite_state_with_dsn(dsn: &str) -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_dsn(
+            &ConnectionId::new(),
+            "sqlite",
+            DatabaseType::SQLite,
+            dsn,
+        );
+        state
+    }
+
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
         Box::new(test_support::table::minimal(schema, name))
     }
@@ -220,7 +231,7 @@ mod tests {
         }
 
         #[test]
-        fn mysql_metadata_actions_start_fetches() {
+        fn mysql_reload_metadata_starts_fetch() {
             let mut state = AppState::new("test".to_string());
             state.session.activate_connection_with_target(
                 &ConnectionId::new(),
@@ -233,18 +244,16 @@ mod tests {
                 .session
                 .set_connection_state(ConnectionState::Connected);
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.iter().any(contains_fetch_metadata));
-            }
+            assert!(effects.iter().any(contains_fetch_metadata));
             assert!(state.messages.last_error().is_none());
         }
 
         #[test]
-        fn mysql_metadata_actions_during_pending_switch_preserve_probe() {
+        fn mysql_reload_metadata_during_pending_switch_preserves_probe() {
             let mut state = AppState::new("test".to_string());
             let current_id = ConnectionId::from_string("mysql-a");
             let target_id = ConnectionId::from_string("mysql-b");
@@ -265,28 +274,26 @@ mod tests {
                 Some("b"),
             );
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.is_empty());
-                assert_eq!(
-                    state
-                        .session
-                        .pending_mysql_connection_probe()
-                        .map(|pending| pending.run_id),
-                    Some(probe_run_id)
-                );
-                assert_eq!(
-                    state.messages.last_error(),
-                    Some("Connection switch in progress")
-                );
-            }
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
         }
 
         #[test]
-        fn mysql_metadata_actions_during_same_connection_retry_preserve_probe() {
+        fn mysql_reload_metadata_during_same_connection_retry_preserves_probe() {
             let mut state = AppState::new("test".to_string());
             let id = ConnectionId::from_string("mysql-a");
             let dsn = "mysql://user@localhost:3306/a";
@@ -305,24 +312,22 @@ mod tests {
                     .session
                     .begin_mysql_connection_probe(&id, "mysql-a", dsn, Some("a"));
 
-            for action in [Action::LoadMetadata, Action::ReloadMetadata] {
-                let effects = dispatch_metadata(&mut state, &action, Instant::now())
-                    .into_effects()
-                    .unwrap();
+            let effects = dispatch_metadata(&mut state, &Action::ReloadMetadata, Instant::now())
+                .into_effects()
+                .unwrap();
 
-                assert!(effects.is_empty());
-                assert_eq!(
-                    state
-                        .session
-                        .pending_mysql_connection_probe()
-                        .map(|pending| pending.run_id),
-                    Some(probe_run_id)
-                );
-                assert_eq!(
-                    state.messages.last_error(),
-                    Some("Connection switch in progress")
-                );
-            }
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .pending_mysql_connection_probe()
+                    .map(|pending| pending.run_id),
+                Some(probe_run_id)
+            );
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
         }
 
         fn contains_fetch_metadata(effect: &Effect) -> bool {
@@ -875,6 +880,42 @@ mod tests {
             assert!(state.session.table_detail().is_none());
             assert!(state.session.selected_table_key().is_none());
             assert_eq!(state.ui.explorer_selected(), 0);
+        }
+
+        #[test]
+        fn metadata_reload_does_not_cancel_diagnostics_modal_task() {
+            let mut state = sqlite_state_with_dsn("sqlite:///tmp/test.db");
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let diagnostics_run_id = state.sqlite_diagnostics.begin_core_fetch();
+            state.modal.set_mode(InputMode::SqliteDiagnostics);
+            let metadata_run_id = state.session.begin_metadata_refresh();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::MetadataLoaded {
+                    dsn: "sqlite:///tmp/test.db".to_string(),
+                    run_id: metadata_run_id,
+                    metadata: make_metadata(vec![("public", "orders")]),
+                },
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(
+                effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CancelTrackedTasks))
+            );
+            assert!(
+                !effects
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::CancelSqliteDiagnostics))
+            );
+            assert_eq!(state.input_mode(), InputMode::SqliteDiagnostics);
+            assert!(state.sqlite_diagnostics.is_current_run(diagnostics_run_id));
+            assert!(state.sqlite_diagnostics.snapshot().is_none());
         }
 
         #[test]

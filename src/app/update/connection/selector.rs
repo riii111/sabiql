@@ -644,10 +644,6 @@ mod tests {
                 vec![profile],
                 vec![ServiceEntry {
                     service_name: "mydb".to_string(),
-                    host: None,
-                    dbname: None,
-                    port: None,
-                    user: None,
                 }],
             );
             state.modal.set_mode(InputMode::Normal);

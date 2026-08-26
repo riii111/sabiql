@@ -13,8 +13,6 @@ pub enum ServiceFileError {
         #[source]
         source: Arc<std::io::Error>,
     },
-    #[error("Parse error: {0}")]
-    ParseError(String),
 }
 
 #[cfg_attr(test, mockall::automock)]

@@ -1,4 +1,5 @@
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use std::sync::Arc;
 
@@ -7,16 +8,74 @@ use crate::domain::{DiagnosticField, SqliteDiagnosticsSnapshot};
 use crate::ports::outbound::SqliteDiagnosticsProvider;
 use crate::update::action::Action;
 
-pub fn spawn_sqlite_diagnostics(
+#[derive(Default)]
+pub(crate) struct SqliteDiagnosticsTaskOwner {
+    core: std::sync::Mutex<Option<JoinHandle<()>>>,
+    quick_check: std::sync::Mutex<Option<JoinHandle<()>>>,
+}
+
+impl SqliteDiagnosticsTaskOwner {
+    async fn replace<F>(slot: &std::sync::Mutex<Option<JoinHandle<()>>>, task: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        if let Some(task) = Self::abort_slot(slot) {
+            let _ = task.await;
+        }
+        let task = tokio::spawn(task);
+        *slot.lock().expect("SQLite diagnostics task lock poisoned") = Some(task);
+    }
+
+    fn abort_slot(slot: &std::sync::Mutex<Option<JoinHandle<()>>>) -> Option<JoinHandle<()>> {
+        let task = {
+            slot.lock()
+                .expect("SQLite diagnostics task lock poisoned")
+                .take()
+        };
+        if let Some(task) = &task {
+            task.abort();
+        }
+        task
+    }
+
+    pub(crate) async fn cancel(&self) {
+        for task in self.abort() {
+            let _ = task.await;
+        }
+    }
+
+    pub(crate) fn abort(&self) -> Vec<JoinHandle<()>> {
+        let core = Self::abort_slot(&self.core);
+        let quick_check = Self::abort_slot(&self.quick_check);
+        [core, quick_check].into_iter().flatten().collect()
+    }
+}
+
+impl Drop for SqliteDiagnosticsTaskOwner {
+    fn drop(&mut self) {
+        for slot in [&mut self.core, &mut self.quick_check] {
+            if let Some(task) = slot
+                .get_mut()
+                .expect("SQLite diagnostics task lock poisoned")
+                .take()
+            {
+                task.abort();
+            }
+        }
+    }
+}
+
+pub(crate) async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
     provider: &Arc<dyn SqliteDiagnosticsProvider>,
+    task_owner: &SqliteDiagnosticsTaskOwner,
 ) {
     match effect {
         Effect::FetchSqliteDiagnosticsCore { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
-            tokio::spawn(async move {
+            SqliteDiagnosticsTaskOwner::replace(&task_owner.core, async move {
                 let action = match provider.fetch_core_diagnostics(&dsn).await {
                     Ok(snapshot) => Action::SqliteDiagnosticsCoreLoaded {
                         dsn,
@@ -32,12 +91,13 @@ pub fn spawn_sqlite_diagnostics(
                     },
                 };
                 let _ = action_tx.send(action).await;
-            });
+            })
+            .await;
         }
         Effect::FetchSqliteDiagnosticsQuickCheck { dsn, run_id } => {
             let action_tx = action_tx.clone();
             let provider = Arc::clone(provider);
-            tokio::spawn(async move {
+            SqliteDiagnosticsTaskOwner::replace(&task_owner.quick_check, async move {
                 let quick_check = provider.fetch_quick_check(&dsn).await;
                 let _ = action_tx
                     .send(Action::SqliteDiagnosticsQuickCheckLoaded {
@@ -46,7 +106,8 @@ pub fn spawn_sqlite_diagnostics(
                         quick_check,
                     })
                     .await;
-            });
+            })
+            .await;
         }
         _ => {}
     }
@@ -70,14 +131,17 @@ mod tests {
         });
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        spawn_sqlite_diagnostics(
+        let owner = SqliteDiagnosticsTaskOwner::default();
+        run(
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
             },
             &tx,
             &provider,
-        );
+            &owner,
+        )
+        .await;
 
         let action = rx.recv().await.unwrap();
         assert!(matches!(
@@ -98,14 +162,17 @@ mod tests {
             .returning(|_| DiagnosticField::ok("ok"));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        spawn_sqlite_diagnostics(
+        let owner = SqliteDiagnosticsTaskOwner::default();
+        run(
             Effect::FetchSqliteDiagnosticsQuickCheck {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
             },
             &tx,
             &provider,
-        );
+            &owner,
+        )
+        .await;
 
         let action = rx.recv().await.unwrap();
         assert!(matches!(
@@ -118,6 +185,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn core_and_quick_check_tasks_can_run_together() {
+        use tokio::time::{Duration, timeout};
+
+        let (tx, mut rx) = mpsc::channel(2);
+        let mut provider = MockSqliteDiagnosticsProvider::new();
+        provider
+            .expect_fetch_core_diagnostics()
+            .returning(|_| Ok(SqliteDiagnosticsSnapshot::default()));
+        provider
+            .expect_fetch_quick_check()
+            .returning(|_| DiagnosticField::ok("ok"));
+
+        let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
+        let owner = SqliteDiagnosticsTaskOwner::default();
+        run(
+            Effect::FetchSqliteDiagnosticsCore {
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                run_id: 1,
+            },
+            &tx,
+            &provider,
+            &owner,
+        )
+        .await;
+        run(
+            Effect::FetchSqliteDiagnosticsQuickCheck {
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                run_id: 1,
+            },
+            &tx,
+            &provider,
+            &owner,
+        )
+        .await;
+
+        let first = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("core and quick-check tasks should both complete")
+            .expect("first diagnostics action should be sent");
+        let second = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("core and quick-check tasks should both complete")
+            .expect("second diagnostics action should be sent");
+        assert!(matches!(
+            (first, second),
+            (
+                Action::SqliteDiagnosticsCoreLoaded { .. },
+                Action::SqliteDiagnosticsQuickCheckLoaded { .. }
+            ) | (
+                Action::SqliteDiagnosticsQuickCheckLoaded { .. },
+                Action::SqliteDiagnosticsCoreLoaded { .. }
+            )
+        ));
+    }
+
+    #[tokio::test]
     async fn dispatches_partial_core_snapshot_on_provider_error() {
         let (tx, mut rx) = mpsc::channel(1);
         let mut provider = MockSqliteDiagnosticsProvider::new();
@@ -126,14 +249,17 @@ mod tests {
             .returning(|_| Err(DbOperationError::QueryFailed("boom".to_string())));
 
         let provider = Arc::new(provider) as Arc<dyn SqliteDiagnosticsProvider>;
-        spawn_sqlite_diagnostics(
+        let owner = SqliteDiagnosticsTaskOwner::default();
+        run(
             Effect::FetchSqliteDiagnosticsCore {
                 dsn: "sqlite:///tmp/app.db".to_string(),
                 run_id: 1,
             },
             &tx,
             &provider,
-        );
+            &owner,
+        )
+        .await;
 
         let action = rx.recv().await.unwrap();
         assert!(matches!(
@@ -143,5 +269,68 @@ mod tests {
                 ..
             } if snapshot.db_file.is_err()
         ));
+    }
+
+    struct BlockingProvider {
+        started: Arc<tokio::sync::Notify>,
+        dropped: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl Drop for BlockingProvider {
+        fn drop(&mut self) {
+            self.dropped
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SqliteDiagnosticsProvider for BlockingProvider {
+        async fn fetch_core_diagnostics(
+            &self,
+            _dsn: &str,
+        ) -> Result<SqliteDiagnosticsSnapshot, DbOperationError> {
+            self.started.notify_one();
+            std::future::pending().await
+        }
+
+        async fn fetch_quick_check(&self, _dsn: &str) -> DiagnosticField {
+            self.started.notify_one();
+            std::future::pending().await
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_drops_provider_and_sends_no_late_action() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio::time::{Duration, timeout};
+
+        let (tx, mut rx) = mpsc::channel(1);
+        let started = Arc::new(tokio::sync::Notify::new());
+        let dropped = Arc::new(AtomicBool::new(false));
+        let provider = Arc::new(BlockingProvider {
+            started: Arc::clone(&started),
+            dropped: Arc::clone(&dropped),
+        }) as Arc<dyn SqliteDiagnosticsProvider>;
+        let owner = SqliteDiagnosticsTaskOwner::default();
+
+        run(
+            Effect::FetchSqliteDiagnosticsCore {
+                dsn: "sqlite:///tmp/app.db".to_string(),
+                run_id: 1,
+            },
+            &tx,
+            &provider,
+            &owner,
+        )
+        .await;
+        timeout(Duration::from_secs(1), started.notified())
+            .await
+            .expect("diagnostics provider should start");
+
+        owner.cancel().await;
+        drop(provider);
+
+        assert!(dropped.load(Ordering::SeqCst));
+        assert!(rx.try_recv().is_err());
     }
 }

@@ -570,7 +570,7 @@ mod tests {
             );
             state
                 .connection_error
-                .set_save_and_connect_error(retryable_error(), DatabaseType::MySQL);
+                .set_save_and_connect_error(retryable_error());
 
             assert!(!state.can_retry_connection_error());
         }
@@ -1525,10 +1525,6 @@ mod tests {
         fn make_service(name: &str) -> ServiceEntry {
             ServiceEntry {
                 service_name: name.to_string(),
-                host: None,
-                dbname: None,
-                port: None,
-                user: None,
             }
         }
 

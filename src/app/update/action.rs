@@ -386,7 +386,6 @@ pub enum Action {
     SwitchConnection(ConnectionTarget),
     ConnectionsLoaded(ConnectionsLoadedPayload),
     ConfirmConnectionSelection,
-    StartEditConnection(ConnectionId),
     ConnectionSetupNextField,
     ConnectionSetupPrevField,
     ConnectionSetupToggleDropdown,
@@ -456,7 +455,6 @@ pub enum Action {
     SettingsSaveFailed(SettingsStoreError),
 
     // Database structure
-    LoadMetadata,
     ReloadMetadata,
     MetadataLoaded {
         dsn: String,
@@ -586,15 +584,12 @@ pub enum Action {
     // Query results
     ExecutePreview(TableTarget),
     ExecuteAdhoc(String),
-    ExecuteWrite(String),
     QueryCompleted {
-        dsn: String,
         run_id: u64,
         result: Arc<QueryResult>,
         context: QueryCompletionContext,
     },
     QueryFailed {
-        dsn: String,
         run_id: u64,
         error: DbOperationError,
         context: QueryFailureContext,
@@ -635,7 +630,6 @@ pub enum Action {
     StageRowForDelete,
     UnstageLastStagedRow,
     ClearStagedDeletes,
-    RequestDeleteActiveRow,
     ResultEnterCellEdit,
     ResultOpenCellDetail,
     ResultCancelCellEdit,

@@ -15,9 +15,9 @@ use crate::domain::{
 };
 
 use super::super::policy::{
-    MySqlExecutionResult, mysql_command_tag, mysql_metadata_fallback_has_unsupported_session_state,
-    mysql_possible_refresh_scope, mysql_refresh_scope, mysql_row_count_marker,
-    query_failed_after_change,
+    MySqlExecutionResult, is_mysql_single_marker, mysql_command_tag,
+    mysql_metadata_fallback_has_unsupported_session_state, mysql_possible_refresh_scope,
+    mysql_refresh_scope, mysql_row_count_marker, query_failed_after_change,
 };
 use super::super::xml::MySqlResultSet;
 use super::metadata::mysql_metadata_columns_with_diagnostics;
@@ -289,11 +289,7 @@ async fn run_mysql_adhoc_process(
             last_result_set.as_ref(),
         ))
     } else {
-        if marker_result.columns != ["__sabiql_marker"]
-            || marker_result.values.len() != 1
-            || marker_result.values[0].len() != 1
-            || marker_result.values[0][0].as_str() != Some(marker.as_str())
-        {
+        if !is_mysql_single_marker(&marker_result, "__sabiql_marker", &marker) {
             return Err(query_failed_after_change(
                 DbOperationError::QueryFailed(
                     "mysql adhoc completion marker did not match".to_string(),

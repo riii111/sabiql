@@ -27,7 +27,6 @@ struct GenerateErDiagramRequest {
 pub async fn run(
     effect: Effect,
     action_tx: &mpsc::Sender<Action>,
-    metadata_provider: &Arc<dyn MetadataProvider>,
     er_exporter: &Arc<dyn ErDiagramExporter>,
     config_writer: &Arc<dyn ConfigWriter>,
     er_log_writer: &Arc<dyn ErLogWriter>,
@@ -70,10 +69,6 @@ pub async fn run(
             )
             .await
         }
-        Effect::SmartErRefresh { dsn, run_id } => {
-            handle_smart_refresh(action_tx, metadata_provider, dsn, run_id);
-            Ok(())
-        }
         Effect::SmartErRefreshCacheAndDiff {
             dsn,
             run_id,
@@ -93,6 +88,57 @@ pub async fn run(
         }
 
         _ => unreachable!("er::run called with non-er effect"),
+    }
+}
+
+pub fn smart_refresh_task(
+    action_tx: mpsc::Sender<Action>,
+    metadata_provider: Arc<dyn MetadataProvider>,
+    dsn: String,
+    run_id: u64,
+) -> impl Future<Output = ()> + Send + 'static {
+    let tx = action_tx;
+
+    async move {
+        let new_metadata = match metadata_provider.fetch_metadata(&dsn).await {
+            Ok(m) => m,
+            Err(e) => {
+                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
+                    run_id,
+                    error: e,
+                    new_metadata: None,
+                }))
+                .await
+                .ok();
+                return;
+            }
+        };
+
+        let signature_snapshot = match metadata_provider.fetch_table_signatures(&dsn).await {
+            Ok(s) => s,
+            Err(e) => {
+                let new_metadata = Arc::new(new_metadata);
+                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn,
+                    run_id,
+                    error: e,
+                    new_metadata: Some(Arc::clone(&new_metadata)),
+                }))
+                .await
+                .ok();
+                return;
+            }
+        };
+
+        tx.send(Action::SmartErRefreshFetched(SmartErRefreshFetched {
+            dsn,
+            run_id,
+            new_metadata: Arc::new(new_metadata),
+            signature_snapshot: Arc::new(signature_snapshot),
+        }))
+        .await
+        .ok();
     }
 }
 
@@ -201,58 +247,6 @@ async fn handle_write_failure_log(
         }
     }
     Ok(())
-}
-
-fn handle_smart_refresh(
-    action_tx: &mpsc::Sender<Action>,
-    metadata_provider: &Arc<dyn MetadataProvider>,
-    dsn: String,
-    run_id: u64,
-) {
-    let provider = Arc::clone(metadata_provider);
-    let tx = action_tx.clone();
-
-    tokio::spawn(async move {
-        let new_metadata = match provider.fetch_metadata(&dsn).await {
-            Ok(m) => m,
-            Err(e) => {
-                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
-                    run_id,
-                    error: e,
-                    new_metadata: None,
-                }))
-                .await
-                .ok();
-                return;
-            }
-        };
-
-        let signature_snapshot = match provider.fetch_table_signatures(&dsn).await {
-            Ok(s) => s,
-            Err(e) => {
-                let new_metadata = Arc::new(new_metadata);
-                tx.send(Action::SmartErRefreshFailed(SmartErRefreshError {
-                    dsn,
-                    run_id,
-                    error: e,
-                    new_metadata: Some(Arc::clone(&new_metadata)),
-                }))
-                .await
-                .ok();
-                return;
-            }
-        };
-
-        tx.send(Action::SmartErRefreshFetched(SmartErRefreshFetched {
-            dsn,
-            run_id,
-            new_metadata: Arc::new(new_metadata),
-            signature_snapshot: Arc::new(signature_snapshot),
-        }))
-        .await
-        .ok();
-    });
 }
 
 async fn handle_smart_refresh_cache_and_diff(

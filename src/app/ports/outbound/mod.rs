@@ -31,9 +31,10 @@ pub use clipboard::{ClipboardError, ClipboardWriter};
 pub use config_writer::{ConfigWriter, ConfigWriterError};
 pub use connection_store::{ConnectionStore, ConnectionStoreError};
 pub use db_operation_error::{
-    ConnectionFailureKind, DatabaseCli, DbOperationError, MYSQL_CONNECT_TIMEOUT_ERRNOS,
-    SQLITE_SAFE_MODE_REQUIRED_MARKER, SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind,
-    is_mysql_connect_timeout_message, mysql_server_error_code,
+    ConnectionFailureKind, DatabaseCli, DbOperationError, ExportIoSource,
+    MYSQL_CONNECT_TIMEOUT_ERRNOS, SQLITE_SAFE_MODE_REQUIRED_MARKER,
+    SQLITE_TABLE_LIST_REQUIRED_MARKER, UnsupportedOperationKind, is_mysql_connect_timeout_message,
+    mysql_server_error_code,
 };
 pub use ddl_generator::DdlGenerator;
 pub use dsn_builder::DsnBuilder;

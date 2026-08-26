@@ -1,7 +1,5 @@
-#[cfg(windows)]
 use std::fs::File;
 use std::fs::{self, OpenOptions};
-#[cfg(windows)]
 use std::io;
 use std::io::Write;
 use std::path::PathBuf;
@@ -17,6 +15,7 @@ use super::dsn::{
 
 pub(super) struct MySqlOptionFile {
     pub(super) path: PathBuf,
+    pub(super) file: Option<File>,
 }
 
 impl MySqlOptionFile {
@@ -43,28 +42,41 @@ impl MySqlOptionFile {
             windows_sys::Win32::Storage::FileSystem::FILE_GENERIC_WRITE
                 | windows_sys::Win32::Storage::FileSystem::WRITE_DAC,
         );
-        let mut file = options.open(&path).map_err(|error| {
+        let file = options.open(&path).map_err(|error| {
             DbOperationError::ConnectionFailed(format!(
                 "Unable to create MySQL option file: {error}"
             ))
         })?;
+        let mut option_file = Self {
+            path,
+            file: Some(file),
+        };
+        #[cfg(test)]
+        tests::record_creation_path(&option_file.path);
         #[cfg(windows)]
-        if let Err(error) = set_file_permissions(&file) {
-            drop(file);
-            let _ = fs::remove_file(&path);
-            return Err(DbOperationError::ConnectionFailed(format!(
+        set_file_permissions(option_file.file.as_ref().unwrap()).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
                 "Unable to secure MySQL option file: {error}"
-            )));
-        }
+            ))
+        })?;
         let contents = serialize_option_file(target);
-        if let Err(error) = file.write_all(contents.as_bytes()) {
-            let _ = fs::remove_file(&path);
-            return Err(DbOperationError::ConnectionFailed(format!(
+        write_option_file(option_file.file.as_mut().unwrap(), &contents).map_err(|error| {
+            DbOperationError::ConnectionFailed(format!(
                 "Unable to write MySQL option file: {error}"
-            )));
-        }
-        Ok(Self { path })
+            ))
+        })?;
+        drop(option_file.file.take());
+        Ok(option_file)
     }
+}
+
+fn write_option_file(file: &mut File, contents: &str) -> io::Result<()> {
+    #[cfg(test)]
+    if tests::current_failure() == Some(tests::CreationFailure::PartialWrite) {
+        file.write_all(b"[client]\npassword = \"partial")?;
+        return Err(io::Error::other("injected partial write"));
+    }
+    file.write_all(contents.as_bytes())
 }
 
 fn validate_mysql_tls_files(target: &MySqlDsn) -> Result<(), DbOperationError> {
@@ -342,6 +354,13 @@ fn der_element(input: &[u8], expected_tag: u8) -> Option<(&[u8], &[u8])> {
 
 #[cfg(windows)]
 fn set_file_permissions(file: &File) -> io::Result<()> {
+    #[cfg(test)]
+    if tests::current_failure() == Some(tests::CreationFailure::Permission) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "injected ACL failure",
+        ));
+    }
     use std::os::windows::io::AsRawHandle;
     use std::ptr::{null, null_mut};
 
@@ -453,6 +472,7 @@ fn current_user_sid(token: windows_sys::Win32::Foundation::HANDLE) -> io::Result
 
 impl Drop for MySqlOptionFile {
     fn drop(&mut self) {
+        drop(self.file.take());
         let _ = fs::remove_file(&self.path);
     }
 }
@@ -519,7 +539,9 @@ fn quote_option_value(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::{Cell, RefCell};
     use std::collections::HashSet;
+    use std::path::Path;
     use std::sync::{Arc, Barrier};
 
     use crate::domain::connection::MySqlSslMode;
@@ -534,6 +556,51 @@ mod tests {
         MEgCQQCkUPNQeEgyJX6XS2qlrU20cleKptQX/Llyrm6tzLzVI8JF3wcCiQ0R4KgX\n\
         x/4oCDpO8lWDRl+SFkUlLz4xJ4zdAgMBAAE=\n\
         -----END RSA PUBLIC KEY-----\n";
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub(super) enum CreationFailure {
+        #[cfg(windows)]
+        Permission,
+        PartialWrite,
+    }
+
+    thread_local! {
+        static CREATION_FAILURE: Cell<Option<CreationFailure>> = const { Cell::new(None) };
+        static CREATION_PATH: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+    }
+
+    struct FailureGuard;
+
+    fn inject_failure(failure: CreationFailure) -> FailureGuard {
+        CREATION_FAILURE.with(|current| assert!(current.replace(Some(failure)).is_none()));
+        CREATION_PATH.with(|path| path.borrow_mut().take());
+        FailureGuard
+    }
+
+    pub(super) fn current_failure() -> Option<CreationFailure> {
+        CREATION_FAILURE.with(Cell::get)
+    }
+
+    pub(super) fn record_creation_path(path: &Path) {
+        if current_failure().is_some() {
+            CREATION_PATH.with(|stored| *stored.borrow_mut() = Some(path.to_path_buf()));
+        }
+    }
+
+    fn take_creation_path() -> PathBuf {
+        CREATION_PATH.with(|path| {
+            path.borrow_mut()
+                .take()
+                .expect("option file creation should record its path")
+        })
+    }
+
+    impl Drop for FailureGuard {
+        fn drop(&mut self) {
+            CREATION_FAILURE.with(|current| current.set(None));
+            CREATION_PATH.with(|path| path.borrow_mut().take());
+        }
+    }
 
     fn target() -> MySqlDsn {
         MySqlDsn {
@@ -840,6 +907,41 @@ ssl-mode = \"REQUIRED\"\n"
         assert_owner_only_acl(&option_file.path);
         let path = option_file.path.clone();
         drop(option_file);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn partial_write_failure_removes_option_file_and_preserves_error() {
+        let _failure = inject_failure(CreationFailure::PartialWrite);
+
+        let error = MySqlOptionFile::create(&target())
+            .err()
+            .expect("partial write should fail option file creation");
+        let path = take_creation_path();
+
+        assert!(matches!(
+            &error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "Unable to write MySQL option file: injected partial write"
+        ));
+        assert!(!path.exists());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn acl_failure_removes_option_file_and_preserves_error() {
+        let _failure = inject_failure(CreationFailure::Permission);
+
+        let error = MySqlOptionFile::create(&target())
+            .err()
+            .expect("ACL failure should fail option file creation");
+        let path = take_creation_path();
+
+        assert!(matches!(
+            &error,
+            DbOperationError::ConnectionFailed(details)
+                if details == "Unable to secure MySQL option file: injected ACL failure"
+        ));
         assert!(!path.exists());
     }
 

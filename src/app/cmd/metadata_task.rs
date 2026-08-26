@@ -71,6 +71,12 @@ impl MetadataTaskRegistry {
     }
 
     pub async fn cancel(&self) {
+        for handle in self.abort() {
+            let _ = handle.await;
+        }
+    }
+
+    pub fn abort(&self) -> Vec<JoinHandle<()>> {
         let handles = self
             .active
             .lock()
@@ -79,10 +85,10 @@ impl MetadataTaskRegistry {
             .filter_map(|(_, entry)| entry.handle)
             .collect::<Vec<_>>();
 
-        for handle in handles {
+        for handle in &handles {
             handle.abort();
-            let _ = handle.await;
         }
+        handles
     }
 
     fn remove_released(&self, task_id: u64, released: &Arc<AtomicBool>) {

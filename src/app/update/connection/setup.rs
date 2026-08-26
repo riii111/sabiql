@@ -16,8 +16,8 @@ use crate::update::action::{
     Action, ConnectionSaveError, ConnectionTarget, InputTarget, ModalKind,
 };
 use crate::update::connection::helpers::{
-    connection_save_fetch_effects, mysql_connection_completion_effects, reset_for_new_connection,
-    save_current_connection_cache,
+    cancel_connection_task_effects, connection_save_fetch_effects,
+    mysql_connection_completion_effects, reset_for_new_connection, save_current_connection_cache,
 };
 use crate::update::connection::lifecycle::try_connect;
 use crate::update::dispatch_result::DispatchResult;
@@ -32,21 +32,20 @@ pub fn reduce_connection_setup(
     match action {
         Action::OpenModal(ModalKind::ConnectionSetup) => {
             state.session.cancel_connection_save_and_disconnect();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.connection_setup.reset();
             if !state.connections().is_empty() || state.session.dsn().is_some() {
                 state.connection_setup.set_first_run(false);
             }
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
-        }
-        Action::StartEditConnection(id) => {
-            DispatchResult::handled_with(vec![Effect::LoadConnectionForEdit { id: id.clone() }])
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::ConnectionEditLoaded(profile) => {
             state.session.cancel_connection_save_and_disconnect();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.connection_setup = ConnectionSetupState::from(&**profile);
             state.modal.set_mode(InputMode::ConnectionSetup);
-            DispatchResult::handled()
+            DispatchResult::handled_with(cancel_effects)
         }
         Action::ConnectionEditLoadFailed(e) => {
             state.messages.set_error_at(e.to_string(), now);
@@ -54,8 +53,9 @@ pub fn reduce_connection_setup(
         }
         Action::CloseModal(ModalKind::ConnectionSetup) => {
             state.session.cancel_connection_save_and_disconnect();
+            let cancel_effects = cancel_connection_task_effects(state);
             state.modal.set_mode(InputMode::Normal);
-            DispatchResult::handled()
+            DispatchResult::handled_with(cancel_effects)
         }
 
         // ===== Clipboard Paste =====
@@ -230,6 +230,7 @@ pub fn reduce_connection_setup(
         }
         Action::ConnectionSetupCancel => {
             state.session.cancel_connection_save_and_disconnect();
+            let cancel_effects = cancel_connection_task_effects(state);
             if state.connection_setup.is_first_run() {
                 state.confirm_dialog.open(
                     "Confirm",
@@ -237,10 +238,12 @@ pub fn reduce_connection_setup(
                     ConfirmIntent::QuitNoConnection,
                 );
                 state.modal.push_mode(InputMode::ConfirmDialog);
-                DispatchResult::handled()
+                DispatchResult::handled_with(cancel_effects)
             } else {
                 state.modal.set_mode(InputMode::Normal);
-                DispatchResult::handled_with(try_connect(state, now))
+                let mut effects = cancel_effects;
+                effects.extend(try_connect(state, now));
+                DispatchResult::handled_with(effects)
             }
         }
         Action::ConnectionSaveCompleted {
@@ -314,7 +317,7 @@ pub fn reduce_connection_setup(
             if let Some(error_info) = mysql_error {
                 state
                     .connection_error
-                    .set_save_and_connect_error(error_info, *database_type);
+                    .set_save_and_connect_error(error_info);
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
@@ -983,10 +986,7 @@ mod tests {
             );
 
             assert!(state.connection_error.is_save_and_connect_failure());
-            assert_eq!(
-                state.connection_error.destination_database_type(),
-                Some(DatabaseType::MySQL)
-            );
+            assert!(state.connection_error.has_destination());
             let effects =
                 reduce_connection_error(&mut state, &Action::RetryConnection, Instant::now())
                     .into_effects()
@@ -1376,6 +1376,158 @@ mod tests {
                     .get(&ConnectionField::Host),
                 Some(&"Must be 255 characters or less".to_string())
             );
+        }
+    }
+
+    mod connection_task_cancellation {
+        use super::*;
+
+        fn state_with_pending_mysql_probe() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let id = ConnectionId::from_string("mysql-pending");
+            let _ = state.session.begin_mysql_connection_probe(
+                &id,
+                "mysql",
+                "mysql://localhost/app",
+                Some("app"),
+            );
+            state
+        }
+
+        fn state_with_interrupted_table_detail() -> AppState {
+            let mut state = AppState::new("test".to_string());
+            let current_id = ConnectionId::from_string("mysql-current");
+            let target_id = ConnectionId::from_string("mysql-target");
+            state.session.activate_connection_with_target(
+                &current_id,
+                "mysql-current",
+                DatabaseType::MySQL,
+                "mysql://localhost/current",
+                Some("current"),
+            );
+            state
+                .session
+                .set_connection_state(ConnectionState::Connected);
+            let _ = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let _ = state.session.begin_table_detail_run();
+            let _ = state.session.begin_mysql_connection_probe(
+                &target_id,
+                "mysql-target",
+                "mysql://localhost/target",
+                Some("target"),
+            );
+            state
+        }
+
+        fn assert_table_detail_retry(effects: &[Effect]) {
+            assert!(matches!(
+                effects,
+                [
+                    Effect::CancelConnectionTask,
+                    Effect::FetchTableDetail {
+                        dsn,
+                        schema,
+                        table,
+                        ..
+                    }
+                ] if dsn == "mysql://localhost/current"
+                    && schema == "public"
+                    && table == "users"
+            ));
+        }
+
+        #[test]
+        fn opening_setup_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+
+            let effects = reduce(
+                &mut state,
+                &Action::OpenModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+        }
+
+        #[test]
+        fn opening_setup_retries_interrupted_table_detail() {
+            let mut state = state_with_interrupted_table_detail();
+
+            let effects = reduce(
+                &mut state,
+                &Action::OpenModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert_table_detail_retry(&effects);
+        }
+
+        #[test]
+        fn loading_edit_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+        }
+
+        #[test]
+        fn loading_edit_retries_interrupted_table_detail() {
+            let mut state = state_with_interrupted_table_detail();
+
+            let effects = reduce(
+                &mut state,
+                &Action::ConnectionEditLoaded(Box::new(create_profile("edited"))),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert_table_detail_retry(&effects);
+        }
+
+        #[test]
+        fn closing_setup_clears_pending_probe() {
+            let mut state = state_with_pending_mysql_probe();
+            state.modal.set_mode(InputMode::ConnectionSetup);
+
+            let effects = reduce(
+                &mut state,
+                &Action::CloseModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+        }
+
+        #[test]
+        fn closing_setup_retries_interrupted_table_detail() {
+            let mut state = state_with_interrupted_table_detail();
+            state.modal.set_mode(InputMode::ConnectionSetup);
+
+            let effects = reduce(
+                &mut state,
+                &Action::CloseModal(ModalKind::ConnectionSetup),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert_table_detail_retry(&effects);
         }
     }
 

@@ -1,11 +1,63 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 use crate::domain::ErTableInfo;
 use crate::ports::outbound::ErDiagramExporter;
 use crate::update::action::{Action, ErDiagramInfo};
+
+#[derive(Default)]
+pub(crate) struct SmartErRefreshTaskOwner {
+    active: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl SmartErRefreshTaskOwner {
+    pub(crate) async fn replace<F>(&self, task: F)
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
+        self.cancel().await;
+        let task = tokio::spawn(task);
+        *self
+            .active
+            .lock()
+            .expect("Smart ER refresh task lock poisoned") = Some(task);
+    }
+
+    pub(crate) async fn cancel(&self) {
+        if let Some(task) = self.abort() {
+            let _ = task.await;
+        }
+    }
+
+    pub(crate) fn abort(&self) -> Option<JoinHandle<()>> {
+        let task = self
+            .active
+            .lock()
+            .expect("Smart ER refresh task lock poisoned")
+            .take();
+        if let Some(task) = &task {
+            task.abort();
+        }
+        task
+    }
+}
+
+impl Drop for SmartErRefreshTaskOwner {
+    fn drop(&mut self) {
+        if let Some(task) = self
+            .active
+            .get_mut()
+            .expect("Smart ER refresh task lock poisoned")
+            .take()
+        {
+            task.abort();
+        }
+    }
+}
 
 pub fn spawn_er_diagram_task(
     exporter: Arc<dyn ErDiagramExporter>,

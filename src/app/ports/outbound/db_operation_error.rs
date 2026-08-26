@@ -141,6 +141,8 @@ pub enum DbOperationError {
     ObjectMissing(String),
     #[error("Query failed")]
     QueryFailed(String),
+    #[error("CSV export failed")]
+    ExportIo(#[source] ExportIoSource),
     #[error("Preview exceeded its byte budget")]
     PreviewSizeExceeded(String),
     #[error("Query failed after a change")]
@@ -182,6 +184,29 @@ pub enum DbOperationError {
     Canceled(String),
 }
 
+#[derive(Clone)]
+pub struct ExportIoSource(Arc<std::io::Error>);
+
+impl ExportIoSource {
+    pub fn new(error: std::io::Error) -> Self {
+        Self(Arc::new(error))
+    }
+}
+
+impl std::ops::Deref for ExportIoSource {
+    type Target = std::io::Error;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl fmt::Display for ExportIoSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl DbOperationError {
     pub fn post_change_refresh_scope(&self) -> Option<RefreshScope> {
         match self {
@@ -220,6 +245,10 @@ impl DbOperationError {
                 "Check the table, column, or connected database",
             ),
             Self::QueryFailed(_) => ("Query failed", "Review the database error details and SQL"),
+            Self::ExportIo(_) => (
+                "CSV export failed",
+                "Check the export folder and available disk space",
+            ),
             Self::PreviewSizeExceeded(_) => (
                 "Preview exceeded its byte budget",
                 "Reduce the preview value size and retry",
@@ -337,6 +366,7 @@ impl DbOperationError {
             | Self::Canceled(details)
             | Self::CommandNotFound { details, .. } => Cow::Borrowed(details.as_str()),
             Self::SqlitePath(error) => Cow::Owned(error.to_string()),
+            Self::ExportIo(error) => Cow::Owned(error.to_string()),
             Self::InvalidJson(err) => Cow::Owned(err.to_string()),
             Self::CsvParse(err) => Cow::Owned(err.to_string()),
             Self::QueryFailedAfterChange { source, .. } => source.raw_details(),
@@ -418,6 +448,7 @@ mod tests {
         #[case(DbOperationError::LockTimeout("boom".to_string()))]
         #[case(DbOperationError::ObjectMissing("boom".to_string()))]
         #[case(DbOperationError::QueryFailed("boom".to_string()))]
+        #[case(DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other("boom"))))]
         #[case(DbOperationError::UnsupportedOperation("boom".to_string()))]
         #[case(DbOperationError::UnsupportedOperationWithKind {
             kind: UnsupportedOperationKind::ClientVersion,
@@ -572,6 +603,27 @@ mod tests {
                 error.user_message(),
                 "Query failed: syntax error at or near SELECT. Review the database error details and SQL."
             );
+        }
+
+        #[test]
+        fn export_io_uses_export_guidance_and_preserves_source() {
+            let error = DbOperationError::ExportIo(ExportIoSource::new(std::io::Error::other(
+                "password=mysecret host=localhost",
+            )));
+
+            assert_eq!(error.summary(), "CSV export failed");
+            assert_eq!(
+                error.hint(),
+                "Check the export folder and available disk space"
+            );
+            assert_eq!(error.masked_details(), "password=**** host=localhost");
+            assert!(std::error::Error::source(&error).is_some());
+            assert_eq!(
+                error.user_message(),
+                "CSV export failed: password=**** host=localhost. Check the export folder and available disk space."
+            );
+            assert!(!error.user_message().contains("mysecret"));
+            assert!(!format!("{error:?}").contains("mysecret"));
         }
 
         #[test]
