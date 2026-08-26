@@ -120,7 +120,6 @@ impl EffectRunner {
         self.table_detail_tasks.cancel();
         self.cancel_metadata_tasks().await;
         self.mysql_connection_probe_task.cancel().await;
-        self.sqlite_diagnostics_task.cancel().await;
     }
 
     pub async fn execute_effects<T: Renderer>(

@@ -606,7 +606,10 @@ mod tests {
 
                 assert!(state.should_quit);
                 assert!(state.confirm_dialog.intent().is_none());
-                assert!(matches!(effects.as_slice(), [Effect::CancelTrackedTasks]));
+                assert!(matches!(
+                    effects.as_slice(),
+                    [Effect::CancelSqliteDiagnostics, Effect::CancelTrackedTasks]
+                ));
             }
 
             #[test]
