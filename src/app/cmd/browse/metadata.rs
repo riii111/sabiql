@@ -26,6 +26,9 @@ pub async fn run(
     completion_engine: &RefCell<CompletionEngine>,
 ) {
     match effect {
+        Effect::CancelMetadataTasks => {
+            metadata_tasks.cancel().await;
+        }
         Effect::FetchMetadata { dsn, run_id } => {
             fetch_metadata(
                 action_tx,
