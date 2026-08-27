@@ -389,6 +389,46 @@ mod tests {
     }
 
     #[test]
+    fn reload_failure_during_detail_fetch_preserves_loading_detail_and_pending_preview() {
+        let mut state = connected_state(DatabaseType::MySQL);
+        let generation = state.session.select_table("app", "users", &mut state.query);
+        let detail_run_id = state.session.begin_table_detail_run();
+        state.query.defer_preview(
+            Arc::new(QueryResult::error(
+                "SELECT * FROM app.users".to_string(),
+                "preview failed".to_string(),
+                0,
+                QuerySource::Preview,
+            )),
+            generation,
+            None,
+            false,
+        );
+
+        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
+            .into_effects()
+            .expect("metadata reload should be handled");
+        let metadata_run_id = state.session.metadata_generation();
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(
+            &mut state,
+            &metadata_failed(&dsn, metadata_run_id),
+            Instant::now(),
+        )
+        .into_effects()
+        .expect("metadata failure should be handled");
+
+        assert!(effects.is_empty());
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        ));
+        assert!(state.session.is_current_table_detail_run(detail_run_id));
+        assert!(state.query.has_pending_preview(generation));
+    }
+
+    #[test]
     fn stale_metadata_failure_does_not_terminate_current_detail() {
         let mut state = connected_state(DatabaseType::MySQL);
         let (generation, stale_run_id) = loading_detail_and_metadata_run(&mut state);

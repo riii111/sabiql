@@ -153,7 +153,7 @@ pub struct BrowseSession {
     // -- lifecycle-gated --
     metadata: Option<Arc<DatabaseMetadata>>,
     metadata_run: AsyncRun,
-    metadata_detail_generation: u64,
+    metadata_detail_generation: Option<u64>,
     effective_user: Option<String>,
     effective_user_run: AsyncRun,
     table_detail_run: AsyncRun,
@@ -182,7 +182,7 @@ impl Default for BrowseSession {
             selection_generation: 0,
             metadata: None,
             metadata_run: AsyncRun::default(),
-            metadata_detail_generation: 0,
+            metadata_detail_generation: None,
             effective_user: None,
             effective_user_run: AsyncRun::default(),
             table_detail_run: AsyncRun::default(),
@@ -249,10 +249,7 @@ impl BrowseSession {
     }
 
     pub fn mark_table_detail_failed(&mut self, generation: u64, error: String) -> bool {
-        if generation == self.selection_generation
-            && self.selected_table_key.is_some()
-            && matches!(&self.table_detail_state, TableDetailState::Loading)
-        {
+        if generation == self.selection_generation && self.selected_table_key.is_some() {
             self.table_detail_state = TableDetailState::Error(error);
             true
         } else {
@@ -261,7 +258,9 @@ impl BrowseSession {
     }
 
     pub fn mark_metadata_detail_failed(&mut self, error: String) -> bool {
-        if self.metadata_detail_generation != self.selection_generation {
+        if self.metadata_detail_generation != Some(self.selection_generation)
+            || !matches!(&self.table_detail_state, TableDetailState::Loading)
+        {
             return false;
         }
 
@@ -541,6 +540,7 @@ impl BrowseSession {
     pub fn begin_metadata_refresh(&mut self) -> u64 {
         self.clear_mysql_connection_probe();
         self.metadata_state = MetadataState::Loading;
+        self.metadata_detail_generation = Some(self.selection_generation);
         self.begin_metadata_run()
     }
 
@@ -558,6 +558,7 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
         self.is_reloading = true;
+        self.metadata_detail_generation = None;
         self.begin_metadata_run()
     }
 
@@ -575,7 +576,6 @@ impl BrowseSession {
 
     #[must_use]
     fn begin_metadata_run(&mut self) -> u64 {
-        self.metadata_detail_generation = self.selection_generation;
         self.metadata_run.begin()
     }
 
@@ -652,7 +652,7 @@ impl BrowseSession {
         self.connection_state = ConnectionState::Connected;
         self.metadata_state = MetadataState::Loaded;
         self.selection_generation = 0;
-        self.metadata_detail_generation = 0;
+        self.metadata_detail_generation = None;
         self.is_reloading = false;
         self.metadata_run.clear_active();
         self.effective_user_run.clear_active();
@@ -688,7 +688,7 @@ impl BrowseSession {
         self.connection_state = ConnectionState::default();
         self.metadata_state = MetadataState::default();
         self.metadata_run.clear_active();
-        self.metadata_detail_generation = 0;
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
         self.table_detail_run.clear_active();
