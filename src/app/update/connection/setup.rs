@@ -316,7 +316,11 @@ pub fn reduce_connection_setup(
                 state.modal.replace_mode(InputMode::ConnectionError);
                 return DispatchResult::handled();
             }
-            state.messages.set_error(e.to_string());
+            let message = match e {
+                ConnectionSaveError::Metadata(error) => error.user_message(),
+                _ => e.to_string(),
+            };
+            state.messages.set_error(message);
             DispatchResult::handled()
         }
 
@@ -988,6 +992,41 @@ mod tests {
 
             reduce_connection_error(&mut state, &Action::ReenterConnectionSetup, Instant::now());
             assert_eq!(state.input_mode(), InputMode::ConnectionSetup);
+        }
+
+        #[test]
+        fn postgres_metadata_failure_sets_masked_actionable_message() {
+            for error in [
+                DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::Auth,
+                    details: "password=secret auth failed".to_string(),
+                },
+                DbOperationError::ConnectionFailedWithKind {
+                    kind: ConnectionFailureKind::ConnectionRefused,
+                    details: "password=secret connection refused".to_string(),
+                },
+                DbOperationError::PermissionDenied("password=secret permission denied".to_string()),
+                DbOperationError::MetadataParseFailed(
+                    "password=secret malformed output".to_string(),
+                ),
+            ] {
+                let mut state = AppState::new("test".to_string());
+                let run_id = state.session.begin_connection_save();
+                let expected = error.user_message();
+
+                reduce(
+                    &mut state,
+                    &Action::ConnectionSaveFailed {
+                        error: ConnectionSaveError::Metadata(error),
+                        database_type: DatabaseType::PostgreSQL,
+                        run_id,
+                    },
+                    Instant::now(),
+                );
+
+                assert_eq!(state.messages.last_error(), Some(expected.as_str()));
+                assert!(!state.messages.last_error().unwrap().contains("secret"));
+            }
         }
 
         #[test]
