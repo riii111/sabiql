@@ -1,4 +1,3 @@
-use std::io;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
@@ -82,12 +81,6 @@ fn preserves_mysql_session_exit_rules() {
 }
 
 #[cfg(unix)]
-#[test]
-fn rejects_nonzero_wait_status_without_confirmed_forced_stop() {
-    assert!(validate_mysql_session_exit(&session(9, false, b""), None).is_err());
-}
-
-#[cfg(unix)]
 #[tokio::test]
 async fn reports_successful_kill_and_wait_status() {
     let mut child = Command::new("sleep")
@@ -114,6 +107,34 @@ async fn preserves_wait_status_for_normal_exit() {
 
     assert_eq!(status.code(), expected_status.code());
     assert!(!forcibly_stopped);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn failed_kill_preserves_wait_status_without_forced_stop() {
+    let mut child = Command::new("sh")
+        .args(["-c", "exit 7"])
+        .spawn()
+        .expect("spawn exiting process");
+    let expected_status = child.wait().await.unwrap();
+    let (status, forcibly_stopped) =
+        finish_mysql_process_stop(&mut child, Err(std::io::Error::other("kill failed")))
+            .await
+            .unwrap();
+
+    assert_eq!(status.code(), expected_status.code());
+    assert!(!forcibly_stopped);
+    assert!(
+        validate_mysql_session_exit(
+            &MySqlSessionResult {
+                status,
+                forcibly_stopped,
+                error_bytes: Vec::new(),
+            },
+            None,
+        )
+        .is_err()
+    );
 }
 
 #[test]
