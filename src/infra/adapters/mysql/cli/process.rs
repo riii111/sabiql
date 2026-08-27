@@ -5,6 +5,8 @@ use std::time::Duration;
 #[cfg(unix)]
 use std::io;
 #[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
 use tokio::fs::File as TokioFile;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
@@ -229,7 +231,8 @@ async fn finish_mysql_process_stop(
         .wait()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, kill_result.is_ok()))
+    let forcibly_stopped = kill_result.is_ok() && status.signal() == Some(libc::SIGKILL);
+    Ok((status, forcibly_stopped))
 }
 
 pub(super) async fn read_all_bytes<R>(reader: &mut R) -> std::io::Result<Vec<u8>>

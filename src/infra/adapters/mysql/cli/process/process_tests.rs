@@ -1,7 +1,5 @@
 #[cfg(not(unix))]
 use std::io;
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 
 use crate::app::ports::outbound::DatabaseCli;
 
@@ -123,6 +121,31 @@ async fn failed_kill_preserves_wait_status_without_forced_stop() {
         finish_mysql_process_stop(&mut child, Err(std::io::Error::other("kill failed")))
             .await
             .unwrap();
+
+    assert_eq!(status.code(), expected_status.code());
+    assert!(!forcibly_stopped);
+    assert!(
+        validate_mysql_session_exit(
+            &MySqlSessionResult {
+                status,
+                forcibly_stopped,
+                error_bytes: Vec::new(),
+            },
+            None,
+        )
+        .is_err()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn successful_kill_request_does_not_override_normal_exit_status() {
+    let mut child = Command::new("sh")
+        .args(["-c", "exit 7"])
+        .spawn()
+        .expect("spawn exiting process");
+    let expected_status = child.wait().await.unwrap();
+    let (status, forcibly_stopped) = finish_mysql_process_stop(&mut child, Ok(())).await.unwrap();
 
     assert_eq!(status.code(), expected_status.code());
     assert!(!forcibly_stopped);
