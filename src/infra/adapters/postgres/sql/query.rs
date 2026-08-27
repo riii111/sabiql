@@ -356,10 +356,19 @@ impl PostgresAdapter {
         format!(
             r"
             SELECT json_build_object(
+                'exists', EXISTS (
+                    SELECT 1
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = {schema}
+                      AND c.relname = {table}
+                ),
                 'columns', ({columns}),
                 'foreign_keys', ({fks})
             )
             ",
+            schema = quote_literal(schema),
+            table = quote_literal(table),
             columns = Self::columns_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
         )
@@ -369,6 +378,13 @@ impl PostgresAdapter {
         format!(
             r"
             SELECT json_build_object(
+                'exists', EXISTS (
+                    SELECT 1
+                    FROM pg_class c
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname = {schema}
+                      AND c.relname = {table}
+                ),
                 'columns', ({columns}),
                 'indexes', ({indexes}),
                 'foreign_keys', ({fks}),
@@ -377,6 +393,8 @@ impl PostgresAdapter {
                 'table_info', ({table_info})
             )
             ",
+            schema = quote_literal(schema),
+            table = quote_literal(table),
             columns = Self::columns_query(schema, table).trim(),
             indexes = Self::indexes_query(schema, table).trim(),
             fks = Self::foreign_keys_query(schema, table).trim(),
@@ -553,11 +571,12 @@ mod tests {
         use super::*;
 
         #[test]
-        fn wraps_all_six_categories_in_json_build_object() {
+        fn wraps_existence_and_all_six_categories_in_json_build_object() {
             let sql = PostgresAdapter::table_detail_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
             for key in [
+                "'exists'",
                 "'columns'",
                 "'indexes'",
                 "'foreign_keys'",
@@ -582,10 +601,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn wraps_columns_and_fks_only_in_json_build_object() {
+        fn wraps_existence_columns_and_fks_in_json_build_object() {
             let sql = PostgresAdapter::table_columns_and_fks_query("public", "users");
 
             assert!(sql.contains("json_build_object("));
+            assert!(sql.contains("'exists'"));
             assert!(sql.contains("'columns'"));
             assert!(sql.contains("'foreign_keys'"));
             assert!(!sql.contains("'indexes'"));
