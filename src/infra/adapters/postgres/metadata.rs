@@ -20,6 +20,10 @@ fn extract_primary_key(columns: &[Column]) -> Option<Vec<String>> {
     }
 }
 
+fn postgres_table_not_found(schema: &str, table: &str) -> DbOperationError {
+    DbOperationError::ObjectMissing(format!("PostgreSQL table not found: {schema}.{table}"))
+}
+
 #[async_trait]
 impl MetadataProvider for PostgresAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
@@ -66,8 +70,11 @@ impl MetadataProvider for PostgresAdapter {
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_detail_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
-        let (columns, indexes, foreign_keys, rls, triggers, table_info) =
+        let (exists, columns, indexes, foreign_keys, rls, triggers, table_info) =
             Self::parse_table_detail_combined(&json)?;
+        if !exists {
+            return Err(postgres_table_not_found(schema, table));
+        }
         let primary_key = extract_primary_key(&columns);
 
         Ok(Table {
@@ -96,7 +103,10 @@ impl MetadataProvider for PostgresAdapter {
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_columns_and_fks_query(schema, table);
         let json = self.execute_query(dsn, &query).await?;
-        let (columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
+        let (exists, columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
+        if !exists {
+            return Err(postgres_table_not_found(schema, table));
+        }
         let primary_key = extract_primary_key(&columns);
 
         Ok(Table {
