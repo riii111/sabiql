@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -8,7 +9,7 @@ use tokio::time::timeout;
 
 use crate::adapters::csv_export::CsvOutputError;
 use crate::app::ports::outbound::{DbOperationError, ExportIoSource};
-use crate::domain::{CommandTag, QueryResult, QuerySource, WriteExecutionResult};
+use crate::domain::{CommandTag, QueryResult, QuerySource, RefreshScope, WriteExecutionResult};
 
 use super::super::PostgresAdapter;
 use super::error::{classify_cli_spawn_error, classify_query_error};
@@ -408,8 +409,9 @@ impl PostgresAdapter {
         let output = self.run_psql(dsn, &[], query, read_only).await?;
 
         let affected_rows = Self::parse_affected_rows_with_source(&output).map_err(
-            |error: ParseCommandTagError| {
-                DbOperationError::CommandTagParseFailed(error.to_string())
+            |error: ParseCommandTagError| DbOperationError::QueryFailedAfterChange {
+                source: Arc::new(DbOperationError::CommandTagParseFailed(error.to_string())),
+                refresh_scope: RefreshScope::Data,
             },
         )?;
 
