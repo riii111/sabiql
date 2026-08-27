@@ -300,6 +300,47 @@ mod tests {
     }
 
     #[test]
+    fn reload_failure_terminates_detail_owned_by_metadata_refresh() {
+        let mut state = connected_state(DatabaseType::PostgreSQL);
+        let (generation, _) = loading_detail_and_metadata_run(&mut state);
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+        state.query.defer_preview(
+            Arc::new(QueryResult::error(
+                "SELECT * FROM public.users".to_string(),
+                "preview failed".to_string(),
+                0,
+                QuerySource::Preview,
+            )),
+            generation,
+            None,
+            false,
+        );
+
+        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
+            .into_effects()
+            .expect("metadata reload should be handled");
+        let run_id = state.session.metadata_generation();
+
+        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+            .into_effects()
+            .expect("metadata failure should be handled");
+
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Error(_)
+        ));
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::DispatchActions(actions)]
+                if matches!(
+                    actions.as_slice(),
+                    [Action::RevealPendingPreview { generation: action_generation }]
+                        if *action_generation == generation
+                )
+        ));
+    }
+
+    #[test]
     fn reload_failure_preserves_existing_detail_snapshot() {
         let mut state = connected_state(DatabaseType::PostgreSQL);
         let generation = state

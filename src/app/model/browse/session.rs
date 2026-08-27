@@ -258,7 +258,8 @@ impl BrowseSession {
     }
 
     pub fn mark_metadata_detail_failed(&mut self, error: String) -> bool {
-        if self.metadata_detail_generation != Some(self.selection_generation)
+        let metadata_detail_generation = self.metadata_detail_generation.take();
+        if metadata_detail_generation != Some(self.selection_generation)
             || !matches!(&self.table_detail_state, TableDetailState::Loading)
         {
             return false;
@@ -510,6 +511,7 @@ impl BrowseSession {
         self.metadata_state = MetadataState::Loaded;
         self.metadata = Some(metadata);
         self.metadata_run.clear_active();
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
     }
@@ -519,6 +521,7 @@ impl BrowseSession {
         self.metadata_state = MetadataState::NotLoaded;
         self.metadata = None;
         self.metadata_run.clear_active();
+        self.metadata_detail_generation = None;
         self.effective_user = None;
         self.effective_user_run.clear_active();
     }
@@ -540,7 +543,9 @@ impl BrowseSession {
     pub fn begin_metadata_refresh(&mut self) -> u64 {
         self.clear_mysql_connection_probe();
         self.metadata_state = MetadataState::Loading;
-        self.metadata_detail_generation = Some(self.selection_generation);
+        self.metadata_detail_generation =
+            matches!(&self.table_detail_state, TableDetailState::Loading)
+                .then_some(self.selection_generation);
         self.begin_metadata_run()
     }
 
@@ -558,7 +563,11 @@ impl BrowseSession {
     #[must_use]
     pub fn begin_reload(&mut self) -> u64 {
         self.is_reloading = true;
-        self.metadata_detail_generation = None;
+        if self.metadata_detail_generation != Some(self.selection_generation)
+            || !matches!(&self.table_detail_state, TableDetailState::Loading)
+        {
+            self.metadata_detail_generation = None;
+        }
         self.begin_metadata_run()
     }
 
