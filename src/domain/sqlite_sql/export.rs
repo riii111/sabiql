@@ -17,11 +17,7 @@ mod tests {
 
     #[test]
     fn accepts_read_only_statements() {
-        for sql in [
-            "SELECT id FROM users",
-            "PRAGMA table_info(users)",
-            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
-        ] {
+        for sql in ["SELECT id FROM users", "PRAGMA table_info(users)"] {
             assert!(is_sqlite_rerunnable_export_statement(sql), "{sql}");
         }
     }
@@ -31,6 +27,7 @@ mod tests {
         for sql in [
             "INSERT INTO users(id) VALUES (1)",
             "WITH payload(id) AS (VALUES (1)) INSERT INTO users(id) SELECT id FROM payload",
+            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
             "PRAGMA foreign_keys = OFF",
             "PRAGMA journal_mode = WAL",
         ] {

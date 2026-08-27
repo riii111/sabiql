@@ -105,11 +105,8 @@ pub fn sqlite_statement_classification(statement: &str) -> SqliteStatementClassi
         Some("ATTACH" | "DETACH") => SqliteStatementClassification::SessionSideEffect,
         Some(
             "ANALYZE" | "REINDEX" | "INSERT" | "UPDATE" | "DELETE" | "CREATE" | "ALTER" | "DROP"
-            | "TRUNCATE",
+            | "TRUNCATE" | "REPLACE",
         ) => SqliteStatementClassification::TransactionalWrite,
-        Some("REPLACE") if first_keyword.as_deref() == Some("REPLACE") => {
-            SqliteStatementClassification::TransactionalWrite
-        }
         _ => SqliteStatementClassification::ReadOnly,
     }
 }
@@ -341,7 +338,7 @@ mod tests {
             sqlite_statement_classification(
                 "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload"
             ),
-            SqliteStatementClassification::ReadOnly
+            SqliteStatementClassification::TransactionalWrite
         );
         assert_eq!(
             sqlite_statement_classification("START TRANSACTION"),
@@ -352,6 +349,25 @@ mod tests {
                 "WITH changed AS (UPDATE users SET name = 'a' RETURNING *) SELECT * FROM changed"
             ),
             SqliteStatementClassification::TransactionalWrite
+        );
+    }
+
+    #[test]
+    fn cte_replace_enters_the_automatic_transaction_policy() {
+        let classification = sqlite_statement_classification(
+            "WITH payload(id) AS (VALUES (1)) REPLACE INTO users(id) SELECT id FROM payload",
+        );
+
+        assert_eq!(
+            classification,
+            SqliteStatementClassification::TransactionalWrite
+        );
+        assert_eq!(
+            sqlite_transaction_policy_for_classifications(
+                2,
+                &[classification, SqliteStatementClassification::ReadOnly],
+            ),
+            SqliteTransactionPolicy::AutoWrap
         );
     }
 
