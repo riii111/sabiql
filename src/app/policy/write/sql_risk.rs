@@ -570,9 +570,11 @@ pub fn evaluate_multi_statement_for_database_with_context(
         decisions.push(decision);
     }
 
-    let has_table_name_input = decisions
+    let table_name_input_count = decisions
         .iter()
-        .any(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }));
+        .filter(|d| matches!(d.confirmation, ConfirmationType::TableNameInput { .. }))
+        .count();
+    let has_table_name_input = table_name_input_count > 0;
     let ack_reasons: Vec<&AcknowledgeReason> = decisions
         .iter()
         .filter_map(|d| match &d.confirmation {
@@ -614,6 +616,7 @@ pub fn evaluate_multi_statement_for_database_with_context(
     if (has_table_name_input && has_acknowledge)
         || mixed_ack_reasons
         || has_non_transaction_acknowledge
+        || table_name_input_count > 1
         || (transaction_policy.requires_acknowledgement() && has_table_name_input)
     {
         return MultiStatementDecision::Block {
@@ -1463,17 +1466,32 @@ mod tests {
             }
 
             #[test]
-            fn multiple_high_uses_first_target() {
+            fn multiple_high_targets_are_blocked() {
                 let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
+                assert!(matches!(result, MultiStatementDecision::Block { .. }));
+            }
+
+            #[rstest]
+            #[case::postgres(DatabaseType::PostgreSQL)]
+            #[case::sqlite(DatabaseType::SQLite)]
+            fn high_and_medium_risk_use_single_target_confirmation(
+                #[case] database_type: DatabaseType,
+            ) {
+                let result = evaluate_multi_statement_for_database(
+                    database_type,
+                    "DROP TABLE users; UPDATE items SET value = 1 WHERE id = 1",
+                );
+
                 match result {
                     MultiStatementDecision::Allow { risk, .. } => {
                         assert_eq!(risk.risk_level, RiskLevel::High);
+                        assert!(!risk.read_only_allowed);
                         assert!(matches!(
                             risk.confirmation,
                             ConfirmationType::TableNameInput {
                                 ref target,
                                 label: "DROP",
-                            } if target == "a"
+                            } if target == "users"
                         ));
                     }
                     _ => panic!("expected Allow"),
@@ -1908,29 +1926,12 @@ mod tests {
                 use super::*;
 
                 #[test]
-                fn sqlite_multiple_high_drops_use_first_confirmation() {
+                fn sqlite_multiple_high_drops_are_blocked() {
                     let result = evaluate_multi_statement_for_database(
                         DatabaseType::SQLite,
                         "DROP INDEX my_index; DROP VIEW my_view",
                     );
-                    match result {
-                        MultiStatementDecision::Allow { statements, risk } => {
-                            assert_eq!(
-                                statements,
-                                vec!["DROP INDEX my_index", "DROP VIEW my_view"]
-                            );
-                            assert_eq!(risk.risk_level, RiskLevel::High);
-                            assert!(!risk.read_only_allowed);
-                            assert!(matches!(
-                                risk.confirmation,
-                                ConfirmationType::TableNameInput {
-                                    ref target,
-                                    label: "DROP INDEX",
-                                } if target == "my_index"
-                            ));
-                        }
-                        _ => panic!("expected Allow"),
-                    }
+                    assert!(matches!(result, MultiStatementDecision::Block { .. }));
                 }
 
                 #[test]
@@ -2045,6 +2046,14 @@ mod mysql_tests {
             }
             MultiStatementDecision::Block { reason } => panic!("unexpected block: {reason}"),
         }
+    }
+
+    #[test]
+    fn multiple_destructive_targets_are_blocked() {
+        assert!(matches!(
+            mysql("DROP TABLE a; DROP TABLE b"),
+            MultiStatementDecision::Block { .. }
+        ));
     }
 
     #[test]
