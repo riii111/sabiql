@@ -266,7 +266,8 @@ impl EffectRunner {
             | Effect::PrefetchTableColumnsAndFks { .. }
             | Effect::SchedulePrefetchQueueProcessing { .. }
             | Effect::DelayedProcessPrefetchQueue { .. }
-            | Effect::CacheInvalidate { .. }) => {
+            | Effect::CacheInvalidate { .. }
+            | Effect::CancelMetadataTasks) => {
                 if matches!(&e, Effect::FetchMetadata { .. }) {
                     self.cancel_metadata_tasks().await;
                     self.smart_er_refresh_task.cancel().await;

@@ -45,6 +45,7 @@ pub(crate) fn metadata_reload_effects(state: &mut AppState, dsn: &str) -> Vec<Ef
     let run_id = state.session.begin_reload();
 
     vec![Effect::Sequence(vec![
+        Effect::CancelMetadataTasks,
         Effect::CacheInvalidate {
             dsn: dsn.to_string(),
         },

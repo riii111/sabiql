@@ -1619,10 +1619,11 @@ mod tests {
             assert!(matches!(effects[0], Effect::Sequence(_)));
 
             if let Effect::Sequence(seq) = &effects[0] {
-                assert_eq!(seq.len(), 3);
-                assert!(matches!(seq[0], Effect::CacheInvalidate { .. }));
-                assert!(matches!(seq[1], Effect::ClearCompletionEngineCache));
-                assert!(matches!(seq[2], Effect::FetchMetadata { .. }));
+                assert_eq!(seq.len(), 4);
+                assert!(matches!(seq[0], Effect::CancelMetadataTasks));
+                assert!(matches!(seq[1], Effect::CacheInvalidate { .. }));
+                assert!(matches!(seq[2], Effect::ClearCompletionEngineCache));
+                assert!(matches!(seq[3], Effect::FetchMetadata { .. }));
             }
         }
 

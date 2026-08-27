@@ -274,6 +274,7 @@ pub(super) fn refresh_effects_for_scope(
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
 
+        effects.push(Effect::CancelMetadataTasks);
         effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
         effects.push(Effect::ClearCompletionEngineCache);
         effects.push(Effect::FetchMetadata { dsn, run_id });
@@ -1559,6 +1560,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
                 effects
                     .iter()
@@ -1655,6 +1657,7 @@ mod tests {
             let effects =
                 dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub()).unwrap();
 
+            assert!(matches!(effects[0], Effect::CancelMetadataTasks));
             assert!(
                 effects
                     .iter()
