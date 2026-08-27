@@ -663,7 +663,7 @@ mod tests {
         }
 
         #[test]
-        fn sqlite_submit_multi_drop_pairs_label_with_first_target() {
+        fn sqlite_submit_multi_drop_is_blocked() {
             let mut state = sql_modal_state();
             test_fixtures::activate_sqlite_connection(&mut state, "sqlite:///tmp/test.db");
             state
@@ -675,11 +675,8 @@ mod tests {
 
             assert!(matches!(
                 state.sql_modal.status(),
-                SqlModalStatus::ConfirmingHigh {
-                    decision,
-                    target_name,
-                    ..
-                } if decision.label == "DROP INDEX" && target_name == "my_index"
+                SqlModalStatus::Error(error)
+                    if error == "Statements require different confirmations; run them separately"
             ));
         }
 
