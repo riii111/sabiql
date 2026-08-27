@@ -112,7 +112,6 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
 
-            let detail_generation = state.session.selection_generation();
             let error_info = ConnectionErrorInfo::from_db_operation_error(error);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
@@ -131,9 +130,12 @@ pub(super) fn reduce_loading(
             DispatchResult::handled_with(if was_connected {
                 if state
                     .session
-                    .mark_table_detail_failed(detail_generation, error.user_message())
+                    .mark_metadata_detail_failed(error.user_message())
                 {
-                    super::table_detail::reveal_pending_preview(state, detail_generation)
+                    super::table_detail::reveal_pending_preview(
+                        state,
+                        state.session.selection_generation(),
+                    )
                 } else {
                     vec![]
                 }
@@ -295,6 +297,95 @@ mod tests {
         );
         assert!(state.query.current_result().is_some());
         assert!(!state.query.has_pending_preview(generation));
+    }
+
+    #[test]
+    fn reload_failure_preserves_existing_detail_snapshot() {
+        let mut state = connected_state(DatabaseType::PostgreSQL);
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let detail = table::minimal("public", "users");
+        assert!(state.session.set_table_detail(detail, generation));
+
+        reduce_loading(&mut state, &Action::ReloadMetadata, Instant::now())
+            .into_effects()
+            .expect("metadata reload should be handled");
+        let run_id = state.session.metadata_generation();
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+            .into_effects()
+            .expect("metadata failure should be handled");
+
+        assert!(effects.is_empty());
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loaded(_)
+        ));
+        assert!(matches!(
+            state.session.table_detail(),
+            Some(detail) if detail.schema == "public" && detail.name == "users"
+        ));
+        assert!(state.session.is_table_detail_terminal(generation));
+    }
+
+    #[test]
+    fn stale_metadata_failure_does_not_terminate_new_loading_detail() {
+        let mut state = connected_state(DatabaseType::PostgreSQL);
+        let _ = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let stale_run_id = state.session.begin_metadata_refresh();
+        let generation = state
+            .session
+            .select_table("public", "orders", &mut state.query);
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(
+            &mut state,
+            &metadata_failed(&dsn, stale_run_id),
+            Instant::now(),
+        )
+        .into_effects()
+        .expect("stale metadata failure should be handled");
+
+        assert!(effects.is_empty());
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        ));
+        assert!(!state.session.is_table_detail_terminal(generation));
+    }
+
+    #[test]
+    fn stale_metadata_failure_preserves_new_loaded_detail() {
+        let mut state = connected_state(DatabaseType::SQLite);
+        let _ = state
+            .session
+            .select_table("main", "users", &mut state.query);
+        let stale_run_id = state.session.begin_metadata_refresh();
+        let generation = state
+            .session
+            .select_table("main", "orders", &mut state.query);
+        let detail = table::minimal("main", "orders");
+        assert!(state.session.set_table_detail(detail, generation));
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(
+            &mut state,
+            &metadata_failed(&dsn, stale_run_id),
+            Instant::now(),
+        )
+        .into_effects()
+        .expect("stale metadata failure should be handled");
+
+        assert!(effects.is_empty());
+        assert!(matches!(
+            state.session.table_detail(),
+            Some(detail) if detail.schema == "main" && detail.name == "orders"
+        ));
+        assert!(state.session.is_table_detail_terminal(generation));
     }
 
     #[test]
