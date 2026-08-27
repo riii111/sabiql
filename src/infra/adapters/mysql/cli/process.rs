@@ -3,6 +3,10 @@ use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 #[cfg(unix)]
+use std::io;
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
+#[cfg(unix)]
 use tokio::fs::File as TokioFile;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
@@ -214,12 +218,21 @@ pub(super) async fn stop_mysql_process(
     {
         return Ok((status, false));
     }
-    let _ = child.kill().await;
+    let kill_result = child.kill().await;
+    finish_mysql_process_stop(child, kill_result).await
+}
+
+#[cfg(unix)]
+async fn finish_mysql_process_stop(
+    child: &mut Child,
+    kill_result: io::Result<()>,
+) -> Result<(ExitStatus, bool), DbOperationError> {
     let status = child
         .wait()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, true))
+    let forcibly_stopped = kill_result.is_ok() && status.signal() == Some(libc::SIGKILL);
+    Ok((status, forcibly_stopped))
 }
 
 pub(super) async fn read_all_bytes<R>(reader: &mut R) -> std::io::Result<Vec<u8>>
