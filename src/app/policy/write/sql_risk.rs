@@ -1468,7 +1468,11 @@ mod tests {
             #[test]
             fn multiple_high_targets_are_blocked() {
                 let result = evaluate_multi_statement("DROP TABLE a; DROP TABLE b");
-                assert!(matches!(result, MultiStatementDecision::Block { .. }));
+                assert!(matches!(
+                    result,
+                    MultiStatementDecision::Block { reason }
+                        if reason == "Statements require different confirmations; run them separately"
+                ));
             }
 
             #[rstest]
@@ -1931,7 +1935,11 @@ mod tests {
                         DatabaseType::SQLite,
                         "DROP INDEX my_index; DROP VIEW my_view",
                     );
-                    assert!(matches!(result, MultiStatementDecision::Block { .. }));
+                    assert!(matches!(
+                        result,
+                        MultiStatementDecision::Block { reason }
+                            if reason == "Statements require different confirmations; run them separately"
+                    ));
                 }
 
                 #[test]
@@ -2052,7 +2060,8 @@ mod mysql_tests {
     fn multiple_destructive_targets_are_blocked() {
         assert!(matches!(
             mysql("DROP TABLE a; DROP TABLE b"),
-            MultiStatementDecision::Block { .. }
+            MultiStatementDecision::Block { reason }
+                if reason == "MySQL statements require separate destructive confirmations"
         ));
     }
 
