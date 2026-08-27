@@ -22,10 +22,11 @@ pub(super) fn reduce_smart_refresh_failed(
                 return DispatchResult::handled();
             }
 
-            let mut effects = vec![Effect::CacheInvalidate { dsn: dsn.clone() }];
+            let mut effects = Vec::new();
 
             if let Some(md) = new_metadata {
                 state.session.set_metadata(Some(Arc::clone(md)));
+                effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
             }
 
             let Some(metadata) = &state.session.metadata() else {
