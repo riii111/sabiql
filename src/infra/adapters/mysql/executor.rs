@@ -3,7 +3,8 @@ use std::time::Instant;
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
-    QueryResult, QuerySource, WriteExecutionResult, mysql_sql::mysql_tree_explain_query_kind,
+    CommandTag, QueryResult, QuerySource, WriteExecutionResult,
+    mysql_sql::mysql_tree_explain_query_kind,
 };
 use async_trait::async_trait;
 
@@ -83,11 +84,35 @@ async fn execute_adhoc_with_target(
         ),
     };
     if let Some(tag) = execution.command_tag {
-        result = result.with_command_tag(tag);
+        result = with_mysql_command_tag(result, tag)?;
     }
     Ok(result
         .with_mysql_diagnostics(execution.diagnostics)
         .with_refresh_scope(execution.refresh_scope))
+}
+
+fn with_mysql_command_tag(
+    mut result: QueryResult,
+    tag: CommandTag,
+) -> Result<QueryResult, DbOperationError> {
+    if result.data_row_count() == 0 {
+        let affected_rows = match &tag {
+            CommandTag::Insert(rows)
+            | CommandTag::Affected(rows)
+            | CommandTag::Update(rows)
+            | CommandTag::Delete(rows) => Some(*rows),
+            _ => None,
+        };
+        if let Some(affected_rows) = affected_rows {
+            let row_count = usize::try_from(affected_rows).map_err(|_| {
+                DbOperationError::CommandTagParseFailed(
+                    "MySQL affected row count does not fit in usize".to_string(),
+                )
+            })?;
+            result = result.with_row_count(row_count);
+        }
+    }
+    Ok(result.with_command_tag(tag))
 }
 
 #[async_trait]
@@ -265,5 +290,38 @@ mod tests {
             Err(DbOperationError::QueryFailed(details))
                 if details == "MySQL row count was not an integer"
         ));
+    }
+
+    #[test]
+    fn uses_affected_rows_for_a_dml_result_without_payload_rows() {
+        let result =
+            with_mysql_command_tag(count_result(Vec::new()), CommandTag::Update(3)).unwrap();
+
+        assert_eq!(result.row_count(), 3);
+        assert_eq!(result.data_row_count(), 0);
+        assert_eq!(result.command_tag, Some(CommandTag::Update(3)));
+    }
+
+    #[test]
+    fn keeps_payload_row_count_for_a_dml_result() {
+        let result = with_mysql_command_tag(
+            count_result(vec![vec![QueryValue::text("row")]]),
+            CommandTag::Update(3),
+        )
+        .unwrap();
+
+        assert_eq!(result.row_count(), 1);
+        assert_eq!(result.data_row_count(), 1);
+    }
+
+    #[test]
+    fn keeps_empty_row_count_for_non_dml_command_tags() {
+        let result = with_mysql_command_tag(
+            count_result(Vec::new()),
+            CommandTag::Create("TABLE".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(result.row_count(), 0);
     }
 }
