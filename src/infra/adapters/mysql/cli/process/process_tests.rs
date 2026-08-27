@@ -1,3 +1,5 @@
+#[cfg(not(unix))]
+use std::io;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 
