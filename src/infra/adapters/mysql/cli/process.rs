@@ -214,12 +214,12 @@ pub(super) async fn stop_mysql_process(
     {
         return Ok((status, false));
     }
-    let _ = child.kill().await;
+    let kill_result = child.kill().await;
     let status = child
         .wait()
         .await
         .map_err(|error| DbOperationError::ConnectionLost(error.to_string()))?;
-    Ok((status, true))
+    Ok((status, kill_result.is_ok()))
 }
 
 pub(super) async fn read_all_bytes<R>(reader: &mut R) -> std::io::Result<Vec<u8>>

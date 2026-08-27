@@ -81,6 +81,41 @@ fn preserves_mysql_session_exit_rules() {
     ));
 }
 
+#[cfg(unix)]
+#[test]
+fn rejects_nonzero_wait_status_without_confirmed_forced_stop() {
+    assert!(validate_mysql_session_exit(&session(9, false, b""), None).is_err());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reports_successful_kill_and_wait_status() {
+    let mut child = Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep process");
+
+    let (status, forcibly_stopped) = stop_mysql_process(&mut child).await.unwrap();
+
+    assert!(!status.success());
+    assert!(forcibly_stopped);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn preserves_wait_status_for_normal_exit() {
+    let mut child = Command::new("sh")
+        .args(["-c", "exit 7"])
+        .spawn()
+        .expect("spawn exiting process");
+    let expected_status = child.wait().await.unwrap();
+
+    let (status, forcibly_stopped) = stop_mysql_process(&mut child).await.unwrap();
+
+    assert_eq!(status.code(), expected_status.code());
+    assert!(!forcibly_stopped);
+}
+
 #[test]
 fn separates_statements_after_line_comments_with_semicolons() {
     for query in [
