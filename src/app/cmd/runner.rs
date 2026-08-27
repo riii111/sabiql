@@ -295,6 +295,11 @@ impl EffectRunner {
                 Ok(vec![])
             }
 
+            Effect::CancelMetadataTasks => {
+                self.cancel_metadata_tasks().await;
+                Ok(vec![])
+            }
+
             Effect::CancelTrackedTasks => {
                 self.cancel_tracked_tasks().await;
                 Ok(vec![])
