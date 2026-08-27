@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -5,8 +6,8 @@ use async_trait::async_trait;
 use crate::adapters::csv_export::export_to_downloads;
 use crate::app::ports::outbound::{AccessMode, DbOperationError, QueryExecutor};
 use crate::domain::{
-    CommandTag, QueryResult, QuerySource, TableKind, TableKindInfo, WriteExecutionResult,
-    sqlite_sql::is_sqlite_explain_query_plan_sql,
+    CommandTag, QueryResult, QuerySource, RefreshScope, TableKind, TableKindInfo,
+    WriteExecutionResult, sqlite_sql::is_sqlite_explain_query_plan_sql,
 };
 
 use super::sqlite3::parser::{
@@ -222,7 +223,10 @@ impl SqliteAdapter {
             .cli
             .execute_csv(path, &append_changes_query_for_plan(plan), read_only)
             .await?;
-        parse_affected_rows(&stdout)
+        parse_affected_rows(&stdout).map_err(|error| DbOperationError::QueryFailedAfterChange {
+            source: Arc::new(error),
+            refresh_scope: RefreshScope::Data,
+        })
     }
 }
 
