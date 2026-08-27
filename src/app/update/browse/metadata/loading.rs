@@ -112,6 +112,7 @@ pub(super) fn reduce_loading(
                 return DispatchResult::handled();
             }
 
+            let detail_generation = state.session.selection_generation();
             let error_info = ConnectionErrorInfo::from_db_operation_error(error);
             state.connection_error.set_error(error_info);
             let was_connected = state.session.connection_state().is_connected();
@@ -128,7 +129,14 @@ pub(super) fn reduce_loading(
                 state.er_preparation.mark_idle();
             }
             DispatchResult::handled_with(if was_connected {
-                vec![]
+                if state
+                    .session
+                    .mark_table_detail_failed(detail_generation, error.user_message())
+                {
+                    super::table_detail::reveal_pending_preview(state, detail_generation)
+                } else {
+                    vec![]
+                }
             } else {
                 termination_effects(&state.query, vec![])
             })
@@ -149,5 +157,167 @@ pub(super) fn reduce_loading(
             }
         }
         _ => DispatchResult::pass(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, QueryResult, QuerySource};
+    use crate::model::browse::session::TableDetailState;
+    use crate::ports::outbound::DbOperationError;
+    use crate::services::AppServices;
+    use crate::test_support::table;
+    use crate::update::browse::query::dispatch_query;
+
+    fn connected_state(database_type: DatabaseType) -> AppState {
+        let (name, dsn) = match database_type {
+            DatabaseType::PostgreSQL => ("postgres", "postgres://localhost/test"),
+            DatabaseType::SQLite => ("sqlite", "sqlite:///tmp/test.db"),
+            DatabaseType::MySQL => ("mysql", "mysql://localhost/test"),
+        };
+        let mut state = AppState::new("test".to_string());
+        state
+            .session
+            .activate_connection_with_dsn(&ConnectionId::new(), name, database_type, dsn);
+        state
+            .session
+            .mark_connected(Arc::new(DatabaseMetadata::new("test".to_string())));
+        state
+    }
+
+    fn loading_detail_and_metadata_run(state: &mut AppState) -> (u64, u64) {
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        let run_id = state.session.begin_metadata_refresh();
+        (generation, run_id)
+    }
+
+    fn metadata_failed(dsn: &str, run_id: u64) -> Action {
+        Action::MetadataFailed {
+            dsn: dsn.to_string(),
+            run_id,
+            error: DbOperationError::PermissionDenied("metadata refresh failed".to_string()),
+        }
+    }
+
+    #[test]
+    fn metadata_failure_terminates_initial_loading_detail() {
+        let mut state = connected_state(DatabaseType::PostgreSQL);
+        let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+            .into_effects()
+            .expect("metadata failure should be handled");
+
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Error(_)
+        ));
+        assert!(state.session.is_table_detail_terminal(generation));
+        assert!(effects.is_empty());
+    }
+
+    #[rstest::rstest]
+    #[case(DatabaseType::PostgreSQL)]
+    #[case(DatabaseType::SQLite)]
+    #[case(DatabaseType::MySQL)]
+    fn metadata_failure_terminates_existing_detail_for_each_database(
+        #[case] database_type: DatabaseType,
+    ) {
+        let mut state = connected_state(database_type);
+        let generation = state
+            .session
+            .select_table("public", "users", &mut state.query);
+        assert!(
+            state
+                .session
+                .set_table_detail(table::minimal("public", "users"), generation,)
+        );
+        state.session.set_table_detail_raw(None);
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        ));
+        let run_id = state.session.begin_metadata_refresh();
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+            .into_effects()
+            .expect("metadata failure should be handled");
+
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Error(_)
+        ));
+        assert!(state.session.is_table_detail_terminal(generation));
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn metadata_failure_reveals_pending_preview_after_terminalizing_detail() {
+        let mut state = connected_state(DatabaseType::SQLite);
+        let (generation, run_id) = loading_detail_and_metadata_run(&mut state);
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+        state.query.defer_preview(
+            Arc::new(QueryResult::error(
+                "SELECT * FROM public.users".to_string(),
+                "preview failed".to_string(),
+                0,
+                QuerySource::Preview,
+            )),
+            generation,
+            None,
+            false,
+        );
+
+        let effects = reduce_loading(&mut state, &metadata_failed(&dsn, run_id), Instant::now())
+            .into_effects()
+            .expect("metadata failure should be handled");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::DispatchActions(actions)]
+                if matches!(
+                    actions.as_slice(),
+                    [Action::RevealPendingPreview { generation: action_generation }]
+                        if *action_generation == generation
+                )
+        ));
+        assert!(state.session.is_table_detail_terminal(generation));
+        dispatch_query(
+            &mut state,
+            &Action::RevealPendingPreview { generation },
+            Instant::now(),
+            &AppServices::stub(),
+        );
+        assert!(state.query.current_result().is_some());
+        assert!(!state.query.has_pending_preview(generation));
+    }
+
+    #[test]
+    fn stale_metadata_failure_does_not_terminate_current_detail() {
+        let mut state = connected_state(DatabaseType::MySQL);
+        let (generation, stale_run_id) = loading_detail_and_metadata_run(&mut state);
+        let current_run_id = state.session.begin_metadata_refresh();
+        let dsn = state.session.dsn().expect("connected DSN").to_string();
+
+        let effects = reduce_loading(
+            &mut state,
+            &metadata_failed(&dsn, stale_run_id),
+            Instant::now(),
+        )
+        .into_effects()
+        .expect("stale metadata failure should be handled");
+
+        assert!(effects.is_empty());
+        assert!(matches!(
+            state.session.table_detail_state(),
+            TableDetailState::Loading
+        ));
+        assert!(!state.session.is_table_detail_terminal(generation));
+        assert!(state.session.is_current_metadata_run(current_run_id));
     }
 }
