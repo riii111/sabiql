@@ -770,5 +770,68 @@ mod tests {
             assert_eq!(run.state.runtime.project_name(), "test");
             assert!(cache.get(&"dsn://target".to_string()).await.is_none());
         }
+
+        #[tokio::test]
+        async fn invalidate_forces_following_metadata_fetch() {
+            let mut mock_provider = MockMetadataProvider::new();
+            mock_provider
+                .expect_fetch_metadata()
+                .once()
+                .returning(|_| Ok(test_fixtures::sample_metadata()));
+
+            let cache: TtlCache<String, Arc<DatabaseMetadata>> = TtlCache::new(300);
+            cache
+                .set(
+                    "dsn://target".to_string(),
+                    Arc::new(DatabaseMetadata::new("old".to_string())),
+                )
+                .await;
+
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(mock_provider),
+                Arc::new(MockQueryExecutor::new()),
+                Arc::new(MockConnectionStore::new()),
+                cache.clone(),
+                tx,
+            );
+
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                Effect::Sequence(vec![
+                    Effect::CacheInvalidate {
+                        dsn: "dsn://target".to_string(),
+                    },
+                    Effect::FetchMetadata {
+                        dsn: "dsn://target".to_string(),
+                        run_id: 7,
+                    },
+                ]),
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(std::time::Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            let action = run.actions.into_iter().next().expect("action dispatched");
+            assert!(matches!(
+                action,
+                Action::MetadataLoaded {
+                    ref dsn,
+                    run_id: 7,
+                    ref metadata,
+                } if dsn == "dsn://target" && metadata.database_name == "testdb"
+            ));
+            assert_eq!(
+                cache
+                    .get(&"dsn://target".to_string())
+                    .await
+                    .expect("fetched metadata should be cached")
+                    .database_name,
+                "testdb"
+            );
+        }
     }
 }

@@ -320,6 +320,9 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(
+                matches!(&effects[0], Effect::CacheInvalidate { dsn } if dsn == "postgres://localhost/test")
+            );
+            assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::GenerateErDiagramFromCache { .. }))
@@ -614,6 +617,9 @@ mod tests {
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
             );
+            assert!(
+                matches!(&effects[0], Effect::CacheInvalidate { dsn } if dsn == "postgres://localhost/test")
+            );
             assert!(effects.iter().any(|e| matches!(
                 e,
                 Effect::DispatchActions(actions)
@@ -709,7 +715,9 @@ mod tests {
             .unwrap();
 
             assert_eq!(state.er_preparation.status(), ErStatus::Idle);
-            assert!(effects.is_empty());
+            assert!(
+                matches!(&effects[..], [Effect::CacheInvalidate { dsn }] if dsn == "postgres://localhost/test")
+            );
             assert!(state.messages.last_error.is_some());
         }
 
@@ -746,6 +754,9 @@ mod tests {
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(
+                matches!(&effects[0], Effect::CacheInvalidate { dsn } if dsn == "postgres://localhost/test")
             );
             assert!(effects.iter().any(|e| matches!(
                 e,

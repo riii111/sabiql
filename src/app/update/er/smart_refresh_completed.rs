@@ -33,7 +33,7 @@ pub(super) fn reduce_smart_refresh_completed(
                 .er_preparation
                 .apply_refresh_metadata(new_signatures.clone(), new_metadata.table_summaries.len());
 
-            let mut effects: Vec<Effect> = Vec::new();
+            let mut effects = vec![Effect::CacheInvalidate { dsn: dsn.clone() }];
 
             if !removed_tables.is_empty() {
                 effects.push(Effect::EvictTablesFromCompletionCache {
