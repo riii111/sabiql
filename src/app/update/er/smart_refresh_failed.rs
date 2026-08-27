@@ -22,8 +22,11 @@ pub(super) fn reduce_smart_refresh_failed(
                 return DispatchResult::handled();
             }
 
+            let mut effects = Vec::new();
+
             if let Some(md) = new_metadata {
                 state.session.set_metadata(Some(Arc::clone(md)));
+                effects.push(Effect::CacheInvalidate { dsn: dsn.clone() });
             }
 
             let Some(metadata) = &state.session.metadata() else {
@@ -31,7 +34,7 @@ pub(super) fn reduce_smart_refresh_failed(
                 state
                     .messages
                     .set_error("Metadata not loaded yet".to_string());
-                return DispatchResult::handled();
+                return DispatchResult::handled_with(effects);
             };
             state
                 .er_preparation
@@ -40,10 +43,11 @@ pub(super) fn reduce_smart_refresh_failed(
             state.messages.set_error(format!(
                 "Smart refresh failed ({error}), falling back to full refresh"
             ));
-            DispatchResult::handled_with(vec![
+            effects.extend([
                 Effect::ClearCompletionEngineCache,
                 Effect::DispatchActions(vec![Action::StartErPrefetchAll]),
-            ])
+            ]);
+            DispatchResult::handled_with(effects)
         }
         _ => DispatchResult::pass(),
     }

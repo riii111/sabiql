@@ -320,6 +320,9 @@ mod tests {
                 .expect("reducer should handle action");
 
             assert!(
+                matches!(&effects[0], Effect::CacheInvalidate { dsn } if dsn == "postgres://localhost/test")
+            );
+            assert!(
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::GenerateErDiagramFromCache { .. }))
@@ -746,6 +749,9 @@ mod tests {
                 effects
                     .iter()
                     .any(|e| matches!(e, Effect::ClearCompletionEngineCache))
+            );
+            assert!(
+                matches!(&effects[0], Effect::CacheInvalidate { dsn } if dsn == "postgres://localhost/test")
             );
             assert!(effects.iter().any(|e| matches!(
                 e,
