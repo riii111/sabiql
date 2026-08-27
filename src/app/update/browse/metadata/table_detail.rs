@@ -55,7 +55,7 @@ pub(super) fn reduce_table_detail(
     }
 }
 
-fn reveal_pending_preview(state: &AppState, generation: u64) -> Vec<Effect> {
+pub(super) fn reveal_pending_preview(state: &AppState, generation: u64) -> Vec<Effect> {
     if state.query.has_pending_preview(generation) {
         vec![Effect::DispatchActions(vec![
             Action::RevealPendingPreview { generation },
