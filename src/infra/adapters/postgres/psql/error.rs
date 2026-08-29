@@ -2,7 +2,7 @@ use std::process::ExitStatus;
 
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-#[cfg(windows)]
+#[cfg(all(test, windows))]
 use std::os::windows::process::ExitStatusExt;
 
 use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
@@ -427,7 +427,7 @@ mod tests {
             #[case] expected_summary: &str,
             #[case] expected_hint: &str,
         ) {
-            let error = classify_query_error(input);
+            let error = classify(input);
 
             assert_eq!(error.masked_details(), input);
             assert_eq!(error.summary(), expected_summary);
