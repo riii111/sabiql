@@ -5,16 +5,23 @@ use tokio::sync::mpsc;
 
 use crate::cmd::effect::Effect;
 use crate::cmd::query_task::QueryTaskRegistry;
-use crate::domain::DatabaseType;
 use crate::domain::command_tag::CommandTag;
 use crate::domain::query_history::{QueryHistoryEntry, QueryHistoryScope, QueryResultStatus};
+use crate::domain::{DatabaseDiagnostic, DatabaseType};
 use crate::domain::{
     mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
     sqlite_explain_query_plan_text_from_result,
 };
 use crate::model::app_state::AppState;
+use crate::policy::mask_password;
 use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
 use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext};
+
+fn mask_mysql_diagnostics(diagnostics: &mut [DatabaseDiagnostic]) {
+    for diagnostic in diagnostics {
+        diagnostic.message = mask_password(&diagnostic.message);
+    }
+}
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
     // Algorithm from https://howardhinnant.github.io/date_algorithms.html
@@ -196,6 +203,8 @@ pub async fn run(
                     let result = executor.execute_adhoc(&dsn, &query, access_mode).await;
                     match result {
                         Ok(result) => {
+                            let mut result = result;
+                            mask_mysql_diagnostics(&mut result.mysql_diagnostics);
                             if let Some(scope) = &history_scope {
                                 let rows = result
                                     .command_tag
@@ -259,6 +268,8 @@ pub async fn run(
                 .spawn(async move {
                     match executor.execute_write(&dsn, &query, access_mode).await {
                         Ok(result) => {
+                            let mut result = result;
+                            mask_mysql_diagnostics(&mut result.diagnostics);
                             if let Some(scope) = &history_scope {
                                 spawn_query_history_append(
                                     &history_store,
@@ -720,6 +731,7 @@ mod tests {
 
     mod execute_access_mode {
         use super::*;
+        use crate::cmd::browse::query::mask_mysql_diagnostics;
         use crate::domain::DatabaseType;
 
         async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
@@ -746,14 +758,68 @@ mod tests {
             run.actions.into_iter().next().expect("action dispatched")
         }
 
+        #[test]
+        fn masks_credentials_in_success_diagnostic_messages() {
+            let cases = [
+                (
+                    "mysql://user:dsn-secret@host",
+                    "mysql://user:****@host",
+                    DiagnosticLevel::Warning,
+                    1001,
+                ),
+                (
+                    "password=kv-secret",
+                    "password=****",
+                    DiagnosticLevel::Note,
+                    1002,
+                ),
+                (
+                    "MYSQL_PWD=environment-secret",
+                    "MYSQL_PWD=****",
+                    DiagnosticLevel::Warning,
+                    1003,
+                ),
+                (
+                    "Data truncated",
+                    "Data truncated",
+                    DiagnosticLevel::Note,
+                    1004,
+                ),
+            ];
+
+            for (message, expected, level, code) in cases {
+                let mut diagnostics = vec![DatabaseDiagnostic {
+                    level,
+                    code,
+                    message: message.to_string(),
+                }];
+
+                mask_mysql_diagnostics(&mut diagnostics);
+
+                assert_eq!(diagnostics[0].message, expected);
+                assert_eq!(diagnostics[0].level, level);
+                assert_eq!(diagnostics[0].code, code);
+            }
+        }
+
         #[tokio::test]
-        async fn execute_adhoc_forwards_access_mode() {
+        async fn execute_adhoc_forwards_access_mode_and_masks_diagnostics() {
             let mut executor = MockQueryExecutor::new();
             executor
                 .expect_execute_adhoc()
                 .once()
                 .withf(|_, _, access_mode| *access_mode == AccessMode::ReadOnly)
-                .returning(|_, _, _| Ok(test_fixtures::sample_query_result()));
+                .returning(|_, _, _| {
+                    Ok(
+                        test_fixtures::sample_query_result().with_mysql_diagnostics(vec![
+                            DatabaseDiagnostic {
+                                level: DiagnosticLevel::Warning,
+                                code: 1001,
+                                message: "mysql://user:secret@host".to_string(),
+                            },
+                        ]),
+                    )
+                });
 
             let action = run_effect(
                 Effect::ExecuteAdhoc {
@@ -766,7 +832,19 @@ mod tests {
             )
             .await;
 
-            assert!(matches!(action, Action::QueryCompleted { run_id: 1, .. }));
+            match action {
+                Action::QueryCompleted {
+                    run_id: 1, result, ..
+                } => assert_eq!(
+                    result.mysql_diagnostics,
+                    vec![DatabaseDiagnostic {
+                        level: DiagnosticLevel::Warning,
+                        code: 1001,
+                        message: "mysql://user:****@host".to_string(),
+                    }]
+                ),
+                action => panic!("unexpected action: {action:?}"),
+            }
         }
 
         #[tokio::test]
@@ -809,7 +887,7 @@ mod tests {
                         diagnostics: vec![DatabaseDiagnostic {
                             level: DiagnosticLevel::Warning,
                             code: 1265,
-                            message: "Data truncated".to_string(),
+                            message: "Data truncated password=secret".to_string(),
                         }],
                     })
                 });
@@ -836,7 +914,7 @@ mod tests {
                     vec![DatabaseDiagnostic {
                         level: DiagnosticLevel::Warning,
                         code: 1265,
-                        message: "Data truncated".to_string(),
+                        message: "Data truncated password=****".to_string(),
                     }]
                 ),
                 action => panic!("unexpected action: {action:?}"),
