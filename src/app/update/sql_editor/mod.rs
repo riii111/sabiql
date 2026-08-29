@@ -26,6 +26,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType, TableSummary};
+    use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::flash_timer::FlashId;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::{TextInputLike, TextInputState};
@@ -885,6 +886,9 @@ mod tests {
         #[test]
         fn submit_select_executes_immediately() {
             let mut state = modal_state_with_query("SELECT 1");
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let effects = reduce_sql_modal(&mut state, &Action::SqlModalSubmit, Instant::now())
                 .into_effects()
@@ -896,6 +900,10 @@ mod tests {
                 effects.as_slice(),
                 [Effect::ExecuteAdhoc { run_id: 1, .. }]
             ));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
 
         #[test]

@@ -187,7 +187,7 @@ pub fn reduce_pagination(
                         return DispatchResult::handled();
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         return dispatch_rerunnable_csv_export(
                             state,
                             dsn,
@@ -201,7 +201,7 @@ pub fn reduce_pagination(
                     SqliteExportPlan::CachedResult { row_count } => {
                         let columns = result.columns.clone();
                         let values = result.values().to_vec();
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         return dispatch_cached_csv_export(
                             state, dsn, run_id, file_name, columns, values, row_count,
                         );
@@ -213,7 +213,7 @@ pub fn reduce_pagination(
                 if result.source == QuerySource::Preview {
                     let columns = result.columns.clone();
                     let values = result.values().to_vec();
-                    let run_id = state.query.begin_running(now);
+                    let run_id = state.query.begin_non_preview_running(now);
                     return dispatch_cached_csv_export(
                         state, dsn, run_id, file_name, columns, values, row_count,
                     );
@@ -230,7 +230,7 @@ pub fn reduce_pagination(
                         (RerunnableCsvRowCount::Known(row_count), None)
                     }
                 };
-                let run_id = state.query.begin_running(now);
+                let run_id = state.query.begin_non_preview_running(now);
                 return dispatch_rerunnable_csv_export(
                     state,
                     dsn,
@@ -242,7 +242,7 @@ pub fn reduce_pagination(
                 );
             }
 
-            let run_id = state.query.begin_running(now);
+            let run_id = state.query.begin_non_preview_running(now);
             dispatch_rerunnable_csv_export(
                 state,
                 dsn,
@@ -373,7 +373,7 @@ mod tests {
     use crate::update::test_fixtures;
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+    use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
 
@@ -728,6 +728,9 @@ mod tests {
             let mut state = export_test_state();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let effects = dispatch_query(
                 &mut state,
@@ -749,6 +752,10 @@ mod tests {
                 }
                 other => panic!("expected CountRowsForExport, got {other:?}"),
             }
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
 
         #[test]

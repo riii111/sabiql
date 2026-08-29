@@ -2129,6 +2129,7 @@ mod tests {
     mod confirm_dialog_transitions {
         use super::*;
         use crate::domain::QueryValue;
+        use crate::model::browse::query_execution::PostDeleteRowSelection;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
         use crate::policy::write::write_guardrails::{
             GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
@@ -2248,6 +2249,10 @@ mod tests {
             );
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Select(499)
+            );
         }
 
         #[test]
@@ -2280,6 +2285,9 @@ mod tests {
                     blocked: false,
                 },
             );
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let now = Instant::now();
             reduce(
@@ -2303,6 +2311,10 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.pending_write_preview().is_none());
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
     }
 

@@ -239,7 +239,7 @@ pub fn reduce_execution(
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
+                let run_id = state.query.begin_non_preview_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn,
                     run_id,
@@ -789,6 +789,59 @@ mod tests {
             assert!(!state.query.pagination.reached_end());
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
+        }
+
+        #[test]
+        fn preview_start_preserves_post_delete_selection() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecutePreview(TableTarget {
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    generation: 1,
+                }),
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("preview should be handled");
+
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::ExecutePreview { .. }]
+            ));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Select(4)
+            );
+        }
+
+        #[test]
+        fn adhoc_start_clears_post_delete_selection() {
+            let mut state = create_test_state();
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
+
+            let effects = dispatch_query(
+                &mut state,
+                &Action::ExecuteAdhoc("SELECT 1".to_string()),
+                Instant::now(),
+                &AppServices::stub(),
+            )
+            .into_effects()
+            .expect("adhoc should be handled");
+
+            assert!(matches!(effects.as_slice(), [Effect::ExecuteAdhoc { .. }]));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
 
         #[test]

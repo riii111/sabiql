@@ -30,6 +30,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::DatabaseType;
+    use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::text_input::TextInputLike;
     use crate::model::sql_editor::modal::{SqlModalStatus, SqlModalTab};
@@ -491,6 +492,9 @@ mod tests {
             let mut state = sql_modal_state();
             state.sql_modal.editor.set_content("SELECT 1".to_string());
             activate_postgres_connection(&mut state);
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
                 .into_effects()
@@ -508,6 +512,10 @@ mod tests {
             ));
             assert_eq!(*state.sql_modal.status(), SqlModalStatus::Running);
             assert_eq!(state.sql_modal.active_tab(), SqlModalTab::Plan);
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
     }
 

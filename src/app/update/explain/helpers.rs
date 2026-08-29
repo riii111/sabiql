@@ -99,7 +99,7 @@ pub(super) fn begin_explain_running(state: &mut AppState, now: Instant) -> u64 {
     state.sql_modal.begin_adhoc_running();
     state.sql_modal.set_active_tab(SqlModalTab::Plan);
     state.explain.reset_for_new_run();
-    state.query.begin_running(now)
+    state.query.begin_non_preview_running(now)
 }
 
 pub(super) fn finish_explain_success(

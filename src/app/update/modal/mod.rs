@@ -29,6 +29,7 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, QueryValue};
+    use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
     use crate::model::shared::input_mode::InputMode;
@@ -638,6 +639,9 @@ mod tests {
                     &mut state,
                     "postgres://localhost/test",
                 );
+                state
+                    .query
+                    .set_post_delete_selection(PostDeleteRowSelection::Select(4));
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -655,6 +659,10 @@ mod tests {
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(state.query.is_running());
                 assert!(state.query.start_time().is_some());
+                assert_eq!(
+                    state.query.post_delete_row_selection(),
+                    PostDeleteRowSelection::Keep
+                );
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
             }
