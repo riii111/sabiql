@@ -271,6 +271,7 @@ pub(super) fn refresh_effects_for_scope(
 
     if refresh_scope == RefreshScope::Metadata {
         state.sql_modal.reset_prefetch();
+        state.er_preparation.invalidate_run();
         state.session.set_table_detail_raw(None);
         let run_id = state.session.begin_metadata_refresh();
 
@@ -389,14 +390,17 @@ mod tests {
     use crate::cmd::completion_engine::CompletionEngine;
     use crate::cmd::runner::EffectRunner;
     use crate::cmd::test_fixtures;
-    use crate::domain::{ConnectionId, DatabaseType};
+    use crate::domain::{ConnectionId, DatabaseMetadata, DatabaseType};
+    use crate::model::er_state::ErStatus;
     use crate::ports::outbound::connection_store::MockConnectionStore;
     use crate::ports::outbound::metadata::MockMetadataProvider;
     use crate::ports::outbound::query_executor::MockQueryExecutor;
     use crate::ports::outbound::{DbOperationError, RenderOutput, RenderResult, Renderer};
+    use crate::update::action::SmartErRefreshResult;
     use crate::update::browse::metadata::dispatch_metadata;
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+    use crate::update::er::dispatch_er;
     use crate::update::reducer::reduce;
     use tokio::sync::mpsc;
 
@@ -1681,6 +1685,41 @@ mod tests {
         }
 
         #[test]
+        fn ddl_metadata_refresh_invalidates_er_run_for_each_database() {
+            for (database_type, dsn) in [
+                (DatabaseType::PostgreSQL, "postgres://localhost/test"),
+                (DatabaseType::MySQL, "mysql://localhost/test"),
+                (DatabaseType::SQLite, "sqlite:///tmp/test.db"),
+            ] {
+                let mut state = AppState::new("test_project".to_string());
+                state.session.activate_connection_with_dsn(
+                    &ConnectionId::new(),
+                    "test",
+                    database_type,
+                    dsn,
+                );
+                state.query.pagination.reset_for_table("public", "users");
+                let er_run_id = state.er_preparation.start_waiting_run();
+                let action = query_completed_action(
+                    &mut state,
+                    adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                    0,
+                    None,
+                );
+
+                let effects =
+                    dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub())
+                        .unwrap();
+
+                assert!(!state.er_preparation.is_current_run(er_run_id));
+                assert!(effects.iter().any(|effect| matches!(
+                    effect,
+                    Effect::FetchMetadata { dsn: effect_dsn, .. } if effect_dsn == dsn
+                )));
+            }
+        }
+
+        #[test]
         fn ddl_resets_prefetch_state_and_clears_table_detail() {
             let mut state = state_with_table("public", "users");
             let _ = state.sql_modal.begin_er_prefetch();
@@ -1702,6 +1741,49 @@ mod tests {
             assert!(state.sql_modal.active_prefetch_run_id().is_none());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert!(state.session.table_detail().is_none());
+        }
+
+        #[test]
+        fn ddl_metadata_refresh_rejects_old_er_completion() {
+            let mut state = state_with_table("public", "users");
+            let old_metadata = Arc::new(DatabaseMetadata::new("old".to_string()));
+            state.session.set_metadata(Some(Arc::clone(&old_metadata)));
+            let old_er_run_id = state.er_preparation.start_waiting_run();
+            let action = query_completed_action(
+                &mut state,
+                adhoc_result_with_tag(CommandTag::Create("TABLE".to_string())),
+                0,
+                None,
+            );
+
+            dispatch_query(&mut state, &action, Instant::now(), &AppServices::stub());
+
+            let dsn = active_dsn(&state);
+            let effects = dispatch_er(
+                &mut state,
+                &Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                    dsn,
+                    run_id: old_er_run_id,
+                    new_metadata: Arc::new(DatabaseMetadata::new("new".to_string())),
+                    stale_tables: vec![],
+                    added_tables: vec![],
+                    removed_tables: vec![],
+                    missing_in_cache: vec![],
+                    new_signatures: std::collections::HashMap::new(),
+                }),
+                Instant::now(),
+            )
+            .unwrap();
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state
+                    .session
+                    .metadata()
+                    .map(|metadata| metadata.database_name.as_str()),
+                Some("old")
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
         }
 
         #[test]
@@ -1767,7 +1849,7 @@ mod tests {
 
     mod adhoc_refresh_integration {
         use super::*;
-        use crate::domain::{CommandTag, DatabaseMetadata, TableSummary};
+        use crate::domain::{CommandTag, TableSummary};
         use crate::model::sql_editor::modal::SqlModalStatus;
 
         fn make_metadata(tables: Vec<(&str, &str)>) -> Arc<DatabaseMetadata> {
