@@ -453,7 +453,7 @@ mod tests {
 
     mod explain_plan_text {
         use crate::domain::{
-            QueryResult, QuerySource, SqliteExplainPlanError,
+            QueryResult, QuerySource, QueryValue, SqliteExplainPlanError,
             postgres_explain_plan_text_from_result, sqlite_explain_query_plan_text_from_result,
         };
 
@@ -573,6 +573,36 @@ mod tests {
                     }) if column == missing_column
                 ));
             }
+        }
+
+        #[test]
+        fn sqlite_query_plan_rejects_non_text_structured_values() {
+            let result = QueryResult::success_with_values(
+                "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                vec![
+                    "id".to_string(),
+                    "parent".to_string(),
+                    "notused".to_string(),
+                    "detail".to_string(),
+                ],
+                vec![vec![
+                    QueryValue::text("2"),
+                    QueryValue::text("0"),
+                    QueryValue::text("0"),
+                    QueryValue::Null,
+                ]],
+                1,
+                QuerySource::Adhoc,
+            );
+
+            assert!(matches!(
+                sqlite_explain_query_plan_text_from_result(&result),
+                Err(SqliteExplainPlanError::InvalidValue {
+                    row: 0,
+                    column: "detail",
+                    value,
+                }) if value == "NULL"
+            ));
         }
 
         #[test]
@@ -827,7 +857,7 @@ mod tests {
 
     mod execute_access_mode {
         use super::*;
-        use crate::domain::{DatabaseType, QueryResult, QuerySource};
+        use crate::domain::{DatabaseType, QueryResult, QuerySource, QueryValue};
         use crate::ports::outbound::DbOperationError;
 
         async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
@@ -988,6 +1018,54 @@ mod tests {
                     plan_text,
                     ..
                 } if plan_text == "SCAN users"
+            ));
+        }
+
+        #[tokio::test]
+        async fn sqlite_explain_non_text_detail_returns_explain_failed() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(QueryResult::success_with_values(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    vec![
+                        "id".to_string(),
+                        "parent".to_string(),
+                        "notused".to_string(),
+                        "detail".to_string(),
+                    ],
+                    vec![vec![
+                        QueryValue::text("2"),
+                        QueryValue::text("0"),
+                        QueryValue::text("0"),
+                        QueryValue::Null,
+                    ]],
+                    1,
+                    QuerySource::Adhoc,
+                ))
+            });
+
+            let action = run_effect(
+                Effect::ExecuteExplain {
+                    dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database_generation: 0,
+                    run_id: 4,
+                    query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    source_query: "SELECT 1".to_string(),
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExplainFailed {
+                    run_id: 4,
+                    error: DbOperationError::QueryFailed(details),
+                    ..
+                } if details.contains("invalid detail value: NULL")
             ));
         }
 

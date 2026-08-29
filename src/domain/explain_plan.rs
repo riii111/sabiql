@@ -43,6 +43,25 @@ fn column_index(columns: &[String], name: &str) -> Option<usize> {
         .position(|column| column.eq_ignore_ascii_case(name))
 }
 
+fn sqlite_explain_plan_value(
+    result: &QueryResult,
+    row: usize,
+    column_index: usize,
+    column: &'static str,
+) -> Result<String, SqliteExplainPlanError> {
+    let value = result
+        .value_at(row, column_index)
+        .ok_or(SqliteExplainPlanError::MissingValue { row, column })?;
+    value
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| SqliteExplainPlanError::InvalidValue {
+            row,
+            column,
+            value: value.display_value(),
+        })
+}
+
 fn sqlite_explain_plan_rows(
     result: &QueryResult,
 ) -> Result<Vec<SqliteExplainPlanRow>, SqliteExplainPlanError> {
@@ -55,12 +74,7 @@ fn sqlite_explain_plan_rows(
 
     (0..result.data_row_count())
         .map(|row_idx| {
-            let id_value = result.display_value_at(row_idx, id_index).ok_or(
-                SqliteExplainPlanError::MissingValue {
-                    row: row_idx,
-                    column: "id",
-                },
-            )?;
+            let id_value = sqlite_explain_plan_value(result, row_idx, id_index, "id")?;
             let id = id_value
                 .parse()
                 .map_err(|_| SqliteExplainPlanError::InvalidValue {
@@ -68,12 +82,7 @@ fn sqlite_explain_plan_rows(
                     column: "id",
                     value: id_value,
                 })?;
-            let parent_value = result.display_value_at(row_idx, parent_index).ok_or(
-                SqliteExplainPlanError::MissingValue {
-                    row: row_idx,
-                    column: "parent",
-                },
-            )?;
+            let parent_value = sqlite_explain_plan_value(result, row_idx, parent_index, "parent")?;
             let parent =
                 parent_value
                     .parse()
@@ -82,12 +91,7 @@ fn sqlite_explain_plan_rows(
                         column: "parent",
                         value: parent_value,
                     })?;
-            let detail = result.display_value_at(row_idx, detail_index).ok_or(
-                SqliteExplainPlanError::MissingValue {
-                    row: row_idx,
-                    column: "detail",
-                },
-            )?;
+            let detail = sqlite_explain_plan_value(result, row_idx, detail_index, "detail")?;
 
             Ok(SqliteExplainPlanRow { id, parent, detail })
         })
