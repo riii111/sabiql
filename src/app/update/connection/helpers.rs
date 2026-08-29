@@ -104,6 +104,7 @@ pub(super) fn save_current_connection_cache(state: &mut AppState) {
 }
 
 pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect> {
+    let had_pending_probe = state.session.pending_mysql_connection_probe().is_some();
     let table_detail_retry =
         state
             .session
@@ -116,6 +117,10 @@ pub(super) fn cancel_connection_task_effects(state: &mut AppState) -> Vec<Effect
                 run_id,
             });
     state.session.clear_mysql_connection_probe();
+    if had_pending_probe {
+        state.sql_modal.reset_prefetch();
+        state.er_preparation.reset();
+    }
 
     let mut effects = vec![Effect::CancelConnectionTask];
     if let Some(table_detail_retry) = table_detail_retry {
