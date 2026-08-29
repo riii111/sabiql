@@ -174,6 +174,50 @@ mod tests {
         }
 
         #[test]
+        fn metadata_failure_rejects_late_detail_completion() {
+            let mut state = state_with_dsn("postgres://localhost/test");
+            state
+                .session
+                .mark_connected(Arc::new(DatabaseMetadata::new("test".to_string())));
+            let generation = state
+                .session
+                .select_table("public", "users", &mut state.query);
+            let detail_run_id = state.session.begin_table_detail_run();
+            let metadata_run_id = state.session.begin_metadata_refresh();
+
+            dispatch_metadata(
+                &mut state,
+                &Action::MetadataFailed {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: metadata_run_id,
+                    error: DbOperationError::PermissionDenied("denied".to_string()),
+                },
+                Instant::now(),
+            );
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(_)
+            ));
+            assert!(!state.session.is_current_table_detail_run(detail_run_id));
+
+            dispatch_metadata(
+                &mut state,
+                &Action::TableDetailLoaded {
+                    dsn: "postgres://localhost/test".to_string(),
+                    run_id: detail_run_id,
+                    detail: empty_table("public", "users"),
+                    generation,
+                },
+                Instant::now(),
+            );
+
+            assert!(matches!(
+                state.session.table_detail_state(),
+                TableDetailState::Error(_)
+            ));
+        }
+
+        #[test]
         fn stale_table_detail_failure_does_not_update_current_inspector() {
             let mut state = state_with_dsn("postgres://localhost/test");
             let stale_generation = state
