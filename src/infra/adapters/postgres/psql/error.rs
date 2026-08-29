@@ -1,3 +1,10 @@
+use std::process::ExitStatus;
+
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
+#[cfg(all(test, windows))]
+use std::os::windows::process::ExitStatusExt;
+
 use crate::app::ports::outbound::{ConnectionFailureKind, DatabaseCli, DbOperationError};
 
 pub(in crate::adapters::postgres) fn classify_cli_spawn_error(
@@ -13,10 +20,17 @@ pub(in crate::adapters::postgres) fn classify_cli_spawn_error(
     }
 }
 
-pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOperationError {
+pub(in crate::adapters::postgres) fn classify_query_error(
+    stderr: &str,
+    status: ExitStatus,
+) -> DbOperationError {
     let trimmed = stderr.trim();
     let Some(details) = (!trimmed.is_empty()).then_some(trimmed) else {
-        return DbOperationError::QueryFailed(String::new());
+        return DbOperationError::QueryFailed(if status.success() {
+            String::new()
+        } else {
+            exit_status_details(status)
+        });
     };
 
     if let Some(sqlstate) = extract_sqlstate(details) {
@@ -24,6 +38,19 @@ pub(in crate::adapters::postgres) fn classify_query_error(stderr: &str) -> DbOpe
     }
 
     classify_by_stderr(details)
+}
+
+fn exit_status_details(status: ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        return format!("psql exited with status code {code}");
+    }
+
+    #[cfg(unix)]
+    if let Some(signal) = status.signal() {
+        return format!("psql terminated by signal {signal}");
+    }
+
+    "psql exited without a status code".to_string()
 }
 
 fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
@@ -260,6 +287,22 @@ mod tests {
     mod classification {
         use super::*;
 
+        fn exit_status(code: i32) -> ExitStatus {
+            #[cfg(unix)]
+            {
+                ExitStatus::from_raw(code << 8)
+            }
+            #[cfg(windows)]
+            {
+                ExitStatus::from_raw(code as u32)
+            }
+        }
+
+        fn classify(stderr: &str) -> DbOperationError {
+            let status = exit_status(1);
+            classify_query_error(stderr, status)
+        }
+
         fn classification_name(error: DbOperationError) -> &'static str {
             match error {
                 DbOperationError::PermissionDenied(_) => "PermissionDenied",
@@ -335,7 +378,7 @@ mod tests {
         #[case("FATAL:  28P01: opaque authentication failure", "Auth")]
         #[case("FATAL:  3D000: opaque database failure", "DatabaseNotFound")]
         fn classifies_sqlstate_first(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(classification_name(classify_query_error(input)), expected);
+            assert_eq!(classification_name(classify(input)), expected);
         }
 
         #[rstest]
@@ -384,7 +427,7 @@ mod tests {
             #[case] expected_summary: &str,
             #[case] expected_hint: &str,
         ) {
-            let error = classify_query_error(input);
+            let error = classify(input);
 
             assert_eq!(error.masked_details(), input);
             assert_eq!(error.summary(), expected_summary);
@@ -412,14 +455,69 @@ mod tests {
             "ConnectionRefused"
         )]
         fn falls_back_to_stderr_matching(#[case] input: &str, #[case] expected: &str) {
-            assert_eq!(classification_name(classify_query_error(input)), expected);
+            assert_eq!(classification_name(classify(input)), expected);
         }
 
         #[test]
         fn unknown_falls_back_safely() {
             assert!(matches!(
-                classify_query_error("some random error"),
+                classify("some random error"),
                 DbOperationError::QueryFailed(_)
+            ));
+        }
+
+        #[test]
+        fn nonzero_empty_stderr_includes_status_code() {
+            let status = exit_status(7);
+
+            assert!(matches!(
+                classify_query_error("", status),
+                DbOperationError::QueryFailed(details)
+                    if details == "psql exited with status code 7"
+            ));
+        }
+
+        #[test]
+        fn whitespace_stderr_includes_status_code() {
+            let status = exit_status(7);
+
+            assert!(matches!(
+                classify_query_error(" \n\t", status),
+                DbOperationError::QueryFailed(details)
+                    if details == "psql exited with status code 7"
+            ));
+        }
+
+        #[test]
+        fn nonzero_stderr_keeps_existing_classification() {
+            let status = exit_status(7);
+
+            assert!(matches!(
+                classify_query_error("ERROR:  42501: permission denied", status),
+                DbOperationError::PermissionDenied(details)
+                    if details == "ERROR:  42501: permission denied"
+            ));
+        }
+
+        #[test]
+        fn zero_status_does_not_create_failure_detail() {
+            let status = exit_status(0);
+
+            assert!(matches!(
+                classify_query_error("", status),
+                DbOperationError::QueryFailed(details) if details.is_empty()
+            ));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn signal_status_is_reported_without_exit_code() {
+            let status = ExitStatus::from_raw(15);
+
+            assert!(matches!(
+                classify_query_error("", status),
+                DbOperationError::QueryFailed(details)
+                    if details == "psql terminated by signal 15"
             ));
         }
     }

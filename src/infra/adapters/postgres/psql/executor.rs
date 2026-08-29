@@ -64,9 +64,9 @@ async fn collect_csv_output(
     drop(writer);
     match result {
         Ok(Ok((status, _))) if status.success() => Ok(()),
-        Ok(Ok((_, stderr))) => {
+        Ok(Ok((status, stderr))) => {
             let _ = tokio::fs::remove_file(path).await;
-            Err(classify_query_error(&stderr))
+            Err(classify_query_error(&stderr, status))
         }
         Ok(Err(e)) => {
             let _ = tokio::fs::remove_file(path).await;
@@ -241,7 +241,7 @@ impl PostgresAdapter {
 
         let (status, stdout, stderr) = result;
         if !status.success() {
-            return Err(classify_query_error(&stderr));
+            return Err(classify_query_error(&stderr, status));
         }
         Ok(stdout)
     }
@@ -762,6 +762,95 @@ mod tests {
 
             assert!(matches!(result, Err(DbOperationError::PermissionDenied(_))));
             assert!(!path.exists());
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_without_stderr_reports_status_and_removes_file() {
+            let dir = tempdir().unwrap();
+            let path = dir.path().join("export.csv");
+            let child = Command::new("sh")
+                .arg("-c")
+                .arg("exit 7")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .unwrap();
+
+            let result = collect_csv_output(child, &path, std::time::Duration::from_secs(2)).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql exited with status code 7"
+            ));
+            assert!(!path.exists());
+        }
+    }
+
+    #[cfg(unix)]
+    mod process_status {
+        use tokio::process::Command;
+
+        use crate::adapters::postgres::PostgresAdapter;
+        use crate::app::ports::outbound::DbOperationError;
+
+        #[tokio::test]
+        async fn nonzero_exit_without_stderr_reports_status() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 7"]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql exited with status code 7"
+            ));
+        }
+
+        #[tokio::test]
+        async fn nonzero_exit_with_stderr_keeps_existing_classification() {
+            let mut command = Command::new("sh");
+            command.args([
+                "-c",
+                "printf 'ERROR:  42501: permission denied\\n' >&2; exit 7",
+            ]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::PermissionDenied(details))
+                    if details == "ERROR:  42501: permission denied"
+            ));
+        }
+
+        #[tokio::test]
+        async fn zero_exit_keeps_empty_stdout_successful() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 0"]);
+
+            assert_eq!(
+                PostgresAdapter::collect_output(&mut command, 2)
+                    .await
+                    .unwrap(),
+                ""
+            );
+        }
+
+        #[tokio::test]
+        async fn signal_exit_reports_signal_status() {
+            let mut command = Command::new("sh");
+            command.args(["-c", "kill -TERM $$"]);
+
+            let result = PostgresAdapter::collect_output(&mut command, 2).await;
+
+            assert!(matches!(
+                result,
+                Err(DbOperationError::QueryFailed(details))
+                    if details == "psql terminated by signal 15"
+            ));
         }
     }
 
