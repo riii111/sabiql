@@ -27,8 +27,8 @@ pub use command_tag::CommandTag;
 pub use diagnostic::{DatabaseDiagnostic, DiagnosticLevel};
 pub use er::ErTableInfo;
 pub use explain_plan::{
-    mysql_explain_plan_text_from_result, postgres_explain_plan_text_from_result,
-    sqlite_explain_query_plan_text_from_result,
+    SqliteExplainPlanError, mysql_explain_plan_text_from_result,
+    postgres_explain_plan_text_from_result, sqlite_explain_query_plan_text_from_result,
 };
 pub use foreign_key::{FkAction, ForeignKey, UNRESOLVED_FK_COLUMN};
 pub use index::{Index, IndexAttributes, IndexType};

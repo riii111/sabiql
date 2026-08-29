@@ -13,7 +13,9 @@ use crate::domain::{
     sqlite_explain_query_plan_text_from_result,
 };
 use crate::model::app_state::AppState;
-use crate::ports::outbound::{CachedResultExporter, QueryExecutor, QueryHistoryStore};
+use crate::ports::outbound::{
+    CachedResultExporter, DbOperationError, QueryExecutor, QueryHistoryStore,
+};
 use crate::update::action::{Action, QueryCompletionContext, QueryFailureContext};
 
 fn epoch_days_to_ymd(days: i64) -> (i64, u32, u32) {
@@ -141,27 +143,45 @@ pub async fn run(
                 .spawn(async move {
                     match executor.execute_adhoc(&dsn, &query, access_mode).await {
                         Ok(result) => {
-                            let plan_text = match database_type {
-                                DatabaseType::SQLite => {
-                                    sqlite_explain_query_plan_text_from_result(&result)
-                                }
+                            let plan_result = match database_type {
+                                DatabaseType::SQLite => sqlite_explain_query_plan_text_from_result(
+                                    &result,
+                                )
+                                .map_err(|error| DbOperationError::QueryFailed(error.to_string())),
                                 DatabaseType::PostgreSQL => {
-                                    postgres_explain_plan_text_from_result(&result)
+                                    Ok(postgres_explain_plan_text_from_result(&result))
                                 }
-                                DatabaseType::MySQL => mysql_explain_plan_text_from_result(&result),
+                                DatabaseType::MySQL => {
+                                    Ok(mysql_explain_plan_text_from_result(&result))
+                                }
                             };
-                            tx.send(Action::ExplainCompleted {
-                                dsn,
-                                database_type,
-                                database_generation,
-                                run_id,
-                                query: source_query,
-                                plan_text,
-                                is_analyze,
-                                execution_time_ms: result.execution_time_ms,
-                            })
-                            .await
-                            .ok();
+                            match plan_result {
+                                Ok(plan_text) => {
+                                    tx.send(Action::ExplainCompleted {
+                                        dsn,
+                                        database_type,
+                                        database_generation,
+                                        run_id,
+                                        query: source_query,
+                                        plan_text,
+                                        is_analyze,
+                                        execution_time_ms: result.execution_time_ms,
+                                    })
+                                    .await
+                                    .ok();
+                                }
+                                Err(error) => {
+                                    tx.send(Action::ExplainFailed {
+                                        dsn,
+                                        database_generation,
+                                        run_id,
+                                        error,
+                                        is_analyze,
+                                    })
+                                    .await
+                                    .ok();
+                                }
+                            }
                         }
                         Err(e) => {
                             tx.send(Action::ExplainFailed {
@@ -432,7 +452,10 @@ mod tests {
     use crate::update::action::Action;
 
     mod explain_plan_text {
-        use crate::domain::{QueryResult, QuerySource, sqlite_explain_query_plan_text_from_result};
+        use crate::domain::{
+            QueryResult, QuerySource, SqliteExplainPlanError,
+            postgres_explain_plan_text_from_result, sqlite_explain_query_plan_text_from_result,
+        };
 
         #[test]
         fn sqlite_query_plan_uses_detail_column() {
@@ -463,13 +486,97 @@ mod tests {
             );
 
             assert_eq!(
-                sqlite_explain_query_plan_text_from_result(&result),
+                sqlite_explain_query_plan_text_from_result(&result).unwrap(),
                 "SEARCH users USING INDEX idx_users_name\n  - SCAN orders"
             );
         }
 
         #[test]
-        fn non_sqlite_plan_keeps_first_column_fallback() {
+        fn sqlite_query_plan_requires_structured_columns() {
+            for &missing_column in &["id", "parent", "detail"] {
+                let columns = ["id", "parent", "notused", "detail"]
+                    .into_iter()
+                    .filter(|column| *column != missing_column)
+                    .map(str::to_string)
+                    .collect();
+                let result = QueryResult::success(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    columns,
+                    vec![],
+                    1,
+                    QuerySource::Adhoc,
+                );
+
+                assert!(matches!(
+                    sqlite_explain_query_plan_text_from_result(&result),
+                    Err(SqliteExplainPlanError::MissingColumn(column))
+                        if column == missing_column
+                ));
+            }
+        }
+
+        #[test]
+        fn sqlite_query_plan_rejects_malformed_structured_values() {
+            for (column, row) in [
+                ("id", vec!["not-an-id", "0", "0", "SCAN users"]),
+                ("parent", vec!["2", "not-a-parent", "0", "SCAN users"]),
+            ] {
+                let result = QueryResult::success(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    vec![
+                        "id".to_string(),
+                        "parent".to_string(),
+                        "notused".to_string(),
+                        "detail".to_string(),
+                    ],
+                    vec![row.into_iter().map(str::to_string).collect()],
+                    1,
+                    QuerySource::Adhoc,
+                );
+
+                assert!(matches!(
+                    sqlite_explain_query_plan_text_from_result(&result),
+                    Err(SqliteExplainPlanError::InvalidValue {
+                        row: 0,
+                        column: invalid_column,
+                        ..
+                    }) if invalid_column == column
+                ));
+            }
+        }
+
+        #[test]
+        fn sqlite_query_plan_rejects_missing_row_values() {
+            for (missing_column, row) in [
+                ("id", vec![]),
+                ("parent", vec!["2"]),
+                ("detail", vec!["2", "0", "0"]),
+            ] {
+                let result = QueryResult::success(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    vec![
+                        "id".to_string(),
+                        "parent".to_string(),
+                        "notused".to_string(),
+                        "detail".to_string(),
+                    ],
+                    vec![row.into_iter().map(str::to_string).collect()],
+                    1,
+                    QuerySource::Adhoc,
+                );
+
+                assert!(matches!(
+                    sqlite_explain_query_plan_text_from_result(&result),
+                    Err(SqliteExplainPlanError::MissingValue {
+                        row: 0,
+                        column,
+                    }) if column == missing_column
+                ));
+            }
+        }
+
+        #[test]
+        fn postgres_plan_keeps_first_column_fallback() {
             let result = QueryResult::success(
                 "EXPLAIN SELECT * FROM users".to_string(),
                 vec!["QUERY PLAN".to_string()],
@@ -479,7 +586,7 @@ mod tests {
             );
 
             assert_eq!(
-                sqlite_explain_query_plan_text_from_result(&result),
+                postgres_explain_plan_text_from_result(&result),
                 "Seq Scan on users"
             );
         }
@@ -720,7 +827,8 @@ mod tests {
 
     mod execute_access_mode {
         use super::*;
-        use crate::domain::DatabaseType;
+        use crate::domain::{DatabaseType, QueryResult, QuerySource};
+        use crate::ports::outbound::DbOperationError;
 
         async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
             let cache = TtlCache::new(300);
@@ -794,6 +902,93 @@ mod tests {
             .await;
 
             assert!(matches!(action, Action::ExplainCompleted { run_id: 2, .. }));
+        }
+
+        #[tokio::test]
+        async fn sqlite_explain_parse_failure_returns_explain_failed() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(QueryResult::success(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    vec!["id".to_string(), "parent".to_string()],
+                    vec![vec!["2".to_string(), "0".to_string()]],
+                    1,
+                    QuerySource::Adhoc,
+                ))
+            });
+
+            let action = run_effect(
+                Effect::ExecuteExplain {
+                    dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database_generation: 0,
+                    run_id: 2,
+                    query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    source_query: "SELECT 1".to_string(),
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            let Action::ExplainFailed { error, run_id, .. } = action else {
+                panic!("expected ExplainFailed action");
+            };
+            assert_eq!(run_id, 2);
+            assert!(matches!(
+                error,
+                DbOperationError::QueryFailed(details)
+                    if details.contains("missing required column: detail")
+            ));
+        }
+
+        #[tokio::test]
+        async fn sqlite_explain_success_returns_explain_completed() {
+            let mut executor = MockQueryExecutor::new();
+            executor.expect_execute_adhoc().once().returning(|_, _, _| {
+                Ok(QueryResult::success(
+                    "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    vec![
+                        "id".to_string(),
+                        "parent".to_string(),
+                        "notused".to_string(),
+                        "detail".to_string(),
+                    ],
+                    vec![vec![
+                        "2".to_string(),
+                        "0".to_string(),
+                        "0".to_string(),
+                        "SCAN users".to_string(),
+                    ]],
+                    1,
+                    QuerySource::Adhoc,
+                ))
+            });
+
+            let action = run_effect(
+                Effect::ExecuteExplain {
+                    dsn: "dsn://test".to_string(),
+                    database_type: DatabaseType::SQLite,
+                    database_generation: 0,
+                    run_id: 3,
+                    query: "EXPLAIN QUERY PLAN SELECT 1".to_string(),
+                    source_query: "SELECT 1".to_string(),
+                    is_analyze: false,
+                    access_mode: AccessMode::ReadOnly,
+                },
+                executor,
+            )
+            .await;
+
+            assert!(matches!(
+                action,
+                Action::ExplainCompleted {
+                    run_id: 3,
+                    plan_text,
+                    ..
+                } if plan_text == "SCAN users"
+            ));
         }
 
         #[tokio::test]

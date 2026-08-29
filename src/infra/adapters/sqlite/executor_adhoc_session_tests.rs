@@ -75,7 +75,7 @@ mod query_results {
             .await
             .unwrap();
 
-        let plan_text = sqlite_explain_query_plan_text_from_result(&result);
+        let plan_text = sqlite_explain_query_plan_text_from_result(&result).unwrap();
 
         assert!(!plan_text.trim().is_empty(), "plan text must not be empty");
         assert!(
@@ -105,7 +105,7 @@ mod query_results {
             .await
             .unwrap();
 
-        let plan_text = sqlite_explain_query_plan_text_from_result(&result);
+        let plan_text = sqlite_explain_query_plan_text_from_result(&result).unwrap();
         let operation_lines = explain_plan_operation_lines(&plan_text);
 
         assert!(
@@ -148,7 +148,7 @@ mod query_results {
             .await
             .unwrap();
 
-        let plan_text = sqlite_explain_query_plan_text_from_result(&result);
+        let plan_text = sqlite_explain_query_plan_text_from_result(&result).unwrap();
 
         assert!(
             plan_text.to_ascii_lowercase().contains("users"),
