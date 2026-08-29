@@ -20,6 +20,7 @@ use crate::model::shared::key_sequence::KeySequenceState;
 use crate::policy::FeaturePolicy;
 use crate::services::AppServices;
 use crate::update::action::{Action, TableTarget};
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 use crate::update::query_context::termination_effects;
 
 pub fn reduce(
@@ -107,7 +108,6 @@ fn dispatch_enabled_action(
                     .copied()
                     .cloned();
                 if let Some(table) = table {
-                    state.modal.set_mode(InputMode::Normal);
                     return select_table(state, &table);
                 }
             } else if state.modal.active_mode() == InputMode::Normal {
@@ -158,6 +158,10 @@ fn dispatch_enabled_action(
 }
 
 fn select_table(state: &mut AppState, table: &TableSummary) -> Vec<Effect> {
+    if reject_pending_mysql_connection_probe(state) {
+        return vec![];
+    }
+    state.modal.set_mode(InputMode::Normal);
     let generation = state
         .session
         .select_table(&table.schema, &table.name, &mut state.query);
@@ -214,6 +218,7 @@ mod tests {
 
     mod pure_actions {
         use super::*;
+        use crate::domain::DatabaseMetadata;
         use rstest::rstest;
 
         #[test]
@@ -322,6 +327,44 @@ mod tests {
                 TableDetailState::Error(message) if message == "No active connection"
             ));
             assert!(matches!(effects.first(), Some(Effect::CancelTrackedTasks)));
+        }
+
+        #[test]
+        fn table_selection_is_rejected_during_pending_mysql_probe() {
+            let mut state = create_test_state();
+            test_fixtures::activate_mysql_connection(&mut state, "mysql://localhost/current");
+            state.session.set_metadata(Some(Arc::new({
+                let mut metadata = DatabaseMetadata::new("test".to_string());
+                metadata.table_summaries = vec![TableSummary::new(
+                    "public".to_string(),
+                    "users".to_string(),
+                    None,
+                    false,
+                )];
+                metadata
+            })));
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::from_string("mysql-target"),
+                "mysql-target",
+                "mysql://localhost/target",
+                Some("target"),
+            );
+            state.modal.set_mode(InputMode::TablePicker);
+
+            let effects = reduce(
+                &mut state,
+                Action::ConfirmSelection,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+
+            assert!(effects.is_empty());
+            assert_eq!(state.input_mode(), InputMode::TablePicker);
+            assert!(state.session.table_detail().is_none());
+            assert_eq!(
+                state.messages.last_error(),
+                Some("Connection switch in progress")
+            );
         }
     }
 

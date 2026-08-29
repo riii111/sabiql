@@ -258,7 +258,10 @@ async fn handle_smart_refresh_cache_and_diff(
     new_metadata: Arc<DatabaseMetadata>,
     signature_snapshot: Arc<TableSignatureSnapshot>,
 ) -> Result<()> {
-    if !state.session.dsn_matches(&dsn) || !state.er_preparation.is_current_run(run_id) {
+    if state.session.pending_mysql_connection_probe().is_some()
+        || !state.session.dsn_matches(&dsn)
+        || !state.er_preparation.is_current_run(run_id)
+    {
         return Ok(());
     }
 
@@ -409,5 +412,37 @@ mod tests {
         };
         assert!(result.added_tables.is_empty());
         assert!(result.missing_in_cache.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pending_mysql_probe_drops_smart_refresh_cache_diff() {
+        let dsn = "mysql://user:password@localhost:3306/app";
+        let mut state = state_with_mysql_dsn(dsn);
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::from_string("mysql-target"),
+            "mysql-target",
+            "mysql://localhost/target",
+            Some("target"),
+        );
+        let completion_engine = RefCell::new(CompletionEngine::new());
+        let (action_tx, mut action_rx) = mpsc::channel(1);
+
+        handle_smart_refresh_cache_and_diff(
+            &action_tx,
+            &state,
+            &completion_engine,
+            dsn.to_string(),
+            1,
+            Arc::new(DatabaseMetadata::new("app".to_string())),
+            Arc::new(TableSignatureSnapshot {
+                signatures: vec![],
+                prefetched_table_details: vec![table::minimal("app", "items")],
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert!(!completion_engine.borrow().has_cached_table("app.items"));
+        assert!(action_rx.try_recv().is_err());
     }
 }

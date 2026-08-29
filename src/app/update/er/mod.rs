@@ -8,8 +8,22 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    if matches!(
+        action,
+        Action::ErGenerateFromCache
+            | Action::ErDiagramOpened(_)
+            | Action::ErDiagramFailed { .. }
+            | Action::SmartErRefreshFetched(_)
+            | Action::SmartErRefreshCompleted(_)
+            | Action::SmartErRefreshFailed(_)
+    ) && reject_pending_mysql_connection_probe(state)
+    {
+        return DispatchResult::handled();
+    }
+
     diagram::reduce_diagram_lifecycle(state, action, now)
         .or_else(|| smart_refresh_fetched::reduce_smart_refresh_fetched(state, action))
         .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
@@ -59,6 +73,29 @@ mod tests {
         state
     }
 
+    fn state_with_mysql_connection() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_target(
+            &ConnectionId::from_string("mysql-current"),
+            "mysql-current",
+            DatabaseType::MySQL,
+            "mysql://localhost/current",
+            Some("current"),
+        );
+        state
+    }
+
+    fn state_with_pending_mysql_probe() -> AppState {
+        let mut state = state_with_mysql_connection();
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::from_string("mysql-target"),
+            "mysql-target",
+            "mysql://localhost/target",
+            Some("target"),
+        );
+        state
+    }
+
     fn set_active_run_id(state: &mut AppState, run_id: u64) {
         for _ in 0..run_id {
             let _ = state.er_preparation.start_waiting_run();
@@ -79,6 +116,10 @@ mod tests {
 
     mod er_open_diagram {
         use super::*;
+        use crate::ports::outbound::DbOperationError;
+        use crate::services::AppServices;
+        use crate::update::action::ConnectionTarget;
+        use crate::update::reducer;
 
         #[test]
         fn emits_smart_refresh() {
@@ -129,6 +170,174 @@ mod tests {
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_er_open_before_prefetch_invalidation() {
+            let mut state = state_with_pending_mysql_probe();
+            state.session.set_metadata(Some(make_metadata(1)));
+            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("ER open action should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(prefetch_run_id)
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Connection switch in progress")
+            );
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_er_completions_without_state_mutation() {
+            let mut state = state_with_mysql_connection();
+            state.session.set_metadata(Some(make_metadata(1)));
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_waiting_for_test();
+            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::from_string("mysql-target"),
+                "mysql-target",
+                "mysql://localhost/target",
+                Some("target"),
+            );
+
+            let actions = vec![
+                Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    new_metadata: make_metadata(1),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: vec![],
+                        prefetched_table_details: vec![],
+                    }),
+                }),
+                Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    new_metadata: make_metadata(1),
+                    stale_tables: vec![],
+                    added_tables: vec![],
+                    removed_tables: vec![],
+                    missing_in_cache: vec![],
+                    new_signatures: HashMap::new(),
+                }),
+                Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    path: "diagram.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+                Action::ErDiagramFailed {
+                    run_id,
+                    error: "failed".to_string(),
+                },
+                Action::ErGenerateFromCache,
+            ];
+
+            for action in actions {
+                let effects = reduce_er(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .expect("ER action should be handled");
+                assert!(effects.is_empty());
+            }
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(prefetch_run_id)
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+        }
+
+        #[test]
+        fn mysql_probe_failure_cleans_er_run_for_retry() {
+            let mut state = state_with_mysql_connection();
+            state.session.set_metadata(Some(make_metadata(1)));
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_waiting_for_test();
+            let _ = state.sql_modal.begin_er_prefetch();
+            let _ = state.session.begin_mysql_connection_probe(
+                &ConnectionId::from_string("mysql-target"),
+                "mysql-target",
+                "mysql://localhost/target",
+                Some("target"),
+            );
+
+            let effects = reduce_er(
+                &mut state,
+                &Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    path: "diagram.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("ER completion should be handled");
+            assert!(effects.is_empty());
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+
+            let probe_run_id = state
+                .session
+                .pending_mysql_connection_probe()
+                .expect("probe should still be pending")
+                .run_id;
+            let effects = reducer::reduce(
+                &mut state,
+                Action::MySqlConnectionProbeFailed {
+                    target: ConnectionTarget {
+                        id: ConnectionId::from_string("mysql-target"),
+                        name: "mysql-target".to_string(),
+                        dsn: "mysql://localhost/target".to_string(),
+                        database_type: DatabaseType::MySQL,
+                        database: Some("target".to_string()),
+                    },
+                    run_id: probe_run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                },
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(effects.is_empty());
+            assert!(state.session.pending_mysql_connection_probe().is_some());
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
+
+            let effects = reducer::reduce(
+                &mut state,
+                Action::CloseConnectionError,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(matches!(effects.as_slice(), [Effect::CancelConnectionTask]));
+            assert!(state.session.pending_mysql_connection_probe().is_none());
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+
+            let effects = reducer::reduce(
+                &mut state,
+                Action::ErOpenDiagram,
+                Instant::now(),
+                &AppServices::stub(),
+            );
+            assert!(matches!(
+                effects.as_slice(),
+                [Effect::SmartErRefresh { run_id: reopened_run_id, .. }]
+                    if *reopened_run_id == run_id + 1
+            ));
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
 
         #[test]
