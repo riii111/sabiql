@@ -1433,6 +1433,7 @@ mod tests {
         #[test]
         fn execute_write_failure_after_metadata_change_refreshes_and_discards_draft() {
             let mut state = editable_state();
+            let er_run_id = state.er_preparation.start_waiting_run();
             let action = write_failed_action(
                 &mut state,
                 DbOperationError::QueryFailedAfterChange {
@@ -1450,6 +1451,7 @@ mod tests {
             assert!(!state.result_interaction.cell_edit().is_active());
             assert!(state.session.table_detail().is_none());
             assert!(!state.query.is_running());
+            assert!(!state.er_preparation.is_current_run(er_run_id));
             assert!(
                 effects
                     .iter()

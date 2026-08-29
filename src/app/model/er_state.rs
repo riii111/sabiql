@@ -145,6 +145,11 @@ impl ErPreparationState {
         self.run.is_current(run_id)
     }
 
+    pub fn invalidate_run(&mut self) {
+        self.status = ErStatus::Idle;
+        self.run.clear_active();
+    }
+
     pub fn run_id(&self) -> u64 {
         self.run.last_id()
     }
