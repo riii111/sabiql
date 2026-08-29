@@ -23,27 +23,77 @@ struct SqliteExplainPlanRow {
     detail: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SqliteExplainPlanError {
+    #[error("SQLite EXPLAIN QUERY PLAN result is missing required column: {0}")]
+    MissingColumn(&'static str),
+    #[error("SQLite EXPLAIN QUERY PLAN row {row} is missing required value: {column}")]
+    MissingValue { row: usize, column: &'static str },
+    #[error("SQLite EXPLAIN QUERY PLAN row {row} has invalid {column} value: {value}")]
+    InvalidValue {
+        row: usize,
+        column: &'static str,
+        value: String,
+    },
+}
+
 fn column_index(columns: &[String], name: &str) -> Option<usize> {
     columns
         .iter()
         .position(|column| column.eq_ignore_ascii_case(name))
 }
 
-fn sqlite_explain_plan_rows(result: &QueryResult) -> Option<Vec<SqliteExplainPlanRow>> {
-    let id_index = column_index(&result.columns, "id")?;
-    let parent_index = column_index(&result.columns, "parent")?;
-    let detail_index = column_index(&result.columns, "detail")?;
+fn sqlite_explain_plan_value(
+    result: &QueryResult,
+    row: usize,
+    column_index: usize,
+    column: &'static str,
+) -> Result<String, SqliteExplainPlanError> {
+    let value = result
+        .value_at(row, column_index)
+        .ok_or(SqliteExplainPlanError::MissingValue { row, column })?;
+    value
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| SqliteExplainPlanError::InvalidValue {
+            row,
+            column,
+            value: value.display_value(),
+        })
+}
+
+fn sqlite_explain_plan_rows(
+    result: &QueryResult,
+) -> Result<Vec<SqliteExplainPlanRow>, SqliteExplainPlanError> {
+    let id_index =
+        column_index(&result.columns, "id").ok_or(SqliteExplainPlanError::MissingColumn("id"))?;
+    let parent_index = column_index(&result.columns, "parent")
+        .ok_or(SqliteExplainPlanError::MissingColumn("parent"))?;
+    let detail_index = column_index(&result.columns, "detail")
+        .ok_or(SqliteExplainPlanError::MissingColumn("detail"))?;
 
     (0..result.data_row_count())
         .map(|row_idx| {
-            Some(SqliteExplainPlanRow {
-                id: result.display_value_at(row_idx, id_index)?.parse().ok()?,
-                parent: result
-                    .display_value_at(row_idx, parent_index)?
+            let id_value = sqlite_explain_plan_value(result, row_idx, id_index, "id")?;
+            let id = id_value
+                .parse()
+                .map_err(|_| SqliteExplainPlanError::InvalidValue {
+                    row: row_idx,
+                    column: "id",
+                    value: id_value,
+                })?;
+            let parent_value = sqlite_explain_plan_value(result, row_idx, parent_index, "parent")?;
+            let parent =
+                parent_value
                     .parse()
-                    .ok()?,
-                detail: result.display_value_at(row_idx, detail_index)?,
-            })
+                    .map_err(|_| SqliteExplainPlanError::InvalidValue {
+                        row: row_idx,
+                        column: "parent",
+                        value: parent_value,
+                    })?;
+            let detail = sqlite_explain_plan_value(result, row_idx, detail_index, "detail")?;
+
+            Ok(SqliteExplainPlanRow { id, parent, detail })
         })
         .collect()
 }
@@ -62,35 +112,31 @@ fn sqlite_explain_plan_depth(
     depth
 }
 
-fn sqlite_explain_plan_text(result: &QueryResult) -> Option<String> {
+fn sqlite_explain_plan_text(result: &QueryResult) -> Result<String, SqliteExplainPlanError> {
     let rows = sqlite_explain_plan_rows(result)?;
     let parents_by_id = rows
         .iter()
         .map(|row| (row.id, row.parent))
         .collect::<HashMap<_, _>>();
     let max_depth = rows.len();
-    Some(
-        rows.iter()
-            .map(|row| {
-                let depth = sqlite_explain_plan_depth(row, &parents_by_id, max_depth);
-                if depth == 0 {
-                    row.detail.clone()
-                } else {
-                    format!("{}- {}", "  ".repeat(depth), row.detail)
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
+    Ok(rows
+        .iter()
+        .map(|row| {
+            let depth = sqlite_explain_plan_depth(row, &parents_by_id, max_depth);
+            if depth == 0 {
+                row.detail.clone()
+            } else {
+                format!("{}- {}", "  ".repeat(depth), row.detail)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n"))
 }
 
-pub fn sqlite_explain_query_plan_text_from_result(result: &QueryResult) -> String {
-    sqlite_explain_plan_text(result).unwrap_or_else(|| {
-        (0..result.data_row_count())
-            .filter_map(|row_idx| result.display_value_at(row_idx, 0))
-            .collect::<Vec<_>>()
-            .join("\n")
-    })
+pub fn sqlite_explain_query_plan_text_from_result(
+    result: &QueryResult,
+) -> Result<String, SqliteExplainPlanError> {
+    sqlite_explain_plan_text(result)
 }
 
 fn first_result_column_text(result: &QueryResult) -> String {
