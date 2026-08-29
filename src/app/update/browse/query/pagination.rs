@@ -187,7 +187,7 @@ pub fn reduce_pagination(
                         return DispatchResult::handled();
                     }
                     SqliteExportPlan::RerunnableQuery { query } => {
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         return dispatch_rerunnable_csv_export(
                             state,
                             dsn,
@@ -201,7 +201,7 @@ pub fn reduce_pagination(
                     SqliteExportPlan::CachedResult { row_count } => {
                         let columns = result.columns.clone();
                         let values = result.values().to_vec();
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         return dispatch_cached_csv_export(
                             state, dsn, run_id, file_name, columns, values, row_count,
                         );
@@ -213,7 +213,7 @@ pub fn reduce_pagination(
                 if result.source == QuerySource::Preview {
                     let columns = result.columns.clone();
                     let values = result.values().to_vec();
-                    let run_id = state.query.begin_running(now);
+                    let run_id = state.query.begin_non_preview_running(now);
                     return dispatch_cached_csv_export(
                         state, dsn, run_id, file_name, columns, values, row_count,
                     );
@@ -230,7 +230,7 @@ pub fn reduce_pagination(
                         (RerunnableCsvRowCount::Known(row_count), None)
                     }
                 };
-                let run_id = state.query.begin_running(now);
+                let run_id = state.query.begin_non_preview_running(now);
                 return dispatch_rerunnable_csv_export(
                     state,
                     dsn,
@@ -242,7 +242,7 @@ pub fn reduce_pagination(
                 );
             }
 
-            let run_id = state.query.begin_running(now);
+            let run_id = state.query.begin_non_preview_running(now);
             dispatch_rerunnable_csv_export(
                 state,
                 dsn,
@@ -373,9 +373,10 @@ mod tests {
     use crate::update::test_fixtures;
     use std::sync::Arc;
 
-    use crate::model::browse::query_execution::PREVIEW_PAGE_SIZE;
+    use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+    use crate::update::reducer::reduce;
 
     fn csv_rows_counted_action(
         state: &mut AppState,
@@ -717,25 +718,19 @@ mod tests {
         use crate::domain::QueryResult;
         use rstest::rstest;
 
-        fn export_test_state() -> AppState {
-            let mut state = AppState::new("test_project".to_string());
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-        }
-
         #[test]
-        fn request_with_preview_result_emits_count_effect() {
-            let mut state = export_test_state();
+        fn delete_success_then_count_export_then_preview_completion_clears_selection() {
+            let mut state = test_fixtures::state_after_delete_success();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
 
-            let effects = dispatch_query(
+            let now = Instant::now();
+            let effects = reduce(
                 &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
+                Action::RequestCsvExport,
+                now,
                 &AppServices::stub(),
-            )
-            .unwrap();
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -749,6 +744,13 @@ mod tests {
                 }
                 other => panic!("expected CountRowsForExport, got {other:?}"),
             }
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
+            test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
 
         #[test]

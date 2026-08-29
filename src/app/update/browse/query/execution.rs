@@ -239,7 +239,7 @@ pub fn reduce_execution(
                 return DispatchResult::handled();
             }
             if let Some(dsn) = state.session.dsn().map(String::from) {
-                let run_id = state.query.begin_running(now);
+                let run_id = state.query.begin_non_preview_running(now);
                 DispatchResult::handled_with(vec![Effect::ExecuteAdhoc {
                     dsn,
                     run_id,
@@ -402,6 +402,7 @@ mod tests {
     use crate::update::browse::query::tests::*;
     use crate::update::er::dispatch_er;
     use crate::update::reducer::reduce;
+    use crate::update::test_fixtures as update_test_fixtures;
     use tokio::sync::mpsc;
 
     #[derive(Debug, PartialEq)]
@@ -793,6 +794,28 @@ mod tests {
             assert!(!state.query.pagination.reached_end());
             assert_eq!(state.query.pagination.schema(), "public");
             assert_eq!(state.query.pagination.table(), "users");
+        }
+
+        #[test]
+        fn delete_success_then_adhoc_then_preview_completion_clears_selection() {
+            let mut state = update_test_fixtures::state_after_delete_success();
+            let now = Instant::now();
+
+            let effects = reduce(
+                &mut state,
+                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                now,
+                &AppServices::stub(),
+            );
+
+            assert!(matches!(effects.as_slice(), [Effect::ExecuteAdhoc { .. }]));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
+            update_test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
 
         #[test]
