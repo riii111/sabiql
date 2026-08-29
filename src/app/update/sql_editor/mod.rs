@@ -884,7 +884,7 @@ mod tests {
         }
 
         #[test]
-        fn submit_select_executes_immediately() {
+        fn submit_select_clears_delete_selection_before_adhoc_run() {
             let mut state = modal_state_with_query("SELECT 1");
             state
                 .query

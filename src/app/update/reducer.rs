@@ -2178,7 +2178,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_delete_write_then_success_preserves_delete_context() {
+        fn confirm_delete_write_success_sets_delete_preview_selection() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -2256,7 +2256,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_delete_write_then_failure_returns_to_normal() {
+        fn confirm_delete_write_failure_clears_delete_preview_selection() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);

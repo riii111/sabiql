@@ -376,6 +376,7 @@ mod tests {
     use crate::model::browse::query_execution::{PREVIEW_PAGE_SIZE, PostDeleteRowSelection};
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
+    use crate::update::reducer::reduce;
 
     fn csv_rows_counted_action(
         state: &mut AppState,
@@ -717,28 +718,19 @@ mod tests {
         use crate::domain::QueryResult;
         use rstest::rstest;
 
-        fn export_test_state() -> AppState {
-            let mut state = AppState::new("test_project".to_string());
-            test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
-            state
-        }
-
         #[test]
-        fn request_with_preview_result_emits_count_effect() {
-            let mut state = export_test_state();
+        fn delete_success_then_count_export_then_preview_completion_clears_selection() {
+            let mut state = test_fixtures::state_after_delete_success();
             state.query.set_current_result(preview_result(10));
             state.query.pagination.reset_for_table("public", "users");
-            state
-                .query
-                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
-            let effects = dispatch_query(
+            let now = Instant::now();
+            let effects = reduce(
                 &mut state,
-                &Action::RequestCsvExport,
-                Instant::now(),
+                Action::RequestCsvExport,
+                now,
                 &AppServices::stub(),
-            )
-            .unwrap();
+            );
 
             assert_eq!(effects.len(), 1);
             match &effects[0] {
@@ -756,6 +748,9 @@ mod tests {
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
+            test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
 
         #[test]

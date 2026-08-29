@@ -398,6 +398,7 @@ mod tests {
     use crate::update::browse::query::dispatch_query;
     use crate::update::browse::query::tests::*;
     use crate::update::reducer::reduce;
+    use crate::update::test_fixtures as update_test_fixtures;
     use tokio::sync::mpsc;
 
     #[derive(Debug, PartialEq)]
@@ -792,56 +793,25 @@ mod tests {
         }
 
         #[test]
-        fn preview_start_preserves_post_delete_selection() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
+        fn delete_success_then_adhoc_then_preview_completion_clears_selection() {
+            let mut state = update_test_fixtures::state_after_delete_success();
+            let now = Instant::now();
 
-            let effects = dispatch_query(
+            let effects = reduce(
                 &mut state,
-                &Action::ExecutePreview(TableTarget {
-                    schema: "public".to_string(),
-                    table: "users".to_string(),
-                    generation: 1,
-                }),
-                Instant::now(),
+                Action::ExecuteAdhoc("SELECT 1".to_string()),
+                now,
                 &AppServices::stub(),
-            )
-            .into_effects()
-            .expect("preview should be handled");
-
-            assert!(matches!(
-                effects.as_slice(),
-                [Effect::ExecutePreview { .. }]
-            ));
-            assert_eq!(
-                state.query.post_delete_row_selection(),
-                PostDeleteRowSelection::Select(4)
             );
-        }
-
-        #[test]
-        fn adhoc_start_clears_post_delete_selection() {
-            let mut state = create_test_state();
-            state
-                .query
-                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
-
-            let effects = dispatch_query(
-                &mut state,
-                &Action::ExecuteAdhoc("SELECT 1".to_string()),
-                Instant::now(),
-                &AppServices::stub(),
-            )
-            .into_effects()
-            .expect("adhoc should be handled");
 
             assert!(matches!(effects.as_slice(), [Effect::ExecuteAdhoc { .. }]));
             assert_eq!(
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
+            update_test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
 
         #[test]

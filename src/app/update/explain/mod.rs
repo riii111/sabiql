@@ -488,17 +488,18 @@ mod tests {
         }
 
         #[test]
-        fn emits_execute_explain_effect() {
-            let mut state = sql_modal_state();
+        fn delete_success_then_explain_then_preview_completion_clears_selection() {
+            let mut state = test_fixtures::state_after_delete_success();
+            state.modal.set_mode(InputMode::SqlModal);
             state.sql_modal.editor.set_content("SELECT 1".to_string());
-            activate_postgres_connection(&mut state);
-            state
-                .query
-                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
+            let now = Instant::now();
 
-            let effects = reduce_explain(&mut state, &Action::ExplainRequest, Instant::now())
-                .into_effects()
-                .expect("reducer should handle action");
+            let effects = reduce(
+                &mut state,
+                Action::ExplainRequest,
+                now,
+                &AppServices::stub(),
+            );
 
             assert_eq!(effects.len(), 1);
             assert!(matches!(
@@ -516,6 +517,9 @@ mod tests {
                 state.query.post_delete_row_selection(),
                 PostDeleteRowSelection::Keep
             );
+            test_fixtures::complete_table_preview(&mut state, now);
+            assert!(state.result_interaction.selection().row().is_none());
+            assert!(state.result_interaction.selection().cell().is_none());
         }
     }
 
