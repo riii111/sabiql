@@ -8,8 +8,22 @@ use std::time::Instant;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 pub fn dispatch_er(state: &mut AppState, action: &Action, now: Instant) -> DispatchResult {
+    if matches!(
+        action,
+        Action::ErGenerateFromCache
+            | Action::ErDiagramOpened(_)
+            | Action::ErDiagramFailed { .. }
+            | Action::SmartErRefreshFetched(_)
+            | Action::SmartErRefreshCompleted(_)
+            | Action::SmartErRefreshFailed(_)
+    ) && reject_pending_mysql_connection_probe(state)
+    {
+        return DispatchResult::handled();
+    }
+
     diagram::reduce_diagram_lifecycle(state, action, now)
         .or_else(|| smart_refresh_fetched::reduce_smart_refresh_fetched(state, action))
         .or_else(|| smart_refresh_completed::reduce_smart_refresh_completed(state, action, now))
@@ -97,6 +111,7 @@ mod tests {
 
     mod er_open_diagram {
         use super::*;
+        use crate::ports::outbound::DbOperationError;
 
         #[test]
         fn emits_smart_refresh() {
@@ -169,6 +184,66 @@ mod tests {
                 state.messages.last_error.as_deref(),
                 Some("Connection switch in progress")
             );
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_er_completions_without_state_mutation() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.er_preparation.start_waiting_run();
+            state.er_preparation.mark_waiting_for_test();
+            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+
+            let actions = vec![
+                Action::SmartErRefreshFetched(SmartErRefreshFetched {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    new_metadata: make_metadata(1),
+                    signature_snapshot: Arc::new(TableSignatureSnapshot {
+                        signatures: vec![],
+                        prefetched_table_details: vec![],
+                    }),
+                }),
+                Action::SmartErRefreshCompleted(SmartErRefreshResult {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    new_metadata: make_metadata(1),
+                    stale_tables: vec![],
+                    added_tables: vec![],
+                    removed_tables: vec![],
+                    missing_in_cache: vec![],
+                    new_signatures: HashMap::new(),
+                }),
+                Action::SmartErRefreshFailed(SmartErRefreshError {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    error: DbOperationError::Timeout("timed out".to_string()),
+                    new_metadata: None,
+                }),
+                Action::ErDiagramOpened(ErDiagramInfo {
+                    run_id,
+                    path: "diagram.svg".to_string(),
+                    table_count: 1,
+                    total_tables: 1,
+                }),
+                Action::ErDiagramFailed {
+                    run_id,
+                    error: "failed".to_string(),
+                },
+                Action::ErGenerateFromCache,
+            ];
+
+            for action in actions {
+                let effects = reduce_er(&mut state, &action, Instant::now())
+                    .into_effects()
+                    .expect("ER action should be handled");
+                assert!(effects.is_empty());
+            }
+
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(prefetch_run_id)
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
         }
 
         #[test]
