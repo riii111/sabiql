@@ -7,6 +7,7 @@ use crate::model::shared::input_mode::InputMode;
 use crate::model::sql_editor::modal::FailedPrefetchEntry;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::check_er_completion;
 
@@ -94,6 +95,21 @@ pub(super) fn reduce_prefetch(
     action: &Action,
     now: Instant,
 ) -> DispatchResult {
+    if matches!(
+        action,
+        Action::StartErPrefetchAll
+            | Action::StartErPrefetchScoped { .. }
+            | Action::StartCompletionPrefetch { .. }
+            | Action::ProcessPrefetchQueue { .. }
+            | Action::PrefetchTableDetail { .. }
+            | Action::TableDetailCached { .. }
+            | Action::TableDetailCacheFailed { .. }
+            | Action::TableDetailAlreadyCached { .. }
+    ) && reject_pending_mysql_connection_probe(state)
+    {
+        return DispatchResult::handled();
+    }
+
     match action {
         Action::StartErPrefetchAll => {
             if (state.sql_modal.active_prefetch_run_id().is_none()

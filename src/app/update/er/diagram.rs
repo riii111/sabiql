@@ -4,7 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::{Action, ErDiagramInfo};
 use crate::update::dispatch_result::DispatchResult;
-use crate::update::helpers::require_er_diagram_enabled;
+use crate::update::helpers::{reject_pending_mysql_connection_probe, require_er_diagram_enabled};
 
 pub(super) fn reduce_diagram_lifecycle(
     state: &mut AppState,
@@ -45,6 +45,9 @@ pub(super) fn reduce_diagram_lifecycle(
             DispatchResult::handled()
         }
         Action::ErOpenDiagram => {
+            if reject_pending_mysql_connection_probe(state) {
+                return DispatchResult::handled();
+            }
             if let Some(result) = require_er_diagram_enabled(state) {
                 return result;
             }

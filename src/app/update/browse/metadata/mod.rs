@@ -84,6 +84,24 @@ mod tests {
         state
     }
 
+    fn state_with_pending_mysql_probe() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_target(
+            &ConnectionId::from_string("mysql-current"),
+            "mysql-current",
+            DatabaseType::MySQL,
+            "mysql://localhost/current",
+            Some("current"),
+        );
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::from_string("mysql-target"),
+            "mysql-target",
+            "mysql://localhost/target",
+            Some("target"),
+        );
+        state
+    }
+
     fn empty_table(schema: &str, name: &str) -> Box<Table> {
         Box::new(test_support::table::minimal(schema, name))
     }
@@ -471,6 +489,53 @@ mod tests {
             assert!(!state.sql_modal.is_table_prefetching(&qualified));
             assert!(!state.er_preparation.fetching_tables().contains(&qualified));
             assert!(state.er_preparation.pending_tables().contains(&qualified));
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_direct_prefetch_without_starting_it() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.sql_modal.begin_completion_prefetch();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::PrefetchTableDetail {
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("prefetch action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.sql_modal.is_table_prefetching("public.users"));
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_prefetch_completion_without_cache_mutation() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .start_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::TableDetailCached {
+                    dsn: "mysql://localhost/current".to_string(),
+                    run_id,
+                    schema: "public".to_string(),
+                    table: "users".to_string(),
+                    detail: empty_table("public", "users"),
+                },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("cached detail action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(state.sql_modal.is_table_prefetching("public.users"));
         }
 
         #[test]
@@ -1079,6 +1144,42 @@ mod tests {
                     .iter()
                     .any(|effect| matches!(effect, Effect::DispatchActions(_)))
             );
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_prefetch_queue_without_dequeuing() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.sql_modal.begin_completion_prefetch();
+            state
+                .sql_modal
+                .queue_table_prefetch("public.users".to_string());
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ProcessPrefetchQueue { run_id },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("prefetch queue action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(state.sql_modal.is_prefetch_queued("public.users"));
+            assert_eq!(state.sql_modal.prefetch_in_flight_count(), 0);
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_prefetch_start_without_queueing() {
+            let mut state = state_with_pending_mysql_probe();
+            state.session.set_metadata(Some(make_metadata(2)));
+
+            let effects =
+                dispatch_metadata(&mut state, &Action::StartErPrefetchAll, Instant::now())
+                    .into_effects()
+                    .expect("prefetch action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(state.sql_modal.active_prefetch_run_id().is_none());
+            assert!(!state.sql_modal.has_pending_prefetch());
         }
     }
 

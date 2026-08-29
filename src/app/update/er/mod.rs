@@ -59,6 +59,24 @@ mod tests {
         state
     }
 
+    fn state_with_pending_mysql_probe() -> AppState {
+        let mut state = AppState::new("test".to_string());
+        state.session.activate_connection_with_target(
+            &ConnectionId::from_string("mysql-current"),
+            "mysql-current",
+            DatabaseType::MySQL,
+            "mysql://localhost/current",
+            Some("current"),
+        );
+        let _ = state.session.begin_mysql_connection_probe(
+            &ConnectionId::from_string("mysql-target"),
+            "mysql-target",
+            "mysql://localhost/target",
+            Some("target"),
+        );
+        state
+    }
+
     fn set_active_run_id(state: &mut AppState, run_id: u64) {
         for _ in 0..run_id {
             let _ = state.er_preparation.start_waiting_run();
@@ -129,6 +147,28 @@ mod tests {
             assert_eq!(state.er_preparation.status(), ErStatus::Waiting);
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::SmartErRefresh { .. }));
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_er_open_before_prefetch_invalidation() {
+            let mut state = state_with_pending_mysql_probe();
+            state.session.set_metadata(Some(make_metadata(1)));
+            let prefetch_run_id = state.sql_modal.begin_er_prefetch();
+
+            let effects = reduce_er(&mut state, &Action::ErOpenDiagram, Instant::now())
+                .into_effects()
+                .expect("ER open action should be handled");
+
+            assert!(effects.is_empty());
+            assert_eq!(
+                state.sql_modal.active_prefetch_run_id(),
+                Some(prefetch_run_id)
+            );
+            assert_eq!(state.er_preparation.status(), ErStatus::Idle);
+            assert_eq!(
+                state.messages.last_error.as_deref(),
+                Some("Connection switch in progress")
+            );
         }
 
         #[test]
