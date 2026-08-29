@@ -29,15 +29,18 @@ mod tests {
     use super::*;
     use crate::cmd::effect::Effect;
     use crate::domain::{ConnectionId, DatabaseType, QueryValue};
+    use crate::model::browse::query_execution::PostDeleteRowSelection;
     use crate::model::shared::confirm_dialog::{ConfirmIntent, CsvExportCacheSnapshot};
     use crate::model::shared::help::HelpMode;
     use crate::model::shared::input_mode::InputMode;
     use crate::model::shared::settings::KeymapPreset;
     use crate::ports::outbound::AppSettings;
+    use crate::services::AppServices;
     use crate::update::action::{
         CursorMove, InputTarget, ListMotion, ListTarget, ModalKind, ScrollAmount, ScrollDirection,
         ScrollTarget, TextKillDirection,
     };
+    use crate::update::reducer::reduce;
     use crate::update::test_fixtures;
     use std::time::Instant;
 
@@ -631,13 +634,9 @@ mod tests {
             }
 
             #[test]
-            fn execute_write_sets_running_state_and_returns_effect() {
-                let mut state = create_test_state();
+            fn delete_success_then_write_then_preview_completion_clears_selection() {
+                let mut state = test_fixtures::state_after_delete_success();
                 enter_confirm_dialog(&mut state, InputMode::CellEdit);
-                test_fixtures::activate_postgres_connection(
-                    &mut state,
-                    "postgres://localhost/test",
-                );
                 state.confirm_dialog.open(
                     "",
                     "",
@@ -648,15 +647,25 @@ mod tests {
                 );
 
                 let now = Instant::now();
-                let effects = super::dispatch_modal(&mut state, &Action::ConfirmDialogConfirm, now)
-                    .into_effects()
-                    .expect("reducer should handle action");
+                let effects = reduce(
+                    &mut state,
+                    Action::ConfirmDialogConfirm,
+                    now,
+                    &AppServices::stub(),
+                );
 
                 assert_eq!(state.input_mode(), InputMode::CellEdit);
                 assert!(state.query.is_running());
                 assert!(state.query.start_time().is_some());
+                assert_eq!(
+                    state.query.post_delete_row_selection(),
+                    PostDeleteRowSelection::Keep
+                );
                 assert_eq!(effects.len(), 1);
                 assert!(matches!(&effects[0], Effect::ExecuteWrite { .. }));
+                test_fixtures::complete_table_preview(&mut state, now);
+                assert!(state.result_interaction.selection().row().is_none());
+                assert!(state.result_interaction.selection().cell().is_none());
             }
 
             #[test]

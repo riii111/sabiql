@@ -149,6 +149,13 @@ impl QueryExecution {
         self.run.begin()
     }
 
+    #[must_use]
+    pub fn begin_non_preview_running(&mut self, now: Instant) -> u64 {
+        let run_id = self.begin_running(now);
+        self.post_delete_row_selection = PostDeleteRowSelection::Keep;
+        run_id
+    }
+
     pub fn mark_idle(&mut self) {
         self.start_time = None;
         self.run.clear_active();

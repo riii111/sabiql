@@ -55,14 +55,16 @@ fn exit_status_details(status: ExitStatus) -> String {
 
 fn classify_by_sqlstate(sqlstate: &str, details: &str) -> DbOperationError {
     match sqlstate {
-        "08003" | "08006" | "08P01" => DbOperationError::ConnectionLost(details.to_string()),
+        "08003" | "08006" | "08P01" | "57P01" | "57P02" => {
+            DbOperationError::ConnectionLost(details.to_string())
+        }
         "08000" | "08001" | "08004" | "08007" => classify_connection_failure(details),
-        "28P01" => connection_failed_with_kind(ConnectionFailureKind::Auth, details),
+        "28000" | "28P01" => connection_failed_with_kind(ConnectionFailureKind::Auth, details),
         "3D000" => connection_failed_with_kind(ConnectionFailureKind::DatabaseNotFound, details),
-        "42501" => DbOperationError::PermissionDenied(details.to_string()),
+        "25006" | "42501" => DbOperationError::PermissionDenied(details.to_string()),
         "23503" => DbOperationError::ForeignKeyViolation(details.to_string()),
         "23505" => DbOperationError::UniqueViolation(details.to_string()),
-        "55P03" => DbOperationError::LockTimeout(details.to_string()),
+        "40001" | "40P01" | "55P03" => DbOperationError::LockTimeout(details.to_string()),
         "57014" => classify_query_canceled(details),
         "42P01" | "42703" => DbOperationError::ObjectMissing(details.to_string()),
         code if code.starts_with("08") => {
@@ -326,6 +328,10 @@ mod tests {
         #[rstest]
         #[case("ERROR:  42501: permission denied for table users", "PermissionDenied")]
         #[case(
+            "ERROR:  25006: cannot execute in a read-only transaction",
+            "PermissionDenied"
+        )]
+        #[case(
             "ERROR:  23503: insert or update on table violates foreign key constraint",
             "ForeignKeyViolation"
         )]
@@ -334,6 +340,11 @@ mod tests {
             "UniqueViolation"
         )]
         #[case("ERROR:  55P03: lock not available", "LockTimeout")]
+        #[case(
+            "ERROR:  40001: could not serialize access due to concurrent update",
+            "LockTimeout"
+        )]
+        #[case("ERROR:  40P01: deadlock detected", "LockTimeout")]
         #[case(
             "ERROR:  57014: canceling statement due to statement timeout",
             "Timeout"
@@ -345,6 +356,16 @@ mod tests {
         #[case("ERROR:  42P01: relation \"users\" does not exist", "ObjectMissing")]
         #[case("ERROR:  08006: connection to server was lost", "ConnectionLost")]
         #[case("ERROR:  08006: could not receive data from server", "ConnectionLost")]
+        #[case(
+            "FATAL:  57P01: terminating connection due to administrator command",
+            "ConnectionLost"
+        )]
+        #[case(
+            "FATAL:  57P02: terminating connection due to crash of another server",
+            "ConnectionLost"
+        )]
+        #[case("ERROR:  57P03: the database system is starting up", "QueryFailed")]
+        #[case("ERROR:  57P04: nearby unknown state", "QueryFailed")]
         #[case("ERROR:  08001: could not connect to server", "ConnectionFailed")]
         #[case("FATAL:  08001: could not translate host name", "HostUnreachable")]
         #[case("FATAL:  08001: timeout expired", "Timeout")]
@@ -353,10 +374,64 @@ mod tests {
             "FATAL:  08001: server closed the connection unexpectedly",
             "ConnectionLost"
         )]
+        #[case("FATAL:  28000: invalid authorization specification", "Auth")]
         #[case("FATAL:  28P01: opaque authentication failure", "Auth")]
         #[case("FATAL:  3D000: opaque database failure", "DatabaseNotFound")]
         fn classifies_sqlstate_first(#[case] input: &str, #[case] expected: &str) {
             assert_eq!(classification_name(classify(input)), expected);
+        }
+
+        #[rstest]
+        #[case(
+            "ERROR:  25006: cannot execute in a read-only transaction",
+            "Permission denied",
+            "Check the connected user's privileges"
+        )]
+        #[case(
+            "FATAL:  28000: invalid authorization specification",
+            "Connection failed",
+            "Check the connection settings and database availability"
+        )]
+        #[case(
+            "ERROR:  40001: could not serialize access due to concurrent update",
+            "Operation blocked by lock or timeout",
+            "Retry; if it persists, check for blocking transactions or timeout settings"
+        )]
+        #[case(
+            "ERROR:  40P01: deadlock detected",
+            "Operation blocked by lock or timeout",
+            "Retry; if it persists, check for blocking transactions or timeout settings"
+        )]
+        #[case(
+            "FATAL:  57P01: terminating connection due to administrator command",
+            "Connection lost during operation",
+            "Reconnect and retry the operation"
+        )]
+        #[case(
+            "FATAL:  57P02: terminating connection due to crash of another server",
+            "Connection lost during operation",
+            "Reconnect and retry the operation"
+        )]
+        #[case(
+            "ERROR:  57P03: the database system is starting up",
+            "Query failed",
+            "Review the database error details and SQL"
+        )]
+        #[case(
+            "ERROR:  57P04: nearby unknown state",
+            "Query failed",
+            "Review the database error details and SQL"
+        )]
+        fn known_sqlstates_preserve_details_and_presentation(
+            #[case] input: &str,
+            #[case] expected_summary: &str,
+            #[case] expected_hint: &str,
+        ) {
+            let error = classify_query_error(input);
+
+            assert_eq!(error.masked_details(), input);
+            assert_eq!(error.summary(), expected_summary);
+            assert_eq!(error.hint(), expected_hint);
         }
 
         #[rstest]

@@ -162,8 +162,15 @@ impl SqliteCli {
         output_path: &std::path::Path,
         read_only: bool,
     ) -> Result<(), DbOperationError> {
-        self.export_csv_with_command("sqlite3", path, sql, output_path, read_only)
-            .await
+        self.export_csv_with_command(
+            "sqlite3",
+            path,
+            sql,
+            output_path,
+            read_only,
+            Duration::from_secs(self.timeout_secs * 10),
+        )
+        .await
     }
 
     async fn export_csv_with_command(
@@ -173,6 +180,7 @@ impl SqliteCli {
         sql: &str,
         output_path: &std::path::Path,
         read_only: bool,
+        timeout_duration: Duration,
     ) -> Result<(), DbOperationError> {
         let mut cmd = Self::build_command(
             command,
@@ -194,12 +202,16 @@ impl SqliteCli {
         let stdout = child.stdout.take();
         let mut stderr_handle = child.stderr.take();
 
-        let file = tokio::fs::File::create(output_path)
-            .await
-            .map_err(|error| DbOperationError::ExportIo(ExportIoSource::new(error)))?;
+        let file = match tokio::fs::File::create(output_path).await {
+            Ok(file) => file,
+            Err(error) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::ExportIo(ExportIoSource::new(error)));
+            }
+        };
         let mut writer = tokio::io::BufWriter::new(file);
 
-        let result = timeout(Duration::from_secs(self.timeout_secs * 10), async {
+        let result = timeout(timeout_duration, async {
             let (stdin_result, stdout_result, stderr_result) = tokio::join!(
                 async { Ok::<_, CsvOutputError>(write_sql_to_stdin(stdin, &sql).await?) },
                 async {
@@ -261,11 +273,13 @@ impl SqliteCli {
             Ok(inner) => match inner {
                 Ok(values) => values,
                 Err(error) => {
+                    kill_and_wait(&mut child).await;
                     let _ = tokio::fs::remove_file(output_path).await;
                     return Err(error.into_db_operation_error());
                 }
             },
             Err(error) => {
+                kill_and_wait(&mut child).await;
                 let _ = tokio::fs::remove_file(output_path).await;
                 return Err(DbOperationError::Timeout(error.to_string()));
             }
@@ -366,9 +380,19 @@ impl SqliteCli {
             let status = child.wait().await?;
             Ok::<_, std::io::Error>((status, stdout, stderr))
         })
-        .await
-        .map_err(|error| DbOperationError::Timeout(error.to_string()))?
-        .map_err(|error| DbOperationError::QueryFailed(error.to_string()))?;
+        .await;
+
+        let result = match result {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::QueryFailed(error.to_string()));
+            }
+            Err(error) => {
+                kill_and_wait(&mut child).await;
+                return Err(DbOperationError::Timeout(error.to_string()));
+            }
+        };
 
         let (status, stdout, stderr) = result;
         Ok(SqliteOutput {
@@ -377,6 +401,11 @@ impl SqliteCli {
             stderr,
         })
     }
+}
+
+async fn kill_and_wait(child: &mut tokio::process::Child) {
+    let _ = child.start_kill();
+    let _ = child.wait().await;
 }
 
 #[cfg(any(windows, test))]
@@ -576,6 +605,7 @@ mod tests {
                         "SELECT id FROM users",
                         &temporary_path,
                         true,
+                        Duration::from_secs(30),
                     )
                     .await
             })
@@ -593,6 +623,187 @@ mod tests {
                     .to_string_lossy()
                     .contains(".export.csv")
             }));
+        }
+    }
+
+    #[cfg(unix)]
+    mod process_lifecycle {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        use tempfile::TempDir;
+
+        use super::*;
+
+        fn fake_sqlite() -> (TempDir, PathBuf, PathBuf) {
+            let directory = tempfile::tempdir().unwrap();
+            let program = directory.path().join("sqlite3");
+            let pid_file = directory.path().join("pid");
+            let script = r#"#!/bin/sh
+printf '%s\n' "$$" > "$SABIQL_FAKE_SQLITE_PID"
+case "$SABIQL_FAKE_SQLITE_MODE" in
+  normal)
+    printf 'value\n1\n'
+    ;;
+  error)
+    printf 'fake sqlite error\n' >&2
+    exit 1
+    ;;
+  timeout)
+    while :; do :; done
+    ;;
+esac
+"#;
+            fs::write(&program, script).unwrap();
+            let mut permissions = fs::metadata(&program).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&program, permissions).unwrap();
+            (directory, program, pid_file)
+        }
+
+        fn assert_process_reaped(pid_file: &Path) {
+            let mut pid = None;
+            for _ in 0..200 {
+                if let Ok(value) = fs::read_to_string(pid_file)
+                    && let Ok(value) = value.trim().parse::<libc::pid_t>()
+                {
+                    pid = Some(value);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let Some(pid) = pid else {
+                panic!("fake sqlite process did not start: {}", pid_file.display());
+            };
+
+            for _ in 0..200 {
+                if unsafe { libc::kill(pid, 0) } == -1 {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            panic!("fake sqlite process {pid} is still running or unreaped");
+        }
+
+        fn command_environment(
+            directory: &TempDir,
+            mode: &str,
+            pid_file: &Path,
+        ) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+            vec![
+                (
+                    std::ffi::OsString::from("PATH"),
+                    directory.path().as_os_str().to_owned(),
+                ),
+                (
+                    std::ffi::OsString::from("SABIQL_FAKE_SQLITE_MODE"),
+                    std::ffi::OsString::from(mode),
+                ),
+                (
+                    std::ffi::OsString::from("SABIQL_FAKE_SQLITE_PID"),
+                    pid_file.as_os_str().to_owned(),
+                ),
+            ]
+        }
+
+        #[tokio::test]
+        async fn collect_reaps_fake_sqlite_before_returning() {
+            for mode in ["normal", "error", "timeout"] {
+                let (_database_dir, dsn) = test_support::make_sqlite_db("");
+                let (fake_dir, _program, pid_file) = fake_sqlite();
+                let (mut adapter, _command_context) = SqliteAdapter::with_test_environment(
+                    &dsn,
+                    command_environment(&fake_dir, mode, &pid_file),
+                );
+                adapter.cli.timeout_secs = if mode == "timeout" { 1 } else { 30 };
+
+                let result = adapter
+                    .cli
+                    .execute_csv(
+                        SqliteAdapter::path_from_dsn(&dsn).unwrap(),
+                        "SELECT 1",
+                        true,
+                    )
+                    .await;
+
+                match mode {
+                    "normal" => assert_eq!(result.unwrap(), "value\n1\n"),
+                    "error" => assert!(
+                        matches!(
+                            &result,
+                            Err(DbOperationError::QueryFailed(details))
+                                if details == "fake sqlite error"
+                        ),
+                        "result={result:?}"
+                    ),
+                    "timeout" => assert!(matches!(result, Err(DbOperationError::Timeout(_)))),
+                    _ => unreachable!(),
+                }
+                assert_process_reaped(&pid_file);
+            }
+        }
+
+        #[tokio::test]
+        async fn export_reaps_fake_sqlite_before_temporary_cleanup_and_returning() {
+            for mode in ["normal", "error", "timeout"] {
+                let (_database_dir, dsn) = test_support::make_sqlite_db("");
+                let (fake_dir, program, pid_file) = fake_sqlite();
+                let (adapter, _command_context) = SqliteAdapter::with_test_environment(
+                    &dsn,
+                    command_environment(&fake_dir, mode, &pid_file),
+                );
+                let output_dir = tempfile::tempdir().unwrap();
+                let final_path = output_dir.path().join("export.csv");
+                let database_path = SqliteAdapter::path_from_dsn(&dsn).unwrap().to_string();
+                let program = program.to_str().unwrap().to_string();
+                let timeout_duration = if mode == "timeout" {
+                    Duration::from_secs(1)
+                } else {
+                    Duration::from_secs(30)
+                };
+
+                let result = export_to_path(final_path.clone(), |temporary_path| async move {
+                    adapter
+                        .cli
+                        .export_csv_with_command(
+                            &program,
+                            &database_path,
+                            "SELECT 1",
+                            &temporary_path,
+                            true,
+                            timeout_duration,
+                        )
+                        .await
+                })
+                .await;
+
+                match mode {
+                    "normal" => {
+                        assert_eq!(result.unwrap(), final_path);
+                        assert_eq!(fs::read_to_string(&final_path).unwrap(), "value\n1\n");
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 1);
+                    }
+                    "error" => {
+                        assert!(
+                            matches!(
+                                &result,
+                                Err(DbOperationError::QueryFailed(details))
+                                    if details == "fake sqlite error"
+                            ),
+                            "result={result:?}"
+                        );
+                        assert!(!final_path.exists());
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
+                    }
+                    "timeout" => {
+                        assert!(matches!(result, Err(DbOperationError::Timeout(_))));
+                        assert!(!final_path.exists());
+                        assert_eq!(output_dir.path().read_dir().unwrap().count(), 0);
+                    }
+                    _ => unreachable!(),
+                }
+                assert_process_reaped(&pid_file);
+            }
         }
     }
 

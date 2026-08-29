@@ -50,7 +50,7 @@ pub(super) fn reduce_confirm_dialog(
                         return DispatchResult::handled();
                     }
                     if let Some(dsn) = state.session.dsn().map(String::from) {
-                        let run_id = state.query.begin_running(now);
+                        let run_id = state.query.begin_non_preview_running(now);
                         DispatchResult::handled_with(vec![Effect::ExecuteWrite {
                             dsn,
                             run_id,
