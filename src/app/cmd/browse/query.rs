@@ -729,34 +729,9 @@ mod tests {
         }
     }
 
-    mod execute_access_mode {
+    mod diagnostic_masking {
         use super::*;
         use crate::cmd::browse::query::mask_mysql_diagnostics;
-        use crate::domain::DatabaseType;
-
-        async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
-            let cache = TtlCache::new(300);
-            let (tx, mut rx) = mpsc::channel(8);
-            let runner = test_fixtures::make_runner(
-                Arc::new(MockMetadataProvider::new()),
-                Arc::new(executor),
-                Arc::new(MockConnectionStore::new()),
-                cache,
-                tx,
-            );
-            let run = test_fixtures::run_one_effect(
-                &runner,
-                effect,
-                AppState::new("test".to_string()),
-                RefCell::new(CompletionEngine::new()),
-                &mut rx,
-                Some(Duration::from_millis(500)),
-            )
-            .await
-            .unwrap();
-
-            run.actions.into_iter().next().expect("action dispatched")
-        }
 
         #[test]
         fn masks_credentials_in_success_diagnostic_messages() {
@@ -800,6 +775,35 @@ mod tests {
                 assert_eq!(diagnostics[0].level, level);
                 assert_eq!(diagnostics[0].code, code);
             }
+        }
+    }
+
+    mod execute_access_mode {
+        use super::*;
+        use crate::domain::DatabaseType;
+
+        async fn run_effect(effect: Effect, executor: MockQueryExecutor) -> Action {
+            let cache = TtlCache::new(300);
+            let (tx, mut rx) = mpsc::channel(8);
+            let runner = test_fixtures::make_runner(
+                Arc::new(MockMetadataProvider::new()),
+                Arc::new(executor),
+                Arc::new(MockConnectionStore::new()),
+                cache,
+                tx,
+            );
+            let run = test_fixtures::run_one_effect(
+                &runner,
+                effect,
+                AppState::new("test".to_string()),
+                RefCell::new(CompletionEngine::new()),
+                &mut rx,
+                Some(Duration::from_millis(500)),
+            )
+            .await
+            .unwrap();
+
+            run.actions.into_iter().next().expect("action dispatched")
         }
 
         #[tokio::test]
