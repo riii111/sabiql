@@ -220,6 +220,7 @@ impl BrowseSession {
     pub fn set_table_detail(&mut self, detail: Table, generation: u64) -> bool {
         if generation == self.selection_generation {
             self.table_detail_state = TableDetailState::Loaded(Box::new(detail));
+            self.table_detail_run.clear_active();
             true
         } else {
             false
@@ -251,6 +252,7 @@ impl BrowseSession {
     pub fn mark_table_detail_failed(&mut self, generation: u64, error: String) -> bool {
         if generation == self.selection_generation && self.selected_table_key.is_some() {
             self.table_detail_state = TableDetailState::Error(error);
+            self.table_detail_run.clear_active();
             true
         } else {
             false
@@ -1075,12 +1077,30 @@ mod tests {
             let mut session = BrowseSession::default();
             let mut query = QueryExecution::default();
             let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
 
             assert!(session.mark_table_detail_failed(generation, "boom".to_string()));
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Error(error) if error == "boom"
             ));
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert_eq!(session.begin_table_detail_run(), run_id + 1);
+        }
+
+        #[test]
+        fn accepting_success_clears_active_run_and_preserves_detail() {
+            let mut session = BrowseSession::default();
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
+
+            assert!(session.set_table_detail(make_table_detail(), generation));
+
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert_eq!(session.selection_generation(), generation);
+            assert!(session.table_detail().is_some());
+            assert_eq!(session.begin_table_detail_run(), run_id + 1);
         }
 
         #[test]
@@ -1186,6 +1206,42 @@ mod tests {
             assert!(matches!(
                 session.table_detail_state(),
                 TableDetailState::Error(error) if error == "connection refused"
+            ));
+        }
+
+        #[test]
+        fn mysql_probe_does_not_snapshot_terminal_detail_run() {
+            let mut session = BrowseSession::default();
+            let id = ConnectionId::from_string("mysql-current");
+            let current_dsn = "mysql://current";
+            session.activate_connection_with_target(
+                &id,
+                "mysql-current",
+                DatabaseType::MySQL,
+                current_dsn,
+                Some("app"),
+            );
+            let mut query = QueryExecution::default();
+            let generation = session.select_table("public", "users", &mut query);
+            let run_id = session.begin_table_detail_run();
+            assert!(session.set_table_detail(make_table_detail(), generation));
+
+            let _ = session.begin_mysql_connection_probe(
+                &id,
+                "mysql-target",
+                "mysql://target",
+                Some("app"),
+            );
+
+            assert!(!session.is_current_table_detail_run(run_id));
+            assert!(
+                session
+                    .pending_mysql_connection_probe()
+                    .is_some_and(|pending| pending.table_detail.is_none())
+            );
+            assert!(matches!(
+                session.table_detail_state(),
+                TableDetailState::Loaded(_)
             ));
         }
 
