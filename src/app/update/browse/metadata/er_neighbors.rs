@@ -4,6 +4,7 @@ use crate::cmd::effect::Effect;
 use crate::model::app_state::AppState;
 use crate::update::action::Action;
 use crate::update::dispatch_result::DispatchResult;
+use crate::update::helpers::reject_pending_mysql_connection_probe;
 
 use super::check_er_completion;
 
@@ -25,9 +26,15 @@ pub(super) fn reduce_er_neighbors(
 ) -> DispatchResult {
     match action {
         Action::ExpandPrefetchWithFkNeighbors { run_id } => {
+            if reject_pending_mysql_connection_probe(state) {
+                return DispatchResult::handled();
+            }
             DispatchResult::handled_with(expand_prefetch_with_fk_neighbors(state, *run_id))
         }
         Action::FkNeighborsDiscovered { run_id, tables } => {
+            if reject_pending_mysql_connection_probe(state) {
+                return DispatchResult::handled();
+            }
             if !state.sql_modal.is_current_prefetch_run(*run_id) {
                 return DispatchResult::handled();
             }

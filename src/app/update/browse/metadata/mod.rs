@@ -1452,6 +1452,26 @@ mod tests {
             );
             assert!(effects.is_empty());
         }
+
+        #[test]
+        fn pending_mysql_probe_rejects_neighbor_expansion() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.sql_modal.begin_er_prefetch();
+            state.er_preparation.mark_waiting_for_test();
+            state.er_preparation.mark_fk_unexpanded();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::ExpandPrefetchWithFkNeighbors { run_id },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("neighbor expansion action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(state.er_preparation.is_waiting());
+            assert!(!state.er_preparation.fk_expanded());
+        }
     }
 
     mod fk_neighbors_discovered {
@@ -1539,6 +1559,35 @@ mod tests {
             assert!(state.er_preparation.pending_tables().is_empty());
             assert!(!state.sql_modal.has_pending_prefetch());
             assert!(effects.is_empty());
+        }
+
+        #[test]
+        fn pending_mysql_probe_rejects_discovered_neighbors_without_queueing() {
+            let mut state = state_with_pending_mysql_probe();
+            let run_id = state.sql_modal.begin_er_prefetch();
+            state.er_preparation.mark_waiting_for_test();
+            state.er_preparation.mark_fk_unexpanded();
+
+            let effects = dispatch_metadata(
+                &mut state,
+                &Action::FkNeighborsDiscovered {
+                    run_id,
+                    tables: vec!["public.posts".to_string()],
+                },
+                Instant::now(),
+            )
+            .into_effects()
+            .expect("discovered neighbors action should be handled");
+
+            assert!(effects.is_empty());
+            assert!(!state.er_preparation.fk_expanded());
+            assert!(
+                !state
+                    .er_preparation
+                    .pending_tables()
+                    .contains("public.posts")
+            );
+            assert!(!state.sql_modal.is_prefetch_queued("public.posts"));
         }
 
         #[test]
