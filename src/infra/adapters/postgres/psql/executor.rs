@@ -246,7 +246,7 @@ impl PostgresAdapter {
         Ok(stdout)
     }
 
-    pub(in crate::adapters::postgres) async fn execute_query(
+    pub(in crate::adapters::postgres) async fn execute_raw_output(
         &self,
         dsn: &str,
         query: &str,
@@ -254,7 +254,7 @@ impl PostgresAdapter {
         self.run_psql(dsn, &["-t", "-A"], query, false).await
     }
 
-    pub(in crate::adapters::postgres) async fn execute_query_raw(
+    pub(in crate::adapters::postgres) async fn execute_query_result(
         &self,
         dsn: &str,
         query: &str,
@@ -461,7 +461,7 @@ impl PostgresAdapter {
         table: &str,
     ) -> Result<Vec<String>, DbOperationError> {
         let query = Self::preview_pk_columns_query(schema, table);
-        let raw = self.execute_query(dsn, &query).await?;
+        let raw = self.execute_raw_output(dsn, &query).await?;
         let trimmed = raw.trim();
         if trimmed.is_empty() || trimmed == "null" {
             return Ok(vec![]);
@@ -807,7 +807,7 @@ mod tests {
         }
     }
 
-    mod execute_query_raw_command_tag {
+    mod execute_query_result_command_tag {
         use crate::adapters::postgres::PostgresAdapter;
         use crate::domain::CommandTag;
 

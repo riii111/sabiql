@@ -2129,6 +2129,7 @@ mod tests {
     mod confirm_dialog_transitions {
         use super::*;
         use crate::domain::QueryValue;
+        use crate::model::browse::query_execution::PostDeleteRowSelection;
         use crate::model::shared::confirm_dialog::ConfirmIntent;
         use crate::policy::write::write_guardrails::{
             GuardrailDecision, RiskLevel, TargetSummary, WriteOperation, WritePreview,
@@ -2177,7 +2178,7 @@ mod tests {
         }
 
         #[test]
-        fn confirm_delete_write_then_success_preserves_delete_context() {
+        fn confirm_delete_write_success_sets_delete_preview_selection() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -2248,10 +2249,14 @@ mod tests {
             );
             assert_eq!(effects.len(), 1);
             assert!(matches!(&effects[0], Effect::ExecutePreview { .. }));
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Select(499)
+            );
         }
 
         #[test]
-        fn confirm_delete_write_then_failure_returns_to_normal() {
+        fn confirm_delete_write_failure_clears_delete_preview_selection() {
             let mut state = create_test_state();
             test_fixtures::activate_postgres_connection(&mut state, "postgres://localhost/test");
             state.modal.set_mode(InputMode::ConfirmDialog);
@@ -2280,6 +2285,9 @@ mod tests {
                     blocked: false,
                 },
             );
+            state
+                .query
+                .set_post_delete_selection(PostDeleteRowSelection::Select(4));
 
             let now = Instant::now();
             reduce(
@@ -2303,6 +2311,10 @@ mod tests {
 
             assert_eq!(state.input_mode(), InputMode::Normal);
             assert!(state.result_interaction.pending_write_preview().is_none());
+            assert_eq!(
+                state.query.post_delete_row_selection(),
+                PostDeleteRowSelection::Keep
+            );
         }
     }
 

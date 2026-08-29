@@ -27,8 +27,8 @@ fn postgres_table_not_found(schema: &str, table: &str) -> DbOperationError {
 #[async_trait]
 impl MetadataProvider for PostgresAdapter {
     async fn fetch_metadata(&self, dsn: &str) -> Result<DatabaseMetadata, DbOperationError> {
-        let schemas_json = self.execute_query(dsn, Self::schemas_query()).await?;
-        let tables_json = self.execute_query(dsn, Self::tables_query()).await?;
+        let schemas_json = self.execute_raw_output(dsn, Self::schemas_query()).await?;
+        let tables_json = self.execute_raw_output(dsn, Self::tables_query()).await?;
 
         let schemas = Self::parse_schemas(&schemas_json)?;
         let tables = Self::parse_tables(&tables_json)?;
@@ -43,7 +43,7 @@ impl MetadataProvider for PostgresAdapter {
 
     async fn fetch_effective_user(&self, dsn: &str) -> Result<Option<String>, DbOperationError> {
         let raw_user = self
-            .execute_query(dsn, Self::effective_user_query())
+            .execute_raw_output(dsn, Self::effective_user_query())
             .await?;
         let user = raw_user.trim();
         Ok((!user.is_empty()).then(|| user.to_string()))
@@ -54,7 +54,7 @@ impl MetadataProvider for PostgresAdapter {
         dsn: &str,
     ) -> Result<TableSignatureSnapshot, DbOperationError> {
         let json = self
-            .execute_query(dsn, Self::table_signatures_query())
+            .execute_raw_output(dsn, Self::table_signatures_query())
             .await?;
         Ok(TableSignatureSnapshot {
             signatures: Self::parse_table_signatures(&json)?,
@@ -69,7 +69,7 @@ impl MetadataProvider for PostgresAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_detail_query(schema, table);
-        let json = self.execute_query(dsn, &query).await?;
+        let json = self.execute_raw_output(dsn, &query).await?;
         let (exists, columns, indexes, foreign_keys, rls, triggers, table_info) =
             Self::parse_table_detail_combined(&json)?;
         if !exists {
@@ -102,7 +102,7 @@ impl MetadataProvider for PostgresAdapter {
         table: &str,
     ) -> Result<Table, DbOperationError> {
         let query = Self::table_columns_and_fks_query(schema, table);
-        let json = self.execute_query(dsn, &query).await?;
+        let json = self.execute_raw_output(dsn, &query).await?;
         let (exists, columns, foreign_keys) = Self::parse_table_columns_and_fks(&json)?;
         if !exists {
             return Err(postgres_table_not_found(schema, table));
